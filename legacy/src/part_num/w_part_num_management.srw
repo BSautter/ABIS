@@ -653,7 +653,7 @@ IF lds_part.RowCount() = 1 THEN
 		Else //No
 			
 		End If
-		//Alex Gerlants. 12/17/2024. 9999_Work_Center. Endobd#157
+		//Alex Gerlants. 12/17/2024. 9999_Work_Center. End__DB_PASSWORD_REDACTED__
 		
 		COMMIT USING SQLCA;
 	ELSE

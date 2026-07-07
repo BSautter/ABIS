@@ -77,7 +77,7 @@ IF SQLca.of_connect( ) = -1 then
 	HALT close
 ELSE
 	string ls_setrole
-	ls_setrole = "set role update_role identified by obd#157"
+	ls_setrole = "set role update_role identified by __DB_PASSWORD_REDACTED__"
 	sqlca.of_execute( ls_setrole)
 	//EXECUTE IMMEDIATE :ls_setrole USING SQLCA;
 	IF sqlca.sqlcode <> 0 then
