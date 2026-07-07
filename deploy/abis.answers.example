@@ -5,7 +5,10 @@
 # containing spaces, '=', ';' or parentheses (the Oracle connection string does).
 # Keep it readable only by root (chmod 600) — it holds the DB password + API key.
 
-# Oracle connection string (required). EZConnect or full TNS descriptor.
+# Oracle connection string (required). EZConnect (Data Source=host:port/service)
+# or a full TNS descriptor. If a password/sub-value contains ';' '=' or a space,
+# wrap THAT value in SINGLE quotes (Password='p;w') — do not use double quotes
+# inside this value. Make sure the target DB instance is actually running.
 ABIS_DB_CONNECTION="Data Source=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=192.168.1.230)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=abc11)));User Id=APP_USER;Password=CHANGE_ME;"
 
 # API key clients send as X-Api-Key. Leave unset to auto-generate a strong one

@@ -167,6 +167,15 @@ fi
 : "${ABIS_TLS_KEY:=$(state_value ABIS_TLS_KEY)}"
 
 prompt ABIS_DB_PROVIDER   "Database provider (Oracle/Sqlite)" "Oracle"
+
+# On a re-run the connection string is seeded from the existing config, and the
+# plain prompt() below would silently keep it — so an admin couldn't fix a bad
+# string interactively. Offer to replace it here (without echoing the current
+# value, which contains the DB password).
+if [[ "$UNATTENDED" -eq 0 && -n "${ABIS_DB_CONNECTION:-}" ]]; then
+  read -r -p "Oracle connection string is already set — enter a new one to change it, or leave blank to keep it: " __newconn
+  [[ -n "$__newconn" ]] && ABIS_DB_CONNECTION="$__newconn"
+fi
 prompt ABIS_DB_CONNECTION "Oracle connection string"         ""
 prompt ABIS_PORT          "HTTP port Kestrel binds on loopback" "8080"
 
@@ -198,6 +207,12 @@ fi
 
 # --- validate ----------------------------------------------------------------
 [[ -n "${ABIS_DB_CONNECTION:-}" ]] || die "ABIS_DB_CONNECTION is required (Oracle connection string)."
+# A literal double-quote in the value would collide with the double-quotes that
+# wrap it in the systemd EnvironmentFile and corrupt the config. The Oracle driver
+# accepts SINGLE quotes for sub-values, which don't conflict — steer the user there.
+case "$ABIS_DB_CONNECTION" in
+  *'"'*) die "ABIS_DB_CONNECTION must not contain a double-quote (\"). If a sub-value needs quoting (e.g. a password with ';' or '='), use SINGLE quotes — Password='p;w' — which the Oracle driver accepts and won't corrupt the service config." ;;
+esac
 [[ "$ABIS_PORT" =~ ^[0-9]+$ ]] && (( ABIS_PORT >= 1 && ABIS_PORT <= 65535 )) || die "ABIS_PORT must be 1-65535 (got: ${ABIS_PORT})."
 case "${ABIS_DB_PROVIDER}" in Oracle|Sqlite) ;; *) die "ABIS_DB_PROVIDER must be Oracle or Sqlite (got: ${ABIS_DB_PROVIDER})." ;; esac
 
