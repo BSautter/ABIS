@@ -464,16 +464,19 @@ public static class SqliteFixture
         conn.Execute("""
             INSERT INTO order_item (order_item_num, order_abc_num, enduser_part_num, alloy2, temper, gauge, gauge_p, gauge_m,
                 surface, flatness, sheet_type, material_end_use, order_item_desc, pieces_skid,
-                theoretical_unit_wt, unit_price, item_created_dttm)
+                theoretical_unit_wt, unit_price, item_created_dttm, part_num_id)
             VALUES (:OrderItemNum, :OrderAbcNum, :EnduserPartNum, :Alloy2, :Temper, :Gauge, :GaugeP, :GaugeM,
                 :Surface, :Flatness, :SheetType, :MaterialEndUse, :OrderItemDesc, :PiecesSkid,
-                :TheoreticalUnitWt, :UnitPrice, :ItemCreatedDttm)
+                :TheoreticalUnitWt, :UnitPrice, :ItemCreatedDttm, :PartNumId)
             """,
             new[]
             {
-                new { OrderItemNum = 7001L, OrderAbcNum = (long?)9001L, EnduserPartNum = "PN-3003-A", Alloy2 = "3003", Temper = "H14", Gauge = 0.125m, GaugeP = 0.005m, GaugeM = 0.005m, Surface = "MILL", Flatness = "STD", SheetType = "RECTANGLE", MaterialEndUse = "HVAC", OrderItemDesc = "3003 sheet", PiecesSkid = 50, TheoreticalUnitWt = 12.5m, UnitPrice = 1.25m, ItemCreatedDttm = (DateTime?)d },
-                new { OrderItemNum = 7002L, OrderAbcNum = (long?)9001L, EnduserPartNum = "PN-5052-B", Alloy2 = "5052", Temper = "H32", Gauge = 0.0625m, GaugeP = 0.004m, GaugeM = 0.004m, Surface = "MILL", Flatness = "TIGHT", SheetType = "CIRCLE", MaterialEndUse = "MARINE", OrderItemDesc = "5052 sheet", PiecesSkid = 40, TheoreticalUnitWt = 8.0m, UnitPrice = 1.5m, ItemCreatedDttm = (DateTime?)d },
-                new { OrderItemNum = 7003L, OrderAbcNum = (long?)9002L, EnduserPartNum = "PN-3003-C", Alloy2 = "3003", Temper = "H14", Gauge = 0.25m, GaugeP = 0.01m, GaugeM = 0.01m, Surface = "BRUSHED", Flatness = "STD", SheetType = "PLATE", MaterialEndUse = "GENERAL", OrderItemDesc = "3003 plate", PiecesSkid = 25, TheoreticalUnitWt = 25.0m, UnitPrice = 1.75m, ItemCreatedDttm = (DateTime?)d }
+                // Item 7003 references part 6003 (part_num_id) so 6003 is "in use" — exercises the
+                // part-modify-in-use guard (legacy w_part_num_management: can't modify/delete an
+                // applied part). 7001/7002 are ad-hoc lines with no part master (part_num_id NULL).
+                new { OrderItemNum = 7001L, OrderAbcNum = (long?)9001L, EnduserPartNum = "PN-3003-A", Alloy2 = "3003", Temper = "H14", Gauge = 0.125m, GaugeP = 0.005m, GaugeM = 0.005m, Surface = "MILL", Flatness = "STD", SheetType = "RECTANGLE", MaterialEndUse = "HVAC", OrderItemDesc = "3003 sheet", PiecesSkid = 50, TheoreticalUnitWt = 12.5m, UnitPrice = 1.25m, ItemCreatedDttm = (DateTime?)d, PartNumId = (long?)null },
+                new { OrderItemNum = 7002L, OrderAbcNum = (long?)9001L, EnduserPartNum = "PN-5052-B", Alloy2 = "5052", Temper = "H32", Gauge = 0.0625m, GaugeP = 0.004m, GaugeM = 0.004m, Surface = "MILL", Flatness = "TIGHT", SheetType = "CIRCLE", MaterialEndUse = "MARINE", OrderItemDesc = "5052 sheet", PiecesSkid = 40, TheoreticalUnitWt = 8.0m, UnitPrice = 1.5m, ItemCreatedDttm = (DateTime?)d, PartNumId = (long?)null },
+                new { OrderItemNum = 7003L, OrderAbcNum = (long?)9002L, EnduserPartNum = "PN-3003-C", Alloy2 = "3003", Temper = "H14", Gauge = 0.25m, GaugeP = 0.01m, GaugeM = 0.01m, Surface = "BRUSHED", Flatness = "STD", SheetType = "PLATE", MaterialEndUse = "GENERAL", OrderItemDesc = "3003 plate", PiecesSkid = 25, TheoreticalUnitWt = 25.0m, UnitPrice = 1.75m, ItemCreatedDttm = (DateTime?)d, PartNumId = (long?)6003L }
             });
 
         // Blank geometry for the two shaped seed items (7001 = RECTANGLE, 7002 = CIRCLE).

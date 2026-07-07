@@ -410,11 +410,16 @@ public static class ApiEndpoints
             {
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
+                // Legacy w_part_num_management: a part already applied to one or more orders
+                // cannot be modified in place — it must be revised. Block with 409 Conflict.
+                if (await repo.IsPartInUseAsync(partNumId, ct))
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Part in use",
+                        detail: "Can't modify this part because it has already been applied to one or more orders. Create a revision instead.");
                 return await WithIfMatch(ctx, json, () => repo.GetPartAsync(partNumId, ct), () => repo.UpdatePartAsync(partNumId, body, ct));
             })
            .WithName("UpdatePart").WithTags("Parts")
-           .WithSummary("Replace a part-number record. Supports If-Match.")
-           .Produces<Part>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status412PreconditionFailed).ProducesValidationProblem();
+           .WithSummary("Replace a part-number record (blocked with 409 if the part is applied to any order). Supports If-Match.")
+           .Produces<Part>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status412PreconditionFailed).ProducesValidationProblem();
 
         // Part-master blank geometry (same shapes as order items; dimensions only, no dies).
         api.MapGet("/parts/{partNumId:long}/shape", async (long partNumId, IAbisRepository repo, CancellationToken ct) =>

@@ -211,6 +211,17 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Part_applied_to_an_order_cannot_be_modified()
+    {
+        // Seeded item 7003 references part 6003 -> in use -> modify blocked with 409.
+        var inUse = await _client.PutAsJsonAsync("/api/parts/6003", new { customerId = 4002, enduserPartNum = "PN-3003-C", sheetType = "PLATE" });
+        Assert.Equal(HttpStatusCode.Conflict, inUse.StatusCode);
+        // Part 6001 is not referenced by any order_item -> the guard lets the update through.
+        var free = await _client.PutAsJsonAsync("/api/parts/6001", new { customerId = 4001, enduserPartNum = "PN-3003-A", sheetType = "RECTANGLE" });
+        Assert.NotEqual(HttpStatusCode.Conflict, free.StatusCode);
+    }
+
+    [Fact]
     public async Task A_supplied_request_id_is_echoed()
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, "/health");

@@ -2163,6 +2163,15 @@ public sealed class AbisRepository : IAbisRepository
         return n == 0 ? null : await GetPartAsync(partNumId, ct);
     }
 
+    public async Task<bool> IsPartInUseAsync(long partNumId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        // Legacy w_part_num_management guards modify/delete with the same COUNT on order_item.
+        return await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM order_item WHERE part_num_id = :id",
+            new { id = partNumId }, cancellationToken: ct)) > 0;
+    }
+
     public Task<PagedResult<Die>> GetDiesAsync(int page, int pageSize, int? status, string? orderBy, CancellationToken ct) =>
         PageAsync<Die>(DieCols, "die", orderBy ?? "die_id",
             status is null ? null : "status = :status",
