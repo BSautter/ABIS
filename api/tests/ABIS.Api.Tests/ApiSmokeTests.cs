@@ -120,8 +120,29 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
         Assert.Contains("COIL ABC LABEL", coilHtml);
         Assert.Contains("5001", coilHtml);
 
-        var missing = await _client.GetAsync("/api/documents/sheet-skid/999999");
-        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        var noDoc = await _client.GetAsync("/api/documents/sheet-skid/999999");
+        Assert.Equal(HttpStatusCode.NotFound, noDoc.StatusCode);
+    }
+
+    [Fact]
+    public async Task Order_item_edge_trim_tolerance_is_enforced()
+    {
+        static object Item(double? inc, double? trm) => new
+        {
+            enduserPartNum = "PN-TRIM", sheetType = "RECTANGLE",
+            trimmingRequired = "Y", incomingCoilWidth = inc, trimmedCoilWidth = trm, trimTypeCode = 1,
+        };
+        // Under tolerance (0.1" < 1.5"), over tolerance (13" > 12"), and incoming < trimmed -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/orders/9001/items", Item(48.0, 47.9))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/orders/9001/items", Item(60.0, 47.0))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/orders/9001/items", Item(40.0, 45.0))).StatusCode);
+        // Trimming required but widths missing -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/orders/9001/items", new { enduserPartNum = "PN-TRIM", sheetType = "RECTANGLE", trimmingRequired = "Y" })).StatusCode);
+        // Valid trim (2.0" within tolerance) -> 201; trimming not required -> widths irrelevant -> 201.
+        Assert.Equal(HttpStatusCode.Created, (await _client.PostAsJsonAsync("/api/orders/9001/items", Item(48.0, 46.0))).StatusCode);
+        Assert.Equal(HttpStatusCode.Created,
+            (await _client.PostAsJsonAsync("/api/orders/9001/items", new { enduserPartNum = "PN-NOTRIM", sheetType = "RECTANGLE", trimmingRequired = "N" })).StatusCode);
     }
 
     [Fact]

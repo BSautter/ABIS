@@ -1673,6 +1673,24 @@ public static class ApiEndpoints
         Max(e, "flatness", body.Flatness, 255);
         Max(e, "materialEndUse", body.MaterialEndUse, 255);
         Max(e, "orderItemDesc", body.OrderItemDesc, 255);
+
+        // Edge-trim tolerance (legacy w_order_entry:496-549): when trimming is required, the
+        // trim amount (incoming − trimmed width) must be present and within the 1.5"–12"
+        // trimmer tolerance (Alex Gerlants 06/16/2017, per Dan Polkinhorne).
+        if (string.Equals(body.TrimmingRequired?.Trim(), "Y", StringComparison.OrdinalIgnoreCase))
+        {
+            if (body.IncomingCoilWidth is null) e["incomingCoilWidth"] = ["incomingCoilWidth is required when trimming is required."];
+            if (body.TrimmedCoilWidth is null) e["trimmedCoilWidth"] = ["trimmedCoilWidth is required when trimming is required."];
+            if (body.TrimTypeCode is null) e["trimTypeCode"] = ["trimTypeCode is required when trimming is required."];
+            if (body.IncomingCoilWidth is { } inc && body.TrimmedCoilWidth is { } trm)
+            {
+                var diff = inc - trm;
+                if (diff < 0m)
+                    e["trimmedCoilWidth"] = ["Incoming coil width must be greater than trimmed coil width."];
+                else if (diff is < 1.50m or > 12.00m)
+                    e["trimmedCoilWidth"] = ["Trim (incoming − trimmed) must be within the 1.5\"–12\" trimmer tolerance."];
+            }
+        }
         return e.Count == 0 ? null : e;
     }
 
