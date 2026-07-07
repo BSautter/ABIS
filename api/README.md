@@ -66,7 +66,8 @@ JS. Pages cross-link; sign in via OIDC or paste the dev key (`dev-local-key`).
 
 By domain (page → what it does):
 - **Commercial** — `order-entry`, `sales` (quote lifecycle), `quotation` (CirclePro
-  calculator), `customers`, `parts`, `accounting` (invoice coils).
+  calculator), `customers`, `parts`, `accounting` (invoice coils), `shape-editor`
+  (per-line/part blank geometry, dynamic per-shape form).
 - **Coils & inventory** — `coil-inventory`, `coil-ownership` (toll-transfer +
   certificate), `receiving` (BOL + coil lines + mint), `skids`, `warehouse`.
 - **Shop floor** — `jobs`, `das-console` (w_da_sheet), `stacker` (line board + error
