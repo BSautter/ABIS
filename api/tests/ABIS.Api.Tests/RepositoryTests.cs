@@ -240,6 +240,43 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task Customer_master_widening_persists_flags_address_and_tax()
+    {
+        // Seeded EDI/behavior flags round-trip on read.
+        var acme = (await _repo.GetCustomerAsync(4001, CancellationToken.None))!;
+        Assert.Equal("Y", acme.EdiReq);
+        Assert.Equal("Y", acme.Create861AtReceiving);
+        Assert.Equal(1, acme.CustomerType);
+        Assert.Equal("PLT-01", acme.PlantCode);
+
+        // Create with the full field set (address + tax + flags).
+        var created = await _repo.CreateCustomerAsync(new CustomerWrite
+        {
+            CustomerName = "DELTA COIL", CustomerShortName = "DELTA", CustomerType = 3,
+            CustomerStreet = "1 Mill Rd", CustomerCity = "Gary", CustomerState = "IN", CustomerZip = "46402", CustomerCountry = "USA",
+            TaxId = "TX-99", TaxRate = 0.06m, CustomerDunsNumber = 123456789, BillToCity = "Gary",
+            EdiReq = "Y", DesadvReq = "Y", QrCodeReq = "N", CoilCertLabelReq = "Y", Create861AtReceiving = "Y", PlantCode = "PLT-DELTA",
+        }, CancellationToken.None);
+        var got = (await _repo.GetCustomerAsync(created.CustomerId, CancellationToken.None))!;
+        Assert.Equal("DELTA COIL", got.CustomerName);
+        Assert.Equal(3, got.CustomerType);
+        Assert.Equal("1 Mill Rd", got.CustomerStreet);
+        Assert.True(got.TaxRate is > 0.05m and < 0.07m);
+        Assert.Equal(123456789L, got.CustomerDunsNumber);
+        Assert.Equal("Y", got.CoilCertLabelReq);
+        Assert.Equal("PLT-DELTA", got.PlantCode);
+        Assert.NotNull(got.CustomerCreateDate);
+
+        // Update flips flags; maint date is set.
+        var updated = await _repo.UpdateCustomerAsync(4002,
+            new CustomerWrite { CustomerName = "BETA FAB", EdiReq = "Y", Create861AtReceiving = "Y", PlantCode = "PLT-02" },
+            CancellationToken.None);
+        Assert.Equal("Y", updated!.EdiReq);
+        Assert.Equal("PLT-02", updated.PlantCode);
+        Assert.NotNull(updated.CustomerMaintDate);
+    }
+
+    [Fact]
     public async Task UpdateCustomer_changes_fields_and_unknown_returns_null()
     {
         var updated = await _repo.UpdateCustomerAsync(4001,

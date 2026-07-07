@@ -148,9 +148,47 @@ public sealed class AbisRepository : IAbisRepository
         """;
 
     private const string CustomerCols = """
-        customer_id AS CustomerId, customer_full_name AS CustomerName, customer_short_name AS CustomerShortName,
-        customer_city AS CustomerCity, customer_state AS CustomerState, customer_zip AS CustomerZip
+        customer_id AS CustomerId, customer_full_name AS CustomerName, customer_short_name AS CustomerShortName, customer_type AS CustomerType,
+        customer_street AS CustomerStreet, customer_city AS CustomerCity, customer_state AS CustomerState, customer_zip AS CustomerZip,
+        customer_country AS CustomerCountry, customer_phone_number AS CustomerPhoneNumber, customer_fax_number AS CustomerFaxNumber,
+        customer_create_date AS CustomerCreateDate, customer_maint_date AS CustomerMaintDate, customer_notes AS CustomerNotes,
+        parent_id AS ParentId, customer_external_id AS CustomerExternalId,
+        tax_id AS TaxId, tax_exemption_num AS TaxExemptionNum, tax_rate AS TaxRate,
+        customer_duns_number AS CustomerDunsNumber, customer_duns_number_string AS CustomerDunsNumberString,
+        bill_to_street AS BillToStreet, bill_to_city AS BillToCity, bill_to_state AS BillToState, bill_to_zip AS BillToZip,
+        desadv_req AS DesadvReq, edi_req AS EdiReq, qr_code_req AS QrCodeReq, validate_material AS ValidateMaterial,
+        use_package_num AS UsePackageNum, use_customer_website_4shipping AS UseCustomerWebsite4Shipping,
+        cash_date_required AS CashDateRequired, cash_date_on_bol AS CashDateOnBol, coil_cert_label_req AS CoilCertLabelReq,
+        create_861_at_receiving AS Create861AtReceiving, inv_report_saveas_xlsx AS InvReportSaveasXlsx,
+        cust_po_on_inv_skid_report AS CustPoOnInvSkidReport, use_edi_code_not_duns AS UseEdiCodeNotDuns, plant_code AS PlantCode
         """;
+
+    // The full writable customer column set + matching binds + SET clause, kept in lockstep.
+    // Bind :ctype avoids the Oracle reserved word TYPE (ORA-01745).
+    private const string CustomerWriteCols =
+        "customer_full_name, customer_short_name, customer_type, customer_street, customer_city, customer_state, customer_zip, " +
+        "customer_country, customer_phone_number, customer_fax_number, customer_notes, parent_id, customer_external_id, " +
+        "tax_id, tax_exemption_num, tax_rate, customer_duns_number, customer_duns_number_string, " +
+        "bill_to_street, bill_to_city, bill_to_state, bill_to_zip, desadv_req, edi_req, qr_code_req, validate_material, " +
+        "use_package_num, use_customer_website_4shipping, cash_date_required, cash_date_on_bol, coil_cert_label_req, " +
+        "create_861_at_receiving, inv_report_saveas_xlsx, cust_po_on_inv_skid_report, use_edi_code_not_duns, plant_code";
+
+    private const string CustomerWriteVals =
+        ":name, :shortName, :ctype, :street, :city, :state, :zip, :country, :phone, :fax, :notes, :parentId, :extId, " +
+        ":taxId, :taxExempt, :taxRate, :duns, :dunsStr, :billStreet, :billCity, :billState, :billZip, :desadv, :ediReq, :qr, :validateMat, " +
+        ":usePkg, :useWebsite, :cashReq, :cashBol, :coilCert, :create861, :invXlsx, :custPoInv, :useEdiCode, :plantCode";
+
+    private const string CustomerSetClause =
+        "customer_full_name = :name, customer_short_name = :shortName, customer_type = :ctype, customer_street = :street, " +
+        "customer_city = :city, customer_state = :state, customer_zip = :zip, customer_country = :country, " +
+        "customer_phone_number = :phone, customer_fax_number = :fax, customer_notes = :notes, parent_id = :parentId, " +
+        "customer_external_id = :extId, tax_id = :taxId, tax_exemption_num = :taxExempt, tax_rate = :taxRate, " +
+        "customer_duns_number = :duns, customer_duns_number_string = :dunsStr, bill_to_street = :billStreet, " +
+        "bill_to_city = :billCity, bill_to_state = :billState, bill_to_zip = :billZip, desadv_req = :desadv, edi_req = :ediReq, " +
+        "qr_code_req = :qr, validate_material = :validateMat, use_package_num = :usePkg, use_customer_website_4shipping = :useWebsite, " +
+        "cash_date_required = :cashReq, cash_date_on_bol = :cashBol, coil_cert_label_req = :coilCert, " +
+        "create_861_at_receiving = :create861, inv_report_saveas_xlsx = :invXlsx, cust_po_on_inv_skid_report = :custPoInv, " +
+        "use_edi_code_not_duns = :useEdiCode, plant_code = :plantCode";
 
     private const string SheetSkidCols = """
         sheet_skid_num AS SheetSkidNum, ab_job_num AS AbJobNum, sheet_skid_display_num AS SheetSkidDisplayNum,
@@ -504,20 +542,39 @@ public sealed class AbisRepository : IAbisRepository
             $"SELECT {CustomerCols} FROM customer WHERE customer_id = :id", new { id = customerId }, cancellationToken: ct));
     }
 
+    // All writable customer binds in one place (names match CustomerWriteVals / CustomerSetClause).
+    private static DynamicParameters CustomerBinds(CustomerWrite b)
+    {
+        var p = new DynamicParameters();
+        p.Add("name", b.CustomerName); p.Add("shortName", b.CustomerShortName); p.Add("ctype", b.CustomerType);
+        p.Add("street", b.CustomerStreet); p.Add("city", b.CustomerCity); p.Add("state", b.CustomerState); p.Add("zip", b.CustomerZip);
+        p.Add("country", b.CustomerCountry); p.Add("phone", b.CustomerPhoneNumber); p.Add("fax", b.CustomerFaxNumber);
+        p.Add("notes", b.CustomerNotes); p.Add("parentId", b.ParentId); p.Add("extId", b.CustomerExternalId);
+        p.Add("taxId", b.TaxId); p.Add("taxExempt", b.TaxExemptionNum); p.Add("taxRate", b.TaxRate);
+        p.Add("duns", b.CustomerDunsNumber); p.Add("dunsStr", b.CustomerDunsNumberString);
+        p.Add("billStreet", b.BillToStreet); p.Add("billCity", b.BillToCity); p.Add("billState", b.BillToState); p.Add("billZip", b.BillToZip);
+        p.Add("desadv", b.DesadvReq); p.Add("ediReq", b.EdiReq); p.Add("qr", b.QrCodeReq); p.Add("validateMat", b.ValidateMaterial);
+        p.Add("usePkg", b.UsePackageNum); p.Add("useWebsite", b.UseCustomerWebsite4Shipping); p.Add("cashReq", b.CashDateRequired);
+        p.Add("cashBol", b.CashDateOnBol); p.Add("coilCert", b.CoilCertLabelReq); p.Add("create861", b.Create861AtReceiving);
+        p.Add("invXlsx", b.InvReportSaveasXlsx); p.Add("custPoInv", b.CustPoOnInvSkidReport); p.Add("useEdiCode", b.UseEdiCodeNotDuns);
+        p.Add("plantCode", b.PlantCode);
+        return p;
+    }
+
     public async Task<Customer> CreateCustomerAsync(CustomerWrite body, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
 
         var id = await NextIdAsync(conn, tx, "customer", "customer_id", ct);
+        var p = CustomerBinds(body);
+        p.Add("id", id);
+        p.Add("ts", (DateTime?)DateTime.UtcNow, DbType.DateTime);   // create + maint dates
 
         await conn.ExecuteAsync(new CommandDefinition(
-            """
-            INSERT INTO customer (customer_id, customer_full_name, customer_short_name, customer_city, customer_state, customer_zip)
-            VALUES (:id, :name, :shortName, :city, :state, :zip)
-            """,
-            new { id, name = body.CustomerName, shortName = body.CustomerShortName, city = body.CustomerCity, state = body.CustomerState, zip = body.CustomerZip },
-            transaction: tx, cancellationToken: ct));
+            $"INSERT INTO customer (customer_id, customer_create_date, customer_maint_date, {CustomerWriteCols}) " +
+            $"VALUES (:id, :ts, :ts, {CustomerWriteVals})",
+            p, transaction: tx, cancellationToken: ct));
 
         await tx.CommitAsync(ct);
         return (await GetCustomerAsync(id, ct))!;
@@ -526,14 +583,12 @@ public sealed class AbisRepository : IAbisRepository
     public async Task<Customer?> UpdateCustomerAsync(long customerId, CustomerWrite body, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
+        var p = CustomerBinds(body);
+        p.Add("id", customerId);
+        p.Add("ts", (DateTime?)DateTime.UtcNow, DbType.DateTime);   // bump maint date (create date untouched)
         var n = await conn.ExecuteAsync(new CommandDefinition(
-            """
-            UPDATE customer SET customer_full_name = :name, customer_short_name = :shortName,
-                   customer_city = :city, customer_state = :state, customer_zip = :zip
-            WHERE customer_id = :id
-            """,
-            new { name = body.CustomerName, shortName = body.CustomerShortName, city = body.CustomerCity, state = body.CustomerState, zip = body.CustomerZip, id = customerId },
-            cancellationToken: ct));
+            $"UPDATE customer SET {CustomerSetClause}, customer_maint_date = :ts WHERE customer_id = :id",
+            p, cancellationToken: ct));
         return n == 0 ? null : await GetCustomerAsync(customerId, ct);
     }
 

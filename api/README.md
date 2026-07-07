@@ -102,7 +102,7 @@ running API with `ABIS_BASE=… ABIS_KEY=… npm --prefix clientapp run e2e`.
 
 ```sh
 cd api
-dotnet test                                # 176 tests: repository + HTTP smoke
+dotnet test                                # 177 tests: repository + HTTP smoke
 ```
 
 The typed-client **e2e** suite (`clientapp/e2e/run.mjs`, **58 tests**) drives the

@@ -201,8 +201,15 @@ public static class SqliteFixture
                 PRIMARY KEY (coil_abc_num, position, created_date, source_id));
 
             CREATE TABLE customer (
-                customer_id INTEGER PRIMARY KEY, customer_full_name TEXT, customer_short_name TEXT,
-                customer_city TEXT, customer_state TEXT, customer_zip TEXT);
+                customer_id INTEGER PRIMARY KEY, customer_full_name TEXT, customer_short_name TEXT, customer_type INTEGER,
+                customer_street TEXT, customer_city TEXT, customer_state TEXT, customer_zip TEXT, customer_country TEXT,
+                customer_phone_number TEXT, customer_fax_number TEXT, customer_create_date TEXT, customer_maint_date TEXT,
+                customer_notes TEXT, parent_id INTEGER, customer_external_id TEXT,
+                tax_id TEXT, tax_exemption_num TEXT, tax_rate REAL, customer_duns_number INTEGER, customer_duns_number_string TEXT,
+                bill_to_street TEXT, bill_to_city TEXT, bill_to_state TEXT, bill_to_zip TEXT,
+                desadv_req TEXT, edi_req TEXT, qr_code_req TEXT, validate_material TEXT, use_package_num TEXT,
+                use_customer_website_4shipping TEXT, cash_date_required TEXT, cash_date_on_bol TEXT, coil_cert_label_req TEXT,
+                create_861_at_receiving TEXT, inv_report_saveas_xlsx TEXT, cust_po_on_inv_skid_report TEXT, use_edi_code_not_duns TEXT, plant_code TEXT);
 
             CREATE TABLE sheet_skid (
                 sheet_skid_num INTEGER PRIMARY KEY, ab_job_num INTEGER, sheet_skid_display_num TEXT,
@@ -673,13 +680,15 @@ public static class SqliteFixture
             });
 
         conn.Execute("""
-            INSERT INTO customer (customer_id, customer_full_name, customer_short_name, customer_city, customer_state, customer_zip)
-            VALUES (:CustomerId, :CustomerFullName, :CustomerShortName, :CustomerCity, :CustomerState, :CustomerZip)
+            INSERT INTO customer (customer_id, customer_full_name, customer_short_name, customer_city, customer_state, customer_zip,
+                customer_type, edi_req, create_861_at_receiving, plant_code)
+            VALUES (:CustomerId, :CustomerFullName, :CustomerShortName, :CustomerCity, :CustomerState, :CustomerZip,
+                :CustomerType, :EdiReq, :Create861AtReceiving, :PlantCode)
             """,
             new[]
             {
-                new { CustomerId = 4001L, CustomerFullName = "ACME METALS", CustomerShortName = "ACME", CustomerCity = "Detroit", CustomerState = "MI", CustomerZip = "48201" },
-                new { CustomerId = 4002L, CustomerFullName = "BETA FAB", CustomerShortName = "BETA", CustomerCity = "Cleveland", CustomerState = "OH", CustomerZip = "44101" }
+                new { CustomerId = 4001L, CustomerFullName = "ACME METALS", CustomerShortName = "ACME", CustomerCity = "Detroit", CustomerState = "MI", CustomerZip = "48201", CustomerType = (int?)1, EdiReq = "Y", Create861AtReceiving = "Y", PlantCode = "PLT-01" },
+                new { CustomerId = 4002L, CustomerFullName = "BETA FAB", CustomerShortName = "BETA", CustomerCity = "Cleveland", CustomerState = "OH", CustomerZip = "44101", CustomerType = (int?)2, EdiReq = "N", Create861AtReceiving = "N", PlantCode = (string?)null }
             });
 
         conn.Execute("""
