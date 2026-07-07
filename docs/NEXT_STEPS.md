@@ -135,6 +135,16 @@ Dependencies: all three need #2 (OIDC/enforcement) first; #8's automation needs 
 engine; discovery for #6/#7 piggybacks the #1 DB access.
 
 ### Housekeeping / smaller open items
+- **Part revision workflow (complements the in-use guard)** — `PUT /parts/{id}` and
+  `/parts/{id}/shape` now return 409 when the part is applied to an order (legacy
+  "revise, don't modify"). Build the action they point to — `POST /parts/{id}/revision`
+  porting `w_part_num_management::ue_create_revision` (lines 529-620): clone the part row to
+  a new `part_num_id` (sequence) with `item_status = 1`, copy the shape dimension row to the
+  new id, and *optionally* copy the routing (the "use old part ID routing?" prompt — routing
+  isn't in the modern model yet). Safest implementation: read the source `Part`, map to a
+  `PartWrite`, call the tested `CreatePartAsync` (assigns the new id), then
+  `UpsertPartShapeAsync(newId, sourceShape)` — no column enumeration. Add a Part→PartWrite
+  mapper (verify it copies every writable column so a revision drops nothing).
 - **Dimension-QC derived in-spec (needs live Oracle)** — the dimensional-check write
   (`POST /api/coil-eval/skids/{n}/dimension-checks`) now enforces *input hygiene* only
   (auditor required, at least one measurement, `in_spec ∈ {0,1}`, positive measurements;
