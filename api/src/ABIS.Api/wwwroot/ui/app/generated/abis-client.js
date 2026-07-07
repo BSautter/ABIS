@@ -12,7 +12,7 @@ export class AbisClient {
         this.baseUrl = baseUrl ?? "";
     }
     /**
-     * Rejected (3) / rebanded (7) coils for a job's invoice.
+     * Rejected (3) / rebanded (7) coils for a job's invoice, each with its exact billed weight.
      * @return OK
      */
     getInvoiceCoils(abJobNum) {
@@ -57,6 +57,233 @@ export class AbisClient {
         else if (status === 401) {
             return response.text().then((_responseText) => {
                 return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Computed invoice for a job (weight buckets + spec) with exact rejected-coil billing.
+     * @return OK
+     */
+    getInvoiceComputation(abJobNum) {
+        let url_ = this.baseUrl + "/api/accounting/invoices/{abJobNum}/computation";
+        if (abJobNum === undefined || abJobNum === null)
+            throw new globalThis.Error("The parameter 'abJobNum' must be defined.");
+        url_ = url_.replace("{abJobNum}", encodeURIComponent("" + abJobNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetInvoiceComputation(_response);
+        });
+    }
+    processGetInvoiceComputation(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = InvoiceComputation.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Saved invoice records for a job.
+     * @return OK
+     */
+    getInvoices(abJobNum) {
+        let url_ = this.baseUrl + "/api/accounting/invoices?";
+        if (abJobNum === undefined || abJobNum === null)
+            throw new globalThis.Error("The parameter 'abJobNum' must be defined and cannot be null.");
+        else
+            url_ += "abJobNum=" + encodeURIComponent("" + abJobNum) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetInvoices(_response);
+        });
+    }
+    processGetInvoices(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(Invoice.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Save an invoice record (number + date + notes) for a job.
+     * @return Created
+     */
+    createInvoice(body) {
+        let url_ = this.baseUrl + "/api/accounting/invoices";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCreateInvoice(_response);
+        });
+    }
+    processCreateInvoice(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                let result201 = null;
+                let resultData201 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result201 = Invoice.fromJS(resultData201);
+                return result201;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Get one saved invoice by job + invoice number.
+     * @return OK
+     */
+    getInvoice(abJobNum, invoiceNum) {
+        let url_ = this.baseUrl + "/api/accounting/invoices/{abJobNum}/{invoiceNum}";
+        if (abJobNum === undefined || abJobNum === null)
+            throw new globalThis.Error("The parameter 'abJobNum' must be defined.");
+        url_ = url_.replace("{abJobNum}", encodeURIComponent("" + abJobNum));
+        if (invoiceNum === undefined || invoiceNum === null)
+            throw new globalThis.Error("The parameter 'invoiceNum' must be defined.");
+        url_ = url_.replace("{invoiceNum}", encodeURIComponent("" + invoiceNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetInvoice(_response);
+        });
+    }
+    processGetInvoice(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = Invoice.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -2006,6 +2233,199 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Printable sheet-skid tag (HTML with a Code 39 barcode).
+     * @return OK
+     */
+    sheetSkidTag(sheetSkidNum) {
+        let url_ = this.baseUrl + "/api/documents/sheet-skid/{sheetSkidNum}";
+        if (sheetSkidNum === undefined || sheetSkidNum === null)
+            throw new globalThis.Error("The parameter 'sheetSkidNum' must be defined.");
+        url_ = url_.replace("{sheetSkidNum}", encodeURIComponent("" + sheetSkidNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processSheetSkidTag(_response);
+        });
+    }
+    processSheetSkidTag(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Printable scrap-skid tag (HTML with a Code 39 barcode).
+     * @return OK
+     */
+    scrapSkidTag(scrapSkidNum) {
+        let url_ = this.baseUrl + "/api/documents/scrap-skid/{scrapSkidNum}";
+        if (scrapSkidNum === undefined || scrapSkidNum === null)
+            throw new globalThis.Error("The parameter 'scrapSkidNum' must be defined.");
+        url_ = url_.replace("{scrapSkidNum}", encodeURIComponent("" + scrapSkidNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processScrapSkidTag(_response);
+        });
+    }
+    processScrapSkidTag(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Printable coil ABC label (HTML with a Code 39 barcode) — the coil-receiving scanner tag.
+     * @return OK
+     */
+    coilLabel(coilAbcNum) {
+        let url_ = this.baseUrl + "/api/documents/coil-label/{coilAbcNum}";
+        if (coilAbcNum === undefined || coilAbcNum === null)
+            throw new globalThis.Error("The parameter 'coilAbcNum' must be defined.");
+        url_ = url_.replace("{coilAbcNum}", encodeURIComponent("" + coilAbcNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCoilLabel(_response);
+        });
+    }
+    processCoilLabel(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Printable invoice for a job (weight rollups + spec block). Optional invoiceNum stamps the saved number/date.
+     * @param invoiceNum (optional)
+     * @return OK
+     */
+    invoiceDocument(abJobNum, invoiceNum) {
+        let url_ = this.baseUrl + "/api/documents/invoice/{abJobNum}?";
+        if (abJobNum === undefined || abJobNum === null)
+            throw new globalThis.Error("The parameter 'abJobNum' must be defined.");
+        url_ = url_.replace("{abJobNum}", encodeURIComponent("" + abJobNum));
+        if (invoiceNum === null)
+            throw new globalThis.Error("The parameter 'invoiceNum' cannot be null.");
+        else if (invoiceNum !== undefined)
+            url_ += "invoiceNum=" + encodeURIComponent("" + invoiceNum) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processInvoiceDocument(_response);
+        });
+    }
+    processInvoiceDocument(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * List downtime instances, newest first (paged, sortable; filter by abJobNum/shiftNum).
      * @param page (optional)
      * @param pageSize (optional)
@@ -3011,6 +3431,57 @@ export class AbisClient {
                     result200 = [];
                     for (let item of resultData200)
                         result200.push(item);
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Blank shape catalog: each shape's dimension schema (names + which carry a tolerance) and die count — drives a dynamic per-shape form.
+     * @return OK
+     */
+    listShapeTypes() {
+        let url_ = this.baseUrl + "/api/lookups/shape-types";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processListShapeTypes(_response);
+        });
+    }
+    processListShapeTypes(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(ShapeTypeInfo.fromJS(item));
                 }
                 else {
                     result200 = null;
@@ -4308,6 +4779,127 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Get an order line's blank geometry — the shape's dimensions (value + tolerances) and dies.
+     * @return OK
+     */
+    getOrderItemShape(orderAbcNum, orderItemNum) {
+        let url_ = this.baseUrl + "/api/orders/{orderAbcNum}/items/{orderItemNum}/shape";
+        if (orderAbcNum === undefined || orderAbcNum === null)
+            throw new globalThis.Error("The parameter 'orderAbcNum' must be defined.");
+        url_ = url_.replace("{orderAbcNum}", encodeURIComponent("" + orderAbcNum));
+        if (orderItemNum === undefined || orderItemNum === null)
+            throw new globalThis.Error("The parameter 'orderItemNum' must be defined.");
+        url_ = url_.replace("{orderItemNum}", encodeURIComponent("" + orderItemNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetOrderItemShape(_response);
+        });
+    }
+    processGetOrderItemShape(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = OrderItemShape.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Set an order line's blank geometry for its shape (upsert; aligns the line's sheet_type).
+     * @return OK
+     */
+    putOrderItemShape(orderAbcNum, orderItemNum, body) {
+        let url_ = this.baseUrl + "/api/orders/{orderAbcNum}/items/{orderItemNum}/shape";
+        if (orderAbcNum === undefined || orderAbcNum === null)
+            throw new globalThis.Error("The parameter 'orderAbcNum' must be defined.");
+        url_ = url_.replace("{orderAbcNum}", encodeURIComponent("" + orderAbcNum));
+        if (orderItemNum === undefined || orderItemNum === null)
+            throw new globalThis.Error("The parameter 'orderItemNum' must be defined.");
+        url_ = url_.replace("{orderItemNum}", encodeURIComponent("" + orderItemNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processPutOrderItemShape(_response);
+        });
+    }
+    processPutOrderItemShape(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = OrderItemShape.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * List customer orders (paged, filterable, sortable).
      * @param page (optional)
      * @param pageSize (optional)
@@ -4919,6 +5511,121 @@ export class AbisClient {
         else if (status === 412) {
             return response.text().then((_responseText) => {
                 return throwException("Precondition Failed", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Get a part-master's blank geometry — the shape's dimensions (value + tolerances).
+     * @return OK
+     */
+    getPartShape(partNumId) {
+        let url_ = this.baseUrl + "/api/parts/{partNumId}/shape";
+        if (partNumId === undefined || partNumId === null)
+            throw new globalThis.Error("The parameter 'partNumId' must be defined.");
+        url_ = url_.replace("{partNumId}", encodeURIComponent("" + partNumId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetPartShape(_response);
+        });
+    }
+    processGetPartShape(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = PartShape.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Set a part-master's blank geometry for its shape (upsert; aligns the part's sheet_type).
+     * @return OK
+     */
+    putPartShape(partNumId, body) {
+        let url_ = this.baseUrl + "/api/parts/{partNumId}/shape";
+        if (partNumId === undefined || partNumId === null)
+            throw new globalThis.Error("The parameter 'partNumId' must be defined.");
+        url_ = url_.replace("{partNumId}", encodeURIComponent("" + partNumId));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processPutPartShape(_response);
+        });
+    }
+    processPutPartShape(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = PartShape.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -10627,9 +11334,42 @@ export class Customer {
             this.customerId = _data["customerId"];
             this.customerName = _data["customerName"];
             this.customerShortName = _data["customerShortName"];
+            this.customerType = _data["customerType"];
+            this.customerStreet = _data["customerStreet"];
             this.customerCity = _data["customerCity"];
             this.customerState = _data["customerState"];
             this.customerZip = _data["customerZip"];
+            this.customerCountry = _data["customerCountry"];
+            this.customerPhoneNumber = _data["customerPhoneNumber"];
+            this.customerFaxNumber = _data["customerFaxNumber"];
+            this.customerCreateDate = _data["customerCreateDate"] ? new Date(_data["customerCreateDate"].toString()) : undefined;
+            this.customerMaintDate = _data["customerMaintDate"] ? new Date(_data["customerMaintDate"].toString()) : undefined;
+            this.customerNotes = _data["customerNotes"];
+            this.parentId = _data["parentId"];
+            this.customerExternalId = _data["customerExternalId"];
+            this.taxId = _data["taxId"];
+            this.taxExemptionNum = _data["taxExemptionNum"];
+            this.taxRate = _data["taxRate"];
+            this.customerDunsNumber = _data["customerDunsNumber"];
+            this.customerDunsNumberString = _data["customerDunsNumberString"];
+            this.billToStreet = _data["billToStreet"];
+            this.billToCity = _data["billToCity"];
+            this.billToState = _data["billToState"];
+            this.billToZip = _data["billToZip"];
+            this.desadvReq = _data["desadvReq"];
+            this.ediReq = _data["ediReq"];
+            this.qrCodeReq = _data["qrCodeReq"];
+            this.validateMaterial = _data["validateMaterial"];
+            this.usePackageNum = _data["usePackageNum"];
+            this.useCustomerWebsite4Shipping = _data["useCustomerWebsite4Shipping"];
+            this.cashDateRequired = _data["cashDateRequired"];
+            this.cashDateOnBol = _data["cashDateOnBol"];
+            this.coilCertLabelReq = _data["coilCertLabelReq"];
+            this.create861AtReceiving = _data["create861AtReceiving"];
+            this.invReportSaveasXlsx = _data["invReportSaveasXlsx"];
+            this.custPoOnInvSkidReport = _data["custPoOnInvSkidReport"];
+            this.useEdiCodeNotDuns = _data["useEdiCodeNotDuns"];
+            this.plantCode = _data["plantCode"];
         }
     }
     static fromJS(data) {
@@ -10643,9 +11383,42 @@ export class Customer {
         data["customerId"] = this.customerId;
         data["customerName"] = this.customerName;
         data["customerShortName"] = this.customerShortName;
+        data["customerType"] = this.customerType;
+        data["customerStreet"] = this.customerStreet;
         data["customerCity"] = this.customerCity;
         data["customerState"] = this.customerState;
         data["customerZip"] = this.customerZip;
+        data["customerCountry"] = this.customerCountry;
+        data["customerPhoneNumber"] = this.customerPhoneNumber;
+        data["customerFaxNumber"] = this.customerFaxNumber;
+        data["customerCreateDate"] = this.customerCreateDate ? this.customerCreateDate.toISOString() : undefined;
+        data["customerMaintDate"] = this.customerMaintDate ? this.customerMaintDate.toISOString() : undefined;
+        data["customerNotes"] = this.customerNotes;
+        data["parentId"] = this.parentId;
+        data["customerExternalId"] = this.customerExternalId;
+        data["taxId"] = this.taxId;
+        data["taxExemptionNum"] = this.taxExemptionNum;
+        data["taxRate"] = this.taxRate;
+        data["customerDunsNumber"] = this.customerDunsNumber;
+        data["customerDunsNumberString"] = this.customerDunsNumberString;
+        data["billToStreet"] = this.billToStreet;
+        data["billToCity"] = this.billToCity;
+        data["billToState"] = this.billToState;
+        data["billToZip"] = this.billToZip;
+        data["desadvReq"] = this.desadvReq;
+        data["ediReq"] = this.ediReq;
+        data["qrCodeReq"] = this.qrCodeReq;
+        data["validateMaterial"] = this.validateMaterial;
+        data["usePackageNum"] = this.usePackageNum;
+        data["useCustomerWebsite4Shipping"] = this.useCustomerWebsite4Shipping;
+        data["cashDateRequired"] = this.cashDateRequired;
+        data["cashDateOnBol"] = this.cashDateOnBol;
+        data["coilCertLabelReq"] = this.coilCertLabelReq;
+        data["create861AtReceiving"] = this.create861AtReceiving;
+        data["invReportSaveasXlsx"] = this.invReportSaveasXlsx;
+        data["custPoOnInvSkidReport"] = this.custPoOnInvSkidReport;
+        data["useEdiCodeNotDuns"] = this.useEdiCodeNotDuns;
+        data["plantCode"] = this.plantCode;
         return data;
     }
 }
@@ -11148,9 +11921,40 @@ export class CustomerWrite {
         if (_data) {
             this.customerName = _data["customerName"];
             this.customerShortName = _data["customerShortName"];
+            this.customerType = _data["customerType"];
+            this.customerStreet = _data["customerStreet"];
             this.customerCity = _data["customerCity"];
             this.customerState = _data["customerState"];
             this.customerZip = _data["customerZip"];
+            this.customerCountry = _data["customerCountry"];
+            this.customerPhoneNumber = _data["customerPhoneNumber"];
+            this.customerFaxNumber = _data["customerFaxNumber"];
+            this.customerNotes = _data["customerNotes"];
+            this.parentId = _data["parentId"];
+            this.customerExternalId = _data["customerExternalId"];
+            this.taxId = _data["taxId"];
+            this.taxExemptionNum = _data["taxExemptionNum"];
+            this.taxRate = _data["taxRate"];
+            this.customerDunsNumber = _data["customerDunsNumber"];
+            this.customerDunsNumberString = _data["customerDunsNumberString"];
+            this.billToStreet = _data["billToStreet"];
+            this.billToCity = _data["billToCity"];
+            this.billToState = _data["billToState"];
+            this.billToZip = _data["billToZip"];
+            this.desadvReq = _data["desadvReq"];
+            this.ediReq = _data["ediReq"];
+            this.qrCodeReq = _data["qrCodeReq"];
+            this.validateMaterial = _data["validateMaterial"];
+            this.usePackageNum = _data["usePackageNum"];
+            this.useCustomerWebsite4Shipping = _data["useCustomerWebsite4Shipping"];
+            this.cashDateRequired = _data["cashDateRequired"];
+            this.cashDateOnBol = _data["cashDateOnBol"];
+            this.coilCertLabelReq = _data["coilCertLabelReq"];
+            this.create861AtReceiving = _data["create861AtReceiving"];
+            this.invReportSaveasXlsx = _data["invReportSaveasXlsx"];
+            this.custPoOnInvSkidReport = _data["custPoOnInvSkidReport"];
+            this.useEdiCodeNotDuns = _data["useEdiCodeNotDuns"];
+            this.plantCode = _data["plantCode"];
         }
     }
     static fromJS(data) {
@@ -11163,9 +11967,40 @@ export class CustomerWrite {
         data = typeof data === 'object' ? data : {};
         data["customerName"] = this.customerName;
         data["customerShortName"] = this.customerShortName;
+        data["customerType"] = this.customerType;
+        data["customerStreet"] = this.customerStreet;
         data["customerCity"] = this.customerCity;
         data["customerState"] = this.customerState;
         data["customerZip"] = this.customerZip;
+        data["customerCountry"] = this.customerCountry;
+        data["customerPhoneNumber"] = this.customerPhoneNumber;
+        data["customerFaxNumber"] = this.customerFaxNumber;
+        data["customerNotes"] = this.customerNotes;
+        data["parentId"] = this.parentId;
+        data["customerExternalId"] = this.customerExternalId;
+        data["taxId"] = this.taxId;
+        data["taxExemptionNum"] = this.taxExemptionNum;
+        data["taxRate"] = this.taxRate;
+        data["customerDunsNumber"] = this.customerDunsNumber;
+        data["customerDunsNumberString"] = this.customerDunsNumberString;
+        data["billToStreet"] = this.billToStreet;
+        data["billToCity"] = this.billToCity;
+        data["billToState"] = this.billToState;
+        data["billToZip"] = this.billToZip;
+        data["desadvReq"] = this.desadvReq;
+        data["ediReq"] = this.ediReq;
+        data["qrCodeReq"] = this.qrCodeReq;
+        data["validateMaterial"] = this.validateMaterial;
+        data["usePackageNum"] = this.usePackageNum;
+        data["useCustomerWebsite4Shipping"] = this.useCustomerWebsite4Shipping;
+        data["cashDateRequired"] = this.cashDateRequired;
+        data["cashDateOnBol"] = this.cashDateOnBol;
+        data["coilCertLabelReq"] = this.coilCertLabelReq;
+        data["create861AtReceiving"] = this.create861AtReceiving;
+        data["invReportSaveasXlsx"] = this.invReportSaveasXlsx;
+        data["custPoOnInvSkidReport"] = this.custPoOnInvSkidReport;
+        data["useEdiCodeNotDuns"] = this.useEdiCodeNotDuns;
+        data["plantCode"] = this.plantCode;
         return data;
     }
 }
@@ -12033,6 +12868,38 @@ export class HttpValidationProblemDetails {
         return data;
     }
 }
+export class Invoice {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.abJobNum = _data["abJobNum"];
+            this.invoiceNum = _data["invoiceNum"];
+            this.timestamp = _data["timestamp"] ? new Date(_data["timestamp"].toString()) : undefined;
+            this.notes = _data["notes"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new Invoice();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["abJobNum"] = this.abJobNum;
+        data["invoiceNum"] = this.invoiceNum;
+        data["timestamp"] = this.timestamp ? this.timestamp.toISOString() : undefined;
+        data["notes"] = this.notes;
+        return data;
+    }
+}
 export class InvoiceCoil {
     constructor(data) {
         if (data) {
@@ -12057,6 +12924,8 @@ export class InvoiceCoil {
             this.processDate = _data["processDate"] ? new Date(_data["processDate"].toString()) : undefined;
             this.coilStatus = _data["coilStatus"];
             this.processCoilStatus = _data["processCoilStatus"];
+            this.maxPriorProcessQuantity = _data["maxPriorProcessQuantity"];
+            this.billedWeight = _data["billedWeight"];
         }
     }
     static fromJS(data) {
@@ -12080,6 +12949,124 @@ export class InvoiceCoil {
         data["processDate"] = this.processDate ? this.processDate.toISOString() : undefined;
         data["coilStatus"] = this.coilStatus;
         data["processCoilStatus"] = this.processCoilStatus;
+        data["maxPriorProcessQuantity"] = this.maxPriorProcessQuantity;
+        data["billedWeight"] = this.billedWeight;
+        return data;
+    }
+}
+export class InvoiceComputation {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.abJobNum = _data["abJobNum"];
+            this.orderAbcNum = _data["orderAbcNum"];
+            this.orderItemNum = _data["orderItemNum"];
+            this.lineDesc = _data["lineDesc"];
+            this.customerShortName = _data["customerShortName"];
+            this.enduser = _data["enduser"];
+            this.origCustomerPo = _data["origCustomerPo"];
+            this.alloy = _data["alloy"];
+            this.temper = _data["temper"];
+            this.gauge = _data["gauge"];
+            this.sheetType = _data["sheetType"];
+            this.specWidthLength = _data["specWidthLength"];
+            this.enduserPartNum = _data["enduserPartNum"];
+            this.orderItemDesc = _data["orderItemDesc"];
+            this.netWt = _data["netWt"];
+            this.unappliedWt = _data["unappliedWt"];
+            this.rejectedWt = _data["rejectedWt"];
+            this.rebandedWt = _data["rebandedWt"];
+            this.processedWt = _data["processedWt"];
+            this.scrapWt = _data["scrapWt"];
+            this.tareWt = _data["tareWt"];
+            this.offalWt = _data["offalWt"];
+            this.offalPct = _data["offalPct"];
+            this.skidCount = _data["skidCount"];
+            this.scrapStatus = _data["scrapStatus"];
+            if (Array.isArray(_data["coils"])) {
+                this.coils = [];
+                for (let item of _data["coils"])
+                    this.coils.push(InvoiceCoil.fromJS(item));
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new InvoiceComputation();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["abJobNum"] = this.abJobNum;
+        data["orderAbcNum"] = this.orderAbcNum;
+        data["orderItemNum"] = this.orderItemNum;
+        data["lineDesc"] = this.lineDesc;
+        data["customerShortName"] = this.customerShortName;
+        data["enduser"] = this.enduser;
+        data["origCustomerPo"] = this.origCustomerPo;
+        data["alloy"] = this.alloy;
+        data["temper"] = this.temper;
+        data["gauge"] = this.gauge;
+        data["sheetType"] = this.sheetType;
+        data["specWidthLength"] = this.specWidthLength;
+        data["enduserPartNum"] = this.enduserPartNum;
+        data["orderItemDesc"] = this.orderItemDesc;
+        data["netWt"] = this.netWt;
+        data["unappliedWt"] = this.unappliedWt;
+        data["rejectedWt"] = this.rejectedWt;
+        data["rebandedWt"] = this.rebandedWt;
+        data["processedWt"] = this.processedWt;
+        data["scrapWt"] = this.scrapWt;
+        data["tareWt"] = this.tareWt;
+        data["offalWt"] = this.offalWt;
+        data["offalPct"] = this.offalPct;
+        data["skidCount"] = this.skidCount;
+        data["scrapStatus"] = this.scrapStatus;
+        if (Array.isArray(this.coils)) {
+            data["coils"] = [];
+            for (let item of this.coils)
+                data["coils"].push(item ? item.toJSON() : undefined);
+        }
+        return data;
+    }
+}
+export class InvoiceWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.abJobNum = _data["abJobNum"];
+            this.invoiceNum = _data["invoiceNum"];
+            this.timestamp = _data["timestamp"] ? new Date(_data["timestamp"].toString()) : undefined;
+            this.notes = _data["notes"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new InvoiceWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["abJobNum"] = this.abJobNum;
+        data["invoiceNum"] = this.invoiceNum;
+        data["timestamp"] = this.timestamp ? this.timestamp.toISOString() : undefined;
+        data["notes"] = this.notes;
         return data;
     }
 }
@@ -13035,6 +14022,102 @@ export class OrderItemPagedResult {
         return data;
     }
 }
+export class OrderItemShape {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.orderAbcNum = _data["orderAbcNum"];
+            this.orderItemNum = _data["orderItemNum"];
+            this.shapeType = _data["shapeType"];
+            if (Array.isArray(_data["dimensions"])) {
+                this.dimensions = [];
+                for (let item of _data["dimensions"])
+                    this.dimensions.push(ShapeDimension.fromJS(item));
+            }
+            if (Array.isArray(_data["dies"])) {
+                this.dies = [];
+                for (let item of _data["dies"])
+                    this.dies.push(item);
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new OrderItemShape();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["orderAbcNum"] = this.orderAbcNum;
+        data["orderItemNum"] = this.orderItemNum;
+        data["shapeType"] = this.shapeType;
+        if (Array.isArray(this.dimensions)) {
+            data["dimensions"] = [];
+            for (let item of this.dimensions)
+                data["dimensions"].push(item ? item.toJSON() : undefined);
+        }
+        if (Array.isArray(this.dies)) {
+            data["dies"] = [];
+            for (let item of this.dies)
+                data["dies"].push(item);
+        }
+        return data;
+    }
+}
+export class OrderItemShapeWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.shapeType = _data["shapeType"];
+            if (Array.isArray(_data["dimensions"])) {
+                this.dimensions = [];
+                for (let item of _data["dimensions"])
+                    this.dimensions.push(ShapeDimension.fromJS(item));
+            }
+            if (Array.isArray(_data["dies"])) {
+                this.dies = [];
+                for (let item of _data["dies"])
+                    this.dies.push(item);
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new OrderItemShapeWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["shapeType"] = this.shapeType;
+        if (Array.isArray(this.dimensions)) {
+            data["dimensions"] = [];
+            for (let item of this.dimensions)
+                data["dimensions"].push(item ? item.toJSON() : undefined);
+        }
+        if (Array.isArray(this.dies)) {
+            data["dies"] = [];
+            for (let item of this.dies)
+                data["dies"].push(item);
+        }
+        return data;
+    }
+}
 export class OrderItemWrite {
     constructor(data) {
         if (data) {
@@ -13360,6 +14443,80 @@ export class PartPagedResult {
         data["pageSize"] = this.pageSize;
         data["totalCount"] = this.totalCount;
         data["totalPages"] = this.totalPages;
+        return data;
+    }
+}
+export class PartShape {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.partNumId = _data["partNumId"];
+            this.shapeType = _data["shapeType"];
+            if (Array.isArray(_data["dimensions"])) {
+                this.dimensions = [];
+                for (let item of _data["dimensions"])
+                    this.dimensions.push(ShapeDimension.fromJS(item));
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new PartShape();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["partNumId"] = this.partNumId;
+        data["shapeType"] = this.shapeType;
+        if (Array.isArray(this.dimensions)) {
+            data["dimensions"] = [];
+            for (let item of this.dimensions)
+                data["dimensions"].push(item ? item.toJSON() : undefined);
+        }
+        return data;
+    }
+}
+export class PartShapeWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.shapeType = _data["shapeType"];
+            if (Array.isArray(_data["dimensions"])) {
+                this.dimensions = [];
+                for (let item of _data["dimensions"])
+                    this.dimensions.push(ShapeDimension.fromJS(item));
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new PartShapeWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["shapeType"] = this.shapeType;
+        if (Array.isArray(this.dimensions)) {
+            data["dimensions"] = [];
+            for (let item of this.dimensions)
+                data["dimensions"].push(item ? item.toJSON() : undefined);
+        }
         return data;
     }
 }
@@ -15029,6 +16186,104 @@ export class SecurityUserWrite {
         data["userMiddleInitial"] = this.userMiddleInitial;
         data["userStatus"] = this.userStatus;
         data["userNotes"] = this.userNotes;
+        return data;
+    }
+}
+export class ShapeDimension {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.name = _data["name"];
+            this.value = _data["value"];
+            this.plusTol = _data["plusTol"];
+            this.minusTol = _data["minusTol"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new ShapeDimension();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["name"] = this.name;
+        data["value"] = this.value;
+        data["plusTol"] = this.plusTol;
+        data["minusTol"] = this.minusTol;
+        return data;
+    }
+}
+export class ShapeDimensionSpec {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.name = _data["name"];
+            this.hasTolerance = _data["hasTolerance"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new ShapeDimensionSpec();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["name"] = this.name;
+        data["hasTolerance"] = this.hasTolerance;
+        return data;
+    }
+}
+export class ShapeTypeInfo {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.shapeType = _data["shapeType"];
+            if (Array.isArray(_data["dimensions"])) {
+                this.dimensions = [];
+                for (let item of _data["dimensions"])
+                    this.dimensions.push(ShapeDimensionSpec.fromJS(item));
+            }
+            this.dieCount = _data["dieCount"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new ShapeTypeInfo();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["shapeType"] = this.shapeType;
+        if (Array.isArray(this.dimensions)) {
+            data["dimensions"] = [];
+            for (let item of this.dimensions)
+                data["dimensions"].push(item ? item.toJSON() : undefined);
+        }
+        data["dieCount"] = this.dieCount;
         return data;
     }
 }

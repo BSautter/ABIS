@@ -768,6 +768,55 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
         Assert.True(doc.GetProperty("components").GetProperty("schemas").TryGetProperty("AbJob", out _));
     }
 
+    [Fact]
+    public async Task Invoice_save_read_and_computation_over_http()
+    {
+        // Save an invoice for job 1001.
+        var post = await _client.PostAsJsonAsync("/api/accounting/invoices",
+            new { abJobNum = 1001, invoiceNum = "INV-HTTP-1", notes = "http test" });
+        Assert.Equal(HttpStatusCode.Created, post.StatusCode);
+        var created = await post.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("INV-HTTP-1", created.GetProperty("invoiceNum").GetString());
+
+        // Duplicate (ab_job_num, invoice_num) → 409.
+        var dup = await _client.PostAsJsonAsync("/api/accounting/invoices",
+            new { abJobNum = 1001, invoiceNum = "INV-HTTP-1" });
+        Assert.Equal(HttpStatusCode.Conflict, dup.StatusCode);
+
+        // Unknown job → 404; missing invoiceNum → 400.
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await _client.PostAsJsonAsync("/api/accounting/invoices", new { abJobNum = 999999, invoiceNum = "X" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/accounting/invoices", new { abJobNum = 1001 })).StatusCode);
+
+        // The saved record is listed for the job.
+        var list = await _client.GetFromJsonAsync<JsonElement>("/api/accounting/invoices?abJobNum=1001");
+        Assert.Contains(list.EnumerateArray(), e => e.GetProperty("invoiceNum").GetString() == "INV-HTTP-1");
+
+        // The computed invoice for the rejected-coil job 1002 exposes the exact billed reject.
+        var comp = await _client.GetFromJsonAsync<JsonElement>("/api/accounting/invoices/1002/computation");
+        Assert.Equal(1500m, comp.GetProperty("rejectedWt").GetDecimal());
+        Assert.Equal(60m, comp.GetProperty("netWt").GetDecimal());
+        Assert.Equal(1500m, comp.GetProperty("coils")[0].GetProperty("billedWeight").GetDecimal());
+    }
+
+    [Fact]
+    public async Task Invoice_document_renders_html_for_a_job()
+    {
+        // Printable invoice for job 1002, stamped with the seeded invoice number/date.
+        var doc = await _client.GetAsync("/api/documents/invoice/1002?invoiceNum=INV-1002-A");
+        Assert.Equal(HttpStatusCode.OK, doc.StatusCode);
+        Assert.Equal("text/html", doc.Content.Headers.ContentType!.MediaType);
+        var html = await doc.Content.ReadAsStringAsync();
+        Assert.Contains("Aluminum Blanking", html);
+        Assert.Contains("INV-1002-A", html);
+        Assert.Contains("Rejected", html);
+        Assert.Contains("Weight summary", html);
+
+        // Unknown job → 404.
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/documents/invoice/999999")).StatusCode);
+    }
+
     /// <summary>Boots the app with env-var overrides pointing at a unique temp SQLite db.</summary>
     public sealed class ApiFactory : WebApplicationFactory<Program>
     {

@@ -66,7 +66,7 @@ JS. Pages cross-link; sign in via OIDC or paste the dev key (`dev-local-key`).
 
 By domain (page → what it does):
 - **Commercial** — `order-entry`, `sales` (quote lifecycle), `quotation` (CirclePro
-  calculator), `customers`, `parts`, `accounting` (invoice coils), `shape-editor`
+  calculator), `customers`, `parts`, `accounting` (invoice compute/save/print), `shape-editor`
   (per-line/part blank geometry, dynamic per-shape form).
 - **Coils & inventory** — `coil-inventory`, `coil-ownership` (toll-transfer +
   certificate), `receiving` (BOL + coil lines + mint), `skids`, `warehouse`,
@@ -103,7 +103,7 @@ running API with `ABIS_BASE=… ABIS_KEY=… npm --prefix clientapp run e2e`.
 
 ```sh
 cd api
-dotnet test                                # 178 tests: repository + HTTP smoke
+dotnet test                                # 195 tests: repository + HTTP smoke
 ```
 
 The typed-client **e2e** suite (`clientapp/e2e/run.mjs`, **58 tests**) drives the
@@ -200,6 +200,7 @@ CI builds this image on every PR (see `.github/workflows/ci.yml`).
 | `GET /api/documents/sheet-skid/{sheetSkidNum}` | Printable sheet-skid **tag** (HTML + Code 39 barcode) |
 | `GET /api/documents/scrap-skid/{scrapSkidNum}` | Printable scrap-skid **tag** (HTML + Code 39 barcode) |
 | `GET /api/documents/coil-label/{coilAbcNum}` | Printable coil **ABC label** (HTML + Code 39 barcode) — the scanner tag |
+| `GET /api/documents/invoice/{abJobNum}?invoiceNum=` | Printable **invoice** (weight rollups + spec block); optional `invoiceNum` stamps the saved number/date |
 | `POST /api/sheet-skids` | Create a sheet skid (requires `abJobNum`) → 201 |
 | `GET /api/scrap-skids?page&pageSize&sort&dir` | List scrap skids (paged, sortable) |
 | `GET /api/scrap-skids/{scrapSkidNum}` | One scrap skid |
@@ -269,7 +270,10 @@ CI builds this image on every PR (see `.github/workflows/ci.yml`).
 | `GET /api/lookups/customer-edi` | Customer EDI trading-partner configuration (table `customer_edi`) |
 | `GET /api/audit-log?page&pageSize&source&sort&dir` | List the action/audit log, newest first (sortable) |
 | `PATCH /api/sheet-skids/{n}/warehouse` | Warehouse update of a skid (location / ticket / status) |
-| `GET /api/accounting/rej-reband-coils?abJobNum=` | Rejected/rebanded coils that drive a job's invoice |
+| `GET /api/accounting/rej-reband-coils?abJobNum=` | Rejected/rebanded coils that drive a job's invoice, each with its exact billed weight |
+| `GET /api/accounting/invoices/{abJobNum}/computation` | Computed invoice: header + spec + all weight buckets (exact rejected-coil billing) |
+| `GET /api/accounting/invoices?abJobNum=` · `GET …/{abJobNum}/{invoiceNum}` | Saved invoice records for a job / one by number |
+| `POST /api/accounting/invoices` | Save an invoice (number + date + notes) → 201; 404 unknown job; 409 duplicate |
 | `GET /api/quality/{scrap-types,product-types,recovery-customers,customer-defects?customerId=}` | Recovery / customer-defect setup |
 | **Sales** | `GET /api/sales/quotes?search=`, `/quotes/{id}/{rev}`, `/contacts?customerId=`, `…/events`, `…/probability` (+ POST events/probability) — quote lifecycle, follow-ups, win-probability |
 | **Coil ownership** | `GET /api/coil-ownership/transfers?customerId=`, `…/{cert}/certificate`, `…/transferable-coils`; `POST /api/coil-ownership/transfers` (issues certificate, re-points coil owner) |

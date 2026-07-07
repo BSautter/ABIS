@@ -226,6 +226,107 @@ public sealed class RepositoryTests : IDisposable
         Assert.Equal("1001", scrap[0].ScrapAbJobNum);
     }
 
+    // ---- Accounting / invoice ------------------------------------------
+
+    [Fact]
+    public async Task GetInvoiceComputation_reports_exact_buckets_and_billed_reject()
+    {
+        // Job 1002: order 9001 (ACME / PO-AB-1001), item 7002 (CIRCLE Ø36.5), one rejected coil
+        // (5003) with a shift-end of 1500 and a prior pass of 40 → billed MAX(1500, 40) = 1500.
+        var inv = await _repo.GetInvoiceComputationAsync(1002, CancellationToken.None);
+        Assert.NotNull(inv);
+
+        // Header / spec block.
+        Assert.Equal("Cut-to-length 1", inv!.LineDesc);
+        Assert.Equal("ACME", inv.CustomerShortName);
+        Assert.Null(inv.Enduser);                       // order 9001 has no enduser_id
+        Assert.Equal("PO-AB-1001", inv.OrigCustomerPo);
+        Assert.Equal("CIRCLE", inv.SheetType);
+        Assert.Equal("5052", inv.Alloy);
+        Assert.Equal("H32", inv.Temper);
+        Assert.Equal(0.0625m, inv.Gauge);
+        Assert.Equal("36.5", inv.SpecWidthLength);      // CIRCLE → diameter
+        Assert.Equal("PN-5052-B", inv.EnduserPartNum);
+
+        // Weight buckets — all exact.
+        Assert.Equal(60m, inv.NetWt);                   // SUM(process_quantity)
+        Assert.Equal(0m, inv.UnappliedWt);
+        Assert.Equal(1500m, inv.RejectedWt);            // the MAX rule, NOT the naive process_end_wt sum
+        Assert.Equal(0m, inv.RebandedWt);
+        Assert.Equal(48m, inv.ProcessedWt);             // SUM(prod_item_net_wt)
+        Assert.Equal(6m, inv.ScrapWt);                  // SUM(return_item_net_wt)
+        Assert.Equal(0m, inv.TareWt);                   // no sheet skids on job 1002
+        Assert.Equal(0, inv.SkidCount);
+        Assert.Equal(1494m, inv.OffalWt);               // 48 + 6 + 1500 + 0 − 60
+        Assert.Equal(2490m, inv.OffalPct);              // 1494 / 60 × 100
+        Assert.Null(inv.ScrapStatus);                   // no scrap skids on job 1002
+
+        // The driving coil carries its billed weight and the resolved prior-process term.
+        var coil = Assert.Single(inv.Coils);
+        Assert.Equal(5003, coil.CoilAbcNum);
+        Assert.Equal(3, coil.ProcessCoilStatus);
+        Assert.Equal(40m, coil.MaxPriorProcessQuantity);
+        Assert.Equal(1500m, coil.BilledWeight);
+    }
+
+    [Fact]
+    public async Task GetInvoiceComputation_unknown_job_returns_null()
+    {
+        Assert.Null(await _repo.GetInvoiceComputationAsync(424242, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GetInvoiceCoils_carries_billed_weight()
+    {
+        // The rejected/rebanded list now sources the prior-process term, so BilledWeight is exact
+        // at the source (fixing the browser's naive process_end_wt sum).
+        var coils = await _repo.GetInvoiceCoilsAsync(1002, CancellationToken.None);
+        var c = Assert.Single(coils);
+        Assert.Equal(40m, c.MaxPriorProcessQuantity);
+        Assert.Equal(1500m, c.BilledWeight);
+    }
+
+    [Fact]
+    public async Task CreateInvoice_persists_trimmed_number_and_lists()
+    {
+        var res = await _repo.CreateInvoiceAsync(
+            new InvoiceWrite { AbJobNum = 1003, InvoiceNum = "  INV-1003-X  ", Notes = "n" }, CancellationToken.None);
+        Assert.Equal(InvoiceSaveOutcome.Created, res.Outcome);
+        Assert.Equal("INV-1003-X", res.Invoice!.InvoiceNum);   // trimmed
+
+        var one = await _repo.GetInvoiceAsync(1003, "INV-1003-X", CancellationToken.None);
+        Assert.NotNull(one);
+        Assert.Equal("n", one!.Notes);
+        Assert.Contains(await _repo.GetInvoicesAsync(1003, CancellationToken.None), i => i.InvoiceNum == "INV-1003-X");
+    }
+
+    [Fact]
+    public async Task CreateInvoice_duplicate_is_rejected()
+    {
+        // Job 1002 has a seeded INV-1002-A.
+        var res = await _repo.CreateInvoiceAsync(
+            new InvoiceWrite { AbJobNum = 1002, InvoiceNum = "INV-1002-A" }, CancellationToken.None);
+        Assert.Equal(InvoiceSaveOutcome.Duplicate, res.Outcome);
+    }
+
+    [Fact]
+    public async Task CreateInvoice_unknown_job_is_rejected()
+    {
+        var res = await _repo.CreateInvoiceAsync(
+            new InvoiceWrite { AbJobNum = 424242, InvoiceNum = "X" }, CancellationToken.None);
+        Assert.Equal(InvoiceSaveOutcome.JobNotFound, res.Outcome);
+    }
+
+    [Fact]
+    public async Task GetInvoices_returns_seeded_records()
+    {
+        var list = await _repo.GetInvoicesAsync(1002, CancellationToken.None);
+        var inv = Assert.Single(list);
+        Assert.Equal("INV-1002-A", inv.InvoiceNum);
+        Assert.Equal("Rejected-coil billing example", inv.Notes);
+        Assert.NotNull(inv.Timestamp);
+    }
+
     // ---- Writes ---------------------------------------------------------
 
     [Fact]

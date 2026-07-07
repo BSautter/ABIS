@@ -142,6 +142,71 @@ reads resolved** against the real schema:
 > The script leaves clearly-tagged `ZZ_WRITE_TEST` rows and prints tag-based
 > `DELETE` cleanup SQL (run it in SQL Developer, then `COMMIT`).
 
+## Invoice billing validation (greenfield accounting slice)
+
+The commercial invoice (save + document + the rejected/rebanded billed-weight rule) computes
+figures that **bill trading partners**, so the numbers must be exact on real data — not just on
+the SQLite fixture. A read-only runbook lives at
+[`../tools/validate_oracle_invoice.ps1`](../tools/validate_oracle_invoice.ps1) (every query goes
+through `tools/oraq`, which refuses anything but a single `SELECT`/`WITH`):
+
+```powershell
+# from inside the user's network (the cloud sandbox cannot reach Oracle's listener)
+pwsh tools/validate_oracle_invoice.ps1 -Cs "Data Source=192.168.1.230:1521/abc11;User Id=dbo;Password=<pw>;"
+```
+
+It checks, against live non-prod `abc11` (schema `DBO`):
+
+1. **Connectivity** + that `INVOICE`, `PRODUCTION_SHEET_ITEM`, `RETURN_SCRAP_ITEM` exist on the real schema.
+2. **The reserved-word column reads when quoted** — `SELECT … "TIMESTAMP" … FROM invoice` (an unquoted
+   `timestamp` would raise `ORA-00904`; the repo always quotes it, and no bind is named `:timestamp`
+   — same `ORA-01745` reserved-word class as the earlier `:desc/:date/:like` fixes).
+3. **The exact billed-weight rule runs on Oracle and diverges from the naive sum on real data** — it
+   lists real jobs where `SUM(MAX(shift-end-or-balance, prior-process-qty))` over the reject/reband
+   coils differs from the old `SUM(process_end_wt)`, then deep-dives one job (header + per-coil billed
+   vs naive + every weight bucket). Any row where `billed <> naive` is a case the old browser sum
+   would have mis-billed.
+
+The greenfield SQL is deliberately portable (a correlated `MAX(process_quantity < …)` subquery and
+`COALESCE`, not Oracle-only `GREATEST`); the C# applies the final `Math.Max`. `scrap_ab_job_num` is a
+`CHAR` column, so the scrap-status/tare queries bind the job as a **string** (a numeric bind risks
+`ORA-01722` on any non-numeric row).
+
+### Result — run against non-prod Oracle 11g (`abc11`, schema `DBO`), 2026-07-07
+
+**Validated live. The billed figures are exact, and the fix is material — the naive sum mis-bills to
+zero on real data.**
+
+- **Schema present:** `INVOICE`, `PRODUCTION_SHEET_ITEM`, `RETURN_SCRAP_ITEM` all exist on `DBO`.
+- **Reserved-word column reads when quoted:** `SELECT … "TIMESTAMP" … FROM invoice` ran clean (no
+  `ORA-00904`); the table has 0 rows in non-prod (no invoices saved there yet), which is fine — the
+  point is the SQL shape is valid on Oracle. (Connectivity note: the very first `SELECT 1 FROM dual`
+  returned `ORA-50000: request timed out` on a cold connect, but every subsequent query returned real
+  data — the instance is up; the first-connect timeout was transient.)
+- **The exact rule runs on Oracle and diverges hugely from the naive sum.** Of the reject/reband jobs,
+  the top 8 by divergence **all have `naive_total = 0`** because `process_end_wt` is NULL on those
+  rejected coils — so the old browser `SUM(process_end_wt)` would have billed **nothing**, while the
+  correct rule (falling back to `net_wt_balance`) bills 118k–160k lb per job:
+
+  | ab_job_num | reject coils | billed (rule) | naive (old) |
+  |---|---:|---:|---:|
+  | 39782 | 7 | 159,510 | 0 |
+  | 27358 | 8 | 157,385 | 0 |
+  | 27427 | 8 | 155,172 | 0 |
+  | 25267 | 7 | 140,025 | 0 |
+  | 33938 | 6 | 139,455 | 0 |
+
+- **Deep-dive job 39782** (NOVELIS-KINGSTON, Liftgate 6111-T4E, PO 68371354): all 7 rejected coils have
+  a null shift-end weight, so each bills at its coil balance (21,520 + 22,925 + 22,890 + 23,665 +
+  23,185 + 22,495 + 22,830 = **159,510 lb**); the naive path would bill 0. Buckets computed cleanly:
+  net 280,586 · processed 98,867 · scrap 21,739 · tare 4,774 · 19 skids. This exercises the exact
+  **balance-fallback branch** of `InvoiceBilling.RejectedCoilBilledWeight` on live data.
+
+This confirms the header joins, the correlated `MAX(process_quantity < …)` subquery, `COALESCE`
+fallback, the quoted `"TIMESTAMP"`, and the string-bound `scrap_ab_job_num` all work on Oracle, and
+that shipping the naive sum would have **under-billed rejected coils to zero** on real jobs. Reproduce
+with [`../tools/validate_oracle_invoice.ps1`](../tools/validate_oracle_invoice.ps1).
+
 ## Newer-module read sweep — run against Oracle 11g (2026-07-07)
 
 The modules built *after* the original validation (reporting, accounting, quality/

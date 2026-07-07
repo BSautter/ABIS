@@ -1162,6 +1162,20 @@ public static class ApiEndpoints
            .WithSummary("Printable coil-ownership transfer certificate (toll-processing document) as HTML.")
            .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
 
+        // The full invoice document (legacy w_invoice / d_report_invoice_data): customer/enduser/PO,
+        // shape spec, alloy/temper/gauge, and every weight bucket with the exact rejected-coil rule.
+        // Optional invoiceNum stamps a saved invoice's number + date onto the document.
+        api.MapGet("/documents/invoice/{abJobNum:long}", async (long abJobNum, string? invoiceNum, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var comp = await repo.GetInvoiceComputationAsync(abJobNum, ct);
+                if (comp is null) return Results.NotFound();
+                var saved = string.IsNullOrWhiteSpace(invoiceNum) ? null : await repo.GetInvoiceAsync(abJobNum, invoiceNum, ct);
+                return Results.Content(HtmlDocuments.InvoiceDoc(comp, saved), "text/html; charset=utf-8");
+            })
+           .WithName("InvoiceDocument").WithTags("Documents")
+           .WithSummary("Printable invoice for a job (weight rollups + spec block). Optional invoiceNum stamps the saved number/date.")
+           .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
+
         api.MapPost("/sheet-skids", async (SheetSkidWrite body, IAbisRepository repo, CancellationToken ct) =>
             {
                 if (Validate(body) is { } problems)
@@ -1192,8 +1206,56 @@ public static class ApiEndpoints
         api.MapGet("/accounting/rej-reband-coils", async (long abJobNum, IAbisRepository repo, CancellationToken ct) =>
                 Results.Ok(await repo.GetInvoiceCoilsAsync(abJobNum, ct)))
            .WithName("GetInvoiceCoils").WithTags("Accounting")
-           .WithSummary("Rejected (3) / rebanded (7) coils for a job's invoice.")
+           .WithSummary("Rejected (3) / rebanded (7) coils for a job's invoice, each with its exact billed weight.")
            .Produces<IReadOnlyList<InvoiceCoil>>();
+
+        // The computed invoice for a job: header + spec + every weight bucket
+        // (net/unapplied/rejected/rebanded/processed/scrap/tare/offal & %). The rejected/rebanded
+        // figures use the exact legacy MAX billed-weight rule, not the naive process_end_wt sum.
+        api.MapGet("/accounting/invoices/{abJobNum:long}/computation", async (long abJobNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetInvoiceComputationAsync(abJobNum, ct) is { } comp
+                    ? Results.Ok(comp)
+                    : Results.NotFound())
+           .WithName("GetInvoiceComputation").WithTags("Accounting")
+           .WithSummary("Computed invoice for a job (weight buckets + spec) with exact rejected-coil billing.")
+           .Produces<InvoiceComputation>().Produces(StatusCodes.Status404NotFound);
+
+        // Saved invoice records for a job (legacy w_invoice Save).
+        api.MapGet("/accounting/invoices", async (long abJobNum, IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetInvoicesAsync(abJobNum, ct)))
+           .WithName("GetInvoices").WithTags("Accounting")
+           .WithSummary("Saved invoice records for a job.")
+           .Produces<IReadOnlyList<Invoice>>();
+
+        api.MapGet("/accounting/invoices/{abJobNum:long}/{invoiceNum}", async (long abJobNum, string invoiceNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetInvoiceAsync(abJobNum, invoiceNum, ct) is { } inv
+                    ? Results.Ok(inv)
+                    : Results.NotFound())
+           .WithName("GetInvoice").WithTags("Accounting")
+           .WithSummary("Get one saved invoice by job + invoice number.")
+           .Produces<Invoice>().Produces(StatusCodes.Status404NotFound);
+
+        // Save an invoice (number + date + notes). 404 unknown job; 409 duplicate (ab_job_num, invoice_num).
+        api.MapPost("/accounting/invoices", async (InvoiceWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (Validate(body) is { } problems)
+                    return Results.ValidationProblem(problems);
+                var result = await repo.CreateInvoiceAsync(body, ct);
+                return result.Outcome switch
+                {
+                    InvoiceSaveOutcome.Created => Results.Created(
+                        $"/api/accounting/invoices/{result.Invoice!.AbJobNum}/{Uri.EscapeDataString(result.Invoice.InvoiceNum)}", result.Invoice),
+                    InvoiceSaveOutcome.JobNotFound => Results.Problem(statusCode: StatusCodes.Status404NotFound,
+                        title: "Job not found", detail: $"No job with ab_job_num {body.AbJobNum}."),
+                    InvoiceSaveOutcome.Duplicate => Results.Problem(statusCode: StatusCodes.Status409Conflict,
+                        title: "Invoice exists", detail: $"Invoice '{body.InvoiceNum?.Trim()}' already exists for job {body.AbJobNum}."),
+                    _ => Results.Problem(statusCode: StatusCodes.Status500InternalServerError),
+                };
+            })
+           .WithName("CreateInvoice").WithTags("Accounting")
+           .WithSummary("Save an invoice record (number + date + notes) for a job.")
+           .Produces<Invoice>(StatusCodes.Status201Created).ProducesValidationProblem()
+           .Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
 
         // ---- Reporting (daily production) -------------------------------
         // Per-line production roll-up over an optional date window (by job start).
@@ -1724,6 +1786,16 @@ public static class ApiEndpoints
     }
 
     /// <summary>Returns a ProblemDetails error dictionary, or null when valid.</summary>
+    private static Dictionary<string, string[]>? Validate(InvoiceWrite body)
+    {
+        var e = new Dictionary<string, string[]>();
+        if (body.AbJobNum <= 0) e["abJobNum"] = ["abJobNum is required."];
+        Req(e, "invoiceNum", body.InvoiceNum);
+        Max(e, "invoiceNum", body.InvoiceNum?.Trim(), 32);   // invoice_num VARCHAR2(32)
+        Max(e, "notes", body.Notes, 2048);                   // notes VARCHAR2(2048)
+        return e.Count == 0 ? null : e;
+    }
+
     private static Dictionary<string, string[]>? Validate(CustomerWrite body)
     {
         var e = new Dictionary<string, string[]>();

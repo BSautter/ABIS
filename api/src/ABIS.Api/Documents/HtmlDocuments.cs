@@ -124,6 +124,135 @@ public static class HtmlDocuments
         return Doc($"Transfer Certificate {c.CertificateNum}", body);
     }
 
+    /// <summary>The full invoice document (legacy <c>w_invoice</c> / <c>d_report_invoice_data</c>):
+    /// the company header, the customer / end-user / PO / shape-spec block, and every weight bucket
+    /// (net / unapplied / rejected / rebanded / processed / scrap / tare / offal, each with its
+    /// percent of net), plus the rejected / rebanded coil detail. The rejected / rebanded figures
+    /// are the <b>exact</b> billed weights (<see cref="InvoiceComputation"/>), never a naive sum.
+    /// <paramref name="saved"/> (optional) stamps a persisted invoice number + date.</summary>
+    public static string InvoiceDoc(InvoiceComputation c, Invoice? saved = null)
+    {
+        var net = c.NetWt;
+        string Pct(decimal v) => net == 0m ? "—" : $"{decimal.Round(v / net * 100m, 1)}%";
+
+        // The reject/reband coil detail — the "beginning wt" is the job's process quantity, "max
+        // prior" the correlated prior-pass term, and "billed wt" the applied MAX rule.
+        var coilRows = string.Concat(c.Coils.Select(cl => $"""
+              <tr>
+                <td>{Esc(cl.CoilOrgNum) ?? "—"}</td><td>{cl.CoilAbcNum}</td>
+                <td class="n">{Wt(cl.NetWt)}</td><td class="n">{Wt(cl.NetWtBalance)}</td>
+                <td class="n">{Wt(cl.ProcessQuantity)}</td><td class="n">{Wt(cl.MaxPriorProcessQuantity)}</td>
+                <td class="n">{Wt(cl.ProcessEndWt)}</td>
+                <td>{(cl.ProcessCoilStatus == 3 ? "Rejected" : cl.ProcessCoilStatus == 7 ? "Rebanded" : Opt(cl.ProcessCoilStatus))}</td>
+                <td class="n strong">{Wt(cl.BilledWeight)}</td>
+              </tr>
+            """));
+        var coilSection = c.Coils.Count == 0 ? "" : $"""
+            <h2>Rejected / rebanded coils <span class="dim">— billed = MAX(shift-end wt or coil balance, prior-process qty)</span></h2>
+            <table class="grid">
+              <thead><tr><th>Alt coil #</th><th>ABC #</th><th>Init wt</th><th>Cur balance</th><th>Beginning wt</th><th>Max prior</th><th>End wt</th><th>Status</th><th>Billed wt</th></tr></thead>
+              <tbody>{coilRows}</tbody>
+            </table>
+            """;
+
+        var invLine = saved is null
+            ? "<span class=\"dim\">(unsaved preview)</span>"
+            : $"{Esc(saved.InvoiceNum)}";
+
+        var body = $"""
+            <div class="doc">
+              <div class="head">
+                <div>
+                  <div class="co">Aluminum Blanking Company, Inc.</div>
+                  <div class="addr">360 W. Sheffield · Pontiac, MI 48340<br />(248) 338-4422 · FAX (248) 338-9779</div>
+                </div>
+                <div class="title">Aluminum Blanking<br />Invoice Information</div>
+              </div>
+
+              <table class="meta">
+                <tr><th>Invoice #</th><td>{invLine}</td><th>Date</th><td>{Dt(saved?.Timestamp)}</td><th>AB Job #</th><td>{c.AbJobNum}</td></tr>
+              </table>
+
+              <table class="kv">
+                <tr><th>AB Blanking line</th><td>{Esc(c.LineDesc) ?? "—"}</td></tr>
+                <tr><th>Customer</th><td>{Esc(c.CustomerShortName) ?? "—"}</td></tr>
+                <tr><th>Customer PO #</th><td>{Esc(c.OrigCustomerPo) ?? "—"}</td></tr>
+                <tr><th>End user / ship-to</th><td>{Esc(c.Enduser) ?? "—"}</td></tr>
+                <tr><th>End-user part #</th><td>{Esc(c.EnduserPartNum) ?? "—"}</td></tr>
+              </table>
+
+              <h2>Part specifications</h2>
+              <table class="kv">
+                <tr><th>Shape / type</th><td>{Esc(c.SheetType) ?? "—"}</td></tr>
+                <tr><th>Width × Length</th><td>{Esc(c.SpecWidthLength) ?? "—"}</td></tr>
+                <tr><th>Alloy</th><td>{Esc(c.Alloy) ?? "—"}</td></tr>
+                <tr><th>Temper</th><td>{Esc(c.Temper) ?? "—"}</td></tr>
+                <tr><th>Gauge</th><td>{Num(c.Gauge)}</td></tr>
+                <tr><th>Description</th><td>{Esc(c.OrderItemDesc) ?? "—"}</td></tr>
+              </table>
+
+              <h2>Weight summary</h2>
+              <table class="wts">
+                <thead><tr><th>Bucket</th><th class="n">Weight</th><th class="n">% of net</th></tr></thead>
+                <tbody>
+                  <tr><th>Net weight</th><td class="n">{Wt(c.NetWt)}</td><td class="n">{(net == 0m ? "—" : "100%")}</td></tr>
+                  <tr><th>Unapplied weight</th><td class="n">{Wt(c.UnappliedWt)}</td><td class="n">{Pct(c.UnappliedWt)}</td></tr>
+                  <tr class="hi"><th>Rejected weight</th><td class="n">{Wt(c.RejectedWt)}</td><td class="n">{Pct(c.RejectedWt)}</td></tr>
+                  <tr class="hi"><th>Rebanded weight</th><td class="n">{Wt(c.RebandedWt)}</td><td class="n">{Pct(c.RebandedWt)}</td></tr>
+                  <tr><th>Processed weight</th><td class="n">{Wt(c.ProcessedWt)}</td><td class="n">{Pct(c.ProcessedWt)}</td></tr>
+                  <tr><th>Total scrap weight</th><td class="n">{Wt(c.ScrapWt)}</td><td class="n">{Pct(c.ScrapWt)}</td></tr>
+                  <tr><th>Tare weight (sheet)</th><td class="n">{Wt(c.TareWt)}</td><td class="n">{Pct(c.TareWt)}</td></tr>
+                  <tr><th>Offal weight</th><td class="n">{Wt(c.OffalWt)}</td><td class="n">{decimal.Round(c.OffalPct, 1)}%</td></tr>
+                </tbody>
+              </table>
+              <table class="kv">
+                <tr><th>Total sheet skids</th><td>{c.SkidCount}</td></tr>
+                <tr><th>Scrap status</th><td>{Esc(c.ScrapStatus) ?? "—"}</td></tr>
+              </table>
+
+              {coilSection}
+
+              {(saved?.Notes is { Length: > 0 } notes ? $"<h2>Notes</h2><div class=\"notes\">{Esc(notes)}</div>" : "")}
+            </div>
+            """;
+        return InvoicePage($"Invoice — Job {c.AbJobNum}", body);
+    }
+
+    // Full-page (letter) document shell for reports like the invoice — distinct from the 4in tag
+    // wrapper (Doc). Same dependency-free, print-friendly approach: inline CSS + an @media print block.
+    private static string InvoicePage(string title, string body) => $$"""
+        <!DOCTYPE html>
+        <html lang="en"><head><meta charset="utf-8" /><title>{{Esc(title)}}</title>
+        <style>
+          * { box-sizing: border-box; }
+          body { font: 13px/1.45 system-ui, sans-serif; color:#111; margin:0; background:#f6f8fa; }
+          .doc { max-width: 7.5in; margin: 16px auto; background:#fff; border:1px solid #d0d7de; border-radius:6px; padding: 22px 26px; }
+          .head { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #111; padding-bottom:10px; }
+          .co { font-size:19px; font-weight:800; font-style:italic; letter-spacing:.01em; }
+          .addr { color:#444; font-size:12px; margin-top:3px; }
+          .title { text-align:right; font-weight:700; color:#b00; font-size:15px; line-height:1.25; }
+          h2 { font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:#57606a; margin:18px 0 6px; border-bottom:1px solid #e1e4e8; padding-bottom:3px; }
+          h2 .dim { text-transform:none; letter-spacing:0; font-weight:400; color:#8b949e; font-size:11px; }
+          table { width:100%; border-collapse:collapse; }
+          table.meta { margin-top:12px; }
+          table.meta th, table.meta td { border:1px solid #d0d7de; padding:5px 8px; text-align:left; }
+          table.meta th { background:#f6f8fa; color:#57606a; font-size:11px; width:11%; white-space:nowrap; }
+          table.kv th { text-align:left; color:#57606a; font-weight:600; width:32%; padding:4px 6px; border-bottom:1px solid #eaecef; vertical-align:top; }
+          table.kv td { padding:4px 6px; border-bottom:1px solid #eaecef; font-weight:600; }
+          table.wts th, table.wts td { padding:4px 8px; border-bottom:1px solid #eaecef; }
+          table.wts thead th { color:#57606a; font-size:11px; text-transform:uppercase; letter-spacing:.04em; border-bottom:2px solid #d0d7de; }
+          table.wts tbody th { text-align:left; font-weight:600; }
+          table.wts tr.hi td, table.wts tr.hi th { background:#fff8f0; }
+          table.grid th, table.grid td { border:1px solid #d0d7de; padding:4px 6px; font-size:12px; }
+          table.grid thead th { background:#f6f8fa; color:#57606a; font-size:11px; }
+          .n { text-align:right; font-variant-numeric: tabular-nums; white-space:nowrap; }
+          .strong { font-weight:800; }
+          .dim { color:#8b949e; }
+          .notes { border:1px solid #eaecef; border-radius:4px; padding:8px 10px; background:#fafbfc; white-space:pre-wrap; }
+          @media print { body { background:#fff; } .doc { border:0; margin:0; max-width:none; } @page { margin: 12mm; } }
+        </style></head><body>{{body}}</body></html>
+        """;
+
     // ---- shared rendering -------------------------------------------------
 
     private static string Doc(string title, string body) => $$"""

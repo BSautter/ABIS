@@ -621,3 +621,19 @@ public sealed class LineErrorWrite
     public string? Title { get; set; }
     public string? Message { get; set; }
 }
+
+/// <summary>Save an invoice record for a job (legacy <c>w_invoice</c> Save: invoice number + date
+/// + notes). The <c>(ab_job_num, invoice_num)</c> pair is the natural key; the weight buckets are
+/// computed at report time, not persisted. <see cref="AbJobNum"/> must reference an existing job
+/// and <see cref="InvoiceNum"/> is required (both NOT NULL in the INVOICE table).</summary>
+public sealed class InvoiceWrite
+{
+    public long AbJobNum { get; set; }
+    /// <summary>The invoice number (<c>invoice_num</c>, VARCHAR2(32) NOT NULL).</summary>
+    public string? InvoiceNum { get; set; }
+    /// <summary>Invoice date (<c>"TIMESTAMP"</c> DATE). Optional — defaults to the server's
+    /// current date when omitted (legacy <c>em_date</c> defaults to Today()).</summary>
+    public DateTime? Timestamp { get; set; }
+    /// <summary>Free-text notes (<c>notes</c>, VARCHAR2(2048)).</summary>
+    public string? Notes { get; set; }
+}

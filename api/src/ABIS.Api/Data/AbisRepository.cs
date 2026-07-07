@@ -1,5 +1,6 @@
 using System.Data;
 using System.Data.Common;
+using System.Globalization;
 using Abis.Api.Models;
 using Dapper;
 
@@ -1935,21 +1936,207 @@ public sealed class AbisRepository : IAbisRepository
     public async Task<IReadOnlyList<InvoiceCoil>> GetInvoiceCoilsAsync(long abJobNum, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
-        // Faithful to the legacy d_rej_reband_coil_list_for_invoice: rejected (3) and
-        // rebanded (7) coils on a job — the billing-relevant coils. coil ⋈ process_coil.
-        var rows = await conn.QueryAsync<InvoiceCoil>(new CommandDefinition(
+        return (await GetInvoiceCoilsAsync(conn, null, abJobNum, ct)).AsList();
+    }
+
+    /// <summary>The rejected (3) / rebanded (7) coils on a job (legacy
+    /// <c>d_rej_reband_coil_list_for_invoice</c>: <c>coil ⋈ process_coil</c>), each carrying the
+    /// components of the legacy billed-weight rule — the shift-end weight, the coil balance, and
+    /// <c>MaxPriorProcessQuantity</c> (the correlated MAX of prior-pass quantities below this job's
+    /// quantity). <see cref="InvoiceCoil.BilledWeight"/> then applies the rule. Runs on any open
+    /// connection so the invoice computation can share it.</summary>
+    private static async Task<IEnumerable<InvoiceCoil>> GetInvoiceCoilsAsync(
+        DbConnection conn, DbTransaction? tx, long abJobNum, CancellationToken ct) =>
+        await conn.QueryAsync<InvoiceCoil>(new CommandDefinition(
             """
             SELECT pc.ab_job_num AS AbJobNum, pc.coil_abc_num AS CoilAbcNum,
                    c.coil_org_num AS CoilOrgNum, c.coil_mid_num AS CoilMidNum, c.lot_num AS LotNum,
                    c.coil_gauge AS CoilGauge, c.net_wt AS NetWt, c.net_wt_balance AS NetWtBalance,
                    pc.process_end_wt AS ProcessEndWt, pc.process_quantity AS ProcessQuantity,
                    pc.process_date AS ProcessDate, c.coil_status AS CoilStatus,
-                   pc.process_coil_status AS ProcessCoilStatus
+                   pc.process_coil_status AS ProcessCoilStatus,
+                   (SELECT MAX(pp.process_quantity) FROM process_coil pp
+                     WHERE pp.coil_abc_num = pc.coil_abc_num
+                       AND pp.process_quantity < pc.process_quantity) AS MaxPriorProcessQuantity
             FROM coil c JOIN process_coil pc ON c.coil_abc_num = pc.coil_abc_num
             WHERE pc.process_coil_status IN (3, 7) AND pc.ab_job_num = :id
             ORDER BY pc.coil_abc_num DESC
-            """, new { id = abJobNum }, cancellationToken: ct));
+            """, new { id = abJobNum }, transaction: tx, cancellationToken: ct));
+
+    // ---- Invoice save (legacy w_invoice: number + date + notes) ----
+    // The INVOICE table is (ab_job_num, invoice_num, "TIMESTAMP", notes) with a composite PK;
+    // "TIMESTAMP" is an Oracle reserved word so the column is always quoted, and no bind is named
+    // :timestamp (it would raise ORA-01745). The weight buckets are computed, never stored here.
+
+    public async Task<IReadOnlyList<Invoice>> GetInvoicesAsync(long abJobNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<Invoice>(new CommandDefinition(
+            """
+            SELECT ab_job_num AS AbJobNum, invoice_num AS InvoiceNum,
+                   "TIMESTAMP" AS Timestamp, notes AS Notes
+            FROM invoice WHERE ab_job_num = :job
+            ORDER BY invoice_num
+            """, new { job = abJobNum }, cancellationToken: ct));
         return rows.AsList();
+    }
+
+    public async Task<Invoice?> GetInvoiceAsync(long abJobNum, string invoiceNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.QueryFirstOrDefaultAsync<Invoice>(new CommandDefinition(
+            """
+            SELECT ab_job_num AS AbJobNum, invoice_num AS InvoiceNum,
+                   "TIMESTAMP" AS Timestamp, notes AS Notes
+            FROM invoice WHERE ab_job_num = :job AND invoice_num = :inv
+            """, new { job = abJobNum, inv = invoiceNum }, cancellationToken: ct));
+    }
+
+    public async Task<InvoiceSaveResult> CreateInvoiceAsync(InvoiceWrite body, CancellationToken ct)
+    {
+        var invoiceNum = body.InvoiceNum!.Trim();
+        var tstamp = body.Timestamp ?? DateTime.UtcNow;
+        await using var conn = await OpenAsync(ct);
+
+        // The job must exist (INVOICE.ab_job_num is an FK to AB_JOB).
+        var jobExists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM ab_job WHERE ab_job_num = :job", new { job = body.AbJobNum }, cancellationToken: ct));
+        if (jobExists == 0) return new InvoiceSaveResult(InvoiceSaveOutcome.JobNotFound, null);
+
+        // (ab_job_num, invoice_num) is the PK — a repeat is a conflict, not a silent overwrite.
+        var dup = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM invoice WHERE ab_job_num = :job AND invoice_num = :inv",
+            new { job = body.AbJobNum, inv = invoiceNum }, cancellationToken: ct));
+        if (dup > 0) return new InvoiceSaveResult(InvoiceSaveOutcome.Duplicate, null);
+
+        var p = new DynamicParameters();
+        p.Add("job", body.AbJobNum);
+        p.Add("inv", invoiceNum);
+        p.Add("tstamp", tstamp, DbType.DateTime);
+        p.Add("notes", body.Notes);
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO invoice (ab_job_num, invoice_num, "TIMESTAMP", notes)
+            VALUES (:job, :inv, :tstamp, :notes)
+            """, p, cancellationToken: ct));
+
+        return new InvoiceSaveResult(InvoiceSaveOutcome.Created,
+            new Invoice { AbJobNum = body.AbJobNum, InvoiceNum = invoiceNum, Timestamp = tstamp, Notes = body.Notes });
+    }
+
+    // ---- Invoice computation (legacy w_invoice.ue_display_doc_info + wf_set_values) ----
+    // Every weight bucket for a job's invoice, computed at report time. Header/spec join
+    // ab_job⋈line⋈customer_order⋈customer(⋈enduser)⋈order_item; the rejected/rebanded buckets
+    // apply the exact legacy MAX rule (InvoiceBilling), not a naive sum of process_end_wt.
+
+    public async Task<InvoiceComputation?> GetInvoiceComputationAsync(long abJobNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+
+        var inv = await conn.QueryFirstOrDefaultAsync<InvoiceComputation>(new CommandDefinition(
+            """
+            SELECT j.ab_job_num AS AbJobNum, j.order_abc_num AS OrderAbcNum, j.order_item_num AS OrderItemNum,
+                   l.line_desc AS LineDesc, co.orig_customer_po AS OrigCustomerPo,
+                   cust.customer_short_name AS CustomerShortName, eu.customer_short_name AS Enduser,
+                   oi.sheet_type AS SheetType, oi.alloy2 AS Alloy, oi.temper AS Temper, oi.gauge AS Gauge,
+                   oi.enduser_part_num AS EnduserPartNum, oi.order_item_desc AS OrderItemDesc
+            FROM ab_job j
+            LEFT JOIN line l ON l.line_num = j.line_num
+            LEFT JOIN customer_order co ON co.order_abc_num = j.order_abc_num
+            LEFT JOIN customer cust ON cust.customer_id = co.orig_customer_id
+            LEFT JOIN customer eu ON eu.customer_id = co.enduser_id
+            LEFT JOIN order_item oi ON oi.order_abc_num = j.order_abc_num AND oi.order_item_num = j.order_item_num
+            WHERE j.ab_job_num = :id
+            """, new { id = abJobNum }, cancellationToken: ct));
+        if (inv is null) return null;                       // no such job → 404
+
+        // Net weight = SUM(process_quantity) over all the job's applied coils.
+        inv.NetWt = await conn.ExecuteScalarAsync<decimal>(new CommandDefinition(
+            "SELECT COALESCE(SUM(process_quantity), 0) FROM process_coil WHERE ab_job_num = :id",
+            new { id = abJobNum }, cancellationToken: ct));
+        // Unapplied = SUM(process_quantity) where process_coil_status = 2 (applied but never used).
+        inv.UnappliedWt = await conn.ExecuteScalarAsync<decimal>(new CommandDefinition(
+            "SELECT COALESCE(SUM(process_quantity), 0) FROM process_coil WHERE ab_job_num = :id AND process_coil_status = 2",
+            new { id = abJobNum }, cancellationToken: ct));
+
+        inv.ProcessedWt = await conn.ExecuteScalarAsync<decimal>(new CommandDefinition(
+            "SELECT COALESCE(SUM(prod_item_net_wt), 0) FROM production_sheet_item WHERE ab_job_num = :id",
+            new { id = abJobNum }, cancellationToken: ct));
+        inv.ScrapWt = await conn.ExecuteScalarAsync<decimal>(new CommandDefinition(
+            "SELECT COALESCE(SUM(return_item_net_wt), 0) FROM return_scrap_item WHERE ab_job_num = :id",
+            new { id = abJobNum }, cancellationToken: ct));
+        inv.TareWt = await conn.ExecuteScalarAsync<decimal>(new CommandDefinition(
+            "SELECT COALESCE(SUM(sheet_tare_wt), 0) FROM sheet_skid WHERE ab_job_num = :id",
+            new { id = abJobNum }, cancellationToken: ct));
+        inv.SkidCount = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT COUNT(*) FROM sheet_skid WHERE ab_job_num = :id",
+            new { id = abJobNum }, cancellationToken: ct));
+
+        // Rejected/rebanded billed weights: the exact per-coil MAX rule, summed by disposition.
+        inv.Coils = (await GetInvoiceCoilsAsync(conn, null, abJobNum, ct)).AsList();
+        inv.RejectedWt = inv.Coils.Where(c => c.ProcessCoilStatus == 3).Sum(c => c.BilledWeight);
+        inv.RebandedWt = inv.Coils.Where(c => c.ProcessCoilStatus == 7).Sum(c => c.BilledWeight);
+
+        // Offal = processed + scrap + rejected + unapplied − net (legacy wf_set_values, using the
+        // exact rejected figure; the vestigial legacy copy left rejnet stubbed at 0).
+        inv.OffalWt = inv.ProcessedWt + inv.ScrapWt + inv.RejectedWt + inv.UnappliedWt - inv.NetWt;
+        inv.OffalPct = inv.NetWt == 0 ? 0 : Math.Round(inv.OffalWt / inv.NetWt * 100m, 4);
+
+        // Scrap status: the single scrap type's name, "Multiple" for >1 scrap skid, else null
+        // (legacy d_report_new_skid_num row-count branch). scrap_ab_job_num is a CHAR column, so
+        // bind the job as a string (a numeric bind would risk ORA-01722 on non-numeric rows).
+        var scrapTypes = (await conn.QueryAsync<int?>(new CommandDefinition(
+            "SELECT scrap_type FROM scrap_skid WHERE scrap_ab_job_num = :jobtxt",
+            new { jobtxt = abJobNum.ToString(CultureInfo.InvariantCulture) }, cancellationToken: ct))).AsList();
+        inv.ScrapStatus = scrapTypes.Count switch
+        {
+            0 => null,
+            1 => ScrapTypeName(scrapTypes[0]),
+            _ => "Multiple",
+        };
+
+        // Spec string (Width X Length …) from the order line's shape geometry, per the legacy
+        // per-shape CHOOSE CASE (w_invoice:173–230). Reuses the shape-geometry read path.
+        if (inv.OrderAbcNum is { } ord && inv.OrderItemNum is { } item)
+        {
+            var shape = await GetOrderItemShapeAsync(ord, item, ct);
+            inv.SpecWidthLength = BuildSpec(shape);
+        }
+        return inv;
+    }
+
+    /// <summary>Legacy scrap-type code → label (w_invoice:330–347).</summary>
+    private static string? ScrapTypeName(int? type) => type switch
+    {
+        1 => "Rej. Sheet-Mill",
+        2 => "Accu. Scrap",
+        3 => "Others",
+        4 => "Trailer",
+        5 => "Rej. Sheet-Process",
+        6 => "Sample",
+        7 => "Tote",
+        8 => "Edge Trim",
+        _ => null,
+    };
+
+    /// <summary>Builds the invoice dimension spec string from a line's shape geometry, matching the
+    /// legacy per-shape ordering (w_invoice:173–230): W×L for rectangle/parallelogram/chevron/etc.,
+    /// diameter for a circle, the single side for a fender, and W×short×long for the trapezoids.</summary>
+    private static string? BuildSpec(Models.OrderItemShape? shape)
+    {
+        if (shape is null || shape.Dimensions.Count == 0) return null;
+        decimal? Dim(string name) => shape.Dimensions.FirstOrDefault(d =>
+            string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase))?.Value;
+        static string F(decimal? v) => v is null ? "" : v.Value.ToString("0.#####", CultureInfo.InvariantCulture);
+
+        return shape.ShapeType switch
+        {
+            "CIRCLE" => F(Dim("diameter")),
+            "FENDER" => F(Dim("side")),
+            "TRAPEZOID" or "LTRAPEZOID" or "RTRAPEZOID"
+                => $"{F(Dim("width"))} X {F(Dim("shortLength"))} X {F(Dim("longLength"))}",
+            _ => $"{F(Dim("width"))} X {F(Dim("length"))}",   // rectangle, parallelogram, chevron, reinforcement, liftgate
+        };
     }
 
     public async Task<SheetSkid?> UpdateSheetSkidWarehouseAsync(long sheetSkidNum, SheetSkidWarehousePatch patch, CancellationToken ct)

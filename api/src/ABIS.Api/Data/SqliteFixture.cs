@@ -47,6 +47,9 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS customer;
             DROP TABLE IF EXISTS sheet_skid;
             DROP TABLE IF EXISTS scrap_skid;
+            DROP TABLE IF EXISTS production_sheet_item;
+            DROP TABLE IF EXISTS return_scrap_item;
+            DROP TABLE IF EXISTS invoice;
             DROP TABLE IF EXISTS process_partial_skid;
             DROP TABLE IF EXISTS temp_test_result;
             DROP TABLE IF EXISTS opc_action_log;
@@ -220,6 +223,27 @@ public static class SqliteFixture
                 scrap_skid_num INTEGER PRIMARY KEY, scrap_ab_job_num TEXT, scrap_alloy2 TEXT, scrap_temper TEXT,
                 scrap_type INTEGER, scrap_net_wt REAL, scrap_tare_wt REAL, scrap_location TEXT,
                 scrap_notes TEXT, skid_scrap_status INTEGER, scrap_date TEXT);
+
+            -- Finished production items rolled onto a job (legacy production_sheet_item): the
+            -- invoice's "processed weight" bucket = SUM(prod_item_net_wt). Decimals are REAL.
+            CREATE TABLE production_sheet_item (
+                prod_item_num INTEGER PRIMARY KEY, coil_abc_num INTEGER, ab_job_num INTEGER,
+                prod_item_status INTEGER, prod_item_pieces INTEGER, prod_item_net_wt REAL,
+                prod_item_theoretical_wt REAL, prod_item_date TEXT, prod_item_note TEXT, shift_num INTEGER);
+
+            -- Scrap returned against a job (legacy return_scrap_item): the invoice's "total scrap
+            -- weight" bucket = SUM(return_item_net_wt).
+            CREATE TABLE return_scrap_item (
+                return_scrap_item_num INTEGER PRIMARY KEY, coil_abc_num INTEGER, ab_job_num INTEGER,
+                return_item_net_wt REAL, return_item_date TEXT, return_item_notes TEXT,
+                scrap_item_pieces INTEGER, scrap_item_type INTEGER, shift_num INTEGER);
+
+            -- Saved invoice records (legacy w_invoice Save). Composite PK; weight buckets are
+            -- computed at report time, not stored. "timestamp" mirrors the Oracle column name
+            -- (a reserved word there — always quoted in SQL).
+            CREATE TABLE invoice (
+                ab_job_num INTEGER, invoice_num TEXT, timestamp TEXT, notes TEXT,
+                PRIMARY KEY (ab_job_num, invoice_num));
 
             -- In-progress mechanical test results (heap table in Oracle — no PK). The
             -- surrogate id is a SQLite convenience; coil_org_num ties a working result to
@@ -668,7 +692,11 @@ public static class SqliteFixture
                 new { AbJobNum = 1001L, CoilAbcNum = 5001L, ProcessCoilStatus = (int?)1, ProcessDate = (DateTime?)d.AddHours(2), ProcessEndWt = 4000m, ProcessQuantity = 200m },
                 new { AbJobNum = 1001L, CoilAbcNum = 5002L, ProcessCoilStatus = (int?)1, ProcessDate = (DateTime?)d.AddHours(3), ProcessEndWt = 0m, ProcessQuantity = 0m },
                 // Job 1002's coil is rejected (status 3) → drives the invoice rej/reband list for that job.
-                new { AbJobNum = 1002L, CoilAbcNum = 5003L, ProcessCoilStatus = (int?)3, ProcessDate = (DateTime?)d.AddDays(2), ProcessEndWt = 1500m, ProcessQuantity = 60m }
+                new { AbJobNum = 1002L, CoilAbcNum = 5003L, ProcessCoilStatus = (int?)3, ProcessDate = (DateTime?)d.AddDays(2), ProcessEndWt = 1500m, ProcessQuantity = 60m },
+                // A prior process pass of coil 5003 (a smaller quantity, on the Done job 1003) so the
+                // invoice billed-weight rule's "max prior-process qty" term (< this job's 60) resolves
+                // to 40 — exercises the correlated subquery in GetInvoiceCoilsAsync.
+                new { AbJobNum = 1003L, CoilAbcNum = 5003L, ProcessCoilStatus = (int?)1, ProcessDate = (DateTime?)d.AddHours(2), ProcessEndWt = 0m, ProcessQuantity = 40m }
             });
 
         conn.Execute("""
@@ -715,6 +743,39 @@ public static class SqliteFixture
             {
                 new { ScrapSkidNum = 8001L, ScrapAbJobNum = "1001", ScrapAlloy2 = "3003", ScrapTemper = "H14", ScrapType = (int?)1, ScrapNetWt = 120m, ScrapTareWt = 20m, ScrapLocation = "SCR-A", ScrapNotes = "", SkidScrapStatus = (int?)1, ScrapDate = (DateTime?)d.AddHours(6) },
                 new { ScrapSkidNum = 8002L, ScrapAbJobNum = "1003", ScrapAlloy2 = "5052", ScrapTemper = "H32", ScrapType = (int?)2, ScrapNetWt = 90m, ScrapTareWt = 20m, ScrapLocation = "SCR-B", ScrapNotes = "", SkidScrapStatus = (int?)1, ScrapDate = (DateTime?)d.AddDays(3) }
+            });
+
+        // Production items → the invoice "processed weight" bucket (SUM per job).
+        conn.Execute("""
+            INSERT INTO production_sheet_item (prod_item_num, coil_abc_num, ab_job_num, prod_item_status, prod_item_pieces, prod_item_net_wt, prod_item_date)
+            VALUES (:ProdItemNum, :CoilAbcNum, :AbJobNum, :ProdItemStatus, :ProdItemPieces, :ProdItemNetWt, :ProdItemDate)
+            """,
+            new[]
+            {
+                new { ProdItemNum = 6001L, CoilAbcNum = (long?)5001L, AbJobNum = (long?)1001L, ProdItemStatus = (int?)1, ProdItemPieces = (int?)95, ProdItemNetWt = 190m, ProdItemDate = (DateTime?)d.AddHours(4) },
+                new { ProdItemNum = 6003L, CoilAbcNum = (long?)5003L, AbJobNum = (long?)1002L, ProdItemStatus = (int?)1, ProdItemPieces = (int?)4,  ProdItemNetWt = 48m,  ProdItemDate = (DateTime?)d.AddDays(2) }
+            });
+
+        // Returned scrap → the invoice "total scrap weight" bucket (SUM per job).
+        conn.Execute("""
+            INSERT INTO return_scrap_item (return_scrap_item_num, coil_abc_num, ab_job_num, return_item_net_wt, scrap_item_pieces, scrap_item_type, return_item_date)
+            VALUES (:ReturnScrapItemNum, :CoilAbcNum, :AbJobNum, :ReturnItemNetWt, :ScrapItemPieces, :ScrapItemType, :ReturnItemDate)
+            """,
+            new[]
+            {
+                new { ReturnScrapItemNum = 6101L, CoilAbcNum = (long?)5001L, AbJobNum = (long?)1001L, ReturnItemNetWt = 30m, ScrapItemPieces = (int?)3, ScrapItemType = (int?)1, ReturnItemDate = (DateTime?)d.AddHours(6) },
+                new { ReturnScrapItemNum = 6102L, CoilAbcNum = (long?)5003L, AbJobNum = (long?)1002L, ReturnItemNetWt = 6m,  ScrapItemPieces = (int?)1, ScrapItemType = (int?)2, ReturnItemDate = (DateTime?)d.AddDays(2) }
+            });
+
+        // Saved invoices (legacy w_invoice Save). Job 1002 is the rejected-coil billing example.
+        conn.Execute("""
+            INSERT INTO invoice (ab_job_num, invoice_num, timestamp, notes)
+            VALUES (:AbJobNum, :InvoiceNum, :Timestamp, :Notes)
+            """,
+            new[]
+            {
+                new { AbJobNum = 1001L, InvoiceNum = "INV-1001-A", Timestamp = (DateTime?)d.AddDays(1), Notes = (string?)null },
+                new { AbJobNum = 1002L, InvoiceNum = "INV-1002-A", Timestamp = (DateTime?)d.AddDays(3), Notes = (string?)"Rejected-coil billing example" }
             });
 
         conn.Execute("""
