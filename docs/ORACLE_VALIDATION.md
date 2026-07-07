@@ -142,6 +142,79 @@ reads resolved** against the real schema:
 > The script leaves clearly-tagged `ZZ_WRITE_TEST` rows and prints tag-based
 > `DELETE` cleanup SQL (run it in SQL Developer, then `COMMIT`).
 
+## Newer-module read sweep — run against Oracle 11g (2026-07-07)
+
+The modules built *after* the original validation (reporting, accounting, quality/
+recovery, coil-eval, prod-folder, stacker, sales, coil-ownership, parts, carriers,
+warehouse, security) had only ever run on the SQLite fixture. Swept read-only against
+live non-prod `abc11` with
+[`../tools/validate_oracle_reads_newmodules.ps1`](../tools/validate_oracle_reads_newmodules.ps1)
+(and ad-hoc data-dictionary checks via the new read-only
+[`../tools/oraq`](../tools/oraq) CLI). **~40 read/report endpoints; 4 live-only bug
+classes found and fixed, 1 environment gap, plus performance findings.**
+
+**Bugs found and fixed** (all green on SQLite CI — only live data exposed them):
+
+- **`ORA` decimal overflow on `AVG` →** `reporting/production-summary` &
+  `reporting/line-efficiency` returned **500**: ODP.NET materialises an Oracle `NUMBER`
+  as `System.Decimal` before Dapper maps it to `double?`, and `AVG(material_yield)`'s
+  ~40-digit result **overflows `Decimal`**. Fixed by bounding the scale in SQL —
+  `ROUND(AVG(...), 4)` — at all three `AVG` sites (`GetProductionSummaryAsync`,
+  `GetLineEfficiencyAsync`, `GetQaMechanicalAsync`). Reproduced + confirmed fixed
+  directly at the SQL layer with `oraq`.
+- **Stacker board unbounded scan →** `stacker/board` **hung** (>hundreds of seconds):
+  `GetStackerBoardAsync` scanned the whole `ab_job` history (**93,835 of 97,390 rows are
+  `Done`**), each with two correlated `COUNT` subqueries. Fixed by filtering to active
+  work — `job_status NOT IN (0 Done, 3 Cancelled)` — per the real `ab_job_status_desc`
+  codes (verified live: `0 Done / 1 InProcess / 2 New / 3 Cancelled / 4 OnHold`). The
+  fixture's status codes were corrected to match reality; a regression test was added.
+- **Reserved-word bind `:like` (`ORA-01745`) →** `sales/quotes` &
+  `coil-ownership/transferable-coils` returned **500**: `LIKE` is an Oracle reserved
+  word, so a bind *named* `:like` is rejected (SQLite accepts it). Renamed the bind to
+  `:pat` in both queries. Same trap class as the write-path `:desc/:date/:by` fixes.
+- **Transferable-coils whole-table scan →** `coil-ownership/transferable-coils`
+  returned the **entire coil table (149,563 rows, ~200 s)** because it had no
+  "transferable" predicate. A coil is transferable only if material remains, so added
+  `net_wt_balance > 0` (live data: only **8,835** coils qualify, **0** NULL balances —
+  a safe, exact filter). **200 s → ~10 s** unscoped (and fast when scoped by
+  customer/search, the normal path). Regression test added (fixture coil 5004 set to a
+  zero balance so it is excluded).
+
+**Environment gap (not a code bug):**
+
+- `sales/quotes` returns **`ORA-00942: table or view does not exist`**. The sales
+  module's tables (`sales_quote`, `sales_probability`, `sales_order`, `sales_reminder`)
+  are **absent from ALL three databases** — cross-referenced live (2026-07-07) against
+  non-prod (`192.168.1.230:1521/abc11`), dev (`192.168.1.11:1523/abc11`), and **prod**
+  (`192.168.1.9:1523/abc11`): **0** matching objects in any schema on any of them. All
+  three carry the same complete 412-table `DBO` schema (real tables like `customer_order`,
+  `coil` present), so this isn't a partial copy — the sales/quote tables **were never
+  deployed anywhere**, even though the legacy `d_sales_quote_*` DataWindows reference
+  them. **Product decision needed:** was the sales/quoting feature ever live? Either the
+  greenfield sales-quote surface should be dropped/parked, or the tables need creating.
+  The rest of the sales surface (`sales/contacts`, over the real `customer_contact`)
+  passes.
+
+**Performance findings (functional, but slow on real data — follow-up optimization):**
+
+| Endpoint | Live time | Cause |
+|---|---:|---|
+| `reporting/line-efficiency` | ~380 s | per-line `AVG` + per-job correlated `SUM(process_end_wt)` + downtime merge over full history |
+| `reporting/production-summary` | ~106 s | per-job correlated `SUM(process_end_wt)` subquery |
+| `reporting/downtime` | ~75 s | full-history scan |
+| `reporting/open-shipments` | ~30 s | |
+| `stacker/board` | ~28 s | two correlated `COUNT` subqueries over the ~950 active jobs |
+| `coil-ownership/transferable-coils` (unscoped) | ~10 s | returns all 8,835 balance-bearing coils |
+
+Recommended: rewrite the correlated `SUM`/`COUNT` subqueries as `GROUP BY` joins,
+add indexes on the `ab_job_num` FK columns of `process_coil`/`sheet_skid`, and default
+the reporting date window to something narrower than 7 years. Tracked in
+[`NEXT_STEPS.md`](NEXT_STEPS.md).
+
+> Everything else in the sweep — the other 14 reporting endpoints, accounting,
+> quality/recovery, coil-eval, prod-folder, stacker line-errors, parts, carriers,
+> warehouse, and security reads — **passed clean** against live Oracle.
+
 ## 1. Connectivity smoke (no schema needed)
 
 Confirms the driver connects and the dialect probe works (`SELECT 1 FROM dual`):

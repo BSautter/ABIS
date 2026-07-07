@@ -571,6 +571,44 @@ public sealed class RepositoryTests : IDisposable
         Assert.All(scans, s => Assert.Equal(1001, s.AbJobNum));
     }
 
+    [Fact]
+    public async Task GetStackerBoard_shows_only_active_jobs_excluding_done_and_cancelled()
+    {
+        // The board is a live line monitor: active work only (InProcess/New/OnHold),
+        // never Done(0)/Cancelled(3). Seeded job 1003 is Done, so it must be excluded;
+        // 1001 and 1002 are active. Guards the live-only unbounded ab_job-scan bug.
+        var board = await _repo.GetStackerBoardAsync(null, CancellationToken.None);
+        var jobs = board.Select(b => b.AbJobNum).ToList();
+        Assert.Contains(1001L, jobs);
+        Assert.Contains(1002L, jobs);
+        Assert.DoesNotContain(1003L, jobs);
+        Assert.All(board, b => Assert.True(b.JobStatus is 1 or 2 or 4, $"status {b.JobStatus} should be active"));
+
+        // The optional line filter still applies on top of the active filter.
+        var line110 = await _repo.GetStackerBoardAsync(110, CancellationToken.None);
+        Assert.All(line110, b => Assert.Equal(110L, b.LineNum));
+        Assert.Contains(1001L, line110.Select(b => b.AbJobNum));
+    }
+
+    [Fact]
+    public async Task GetTransferableCoils_excludes_zero_balance_coils()
+    {
+        // Transferable = has material left (net_wt_balance > 0). Coil 5004 is fully
+        // consumed (balance 0), so it must not appear; 5001-5003 still have balance.
+        // Guards the live-only whole-table-scan bug (unscoped returned ~150k coils).
+        var coils = await _repo.GetTransferableCoilsAsync(null, null, CancellationToken.None);
+        var ids = coils.Select(c => c.CoilAbcNum).ToList();
+        Assert.Contains(5001L, ids);
+        Assert.Contains(5002L, ids);
+        Assert.Contains(5003L, ids);
+        Assert.DoesNotContain(5004L, ids);   // balance 0 -> excluded
+        Assert.All(coils, c => Assert.True(c.NetWtBalance > 0));
+
+        // Customer scope still narrows within the transferable set.
+        var cust4001 = await _repo.GetTransferableCoilsAsync(4001, null, CancellationToken.None);
+        Assert.All(cust4001, c => Assert.Equal(4001L, c.CustomerId));
+    }
+
     // ---- maintenance log -----------------------------------------------
 
     [Fact]

@@ -782,7 +782,7 @@ public sealed class AbisRepository : IAbisRepository
             $"""
             SELECT l.line_num AS LineNum, l.line_desc AS LineDesc,
                    COUNT(j.ab_job_num) AS JobCount,
-                   AVG(j.material_yield) AS AvgYield,
+                   ROUND(AVG(j.material_yield), 4) AS AvgYield,
                    COALESCE(SUM((SELECT SUM(pc.process_end_wt) FROM process_coil pc WHERE pc.ab_job_num = j.ab_job_num)), 0.0) AS ProcessedWt
             FROM line l
             LEFT JOIN ab_job j ON j.line_num = l.line_num{dateFilter}
@@ -804,7 +804,7 @@ public sealed class AbisRepository : IAbisRepository
         var rows = (await conn.QueryAsync<LineEfficiencyRow>(new CommandDefinition(
             $"""
             SELECT l.line_num AS LineNum, l.line_desc AS LineDesc,
-                   COUNT(j.ab_job_num) AS JobCount, AVG(j.material_yield) AS AvgYield,
+                   COUNT(j.ab_job_num) AS JobCount, ROUND(AVG(j.material_yield), 4) AS AvgYield,
                    COALESCE(SUM((SELECT SUM(pc.process_end_wt) FROM process_coil pc WHERE pc.ab_job_num = j.ab_job_num)), 0.0) AS ProcessedWt
             FROM line l
             LEFT JOIN ab_job j ON j.line_num = l.line_num{jobFilter}
@@ -1051,7 +1051,7 @@ public sealed class AbisRepository : IAbisRepository
         var rows = await conn.QueryAsync<QaMechanicalRow>(new CommandDefinition(
             $"""
             SELECT test_type AS TestType, COUNT(*) AS ResultCount,
-                   AVG(yts_val) AS AvgYts, AVG(uts_val) AS AvgUts, AVG(elong_val) AS AvgElong
+                   ROUND(AVG(yts_val), 4) AS AvgYts, ROUND(AVG(uts_val), 4) AS AvgUts, ROUND(AVG(elong_val), 4) AS AvgElong
             FROM pst_test_result {clause}
             GROUP BY test_type
             ORDER BY test_type
@@ -1145,10 +1145,10 @@ public sealed class AbisRepository : IAbisRepository
             FROM sales_quote q
             LEFT JOIN customer c ON c.customer_id = q.customer_id
             LEFT JOIN customer_contact cc ON cc.contact_id = q.contact_id
-            WHERE (:like IS NULL
-                   OR c.customer_short_name LIKE :like OR q.end_use LIKE :like OR q.alloy LIKE :like)
+            WHERE (:pat IS NULL
+                   OR c.customer_short_name LIKE :pat OR q.end_use LIKE :pat OR q.alloy LIKE :pat)
             ORDER BY q.created_date DESC, q.quote_id, q.quote_revision_id
-            """, new { like }, cancellationToken: ct));
+            """, new { pat = like }, cancellationToken: ct));
         return rows.AsList();
     }
 
@@ -1311,7 +1311,11 @@ public sealed class AbisRepository : IAbisRepository
     }
 
     // The coil picker (legacy d_ownership_transfer_coil_list): coils that can be transferred,
-    // with their current owner. Optional customer scope + a text search on org-num / lot / notes.
+    // with their current owner. A coil is transferable only if it still has material left —
+    // net_wt_balance > 0. Without that predicate the query returns the entire coil table
+    // (~150k rows on the live DB, of which only ~8.8k have a balance) — unusably slow
+    // (~200s) and wrong (consumed coils can't be transferred). Optional customer scope + a
+    // text search on org-num / lot / notes narrow it further.
     public async Task<IReadOnlyList<TransferableCoil>> GetTransferableCoilsAsync(long? customerId, string? search, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
@@ -1324,10 +1328,11 @@ public sealed class AbisRepository : IAbisRepository
                    c.coil_width AS CoilWidth, c.net_wt_balance AS NetWtBalance, c.coil_notes AS CoilNotes
             FROM coil c
             LEFT JOIN customer cu ON cu.customer_id = c.customer_id
-            WHERE (:cust IS NULL OR c.customer_id = :cust)
-              AND (:like IS NULL OR c.coil_org_num LIKE :like OR c.lot_num LIKE :like OR c.coil_notes LIKE :like)
+            WHERE c.net_wt_balance > 0
+              AND (:cust IS NULL OR c.customer_id = :cust)
+              AND (:pat IS NULL OR c.coil_org_num LIKE :pat OR c.lot_num LIKE :pat OR c.coil_notes LIKE :pat)
             ORDER BY c.coil_abc_num
-            """, new { cust = customerId, like }, cancellationToken: ct));
+            """, new { cust = customerId, pat = like }, cancellationToken: ct));
         return rows.AsList();
     }
 
@@ -2364,6 +2369,12 @@ public sealed class AbisRepository : IAbisRepository
 
     // ---- Stacker line board / error log (legacy stacker_110) ----
 
+    // The stacker board is a live line monitor of the jobs *running* on a line. It must
+    // show only ACTIVE work — job_status IN (1 InProcess, 2 New, 4 OnHold) — and exclude
+    // finished (0 Done) and cancelled (3) jobs. Without this filter the query scans the
+    // whole ab_job history (~94k Done rows on the live DB), each with two correlated
+    // COUNTs — effectively a hang. The SQLite fixture is tiny so CI never saw it; the
+    // live non-prod sweep did. Status codes per ab_job_status_desc (verified live).
     public async Task<IReadOnlyList<StackerBoardRow>> GetStackerBoardAsync(long? lineNum, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
@@ -2373,7 +2384,8 @@ public sealed class AbisRepository : IAbisRepository
                    (SELECT COUNT(*) FROM process_coil pc WHERE pc.ab_job_num = j.ab_job_num) AS CoilCount,
                    (SELECT COUNT(*) FROM sheet_skid ss WHERE ss.ab_job_num = j.ab_job_num) AS SkidCount
             FROM ab_job j
-            WHERE (:line IS NULL OR j.line_num = :line)
+            WHERE j.job_status NOT IN (0, 3)
+              AND (:line IS NULL OR j.line_num = :line)
             ORDER BY j.ab_job_num DESC
             """, new { line = lineNum }, cancellationToken: ct));
         return rows.AsList();
