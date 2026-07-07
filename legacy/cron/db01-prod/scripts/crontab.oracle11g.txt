@@ -1,0 +1,18 @@
+# The job that creates the outbound 870's runs every 30 minutes at the top and bottom of the hour.  Moving the GXS to
+#   be run 1 minute later insures that those 870's are included in the outbound EDI's.
+1,6,11,16,21,26,31,36,41,46,51,56 * * * * /export/home/oracle11g/scripts/GXS.ksh >> /export/home/oracle11g/logs/GXS.log 2>&1 &
+0 1,13 * * * /export/home/oracle11g/scripts/export.ksh >/export/home/oracle11g/cron_export.log
+00 20 * * * /export/home/oracle11g/scripts/rm_arch_exp.ksh
+0,30 6,7,8,9,10,11,12,13,14,15,16,17,18,19,20 * * * /export/home/oracle11g/scripts/abis_scripts/ediprocess.sh >>/export/home/oracle11g/logs/ediprocess.log 2>&1
+50 0,1,3,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,22,23 * * * /export/home/oracle11g/scripts/abis_scripts/check_shift_end.sh >> /export/home/oracle11g/logs/check_shift_end.log 2>/dev/null
+0 8,16 * * * /export/home/oracle11g/scripts/abis_scripts/check_status_unmatched_coil.sh >/dev/null 2>&1
+0 3 * * * /export/home/oracle11g/scripts/cold_backup_11g_act11.sh >> /export/home/oracle11g/act11_backup.log 2>&1
+#50 6,8,10,12,14,16,18,20 * * * /export/home/oracle11g/scripts/abis_scripts/create_inventory_report.sh 1459 >> /export/home/oracle11g/logs/inventory_report.log 2>&1
+#30 23 * * * /export/home/oracle11g/scripts/abis_scripts/create_recovery_report.sh 0 >> /export/home/oracle11g/logs/recovery_report.log 2>&1
+00 03 01 * * /export/home/oracle11g/scripts/clear_tmp.ksh > /dev/null 2>&1 
+##00 21 * * * /export/home/oracle11g/scripts/datapump.ksh >/export/home/oracle11g/cron_datapump.log
+0 4 * * * /export/hone/oracle11g/scripts/restart_db.sh
+#Alex Gerlants. 06/08/2026. 2516 Cleveland-Cliff EDI_CCSC
+#30 8 * * * /export/home/oracle11g/scripts/abis_scripts/846.sh    #TEST ONLY  TEST ONLY  TEST ONLY  TEST ONLY
+#Run on 0 minutes, on 8th hour, on 1st day of a month (once-a-month on the first of the month at 8 AM)
+#0 8 1 * * /export/home/oracle11g/scripts/abis_scripts/846.sh
