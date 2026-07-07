@@ -6,6 +6,8 @@
 
 Consolidated from 196 verified parity findings across seven surfaces. Every legacy path below is real and the greenfield state was grep-verified in the source findings. Ordered within each surface by severity, then **missing before partial**, then **core before nice-to-have**.
 
+> **Build progress — 2026-07-07:** Root cause #1 (shape geometry), *order-item level*: **built**. A uniform shape model + registry (`api/src/ABIS.Api/Data/ShapeGeometry.cs`) reads/writes all 10 per-shape dimension tables (RECTANGLE…LIFTGATE_SHAPE) via `GET/PUT /api/orders/{o}/items/{i}/shape` + `GET /api/lookups/shape-types` (174 tests green). Remaining for #1: the part-master `PART_NUM_*` tables, the order-entry UI, and wiring geometry into the calculator/invoice/QC surfaces.
+
 **Severity key**
 - **C — Critical:** a core business/operational function that is absent or hollow; blocks a whole workflow or the ability to run the plant/business.
 - **H — High:** core function only partially built (data model or read path exists, workflow/validation/write does not), or an important secondary function missing.

@@ -299,6 +299,32 @@ public static class ApiEndpoints
            .WithSummary("Replace an order line item (by order + line number). Supports If-Match.")
            .Produces<OrderItem>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status412PreconditionFailed).ProducesValidationProblem();
 
+        // ---- Order-item blank geometry (the shape's dimensions) --------
+        api.MapGet("/orders/{orderAbcNum:long}/items/{orderItemNum:long}/shape", async (long orderAbcNum, long orderItemNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetOrderItemShapeAsync(orderAbcNum, orderItemNum, ct) is { } shape
+                    ? Results.Ok(shape)
+                    : Results.NotFound())
+           .WithName("GetOrderItemShape").WithTags("OrderItems")
+           .WithSummary("Get an order line's blank geometry — the shape's dimensions (value + tolerances) and dies.")
+           .Produces<OrderItemShape>().Produces(StatusCodes.Status404NotFound);
+
+        api.MapPut("/orders/{orderAbcNum:long}/items/{orderItemNum:long}/shape", async (long orderAbcNum, long orderItemNum, OrderItemShapeWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                // The shape must be a known dimensioned shape; distinguishes a bad shape (400)
+                // from a missing order line (404).
+                if (ShapeGeometry.Resolve(body.ShapeType) is null)
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["shapeType"] = [$"Unknown shape type '{body.ShapeType}'. See /api/lookups/shape-types."],
+                    });
+                return await repo.UpsertOrderItemShapeAsync(orderAbcNum, orderItemNum, body, ct) is { } saved
+                    ? Results.Ok(saved)
+                    : Results.NotFound();
+            })
+           .WithName("PutOrderItemShape").WithTags("OrderItems")
+           .WithSummary("Set an order line's blank geometry for its shape (upsert; aligns the line's sheet_type).")
+           .Produces<OrderItemShape>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
         // ---- Parts (part-number master) --------------------------------
         api.MapGet("/parts", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, long? customerId = null, string? alloy = null, string? sort = null, string? dir = null) =>
@@ -1426,6 +1452,12 @@ public static class ApiEndpoints
            .WithName("ListAlloys").WithTags("Lookups")
            .WithSummary("List distinct alloys (reference data for dropdowns).")
            .Produces<IEnumerable<string>>();
+
+        api.MapGet("/lookups/shape-types", (IAbisRepository repo) =>
+                Results.Ok(repo.GetShapeTypes()))
+           .WithName("ListShapeTypes").WithTags("Lookups")
+           .WithSummary("Blank shape catalog: each shape's dimension schema (names + which carry a tolerance) and die count — drives a dynamic per-shape form.")
+           .Produces<IReadOnlyList<ShapeTypeInfo>>();
 
         api.MapGet("/lookups/lines", async (IAbisRepository repo, CancellationToken ct) =>
                 Results.Ok(await repo.GetLinesAsync(ct)))

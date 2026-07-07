@@ -46,6 +46,39 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task OrderItem_shape_geometry_round_trips_over_http()
+    {
+        // Seeded line 7001 is a RECTANGLE.
+        var get = await _client.GetFromJsonAsync<JsonElement>("/api/orders/9001/items/7001/shape");
+        Assert.Equal("RECTANGLE", get.GetProperty("shapeType").GetString());
+        Assert.Contains(get.GetProperty("dimensions").EnumerateArray(), d => d.GetProperty("name").GetString() == "length");
+
+        // PUT circle geometry onto line 7002.
+        var put = await _client.PutAsJsonAsync("/api/orders/9001/items/7002/shape", new
+        {
+            shapeType = "CIRCLE",
+            dimensions = new[] { new { name = "diameter", value = 30.0, plusTol = 0.2, minusTol = 0.2 } },
+            dies = new[] { "DIE-HTTP" },
+        });
+        put.EnsureSuccessStatusCode();
+        var saved = await put.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("CIRCLE", saved.GetProperty("shapeType").GetString());
+
+        // Unknown shape -> 400.
+        var bad = await _client.PutAsJsonAsync("/api/orders/9001/items/7002/shape",
+            new { shapeType = "NOPE", dimensions = Array.Empty<object>(), dies = Array.Empty<string>() });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+
+        // Missing line -> 404.
+        var missing = await _client.GetAsync("/api/orders/9001/items/9999/shape");
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+
+        // Catalog lists all 10 shapes.
+        var types = await _client.GetFromJsonAsync<JsonElement>("/api/lookups/shape-types");
+        Assert.Equal(10, types.GetArrayLength());
+    }
+
+    [Fact]
     public async Task A_supplied_request_id_is_echoed()
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, "/health");

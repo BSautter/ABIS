@@ -99,6 +99,74 @@ public sealed class RepositoryTests : IDisposable
         Assert.All(items.Items, i => Assert.Equal("3003", i.Alloy2));
     }
 
+    // ---- Per-item shape geometry ---------------------------------------
+
+    [Fact]
+    public async Task GetOrderItemShape_returns_the_shapes_dimensions_and_dies()
+    {
+        // Seed item 7001 is a RECTANGLE (48 x 24 with tolerances + two dies).
+        var shape = await _repo.GetOrderItemShapeAsync(9001, 7001, CancellationToken.None);
+        Assert.NotNull(shape);
+        Assert.Equal("RECTANGLE", shape!.ShapeType);
+        var length = shape.Dimensions.Single(d => d.Name == "length");
+        Assert.Equal(48.0m, length.Value);
+        Assert.Equal(0.03m, length.PlusTol);
+        Assert.Equal(24.0m, shape.Dimensions.Single(d => d.Name == "width").Value);
+        Assert.Equal(new[] { "DIE-RT-1", "DIE-RT-2" }, shape.Dies);
+
+        // Unknown order line -> null (endpoint -> 404).
+        Assert.Null(await _repo.GetOrderItemShapeAsync(9001, 9999, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task UpsertOrderItemShape_persists_and_reads_back_and_guards()
+    {
+        var body = new OrderItemShapeWrite
+        {
+            ShapeType = "CIRCLE",
+            Dimensions = { new ShapeDimension { Name = "diameter", Value = 40.0m, PlusTol = 0.1m, MinusTol = 0.1m } },
+            Dies = { "DIE-C-NEW" },
+        };
+        var saved = await _repo.UpsertOrderItemShapeAsync(9001, 7002, body, CancellationToken.None);
+        Assert.NotNull(saved);
+        Assert.Equal("CIRCLE", saved!.ShapeType);
+        Assert.Equal(40.0m, saved.Dimensions.Single(d => d.Name == "diameter").Value);
+        Assert.Equal("DIE-C-NEW", saved.Dies[0]);
+
+        // Re-read confirms it persisted.
+        var reread = await _repo.GetOrderItemShapeAsync(9001, 7002, CancellationToken.None);
+        Assert.Equal(40.0m, reread!.Dimensions.Single(d => d.Name == "diameter").Value);
+
+        // Unknown shape -> null (endpoint maps to 400); unknown line -> null (404).
+        Assert.Null(await _repo.UpsertOrderItemShapeAsync(9001, 7002, new OrderItemShapeWrite { ShapeType = "BOGUS" }, CancellationToken.None));
+        Assert.Null(await _repo.UpsertOrderItemShapeAsync(9001, 9999, new OrderItemShapeWrite { ShapeType = "CIRCLE" }, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task UpsertOrderItemShape_changing_shape_drops_the_old_shape_row()
+    {
+        // 7001 starts as RECTANGLE. Change it to CIRCLE, then back-check the RECTANGLE row is gone.
+        await _repo.UpsertOrderItemShapeAsync(9001, 7001,
+            new OrderItemShapeWrite { ShapeType = "CIRCLE", Dimensions = { new ShapeDimension { Name = "diameter", Value = 12.0m } } },
+            CancellationToken.None);
+        var shape = await _repo.GetOrderItemShapeAsync(9001, 7001, CancellationToken.None);
+        Assert.Equal("CIRCLE", shape!.ShapeType);
+        Assert.Equal(12.0m, shape.Dimensions.Single(d => d.Name == "diameter").Value);
+    }
+
+    [Fact]
+    public void GetShapeTypes_catalogs_every_shape_with_its_dimension_schema()
+    {
+        var types = _repo.GetShapeTypes();
+        Assert.Equal(10, types.Count);
+        var rect = types.Single(t => t.ShapeType == "RECTANGLE");
+        Assert.Contains(rect.Dimensions, d => d.Name == "length" && d.HasTolerance);
+        Assert.Equal(2, rect.DieCount);
+        // Parallelogram angles carry no tolerance.
+        var para = types.Single(t => t.ShapeType == "PARALLELOGRAM");
+        Assert.Contains(para.Dimensions, d => d.Name == "angle1" && !d.HasTolerance);
+    }
+
     [Fact]
     public async Task GetTestResults_filters_by_type_and_orders_desc()
     {

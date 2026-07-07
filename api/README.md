@@ -101,7 +101,7 @@ running API with `ABIS_BASE=… ABIS_KEY=… npm --prefix clientapp run e2e`.
 
 ```sh
 cd api
-dotnet test                                # 167 tests: repository + HTTP smoke
+dotnet test                                # 174 tests: repository + HTTP smoke
 ```
 
 The typed-client **e2e** suite (`clientapp/e2e/run.mjs`, **58 tests**) drives the
@@ -187,6 +187,8 @@ CI builds this image on every PR (see `.github/workflows/ci.yml`).
 | `GET /api/orders/{orderAbcNum}/items/{orderItemNum}` | One order line item (composite key) |
 | `POST /api/orders/{orderAbcNum}/items` | Add a line item to an order (line number assigned per order, requires `enduserPartNum`) → 201 |
 | `PUT /api/orders/{orderAbcNum}/items/{orderItemNum}` | Replace an order line item |
+| `GET /api/orders/{orderAbcNum}/items/{orderItemNum}/shape` | A line's blank geometry — the shape's dimensions (value + tolerances) and dies |
+| `PUT /api/orders/{orderAbcNum}/items/{orderItemNum}/shape` | Set a line's shape geometry (upsert; aligns `sheet_type`; 400 on unknown shape) |
 | `GET /api/customers?page&pageSize&name&sort&dir` | List customers (paged, sortable) |
 | `GET /api/customers/{customerId}` | One customer |
 | `POST /api/customers` | Create a customer (server-assigned id) → 201 |
@@ -249,6 +251,7 @@ CI builds this image on every PR (see `.github/workflows/ci.yml`).
 | `GET /api/test-results?page&pageSize&testType&position&from&to&sort&dir` | List posted mechanical test results (paged, filterable, sortable) |
 | `GET /api/temp-test-results?page&pageSize&testType&position&from&to&sort&dir` | List in-progress (working-set) test results (paged, filterable, sortable) |
 | `GET /api/lookups/alloys` | Distinct alloys (dropdown reference data) |
+| `GET /api/lookups/shape-types` | Blank shape catalog: each shape's dimension schema (names + tolerance flag) + die count (drives a dynamic per-shape form) |
 | `GET /api/lookups/lines` | Production lines (referenced by jobs, coils, downtime) |
 | `GET /api/lookups/groupdepartments` | Maintenance groups/departments (referenced by maintenance logs) |
 | `GET /api/lookups/downtime-causes` | Downtime causes/reasons |

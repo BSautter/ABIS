@@ -46,6 +46,12 @@ public interface IAbisRepository
     Task<OrderItem> CreateOrderItemAsync(long orderAbcNum, OrderItemWrite body, CancellationToken ct);
     Task<OrderItem?> UpdateOrderItemAsync(long orderAbcNum, long orderItemNum, OrderItemWrite body, CancellationToken ct);
 
+    // Per-item blank geometry — the shape's dimensions/dies, stored in a table per shape
+    // (RECTANGLE/CIRCLE/…). GetShapeTypes is the catalog behind /lookups/shape-types.
+    Task<OrderItemShape?> GetOrderItemShapeAsync(long orderAbcNum, long orderItemNum, CancellationToken ct);
+    Task<OrderItemShape?> UpsertOrderItemShapeAsync(long orderAbcNum, long orderItemNum, OrderItemShapeWrite body, CancellationToken ct);
+    IReadOnlyList<ShapeTypeInfo> GetShapeTypes();
+
     // ---- Customers (read + write) --------------------------------------
     Task<PagedResult<Customer>> GetCustomersAsync(int page, int pageSize, string? name, string? orderBy, CancellationToken ct);
     Task<Customer?> GetCustomerAsync(long customerId, CancellationToken ct);

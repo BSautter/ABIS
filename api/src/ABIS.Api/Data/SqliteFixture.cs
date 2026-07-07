@@ -23,6 +23,16 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS process_coil;
             DROP TABLE IF EXISTS customer_order;
             DROP TABLE IF EXISTS order_item;
+            DROP TABLE IF EXISTS rectangle;
+            DROP TABLE IF EXISTS circle;
+            DROP TABLE IF EXISTS chevron;
+            DROP TABLE IF EXISTS fender;
+            DROP TABLE IF EXISTS parallelogram;
+            DROP TABLE IF EXISTS trapezoid;
+            DROP TABLE IF EXISTS left_trapezoid;
+            DROP TABLE IF EXISTS right_trapezoid;
+            DROP TABLE IF EXISTS reinforcement;
+            DROP TABLE IF EXISTS liftgate_shape;
             DROP TABLE IF EXISTS pst_test_result;
             DROP TABLE IF EXISTS customer;
             DROP TABLE IF EXISTS sheet_skid;
@@ -115,6 +125,39 @@ public static class SqliteFixture
                 supplier_code TEXT, govt_contract_num TEXT, part_num_id INTEGER, part_num INTEGER, part_copied TEXT,
                 starting_goods_material_num TEXT, finished_goods_material_num TEXT, cust_prod_line_id TEXT, billto_albl TEXT,
                 PRIMARY KEY (order_abc_num, order_item_num));
+
+            -- Per-item blank geometry: one table per shape, keyed by the order_item composite
+            -- key (see Data/ShapeGeometry). Decimals are REAL (SQLite affinity gotcha).
+            CREATE TABLE rectangle (order_item_num INTEGER, order_abc_num INTEGER,
+                rt_length REAL, rt_length_plus REAL, rt_length_minus REAL, rt_width REAL, rt_width_plus REAL, rt_width_minus REAL,
+                rt_die1 TEXT, rt_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
+            CREATE TABLE circle (order_item_num INTEGER, order_abc_num INTEGER,
+                c_diameter REAL, c_diameter_plus REAL, c_diameter_minus REAL, c_die1 TEXT, c_die2 TEXT,
+                PRIMARY KEY (order_abc_num, order_item_num));
+            CREATE TABLE chevron (order_item_num INTEGER, order_abc_num INTEGER,
+                ch_length REAL, ch_length_plus REAL, ch_length_minus REAL, ch_width REAL, ch_width_plus REAL, ch_width_minus REAL,
+                ch_die TEXT, PRIMARY KEY (order_abc_num, order_item_num));
+            CREATE TABLE fender (order_item_num INTEGER, order_abc_num INTEGER,
+                fe_side REAL, fe_side_plus REAL, fe_side_minus REAL, fe_die1 TEXT, fe_die2 TEXT,
+                fe_length REAL, fe_length_plus REAL, fe_length_minus REAL, PRIMARY KEY (order_abc_num, order_item_num));
+            CREATE TABLE parallelogram (order_item_num INTEGER, order_abc_num INTEGER,
+                p_length REAL, p_length_plus REAL, p_length_minus REAL, p_width REAL, p_width_plus REAL, p_width_minus REAL,
+                p_angle1 REAL, p_angle2 REAL, p_die1 TEXT, p_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
+            CREATE TABLE trapezoid (order_item_num INTEGER, order_abc_num INTEGER,
+                tr_long_length REAL, tr_long_plus REAL, tr_long_minus REAL, tr_short_length REAL, tr_short_plus REAL, tr_short_minus REAL,
+                tr_width REAL, tr_width_plus REAL, tr_width_minus REAL, tr_die1 TEXT, tr_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
+            CREATE TABLE left_trapezoid (order_item_num INTEGER, order_abc_num INTEGER,
+                ltr_long_length REAL, ltr_long_plus REAL, ltr_long_minus REAL, ltr_short_length REAL, ltr_short_plus REAL, ltr_short_minus REAL,
+                ltr_width REAL, ltr_width_plus REAL, ltr_width_minus REAL, ltr_die1 TEXT, ltr_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
+            CREATE TABLE right_trapezoid (order_item_num INTEGER, order_abc_num INTEGER,
+                rtr_long_length REAL, rtr_long_plus REAL, rtr_long_minus REAL, rtr_short_length REAL, rtr_short_plus REAL, rtr_short_minus REAL,
+                rtr_width REAL, rtr_width_plus REAL, rtr_width_minus REAL, rtr_die1 TEXT, rtr_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
+            CREATE TABLE reinforcement (order_item_num INTEGER, order_abc_num INTEGER,
+                re_width REAL, re_width_plus REAL, re_width_minus REAL, re_length REAL, re_length_plus REAL, re_length_minus REAL,
+                re_die1 TEXT, re_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
+            CREATE TABLE liftgate_shape (order_item_num INTEGER, order_abc_num INTEGER,
+                li_width REAL, li_width_plus REAL, li_width_minus REAL, li_length REAL, li_length_plus REAL, li_length_minus REAL,
+                li_die1 TEXT, li_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
 
             -- Posted mechanical test results. The real PK is the composite
             -- (coil_abc_num, position, created_date, source_id) per oracle_ddl.sql;
@@ -389,10 +432,18 @@ public static class SqliteFixture
             """,
             new[]
             {
-                new { OrderItemNum = 7001L, OrderAbcNum = (long?)9001L, EnduserPartNum = "PN-3003-A", Alloy2 = "3003", Temper = "H14", Gauge = 0.125m, GaugeP = 0.005m, GaugeM = 0.005m, Surface = "MILL", Flatness = "STD", SheetType = "SHEET", MaterialEndUse = "HVAC", OrderItemDesc = "3003 sheet", PiecesSkid = 50, TheoreticalUnitWt = 12.5m, UnitPrice = 1.25m, ItemCreatedDttm = (DateTime?)d },
-                new { OrderItemNum = 7002L, OrderAbcNum = (long?)9001L, EnduserPartNum = "PN-5052-B", Alloy2 = "5052", Temper = "H32", Gauge = 0.0625m, GaugeP = 0.004m, GaugeM = 0.004m, Surface = "MILL", Flatness = "TIGHT", SheetType = "SHEET", MaterialEndUse = "MARINE", OrderItemDesc = "5052 sheet", PiecesSkid = 40, TheoreticalUnitWt = 8.0m, UnitPrice = 1.5m, ItemCreatedDttm = (DateTime?)d },
+                new { OrderItemNum = 7001L, OrderAbcNum = (long?)9001L, EnduserPartNum = "PN-3003-A", Alloy2 = "3003", Temper = "H14", Gauge = 0.125m, GaugeP = 0.005m, GaugeM = 0.005m, Surface = "MILL", Flatness = "STD", SheetType = "RECTANGLE", MaterialEndUse = "HVAC", OrderItemDesc = "3003 sheet", PiecesSkid = 50, TheoreticalUnitWt = 12.5m, UnitPrice = 1.25m, ItemCreatedDttm = (DateTime?)d },
+                new { OrderItemNum = 7002L, OrderAbcNum = (long?)9001L, EnduserPartNum = "PN-5052-B", Alloy2 = "5052", Temper = "H32", Gauge = 0.0625m, GaugeP = 0.004m, GaugeM = 0.004m, Surface = "MILL", Flatness = "TIGHT", SheetType = "CIRCLE", MaterialEndUse = "MARINE", OrderItemDesc = "5052 sheet", PiecesSkid = 40, TheoreticalUnitWt = 8.0m, UnitPrice = 1.5m, ItemCreatedDttm = (DateTime?)d },
                 new { OrderItemNum = 7003L, OrderAbcNum = (long?)9002L, EnduserPartNum = "PN-3003-C", Alloy2 = "3003", Temper = "H14", Gauge = 0.25m, GaugeP = 0.01m, GaugeM = 0.01m, Surface = "BRUSHED", Flatness = "STD", SheetType = "PLATE", MaterialEndUse = "GENERAL", OrderItemDesc = "3003 plate", PiecesSkid = 25, TheoreticalUnitWt = 25.0m, UnitPrice = 1.75m, ItemCreatedDttm = (DateTime?)d }
             });
+
+        // Blank geometry for the two shaped seed items (7001 = RECTANGLE, 7002 = CIRCLE).
+        conn.Execute(
+            "INSERT INTO rectangle (order_item_num, order_abc_num, rt_length, rt_length_plus, rt_length_minus, rt_width, rt_width_plus, rt_width_minus, rt_die1, rt_die2) " +
+            "VALUES (7001, 9001, 48.0, 0.03, 0.03, 24.0, 0.02, 0.02, 'DIE-RT-1', 'DIE-RT-2')");
+        conn.Execute(
+            "INSERT INTO circle (order_item_num, order_abc_num, c_diameter, c_diameter_plus, c_diameter_minus, c_die1, c_die2) " +
+            "VALUES (7002, 9001, 36.5, 0.05, 0.05, 'DIE-C-1', NULL)");
 
         conn.Execute("""
             INSERT INTO part_num (part_num_id, customer_id, enduser_id, enduser_part_num, sheet_type, alloy, temper, gauge, item_status)

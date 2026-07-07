@@ -673,6 +673,135 @@ public sealed class AbisRepository : IAbisRepository
         return n == 0 ? null : await GetOrderItemAsync(orderAbcNum, orderItemNum, ct);
     }
 
+    // ---- Per-item shape geometry ---------------------------------------
+    // A line's blank dimensions live in a table per shape (RECTANGLE/CIRCLE/…), keyed by the
+    // order_item composite key. The shape is order_item.sheet_type; Data/ShapeGeometry maps it
+    // to the table + columns, so one endpoint group serves every shape.
+
+    public IReadOnlyList<ShapeTypeInfo> GetShapeTypes() =>
+        ShapeGeometry.All.Select(def => new ShapeTypeInfo
+        {
+            ShapeType = def.ShapeType,
+            DieCount = def.DieCols.Count,
+            Dimensions = def.Dims.Select(dm => new ShapeDimensionSpec { Name = dm.Name, HasTolerance = dm.PlusCol is not null }).ToList(),
+        }).ToList();
+
+    public async Task<OrderItemShape?> GetOrderItemShapeAsync(long orderAbcNum, long orderItemNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM order_item WHERE order_abc_num = :ord AND order_item_num = :id",
+            new { ord = orderAbcNum, id = orderItemNum }, cancellationToken: ct));
+        if (exists == 0) return null;                       // no such order line
+
+        var sheetType = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
+            "SELECT sheet_type FROM order_item WHERE order_abc_num = :ord AND order_item_num = :id",
+            new { ord = orderAbcNum, id = orderItemNum }, cancellationToken: ct));
+        var shape = new OrderItemShape { OrderAbcNum = orderAbcNum, OrderItemNum = orderItemNum, ShapeType = (sheetType ?? "").Trim().ToUpperInvariant() };
+
+        var def = ShapeGeometry.Resolve(sheetType);
+        if (def is null) return shape;                      // line exists but isn't a dimensioned shape
+        shape.ShapeType = def.ShapeType;
+
+        var select = new List<string>();
+        for (var i = 0; i < def.Dims.Count; i++)
+        {
+            var dm = def.Dims[i];
+            select.Add($"{dm.ValueCol} AS v{i}");
+            if (dm.PlusCol is not null) select.Add($"{dm.PlusCol} AS p{i}");
+            if (dm.MinusCol is not null) select.Add($"{dm.MinusCol} AS m{i}");
+        }
+        for (var j = 0; j < def.DieCols.Count; j++) select.Add($"{def.DieCols[j]} AS die{j}");
+
+        var raw = await conn.QueryFirstOrDefaultAsync(new CommandDefinition(
+            $"SELECT {string.Join(", ", select)} FROM {def.Table} WHERE order_abc_num = :ord AND order_item_num = :id",
+            new { ord = orderAbcNum, id = orderItemNum }, cancellationToken: ct));
+        IDictionary<string, object?>? row = null;
+        if (raw is not null)
+        {
+            row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in (IDictionary<string, object>)raw) row[kv.Key] = kv.Value;
+        }
+
+        for (var i = 0; i < def.Dims.Count; i++)
+        {
+            var dm = def.Dims[i];
+            shape.Dimensions.Add(new ShapeDimension
+            {
+                Name = dm.Name,
+                Value = Dec(row, $"v{i}"),
+                PlusTol = dm.PlusCol is null ? null : Dec(row, $"p{i}"),
+                MinusTol = dm.MinusCol is null ? null : Dec(row, $"m{i}"),
+            });
+        }
+        for (var j = 0; j < def.DieCols.Count; j++)
+            shape.Dies.Add(row is not null && row.TryGetValue($"die{j}", out var dv) ? dv?.ToString() : null);
+        return shape;
+    }
+
+    public async Task<OrderItemShape?> UpsertOrderItemShapeAsync(long orderAbcNum, long orderItemNum, OrderItemShapeWrite body, CancellationToken ct)
+    {
+        var def = ShapeGeometry.Resolve(body.ShapeType);
+        if (def is null) return null;                       // unknown shape → endpoint returns 400
+
+        await using var conn = await OpenAsync(ct);
+        var itemExists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM order_item WHERE order_abc_num = :ord AND order_item_num = :id",
+            new { ord = orderAbcNum, id = orderItemNum }, cancellationToken: ct));
+        if (itemExists == 0) return null;                   // no such order line → 404
+        var current = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
+            "SELECT sheet_type FROM order_item WHERE order_abc_num = :ord AND order_item_num = :id",
+            new { ord = orderAbcNum, id = orderItemNum }, cancellationToken: ct));
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        // Keep the line's sheet_type aligned with the shape being written.
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE order_item SET sheet_type = :st WHERE order_abc_num = :ord AND order_item_num = :id",
+            new { st = def.ShapeType, ord = orderAbcNum, id = orderItemNum }, transaction: tx, cancellationToken: ct));
+
+        // If the shape changed, drop the old shape's row so it can't linger.
+        var oldDef = ShapeGeometry.Resolve(current);
+        if (oldDef is not null && !string.Equals(oldDef.Table, def.Table, StringComparison.OrdinalIgnoreCase))
+            await conn.ExecuteAsync(new CommandDefinition(
+                $"DELETE FROM {oldDef.Table} WHERE order_abc_num = :ord AND order_item_num = :id",
+                new { ord = orderAbcNum, id = orderItemNum }, transaction: tx, cancellationToken: ct));
+
+        // Upsert = delete + insert (portable; the row is small and single-keyed).
+        await conn.ExecuteAsync(new CommandDefinition(
+            $"DELETE FROM {def.Table} WHERE order_abc_num = :ord AND order_item_num = :id",
+            new { ord = orderAbcNum, id = orderItemNum }, transaction: tx, cancellationToken: ct));
+
+        var cols = new List<string> { "order_item_num", "order_abc_num" };
+        var vals = new List<string> { ":id", ":ord" };
+        var p = new DynamicParameters();
+        p.Add("id", orderItemNum);
+        p.Add("ord", orderAbcNum);
+        for (var i = 0; i < def.Dims.Count; i++)
+        {
+            var dm = def.Dims[i];
+            var val = body.Dimensions.FirstOrDefault(x => string.Equals(x.Name, dm.Name, StringComparison.OrdinalIgnoreCase));
+            cols.Add(dm.ValueCol); vals.Add($":v{i}"); p.Add($"v{i}", val?.Value, DbType.Decimal);
+            if (dm.PlusCol is not null) { cols.Add(dm.PlusCol); vals.Add($":p{i}"); p.Add($"p{i}", val?.PlusTol, DbType.Decimal); }
+            if (dm.MinusCol is not null) { cols.Add(dm.MinusCol); vals.Add($":m{i}"); p.Add($"m{i}", val?.MinusTol, DbType.Decimal); }
+        }
+        for (var j = 0; j < def.DieCols.Count; j++)
+        {
+            cols.Add(def.DieCols[j]); vals.Add($":die{j}");
+            p.Add($"die{j}", j < body.Dies.Count ? body.Dies[j] : null, DbType.String);
+        }
+        await conn.ExecuteAsync(new CommandDefinition(
+            $"INSERT INTO {def.Table} ({string.Join(", ", cols)}) VALUES ({string.Join(", ", vals)})",
+            p, transaction: tx, cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
+        return await GetOrderItemShapeAsync(orderAbcNum, orderItemNum, ct);
+    }
+
+    private static decimal? Dec(IDictionary<string, object?>? row, string key) =>
+        row is not null && row.TryGetValue(key, out var v) && v is not null and not DBNull
+            ? Convert.ToDecimal(v) : null;
+
     public async Task WriteAuditAsync(string source, bool success, string? notes, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
