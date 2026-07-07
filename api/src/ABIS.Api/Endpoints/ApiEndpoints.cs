@@ -592,12 +592,14 @@ public static class ApiEndpoints
 
         api.MapPost("/coil-eval/skids/{sheetSkidNum:long}/dimension-checks", async (long sheetSkidNum, DimensionCheckWrite body, IAbisRepository repo, CancellationToken ct) =>
             {
+                if (Validate(body) is { } problems)
+                    return Results.ValidationProblem(problems);
                 var created = await repo.CreateDimensionCheckAsync(sheetSkidNum, body, ct);
                 return Results.Created($"/api/coil-eval/skids/{sheetSkidNum}/dimension-checks/{created.DimensionCheckNum}", created);
             })
            .WithName("CreateDimensionCheck").WithTags("CoilEval")
            .WithSummary("Record a dimensional QC check on a sheet-skid piece (in-spec pass/fail).")
-           .Produces<SheetSkidDimensionCheck>(StatusCodes.Status201Created);
+           .Produces<SheetSkidDimensionCheck>(StatusCodes.Status201Created).ProducesValidationProblem();
 
         api.MapGet("/coil-eval/jobs/{abJobNum:long}/eval-scrap", async (long abJobNum, IAbisRepository repo, CancellationToken ct) =>
                 Results.Ok(await repo.GetEvalScrapAsync(abJobNum, ct)))
@@ -1699,6 +1701,42 @@ public static class ApiEndpoints
             }
         }
         return e.Count == 0 ? null : e;
+    }
+
+    private static Dictionary<string, string[]>? Validate(DimensionCheckWrite body)
+    {
+        // Input hygiene for the dimensional QC gate (table sheet_skid_dimension_check).
+        // NOTE: the authoritative pass/fail — comparing each measured value to the skid's
+        // shape nominal ± tolerance — lives in the legacy binary DataWindow d_skid_dim_check
+        // and is NOT reconstructable from the vendored source; it is deferred to a
+        // live-Oracle-verified increment (see docs/NEXT_STEPS.md). Until then in_spec is a
+        // human-entered flag, so we at least refuse to record a garbage or empty check that
+        // the repository would silently default to in_spec=1 (pass).
+        var e = new Dictionary<string, string[]>();
+        Max(e, "checkedBy", body.CheckedBy, 30);
+        Max(e, "note", body.Note, 255);
+        // Require the auditor: a QC record with no "checked by" is not traceable.
+        Req(e, "checkedBy", body.CheckedBy);
+        // in_spec is a pass/fail flag: only 0 (fail) or 1 (pass) are meaningful.
+        if (body.InSpec is not (null or 0 or 1))
+            e["inSpec"] = ["inSpec must be 0 (fail) or 1 (pass)."];
+        // Don't record a blank check — at least one measurement must be present.
+        if (body.Gauge is null && body.Width is null && body.LengthOper is null &&
+            body.LengthDrive is null && body.Square is null && body.HeadDimension is null)
+            e["measurements"] = ["At least one measurement (gauge, width, lengthOper, lengthDrive, square, headDimension) is required."];
+        // A physical measurement can't be zero or negative.
+        Positive(e, "gauge", body.Gauge);
+        Positive(e, "width", body.Width);
+        Positive(e, "lengthOper", body.LengthOper);
+        Positive(e, "lengthDrive", body.LengthDrive);
+        Positive(e, "square", body.Square);
+        Positive(e, "headDimension", body.HeadDimension);
+        return e.Count == 0 ? null : e;
+    }
+
+    private static void Positive(Dictionary<string, string[]> e, string field, decimal? v)
+    {
+        if (v is { } d && d <= 0m) e[field] = [$"{field} must be greater than zero."];
     }
 
     private static Dictionary<string, string[]>? Validate(PartWrite body)

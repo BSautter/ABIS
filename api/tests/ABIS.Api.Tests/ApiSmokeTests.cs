@@ -151,6 +151,24 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Dimension_check_input_is_validated()
+    {
+        const string url = "/api/coil-eval/skids/3001/dimension-checks";
+        // Missing checkedBy (auditor) -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { width = 48.0 })).StatusCode);
+        // Blank check with no measurements would silently default to in_spec=1 (pass) -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { checkedBy = "qa" })).StatusCode);
+        // in_spec outside {0,1} -> 400; non-positive measurement -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { checkedBy = "qa", width = 48.0, inSpec = 5 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { checkedBy = "qa", width = 0.0 })).StatusCode);
+        // Valid fail record -> 201, and the entered in_spec (0) is honored (not defaulted to pass).
+        var ok = await _client.PostAsJsonAsync(url, new { checkedBy = "qa", pcNumber = 1, gauge = 0.125, width = 48.0, inSpec = 0 });
+        Assert.Equal(HttpStatusCode.Created, ok.StatusCode);
+        var created = await ok.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(0, created.GetProperty("inSpec").GetInt32());
+    }
+
+    [Fact]
     public async Task A_supplied_request_id_is_echoed()
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, "/health");

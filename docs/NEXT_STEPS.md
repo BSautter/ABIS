@@ -120,6 +120,17 @@ Dependencies: all three need #2 (OIDC/enforcement) first; #8's automation needs 
 engine; discovery for #6/#7 piggybacks the #1 DB access.
 
 ### Housekeeping / smaller open items
+- **Dimension-QC derived in-spec (needs live Oracle)** — the dimensional-check write
+  (`POST /api/coil-eval/skids/{n}/dimension-checks`) now enforces *input hygiene* only
+  (auditor required, at least one measurement, `in_spec ∈ {0,1}`, positive measurements;
+  see `Validate(DimensionCheckWrite)`). The **authoritative** pass/fail — each measured
+  value vs the skid's shape *nominal ± tolerance* — lived in the legacy binary DataWindow
+  `d_skid_dim_check`; the `.srw` (`legacy/src/da/w_dimensional_check_new_skid.srw`) has it
+  commented out, so the field→tolerance mapping (gauge/width/length_oper/length_drive/
+  square/head_dimension → which shape dim + sh_tolerance_plus/minus) is **not reconstructable
+  offline**. Verify the mapping against live Oracle, then compute `in_spec` server-side
+  instead of trusting the client. This is a silent-correctness gate (can pass out-of-spec
+  material) — treat above its size.
 - **WSC32/OPC full call inventory** — Phase 1 left this `[~]`: the integration *surface*
   is mapped ([`ARCHITECTURE.md`](ARCHITECTURE.md) §Integration surface) but the per-call
   catalog isn't extracted. Needs the PB source export.
