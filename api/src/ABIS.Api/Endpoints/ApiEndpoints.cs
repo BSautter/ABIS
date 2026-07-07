@@ -1406,15 +1406,22 @@ public static class ApiEndpoints
             {
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
+                // A transfer to the coil's *current* owner changes nothing but would still mint a
+                // certificate and write coil_from_cust_id = customer_id — reject the no-op. (Legacy
+                // required a new customer but didn't check it differed from the current owner.)
+                if (body.CoilAbcNumOrig is { } coilId && await repo.GetCoilAsync(coilId, ct) is { CustomerId: { } owner }
+                    && owner == body.CustomerIdNew)
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "No ownership change",
+                        detail: $"Coil {coilId} is already owned by customer {body.CustomerIdNew}; nothing to transfer.");
                 var created = await repo.CreateCoilOwnershipTransferAsync(body, ct);
                 return created is null
                     ? Results.NotFound(new { message = $"Coil {body.CoilAbcNumOrig} not found." })
                     : Results.Created($"/api/coil-ownership/transfers/{created.CertificateNum}/certificate", created);
             })
            .WithName("CreateCoilOwnershipTransfer").WithTags("CoilOwnership")
-           .WithSummary("Record a coil-ownership transfer (issues a certificate; re-points coil ownership).")
+           .WithSummary("Record a coil-ownership transfer (issues a certificate; re-points coil ownership). 409 if the new owner already owns the coil.")
            .Produces<CoilOwnershipTransfer>(StatusCodes.Status201Created)
-           .Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+           .Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
 
         // ---- Security / authorization (legacy security.pbl) ----
         api.MapGet("/security/users", async (IAbisRepository repo, CancellationToken ct) =>

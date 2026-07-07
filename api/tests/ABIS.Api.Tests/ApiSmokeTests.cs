@@ -227,6 +227,19 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Coil_transfer_to_current_owner_is_rejected()
+    {
+        // Seed coil 5002 is owned by customer 4001. Transferring it to 4001 is a no-op -> 409.
+        var noop = await _client.PostAsJsonAsync("/api/coil-ownership/transfers",
+            new { coilAbcNumOrig = 5002, customerIdNew = 4001 });
+        Assert.Equal(HttpStatusCode.Conflict, noop.StatusCode);
+        // A real change of owner (4001 -> 4002) is allowed and issues a certificate.
+        var real = await _client.PostAsJsonAsync("/api/coil-ownership/transfers",
+            new { coilAbcNumOrig = 5002, customerIdNew = 4002 });
+        Assert.Equal(HttpStatusCode.Created, real.StatusCode);
+    }
+
+    [Fact]
     public async Task A_supplied_request_id_is_echoed()
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, "/health");
