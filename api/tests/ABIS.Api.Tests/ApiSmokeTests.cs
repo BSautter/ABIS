@@ -99,6 +99,26 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Skid_tag_documents_render_printable_html_with_barcode()
+    {
+        var resp = await _client.GetAsync("/api/documents/sheet-skid/3001");
+        resp.EnsureSuccessStatusCode();
+        Assert.Equal("text/html", resp.Content.Headers.ContentType!.MediaType);
+        var html = await resp.Content.ReadAsStringAsync();
+        Assert.Contains("SHEET SKID TAG", html);
+        Assert.Contains("3001", html);
+        Assert.Contains("<svg", html);      // Code 39 barcode present
+        Assert.Contains("<rect", html);     // ...with rendered bars
+
+        var scrap = await _client.GetAsync("/api/documents/scrap-skid/8001");
+        scrap.EnsureSuccessStatusCode();
+        Assert.Contains("SCRAP SKID TAG", await scrap.Content.ReadAsStringAsync());
+
+        var missing = await _client.GetAsync("/api/documents/sheet-skid/999999");
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+    }
+
+    [Fact]
     public async Task A_supplied_request_id_is_echoed()
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, "/health");

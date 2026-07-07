@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ABIS Documents</title>
+<style>
+  :root { --bd:#d0d7de; --bg:#f6f8fa; --ac:#0969da; }
+  * { box-sizing: border-box; }
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 0; color: #1f2328; }
+  header { background:#24292f; color:#fff; padding:10px 16px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  header nav { display:flex; gap:12px; flex-wrap:wrap; }
+  header nav a { color:#9ecbff; text-decoration:none; }
+  header .key { margin-left:auto; display:flex; gap:6px; align-items:center; }
+  main { max-width:900px; margin:0 auto; padding:16px; display:grid; gap:16px; }
+  section { border:1px solid var(--bd); border-radius:8px; padding:14px; }
+  h2 { font-size:14px; margin:0 0 10px; text-transform:uppercase; letter-spacing:.04em; color:#57606a; }
+  label { font-size:12px; color:#57606a; }
+  input, select, button { font:inherit; padding:6px 8px; border:1px solid var(--bd); border-radius:6px; }
+  button { background:var(--ac); color:#fff; border-color:var(--ac); cursor:pointer; }
+  button.sec { background:#fff; color:#1f2328; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:end; }
+  .err { color:#cf222e; min-height:18px; }
+  iframe#doc { width:100%; height:520px; border:1px solid var(--bd); border-radius:6px; background:#fff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ABIS Documents <span style="font-size:12px;opacity:.7">greenfield · print layer</span></h1>
+  <nav>
+    <a href="/ui/order-entry.html">Order entry</a>
+    <a href="/ui/skids.html">Skids</a>
+    <a href="/ui/warehouse.html">Warehouse</a>
+    <a href="/ui/index.html">Home</a>
+  </nav>
+  <div class="key">
+    <label for="apiKey" style="color:#fff">X-Api-Key</label>
+    <input id="apiKey" placeholder="dev-local-key" style="width:160px" />
+  </div>
+</header>
+
+<main>
+  <section>
+    <h2>Document</h2>
+    <div class="row">
+      <div>
+        <label>Type</label><br />
+        <select id="type">
+          <option value="sheet-skid">Sheet skid tag</option>
+          <option value="scrap-skid">Scrap skid tag</option>
+        </select>
+      </div>
+      <div><label>Skid #</label><br /><input id="id" placeholder="e.g. 3001" style="width:120px" /></div>
+      <button id="btnLoad" type="button">Load</button>
+      <button id="btnPrint" type="button" class="sec">Print</button>
+    </div>
+    <div id="err" class="err"></div>
+  </section>
+
+  <section>
+    <h2>Preview</h2>
+    <iframe id="doc" title="document preview"></iframe>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const key = () => ($('apiKey').value || 'dev-local-key');
+const setErr = (m) => { $('err').textContent = m || ''; };
+
+async function load() {
+  setErr('');
+  const id = $('id').value.trim();
+  if (!id) { setErr('Enter a skid #.'); return; }
+  try {
+    const res = await fetch(`/api/documents/${$('type').value}/${encodeURIComponent(id)}`, { headers: { 'X-Api-Key': key() } });
+    if (res.status === 404) { setErr('No such skid.'); $('doc').srcdoc = ''; return; }
+    if (!res.ok) { setErr('Load failed: ' + res.status); return; }
+    $('doc').srcdoc = await res.text();
+  } catch (e) { setErr('Load failed: ' + e.message); }
+}
+
+$('btnLoad').addEventListener('click', load);
+$('btnPrint').addEventListener('click', () => { const f = $('doc'); if (f.srcdoc) f.contentWindow.print(); });
+</script>
+</body>
+</html>

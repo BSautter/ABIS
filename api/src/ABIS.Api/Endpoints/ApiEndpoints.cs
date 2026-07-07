@@ -1,4 +1,5 @@
 using Abis.Api.Data;
+using Abis.Api.Documents;
 using Abis.Api.Middleware;
 using Abis.Api.Models;
 using Abis.Api.Security;
@@ -1066,6 +1067,23 @@ public static class ApiEndpoints
            .WithName("GetSheetSkid").WithTags("Skids")
            .WithSummary("Get one sheet skid by id.")
            .Produces<SheetSkid>().Produces(StatusCodes.Status404NotFound);
+
+        // ---- Documents (server-rendered printable HTML; skid tags first) ----
+        api.MapGet("/documents/sheet-skid/{sheetSkidNum:long}", async (long sheetSkidNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetSheetSkidAsync(sheetSkidNum, ct) is { } skid
+                    ? Results.Content(HtmlDocuments.SheetSkidTag(skid), "text/html; charset=utf-8")
+                    : Results.NotFound())
+           .WithName("SheetSkidTag").WithTags("Documents")
+           .WithSummary("Printable sheet-skid tag (HTML with a Code 39 barcode).")
+           .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
+
+        api.MapGet("/documents/scrap-skid/{scrapSkidNum:long}", async (long scrapSkidNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetScrapSkidAsync(scrapSkidNum, ct) is { } skid
+                    ? Results.Content(HtmlDocuments.ScrapSkidTag(skid), "text/html; charset=utf-8")
+                    : Results.NotFound())
+           .WithName("ScrapSkidTag").WithTags("Documents")
+           .WithSummary("Printable scrap-skid tag (HTML with a Code 39 barcode).")
+           .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
 
         api.MapPost("/sheet-skids", async (SheetSkidWrite body, IAbisRepository repo, CancellationToken ct) =>
             {

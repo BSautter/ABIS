@@ -69,7 +69,8 @@ By domain (page → what it does):
   calculator), `customers`, `parts`, `accounting` (invoice coils), `shape-editor`
   (per-line/part blank geometry, dynamic per-shape form).
 - **Coils & inventory** — `coil-inventory`, `coil-ownership` (toll-transfer +
-  certificate), `receiving` (BOL + coil lines + mint), `skids`, `warehouse`.
+  certificate), `receiving` (BOL + coil lines + mint), `skids`, `warehouse`,
+  `documents` (server-rendered printable skid tags w/ barcode — the print layer).
 - **Shop floor** — `jobs`, `das-console` (w_da_sheet), `stacker` (line board + error
   log), `coil-eval` (QC sheet), `prod-folder`, `downtime`, `scan`, `shifts`.
 - **Quality** — `qa-results`, `quality` (recovery).
@@ -102,7 +103,7 @@ running API with `ABIS_BASE=… ABIS_KEY=… npm --prefix clientapp run e2e`.
 
 ```sh
 cd api
-dotnet test                                # 177 tests: repository + HTTP smoke
+dotnet test                                # 178 tests: repository + HTTP smoke
 ```
 
 The typed-client **e2e** suite (`clientapp/e2e/run.mjs`, **58 tests**) drives the
@@ -196,6 +197,8 @@ CI builds this image on every PR (see `.github/workflows/ci.yml`).
 | `PUT /api/customers/{customerId}` | Replace a customer |
 | `GET /api/sheet-skids?page&pageSize&sort&dir` | List finished sheet skids (paged, sortable) |
 | `GET /api/sheet-skids/{sheetSkidNum}` | One sheet skid |
+| `GET /api/documents/sheet-skid/{sheetSkidNum}` | Printable sheet-skid **tag** (HTML + Code 39 barcode) |
+| `GET /api/documents/scrap-skid/{scrapSkidNum}` | Printable scrap-skid **tag** (HTML + Code 39 barcode) |
 | `POST /api/sheet-skids` | Create a sheet skid (requires `abJobNum`) → 201 |
 | `GET /api/scrap-skids?page&pageSize&sort&dir` | List scrap skids (paged, sortable) |
 | `GET /api/scrap-skids/{scrapSkidNum}` | One scrap skid |
