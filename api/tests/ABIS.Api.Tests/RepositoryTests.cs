@@ -168,6 +168,29 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task PartShape_reads_and_upserts_dimensions_without_dies()
+    {
+        // Seed part 6001 is a RECTANGLE (60 x 30).
+        var shape = await _repo.GetPartShapeAsync(6001, CancellationToken.None);
+        Assert.NotNull(shape);
+        Assert.Equal("RECTANGLE", shape!.ShapeType);
+        Assert.Equal(60.0m, shape.Dimensions.Single(d => d.Name == "length").Value);
+        Assert.Equal(30.0m, shape.Dimensions.Single(d => d.Name == "width").Value);
+
+        // Upsert a CIRCLE onto part 6002; re-read confirms persistence.
+        var saved = await _repo.UpsertPartShapeAsync(6002,
+            new PartShapeWrite { ShapeType = "CIRCLE", Dimensions = { new ShapeDimension { Name = "diameter", Value = 20.0m, PlusTol = 0.1m } } },
+            CancellationToken.None);
+        Assert.Equal("CIRCLE", saved!.ShapeType);
+        var reread = await _repo.GetPartShapeAsync(6002, CancellationToken.None);
+        Assert.Equal(20.0m, reread!.Dimensions.Single(d => d.Name == "diameter").Value);
+
+        // Unknown shape -> null (endpoint 400); unknown part -> null (404).
+        Assert.Null(await _repo.UpsertPartShapeAsync(6001, new PartShapeWrite { ShapeType = "NOPE" }, CancellationToken.None));
+        Assert.Null(await _repo.GetPartShapeAsync(999999, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task GetTestResults_filters_by_type_and_orders_desc()
     {
         var all = await _repo.GetTestResultsAsync(1, 25, testType: null, position: null, from: null, to: null, orderBy: null, CancellationToken.None);

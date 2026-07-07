@@ -33,6 +33,16 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS right_trapezoid;
             DROP TABLE IF EXISTS reinforcement;
             DROP TABLE IF EXISTS liftgate_shape;
+            DROP TABLE IF EXISTS part_num_rectangle;
+            DROP TABLE IF EXISTS part_num_circle;
+            DROP TABLE IF EXISTS part_num_chevron;
+            DROP TABLE IF EXISTS part_num_fender;
+            DROP TABLE IF EXISTS part_num_parallelogram;
+            DROP TABLE IF EXISTS part_num_trapezoid;
+            DROP TABLE IF EXISTS part_num_left_trapezoid;
+            DROP TABLE IF EXISTS part_num_right_trapezoid;
+            DROP TABLE IF EXISTS part_num_reinforcement;
+            DROP TABLE IF EXISTS part_num_liftgate;
             DROP TABLE IF EXISTS pst_test_result;
             DROP TABLE IF EXISTS customer;
             DROP TABLE IF EXISTS sheet_skid;
@@ -158,6 +168,28 @@ public static class SqliteFixture
             CREATE TABLE liftgate_shape (order_item_num INTEGER, order_abc_num INTEGER,
                 li_width REAL, li_width_plus REAL, li_width_minus REAL, li_length REAL, li_length_plus REAL, li_length_minus REAL,
                 li_die1 TEXT, li_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
+
+            -- Part-master geometry: same dimensions per shape, keyed by part_num_id, no dies.
+            CREATE TABLE part_num_rectangle (part_num_id INTEGER PRIMARY KEY,
+                rt_length REAL, rt_length_plus REAL, rt_length_minus REAL, rt_width REAL, rt_width_plus REAL, rt_width_minus REAL);
+            CREATE TABLE part_num_circle (part_num_id INTEGER PRIMARY KEY,
+                c_diameter REAL, c_diameter_plus REAL, c_diameter_minus REAL);
+            CREATE TABLE part_num_chevron (part_num_id INTEGER PRIMARY KEY,
+                ch_length REAL, ch_length_plus REAL, ch_length_minus REAL, ch_width REAL, ch_width_plus REAL, ch_width_minus REAL);
+            CREATE TABLE part_num_fender (part_num_id INTEGER PRIMARY KEY,
+                fe_side REAL, fe_side_plus REAL, fe_side_minus REAL, fe_length REAL, fe_length_plus REAL, fe_length_minus REAL);
+            CREATE TABLE part_num_parallelogram (part_num_id INTEGER PRIMARY KEY,
+                p_length REAL, p_length_plus REAL, p_length_minus REAL, p_width REAL, p_width_plus REAL, p_width_minus REAL, p_angle1 REAL, p_angle2 REAL);
+            CREATE TABLE part_num_trapezoid (part_num_id INTEGER PRIMARY KEY,
+                tr_long_length REAL, tr_long_plus REAL, tr_long_minus REAL, tr_short_length REAL, tr_short_plus REAL, tr_short_minus REAL, tr_width REAL, tr_width_plus REAL, tr_width_minus REAL);
+            CREATE TABLE part_num_left_trapezoid (part_num_id INTEGER PRIMARY KEY,
+                ltr_long_length REAL, ltr_long_plus REAL, ltr_long_minus REAL, ltr_short_length REAL, ltr_short_plus REAL, ltr_short_minus REAL, ltr_width REAL, ltr_width_plus REAL, ltr_width_minus REAL);
+            CREATE TABLE part_num_right_trapezoid (part_num_id INTEGER PRIMARY KEY,
+                rtr_long_length REAL, rtr_long_plus REAL, rtr_long_minus REAL, rtr_short_length REAL, rtr_short_plus REAL, rtr_short_minus REAL, rtr_width REAL, rtr_width_plus REAL, rtr_width_minus REAL);
+            CREATE TABLE part_num_reinforcement (part_num_id INTEGER PRIMARY KEY,
+                re_width REAL, re_width_plus REAL, re_width_minus REAL, re_length REAL, re_length_plus REAL, re_length_minus REAL);
+            CREATE TABLE part_num_liftgate (part_num_id INTEGER PRIMARY KEY,
+                li_width REAL, li_width_plus REAL, li_width_minus REAL, li_length REAL, li_length_plus REAL, li_length_minus REAL);
 
             -- Posted mechanical test results. The real PK is the composite
             -- (coil_abc_num, position, created_date, source_id) per oracle_ddl.sql;
@@ -451,10 +483,15 @@ public static class SqliteFixture
             """,
             new[]
             {
-                new { PartNumId = 6001L, CustomerId = (long?)4001L, EnduserId = (long?)null, EnduserPartNum = "PN-3003-A", SheetType = "SHEET", Alloy = "3003", Temper = "H14", Gauge = (decimal?)0.125m, ItemStatus = (int?)1 },
+                new { PartNumId = 6001L, CustomerId = (long?)4001L, EnduserId = (long?)null, EnduserPartNum = "PN-3003-A", SheetType = "RECTANGLE", Alloy = "3003", Temper = "H14", Gauge = (decimal?)0.125m, ItemStatus = (int?)1 },
                 new { PartNumId = 6002L, CustomerId = (long?)4001L, EnduserId = (long?)null, EnduserPartNum = "PN-5052-B", SheetType = "SHEET", Alloy = "5052", Temper = "H32", Gauge = (decimal?)0.0625m, ItemStatus = (int?)1 },
                 new { PartNumId = 6003L, CustomerId = (long?)4002L, EnduserId = (long?)null, EnduserPartNum = "PN-3003-C", SheetType = "PLATE", Alloy = "3003", Temper = "H14", Gauge = (decimal?)0.25m, ItemStatus = (int?)0 }
             });
+
+        // Blank geometry for the RECTANGLE seed part (6001).
+        conn.Execute(
+            "INSERT INTO part_num_rectangle (part_num_id, rt_length, rt_length_plus, rt_length_minus, rt_width, rt_width_plus, rt_width_minus) " +
+            "VALUES (6001, 60.0, 0.02, 0.02, 30.0, 0.02, 0.02)");
 
         conn.Execute("""
             INSERT INTO die (die_id, die_name, owner, status, tool_num, part_name, gross_weight, location, description,

@@ -802,6 +802,99 @@ public sealed class AbisRepository : IAbisRepository
         row is not null && row.TryGetValue(key, out var v) && v is not null and not DBNull
             ? Convert.ToDecimal(v) : null;
 
+    // Part-master geometry — the same shapes/dimensions as the order-item level, but keyed by
+    // part_num_id (single key) in the PART_NUM_* tables, with no die columns.
+
+    public async Task<PartShape?> GetPartShapeAsync(long partNumId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM part_num WHERE part_num_id = :id", new { id = partNumId }, cancellationToken: ct));
+        if (exists == 0) return null;
+
+        var sheetType = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
+            "SELECT sheet_type FROM part_num WHERE part_num_id = :id", new { id = partNumId }, cancellationToken: ct));
+        var shape = new PartShape { PartNumId = partNumId, ShapeType = (sheetType ?? "").Trim().ToUpperInvariant() };
+
+        var def = ShapeGeometry.Resolve(sheetType);
+        if (def is null) return shape;
+        shape.ShapeType = def.ShapeType;
+
+        var select = new List<string>();
+        for (var i = 0; i < def.Dims.Count; i++)
+        {
+            var dm = def.Dims[i];
+            select.Add($"{dm.ValueCol} AS v{i}");
+            if (dm.PlusCol is not null) select.Add($"{dm.PlusCol} AS p{i}");
+            if (dm.MinusCol is not null) select.Add($"{dm.MinusCol} AS m{i}");
+        }
+        var raw = await conn.QueryFirstOrDefaultAsync(new CommandDefinition(
+            $"SELECT {string.Join(", ", select)} FROM {def.PartTable} WHERE part_num_id = :id",
+            new { id = partNumId }, cancellationToken: ct));
+        IDictionary<string, object?>? row = null;
+        if (raw is not null)
+        {
+            row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in (IDictionary<string, object>)raw) row[kv.Key] = kv.Value;
+        }
+        for (var i = 0; i < def.Dims.Count; i++)
+        {
+            var dm = def.Dims[i];
+            shape.Dimensions.Add(new ShapeDimension
+            {
+                Name = dm.Name,
+                Value = Dec(row, $"v{i}"),
+                PlusTol = dm.PlusCol is null ? null : Dec(row, $"p{i}"),
+                MinusTol = dm.MinusCol is null ? null : Dec(row, $"m{i}"),
+            });
+        }
+        return shape;
+    }
+
+    public async Task<PartShape?> UpsertPartShapeAsync(long partNumId, PartShapeWrite body, CancellationToken ct)
+    {
+        var def = ShapeGeometry.Resolve(body.ShapeType);
+        if (def is null) return null;                       // unknown shape → endpoint returns 400
+
+        await using var conn = await OpenAsync(ct);
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM part_num WHERE part_num_id = :id", new { id = partNumId }, cancellationToken: ct));
+        if (exists == 0) return null;                       // no such part → 404
+        var current = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
+            "SELECT sheet_type FROM part_num WHERE part_num_id = :id", new { id = partNumId }, cancellationToken: ct));
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE part_num SET sheet_type = :st WHERE part_num_id = :id",
+            new { st = def.ShapeType, id = partNumId }, transaction: tx, cancellationToken: ct));
+
+        var oldDef = ShapeGeometry.Resolve(current);
+        if (oldDef is not null && !string.Equals(oldDef.PartTable, def.PartTable, StringComparison.OrdinalIgnoreCase))
+            await conn.ExecuteAsync(new CommandDefinition(
+                $"DELETE FROM {oldDef.PartTable} WHERE part_num_id = :id", new { id = partNumId }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            $"DELETE FROM {def.PartTable} WHERE part_num_id = :id", new { id = partNumId }, transaction: tx, cancellationToken: ct));
+
+        var cols = new List<string> { "part_num_id" };
+        var vals = new List<string> { ":id" };
+        var p = new DynamicParameters();
+        p.Add("id", partNumId);
+        for (var i = 0; i < def.Dims.Count; i++)
+        {
+            var dm = def.Dims[i];
+            var val = body.Dimensions.FirstOrDefault(x => string.Equals(x.Name, dm.Name, StringComparison.OrdinalIgnoreCase));
+            cols.Add(dm.ValueCol); vals.Add($":v{i}"); p.Add($"v{i}", val?.Value, DbType.Decimal);
+            if (dm.PlusCol is not null) { cols.Add(dm.PlusCol); vals.Add($":p{i}"); p.Add($"p{i}", val?.PlusTol, DbType.Decimal); }
+            if (dm.MinusCol is not null) { cols.Add(dm.MinusCol); vals.Add($":m{i}"); p.Add($"m{i}", val?.MinusTol, DbType.Decimal); }
+        }
+        await conn.ExecuteAsync(new CommandDefinition(
+            $"INSERT INTO {def.PartTable} ({string.Join(", ", cols)}) VALUES ({string.Join(", ", vals)})",
+            p, transaction: tx, cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
+        return await GetPartShapeAsync(partNumId, ct);
+    }
+
     public async Task WriteAuditAsync(string source, bool success, string? notes, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

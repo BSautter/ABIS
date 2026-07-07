@@ -79,6 +79,26 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Part_shape_geometry_round_trips_over_http()
+    {
+        // Seed part 6001 is a RECTANGLE.
+        var get = await _client.GetFromJsonAsync<JsonElement>("/api/parts/6001/shape");
+        Assert.Equal("RECTANGLE", get.GetProperty("shapeType").GetString());
+
+        var put = await _client.PutAsJsonAsync("/api/parts/6002/shape", new
+        {
+            shapeType = "CIRCLE",
+            dimensions = new[] { new { name = "diameter", value = 18.0, plusTol = 0.1, minusTol = 0.1 } },
+        });
+        put.EnsureSuccessStatusCode();
+        var saved = await put.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("CIRCLE", saved.GetProperty("shapeType").GetString());
+
+        var missing = await _client.GetAsync("/api/parts/999999/shape");
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+    }
+
+    [Fact]
     public async Task A_supplied_request_id_is_echoed()
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, "/health");

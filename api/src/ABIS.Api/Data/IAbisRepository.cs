@@ -138,6 +138,9 @@ public interface IAbisRepository
     Task<Part?> GetPartAsync(long partNumId, CancellationToken ct);
     Task<Part> CreatePartAsync(PartWrite body, CancellationToken ct);
     Task<Part?> UpdatePartAsync(long partNumId, PartWrite body, CancellationToken ct);
+    // Part-master blank geometry (PART_NUM_* dimension tables; dimensions only, no dies).
+    Task<PartShape?> GetPartShapeAsync(long partNumId, CancellationToken ct);
+    Task<PartShape?> UpsertPartShapeAsync(long partNumId, PartShapeWrite body, CancellationToken ct);
     Task<PagedResult<Die>> GetDiesAsync(int page, int pageSize, int? status, string? orderBy, CancellationToken ct);
     Task<Die?> GetDieAsync(long dieId, CancellationToken ct);
     Task<Die> CreateDieAsync(DieWrite body, CancellationToken ct);

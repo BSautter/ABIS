@@ -101,7 +101,7 @@ running API with `ABIS_BASE=… ABIS_KEY=… npm --prefix clientapp run e2e`.
 
 ```sh
 cd api
-dotnet test                                # 174 tests: repository + HTTP smoke
+dotnet test                                # 176 tests: repository + HTTP smoke
 ```
 
 The typed-client **e2e** suite (`clientapp/e2e/run.mjs`, **58 tests**) drives the
@@ -204,6 +204,8 @@ CI builds this image on every PR (see `.github/workflows/ci.yml`).
 | `GET /api/parts/{partNumId}` | One part-number record |
 | `POST /api/parts` | Create a part-number record (requires `customerId`) → 201 |
 | `PUT /api/parts/{partNumId}` | Replace a part-number record |
+| `GET /api/parts/{partNumId}/shape` | A part-master's blank geometry (shape dimensions; no dies) |
+| `PUT /api/parts/{partNumId}/shape` | Set a part-master's shape geometry (upsert; aligns `sheet_type`; 400 on unknown shape) |
 | `GET /api/dies?page&pageSize&status&sort&dir` | List dies/tooling (paged, filterable, sortable) |
 | `GET /api/dies/{dieId}` | One die |
 | `POST /api/dies` | Create a die/tooling record (requires `dieName`) → 201 |

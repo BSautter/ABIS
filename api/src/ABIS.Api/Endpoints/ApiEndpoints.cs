@@ -366,6 +366,30 @@ public static class ApiEndpoints
            .WithSummary("Replace a part-number record. Supports If-Match.")
            .Produces<Part>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status412PreconditionFailed).ProducesValidationProblem();
 
+        // Part-master blank geometry (same shapes as order items; dimensions only, no dies).
+        api.MapGet("/parts/{partNumId:long}/shape", async (long partNumId, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetPartShapeAsync(partNumId, ct) is { } shape
+                    ? Results.Ok(shape)
+                    : Results.NotFound())
+           .WithName("GetPartShape").WithTags("Parts")
+           .WithSummary("Get a part-master's blank geometry — the shape's dimensions (value + tolerances).")
+           .Produces<PartShape>().Produces(StatusCodes.Status404NotFound);
+
+        api.MapPut("/parts/{partNumId:long}/shape", async (long partNumId, PartShapeWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (ShapeGeometry.Resolve(body.ShapeType) is null)
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["shapeType"] = [$"Unknown shape type '{body.ShapeType}'. See /api/lookups/shape-types."],
+                    });
+                return await repo.UpsertPartShapeAsync(partNumId, body, ct) is { } saved
+                    ? Results.Ok(saved)
+                    : Results.NotFound();
+            })
+           .WithName("PutPartShape").WithTags("Parts")
+           .WithSummary("Set a part-master's blank geometry for its shape (upsert; aligns the part's sheet_type).")
+           .Produces<PartShape>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
         // ---- Dies (die / tooling) --------------------------------------
         api.MapGet("/dies", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, int? status = null, string? sort = null, string? dir = null) =>

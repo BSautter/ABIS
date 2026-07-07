@@ -38,6 +38,23 @@ public sealed class OrderItemShapeWrite
     public List<string?> Dies { get; set; } = [];
 }
 
+/// <summary>The geometry of a part-master record: its shape and that shape's dimensions.
+/// Part-master shapes carry no dies (dies are assigned per order line, not per part).</summary>
+public sealed class PartShape
+{
+    public long PartNumId { get; set; }
+    public string ShapeType { get; set; } = "";
+    public List<ShapeDimension> Dimensions { get; set; } = [];
+}
+
+/// <summary>Write DTO for a part-master shape (PUT). <see cref="ShapeType"/> selects the target
+/// PART_NUM_* table; dimensions are matched to columns by <see cref="ShapeDimension.Name"/>.</summary>
+public sealed class PartShapeWrite
+{
+    public string? ShapeType { get; set; }
+    public List<ShapeDimension> Dimensions { get; set; } = [];
+}
+
 /// <summary>Catalog entry for a shape (behind <c>/lookups/shape-types</c>): its name, the
 /// dimension schema (names + whether each carries a tolerance), and how many dies it takes —
 /// enough to render a dynamic per-shape form.</summary>
