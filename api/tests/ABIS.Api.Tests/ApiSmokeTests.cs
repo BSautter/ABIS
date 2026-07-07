@@ -120,6 +120,15 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
         Assert.Contains("COIL ABC LABEL", coilHtml);
         Assert.Contains("5001", coilHtml);
 
+        // Coil-ownership transfer certificate (seeded cert 8001, customers 4001 -> 4002).
+        var cert = await _client.GetAsync("/api/documents/transfer-certificate/8001");
+        cert.EnsureSuccessStatusCode();
+        var certHtml = await cert.Content.ReadAsStringAsync();
+        Assert.Contains("CERTIFICATE OF COIL OWNERSHIP TRANSFER", certHtml);
+        Assert.Contains("Certificate #8001", certHtml);
+        Assert.Contains("<rect", certHtml);   // barcode of the certificate number
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/documents/transfer-certificate/999999")).StatusCode);
+
         var noDoc = await _client.GetAsync("/api/documents/sheet-skid/999999");
         Assert.Equal(HttpStatusCode.NotFound, noDoc.StatusCode);
     }

@@ -1144,6 +1144,14 @@ public static class ApiEndpoints
            .WithSummary("Printable coil ABC label (HTML with a Code 39 barcode) — the coil-receiving scanner tag.")
            .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
 
+        api.MapGet("/documents/transfer-certificate/{certificateNum:long}", async (long certificateNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetCoilOwnershipTransferCertificateAsync(certificateNum, ct) is { } cert
+                    ? Results.Content(HtmlDocuments.TransferCertificate(cert), "text/html; charset=utf-8")
+                    : Results.NotFound())
+           .WithName("TransferCertificate").WithTags("Documents")
+           .WithSummary("Printable coil-ownership transfer certificate (toll-processing document) as HTML.")
+           .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
+
         api.MapPost("/sheet-skids", async (SheetSkidWrite body, IAbisRepository repo, CancellationToken ct) =>
             {
                 if (Validate(body) is { } problems)
