@@ -437,13 +437,18 @@ public static class ApiEndpoints
                     {
                         ["shapeType"] = [$"Unknown shape type '{body.ShapeType}'. See /api/lookups/shape-types."],
                     });
+                // Same modify-in-use guard as the part record: geometry of an applied part is
+                // frozen (legacy w_part_num_management modifies the whole part or not at all).
+                if (await repo.IsPartInUseAsync(partNumId, ct))
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Part in use",
+                        detail: "Can't modify this part's geometry because it has already been applied to one or more orders. Create a revision instead.");
                 return await repo.UpsertPartShapeAsync(partNumId, body, ct) is { } saved
                     ? Results.Ok(saved)
                     : Results.NotFound();
             })
            .WithName("PutPartShape").WithTags("Parts")
-           .WithSummary("Set a part-master's blank geometry for its shape (upsert; aligns the part's sheet_type).")
-           .Produces<PartShape>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+           .WithSummary("Set a part-master's blank geometry for its shape (upsert; aligns the part's sheet_type; 409 if the part is applied to any order).")
+           .Produces<PartShape>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
 
         // ---- Dies (die / tooling) --------------------------------------
         api.MapGet("/dies", async (IAbisRepository repo, CancellationToken ct,
