@@ -7,6 +7,10 @@
 Consolidated from 196 verified parity findings across seven surfaces. Every legacy path below is real and the greenfield state was grep-verified in the source findings. Ordered within each surface by severity, then **missing before partial**, then **core before nice-to-have**.
 
 > **Build progress — 2026-07-07:** Root cause #1 (shape geometry) — **built end-to-end** at both levels. A uniform shape model + registry (`api/src/ABIS.Api/Data/ShapeGeometry.cs`) reads/writes all 10 per-shape dimension tables at the **order-item** level (`GET/PUT /api/orders/{o}/items/{i}/shape`, with dies) and the **part-master** level (`GET/PUT /api/parts/{id}/shape`, no dies), plus a `GET /api/lookups/shape-types` catalog and a dynamic **UI** (`/ui/shape-editor.html`, browser-verified). 176 tests green. Remaining for #1: wiring the captured geometry into the calculator/invoice/QC surfaces — done as each of those surfaces is built.
+>
+> **Customer master widened (`9f9ee99`):** `CustomerWrite` 5→36 fields incl. the 14 EDI/behavior control flags (`edi_req`, `create_861_at_receiving`, `plant_code`, …) — unblocks the 861-EDI gate.
+>
+> **Document/print layer started (`f3bd80a`, root cause #2):** dependency-free server-side HTML renderer (`Documents/HtmlDocuments`) with print CSS + inline Code 39 barcode, at `GET /api/documents/{sheet-skid,scrap-skid}/{id}` + `/ui/documents.html`. First documents = skid tags (browser/HTTP-verified). Reusable base for invoices/BOLs/certs.
 
 **Severity key**
 - **C — Critical:** a core business/operational function that is absent or hollow; blocks a whole workflow or the ability to run the plant/business.
