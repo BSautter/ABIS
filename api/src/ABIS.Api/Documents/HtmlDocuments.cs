@@ -54,6 +54,29 @@ public static class HtmlDocuments
         return Doc($"Scrap Skid {s.ScrapSkidNum}", body);
     }
 
+    /// <summary>A coil ABC label — the tag that rides an inbound/processed coil (the label
+    /// the legacy coil-receiving scanner prints to the Zebra printer).</summary>
+    public static string CoilLabel(Coil c)
+    {
+        var body = $"""
+            <div class="tag">
+              <div class="tagHead"><span class="brand">ALUMINUM BLANKING CO.</span><span class="kind">COIL ABC LABEL</span></div>
+              <div class="big">{c.CoilAbcNum}</div>
+              {Barcode(c.CoilAbcNum.ToString())}
+              <table class="kv">
+                <tr><th>ABC #</th><td>{c.CoilAbcNum}</td><th>Org #</th><td>{Esc(c.CoilOrgNum) ?? "—"}</td></tr>
+                <tr><th>Lot #</th><td>{Esc(c.LotNum) ?? "—"}</td><th>Mill id</th><td>{Esc(c.CoilMidNum) ?? "—"}</td></tr>
+                <tr><th>Alloy</th><td>{Esc(c.CoilAlloy2) ?? "—"}</td><th>Temper</th><td>{Esc(c.CoilTemper) ?? "—"}</td></tr>
+                <tr><th>Gauge</th><td>{Num(c.CoilGauge)}</td><th>Width</th><td>{Num(c.CoilWidth)}</td></tr>
+                <tr><th>Net wt</th><td>{Wt(c.NetWt)}</td><th>Balance</th><td>{Wt(c.NetWtBalance)}</td></tr>
+                <tr><th>Customer</th><td>{Opt(c.CustomerId)}</td><th>Location</th><td>{Esc(c.CoilLocation) ?? "—"}</td></tr>
+                <tr><th>Received</th><td>{Dt(c.DateReceived)}</td><th>Status</th><td>{Opt(c.CoilStatus)}</td></tr>
+              </table>
+            </div>
+            """;
+        return Doc($"Coil {c.CoilAbcNum}", body);
+    }
+
     // ---- shared rendering -------------------------------------------------
 
     private static string Doc(string title, string body) => $$"""
@@ -106,6 +129,7 @@ public static class HtmlDocuments
     }
 
     private static string Wt(decimal? v) => v is null ? "—" : $"{v.Value:0.#} lb";
+    private static string Num(decimal? v) => v?.ToString("0.####") ?? "—";
     private static string Dt(DateTime? d) => d?.ToString("yyyy-MM-dd") ?? "—";
     private static string Opt(object? v) => v?.ToString() ?? "—";
     private static string? Esc(string? s) => s is null ? null : s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");

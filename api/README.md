@@ -199,6 +199,7 @@ CI builds this image on every PR (see `.github/workflows/ci.yml`).
 | `GET /api/sheet-skids/{sheetSkidNum}` | One sheet skid |
 | `GET /api/documents/sheet-skid/{sheetSkidNum}` | Printable sheet-skid **tag** (HTML + Code 39 barcode) |
 | `GET /api/documents/scrap-skid/{scrapSkidNum}` | Printable scrap-skid **tag** (HTML + Code 39 barcode) |
+| `GET /api/documents/coil-label/{coilAbcNum}` | Printable coil **ABC label** (HTML + Code 39 barcode) — the scanner tag |
 | `POST /api/sheet-skids` | Create a sheet skid (requires `abJobNum`) → 201 |
 | `GET /api/scrap-skids?page&pageSize&sort&dir` | List scrap skids (paged, sortable) |
 | `GET /api/scrap-skids/{scrapSkidNum}` | One scrap skid |

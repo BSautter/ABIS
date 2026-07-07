@@ -114,6 +114,12 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
         scrap.EnsureSuccessStatusCode();
         Assert.Contains("SCRAP SKID TAG", await scrap.Content.ReadAsStringAsync());
 
+        var coil = await _client.GetAsync("/api/documents/coil-label/5001");
+        coil.EnsureSuccessStatusCode();
+        var coilHtml = await coil.Content.ReadAsStringAsync();
+        Assert.Contains("COIL ABC LABEL", coilHtml);
+        Assert.Contains("5001", coilHtml);
+
         var missing = await _client.GetAsync("/api/documents/sheet-skid/999999");
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
     }

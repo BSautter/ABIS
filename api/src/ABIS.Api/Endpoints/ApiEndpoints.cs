@@ -1085,6 +1085,14 @@ public static class ApiEndpoints
            .WithSummary("Printable scrap-skid tag (HTML with a Code 39 barcode).")
            .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
 
+        api.MapGet("/documents/coil-label/{coilAbcNum:long}", async (long coilAbcNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetCoilAsync(coilAbcNum, ct) is { } coil
+                    ? Results.Content(HtmlDocuments.CoilLabel(coil), "text/html; charset=utf-8")
+                    : Results.NotFound())
+           .WithName("CoilLabel").WithTags("Documents")
+           .WithSummary("Printable coil ABC label (HTML with a Code 39 barcode) — the coil-receiving scanner tag.")
+           .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
+
         api.MapPost("/sheet-skids", async (SheetSkidWrite body, IAbisRepository repo, CancellationToken ct) =>
             {
                 if (Validate(body) is { } problems)
