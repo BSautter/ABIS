@@ -168,6 +168,39 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
         Assert.Equal(0, created.GetProperty("inSpec").GetInt32());
     }
 
+    // Post the given body with the API key plus an optional X-User-Login (simulates an OIDC
+    // end-user for the security gate; null = pure API-key service account).
+    private async Task<HttpResponseMessage> PostAsUser(string? login, string url, object body)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(body) };
+        if (login is not null) req.Headers.Add("X-User-Login", login);
+        return await _client.SendAsync(req);
+    }
+
+    [Fact]
+    public async Task Domain_write_endpoints_enforce_feature_gate()
+    {
+        // Intentionally INVALID body (missing required sheetType): a caller past the gate
+        // gets 400 at validation and NO row is created — keeps this test free of side effects
+        // on order 9001, which other tests count.
+        object badItem() => new { enduserPartNum = "PN-GATE" };
+        // jsmith holds Write on "Order Entry" (direct grant) -> gate lets it through (then 400).
+        Assert.NotEqual(HttpStatusCode.Forbidden, (await PostAsUser("jsmith", "/api/orders/9001/items", badItem())).StatusCode);
+        // mlee has only "User Control"; no "Order Entry" grant -> gated 403 before the handler.
+        Assert.Equal(HttpStatusCode.Forbidden, (await PostAsUser("mlee", "/api/orders/9001/items", badItem())).StatusCode);
+        // No X-User-Login = API-key service account -> bypasses the gate (rollout policy).
+        Assert.NotEqual(HttpStatusCode.Forbidden, (await PostAsUser(null, "/api/orders/9001/items", badItem())).StatusCode);
+
+        // A different feature: coils gate on "Inventory(Coil)". mlee lacks it -> 403 at the gate,
+        // before the handler, so nothing is inserted regardless of the body.
+        Assert.Equal(HttpStatusCode.Forbidden, (await PostAsUser("mlee", "/api/coils", new { coilOrgNum = "ORG-GATE" })).StatusCode);
+
+        // A read (GET) is never gated, even for a user (mlee) with no grant on that feature.
+        var getReq = new HttpRequestMessage(HttpMethod.Get, "/api/orders");
+        getReq.Headers.Add("X-User-Login", "mlee");
+        Assert.NotEqual(HttpStatusCode.Forbidden, (await _client.SendAsync(getReq)).StatusCode);
+    }
+
     [Fact]
     public async Task A_supplied_request_id_is_echoed()
     {

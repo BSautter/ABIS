@@ -967,13 +967,34 @@ public static class SqliteFixture
             });
 
         // ---- Security / authorization ----
+        // The protected-feature catalog uses the legacy-authoritative application_name values
+        // that f_security_door checks (see legacy/src/security/f_security_door.srf and the
+        // f_security_door("…") call sites across legacy/src). Ids 1-3 predate this and keep
+        // their grants; app 2 was renamed "Coil Inventory" -> "Inventory(Coil)" to match legacy.
         conn.Execute(
             "INSERT INTO security_application (application_id, application_name, application_notes) VALUES (:ApplicationId, :ApplicationName, :ApplicationNotes)",
             new[]
             {
-                new { ApplicationId = 1L, ApplicationName = "Order Entry", ApplicationNotes = "Create/edit orders" },
-                new { ApplicationId = 2L, ApplicationName = "Coil Inventory", ApplicationNotes = "Coil inventory screen" },
-                new { ApplicationId = 3L, ApplicationName = "User Control", ApplicationNotes = "Manage users/groups" }
+                new { ApplicationId = 1L, ApplicationName = "Order Entry", ApplicationNotes = "Create/edit orders, parts picker, customers" },
+                new { ApplicationId = 2L, ApplicationName = "Inventory(Coil)", ApplicationNotes = "Coil inventory screen" },
+                new { ApplicationId = 3L, ApplicationName = "User Control", ApplicationNotes = "Manage users" },
+                new { ApplicationId = 4L, ApplicationName = "Part Number", ApplicationNotes = "Part master" },
+                new { ApplicationId = 5L, ApplicationName = "Inventory(Skid)", ApplicationNotes = "Sheet-skid inventory" },
+                new { ApplicationId = 6L, ApplicationName = "Warehouse", ApplicationNotes = "Warehouse business" },
+                new { ApplicationId = 7L, ApplicationName = "Shipment(Receiving)", ApplicationNotes = "Inbound coil receiving" },
+                new { ApplicationId = 8L, ApplicationName = "Quality Control", ApplicationNotes = "Coil-eval / dimensional QC" },
+                new { ApplicationId = 9L, ApplicationName = "Shift Control", ApplicationNotes = "Shift lifecycle" },
+                new { ApplicationId = 10L, ApplicationName = "Maintenance_logs", ApplicationNotes = "Maintenance logs" },
+                new { ApplicationId = 11L, ApplicationName = "Production Control", ApplicationNotes = "Jobs / production floor" },
+                new { ApplicationId = 12L, ApplicationName = "Part Number Info", ApplicationNotes = "Part info (read)" },
+                new { ApplicationId = 13L, ApplicationName = "User Group Control", ApplicationNotes = "Manage groups" },
+                new { ApplicationId = 14L, ApplicationName = "Scrap Handling", ApplicationNotes = "Scrap skids" },
+                new { ApplicationId = 15L, ApplicationName = "EDI", ApplicationNotes = "EDI transactions" },
+                new { ApplicationId = 16L, ApplicationName = "Downtime report", ApplicationNotes = "Downtime" },
+                new { ApplicationId = 17L, ApplicationName = "Maintenance", ApplicationNotes = "Maintenance main" },
+                new { ApplicationId = 18L, ApplicationName = "Maintenance_parts", ApplicationNotes = "Maintenance parts" },
+                new { ApplicationId = 19L, ApplicationName = "Maintenance_pm", ApplicationNotes = "Preventive maintenance" },
+                new { ApplicationId = 20L, ApplicationName = "Maintenance_pms", ApplicationNotes = "PM schedules" }
             });
         conn.Execute(
             "INSERT INTO security_group (user_group_id, group_name, group_notes) VALUES (:UserGroupId, :GroupName, :GroupNotes)",

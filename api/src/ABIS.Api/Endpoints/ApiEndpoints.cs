@@ -3,7 +3,9 @@ using Abis.Api.Documents;
 using Abis.Api.Middleware;
 using Abis.Api.Models;
 using Abis.Api.Security;
+using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using JsonOptions = Microsoft.AspNetCore.Http.Json.JsonOptions;
 
@@ -16,6 +18,31 @@ namespace Abis.Api.Endpoints;
 /// and client codegen (NSwag / openapi-generator) produces real models.</summary>
 public static class ApiEndpoints
 {
+    /// <summary>Maps a modern endpoint tag → the legacy security feature name that
+    /// <c>f_security_door</c> checks (see <c>legacy/src/security/f_security_door.srf</c>).
+    /// A <b>mutating</b> request (POST/PUT/PATCH/DELETE) under a mapped tag requires the
+    /// caller to hold Write (level 1) on that feature — mirroring the legacy screens, which
+    /// gate writes with <c>IF f_security_door("…") = 1</c>. Only tags that map 1:1 to a
+    /// single legacy feature are listed; ambiguous tags (Shipments, Dies, Sketches, Sales,
+    /// Accounting, Downtime, Jobs, Stacker, ScanLog, Carriers, ProdFolder) are intentionally
+    /// left ungated pending live <c>security_application</c> verification — see NEXT_STEPS.
+    /// Security-admin writes keep their own inline "User Control"/"User Group Control" gates.</summary>
+    private static readonly IReadOnlyDictionary<string, string> FeatureByTag = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Orders"] = "Order Entry",
+        ["OrderItems"] = "Order Entry",
+        ["Customers"] = "Order Entry",          // customer master is edited from the order-entry module
+        ["Parts"] = "Part Number",
+        ["Coils"] = "Inventory(Coil)",
+        ["Skids"] = "Inventory(Skid)",
+        ["Warehouse"] = "Warehouse",
+        ["Receiving"] = "Shipment(Receiving)",
+        ["CoilEval"] = "Quality Control",
+        ["Quality"] = "Quality Control",
+        ["Shifts"] = "Shift Control",
+        ["Maintenance"] = "Maintenance_logs",
+    };
+
     public static IEndpointRouteBuilder MapAbisApi(this IEndpointRouteBuilder app)
     {
         app.MapGet("/", (IHostEnvironment env) => Results.Ok(new
@@ -70,6 +97,28 @@ public static class ApiEndpoints
         // whole group so it appears on every operation in the contract.
         var api = app.MapGroup("/api").RequireAuthorization().RequireRateLimiting(RateLimitOptions.PolicyName);
         api.WithMetadata(new ProducesResponseTypeAttribute(StatusCodes.Status401Unauthorized));
+
+        // App-wide authorization gate (legacy f_security_door parity). For every mutating
+        // request under a mapped domain tag, an OIDC end-user must hold Write (level 1) on
+        // the mapped feature; a null login (API-key service account) bypasses, matching the
+        // rollout policy. Reads (GET) are never gated here. This runs after authentication,
+        // so ctx.User / X-User-Login is resolved. See FeatureByTag.
+        api.AddEndpointFilter(async (fctx, next) =>
+        {
+            var http = fctx.HttpContext;
+            var method = http.Request.Method;
+            if (HttpMethods.IsPost(method) || HttpMethods.IsPut(method) || HttpMethods.IsPatch(method) || HttpMethods.IsDelete(method))
+            {
+                var tag = http.GetEndpoint()?.Metadata.GetMetadata<ITagsMetadata>()?.Tags is { Count: > 0 } tags ? tags[0] : null;
+                if (tag is not null && FeatureByTag.TryGetValue(tag, out var feature))
+                {
+                    var repo = http.RequestServices.GetRequiredService<IAbisRepository>();
+                    if (await RequireFeatureAsync(http, repo, feature, 1, http.RequestAborted) is { } deny)
+                        return deny;
+                }
+            }
+            return await next(fctx);
+        });
 
         // ---- Jobs -------------------------------------------------------
         api.MapGet("/jobs", async (IAbisRepository repo, CancellationToken ct,

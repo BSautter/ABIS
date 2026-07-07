@@ -79,8 +79,23 @@ coils whole-table scan). Full writeup: [`ORACLE_VALIDATION.md`](ORACLE_VALIDATIO
 ### 2. OIDC rollout
 Register the provider (browser `Auth:Oidc` + API `Auth:Jwt`, see
 [`../api/README.md`](../api/README.md)); map the OIDC login → `security_user.login_id`;
-then broaden the per-feature **enforcement** (`RequireFeatureAsync`, already on the
-security-admin writes) to other mutating routes per a rollout policy.
+then broaden the per-feature **enforcement** (`RequireFeatureAsync`) to the remaining
+mutating routes.
+
+**Feature-gate status (legacy `f_security_door` parity, `application_name` = 0 ReadOnly /
+1 Write / <0 None).** An `/api` endpoint filter now gates every **mutating** request under
+a mapped domain tag at Write (level 1); an API-key service account (null login) bypasses,
+so only OIDC end-users (or an `X-User-Login` header) are enforced — matching this rollout.
+- **Gated** (`FeatureByTag` in `ApiEndpoints.cs`): Orders/OrderItems/Customers→*Order Entry*,
+  Parts→*Part Number*, Coils→*Inventory(Coil)*, Skids→*Inventory(Skid)*, Warehouse→*Warehouse*,
+  Receiving→*Shipment(Receiving)*, CoilEval/Quality→*Quality Control*, Shifts→*Shift Control*,
+  Maintenance→*Maintenance_logs*. Security-admin writes keep their own inline *User Control* gate.
+- **Deferred (ambiguous tag→feature, verify against live `security_application` first):**
+  Jobs, Stacker, ProdFolder (→*Production Control*?), Shipments (outbound — no legacy door
+  found), Dies, Sketches, ScanLog, Carriers, Downtime, Sales/Accounting. Left ungated until
+  the mapping is confirmed rather than guessed.
+- Before OIDC GA, decide whether to flip unmapped mutations to **default-deny** and to gate
+  reads (legacy gates screen-open at level ≥ 0); today reads are open.
 
 ### 3. Wire the 861 EDI
 `POST /api/receiving-bols/{id}/generate-861` is a documented stub; wire it to the
