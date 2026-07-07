@@ -134,5 +134,5 @@ echo
 echo "==> done: ${DEB_OUT}"
 dpkg-deb --info "$DEB_OUT" | sed 's/^/    /'
 echo
-echo "Install:   sudo apt install ./${PKG_NAME}.deb"
+echo "Install:   sudo apt install ./dist/${PKG_NAME}.deb"
 echo "Configure: sudo abis-configure"

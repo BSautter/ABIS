@@ -159,9 +159,26 @@ nginx/certbot packages are left installed (they may serve other sites).
 
 ## Troubleshooting
 
-- **`install.sh` fails on readiness** — the service started but `/health/ready`
-  isn't 200, so the app can't reach Oracle. Check the connection string and
-  `journalctl -u abis -n 50`.
+- **`/health/ready` returns `ORA-50201` (or the install fails on readiness)** —
+  the app can't establish the Oracle session. Work through it in this order:
+  1. **Is the Oracle instance actually running?** A *stopped* instance leaves the
+     listener up (TCP to `:1521` succeeds) but with nothing registered, so it
+     rejects the connection — and the .NET driver reports that unhelpfully as
+     `ORA-50201`. This is the most common cause. Confirm the DB is started.
+  2. **Service name vs SID.** `Data Source=host:port/NAME` treats `NAME` as a
+     *service name*. If that's really a SID, use the descriptor form:
+     `Data Source=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=…)(PORT=1521))(CONNECT_DATA=(SID=…)));`
+  3. **Get the real error.** The .NET driver hides the specifics behind
+     `ORA-50201`; a quick independent probe spells it out:
+     `sudo apt install -y python3-oracledb` then
+     `python3 -c "import oracledb; oracledb.connect(user='U',password='P',dsn='host:1521/service')"`
+     — a `DPY-6001`/`DPY-6003` says the service/SID isn't registered; `DPY-3010`
+     (thin mode can't do 11g) still confirms the listener + service are good.
+  4. Then check `journalctl -u abis -n 50`.
+- **Password / connection string has special characters** — `#` is fine
+  unquoted. If a sub-value contains `;`, `=`, or a space, wrap it in **single**
+  quotes (`Password='p;w'`) — not double quotes, which collide with the config
+  file's quoting (the installer rejects a `"` for this reason).
 - **certbot failed** — the installer closes public access with an HTTP `503`
   (it never serves the app over plaintext). Fix DNS / port-80 reachability, then
   re-run `install.sh`. To run without TLS, re-run with `ABIS_TLS_MODE=none`.
