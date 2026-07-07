@@ -6,7 +6,7 @@
 
 Consolidated from 196 verified parity findings across seven surfaces. Every legacy path below is real and the greenfield state was grep-verified in the source findings. Ordered within each surface by severity, then **missing before partial**, then **core before nice-to-have**.
 
-> **Build progress — 2026-07-07:** Root cause #1 (shape geometry), *order-item level*: **built**. A uniform shape model + registry (`api/src/ABIS.Api/Data/ShapeGeometry.cs`) reads/writes all 10 per-shape dimension tables (RECTANGLE…LIFTGATE_SHAPE) via `GET/PUT /api/orders/{o}/items/{i}/shape` + `GET /api/lookups/shape-types` (174 tests green). Remaining for #1: the part-master `PART_NUM_*` tables, the order-entry UI, and wiring geometry into the calculator/invoice/QC surfaces.
+> **Build progress — 2026-07-07:** Root cause #1 (shape geometry) — **built end-to-end** at both levels. A uniform shape model + registry (`api/src/ABIS.Api/Data/ShapeGeometry.cs`) reads/writes all 10 per-shape dimension tables at the **order-item** level (`GET/PUT /api/orders/{o}/items/{i}/shape`, with dies) and the **part-master** level (`GET/PUT /api/parts/{id}/shape`, no dies), plus a `GET /api/lookups/shape-types` catalog and a dynamic **UI** (`/ui/shape-editor.html`, browser-verified). 176 tests green. Remaining for #1: wiring the captured geometry into the calculator/invoice/QC surfaces — done as each of those surfaces is built.
 
 **Severity key**
 - **C — Critical:** a core business/operational function that is absent or hollow; blocks a whole workflow or the ability to run the plant/business.
