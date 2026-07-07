@@ -1674,9 +1674,13 @@ public static class ApiEndpoints
         Max(e, "materialEndUse", body.MaterialEndUse, 255);
         Max(e, "orderItemDesc", body.OrderItemDesc, 255);
 
-        // Edge-trim tolerance (legacy w_order_entry:496-549): when trimming is required, the
-        // trim amount (incoming − trimmed width) must be present and within the 1.5"–12"
-        // trimmer tolerance (Alex Gerlants 06/16/2017, per Dan Polkinhorne).
+        // Edge-trim tolerance (legacy w_order_entry:496-549). When trimming is required the
+        // trim data must be complete and incoming ≥ trimmed (both HARD errors → Return 0/-8).
+        // The trim amount (incoming − trimmed) must sit within the 1.5"–12" trimmer tolerance
+        // (Alex Gerlants 06/16/2017, per Dan Polkinhorne) — but that breach is OVERRIDABLE:
+        // legacy prompts Yes/No and, on override, stamps trimmed_width_overridden='Y' +
+        // trimmed_width_override_user and logs it. We mirror that: out-of-tolerance is a 400
+        // unless trimmedWidthOverridden='Y' is sent, in which case an override user is required.
         if (string.Equals(body.TrimmingRequired?.Trim(), "Y", StringComparison.OrdinalIgnoreCase))
         {
             if (body.IncomingCoilWidth is null) e["incomingCoilWidth"] = ["incomingCoilWidth is required when trimming is required."];
@@ -1685,10 +1689,13 @@ public static class ApiEndpoints
             if (body.IncomingCoilWidth is { } inc && body.TrimmedCoilWidth is { } trm)
             {
                 var diff = inc - trm;
+                var overridden = string.Equals(body.TrimmedWidthOverridden?.Trim(), "Y", StringComparison.OrdinalIgnoreCase);
                 if (diff < 0m)
                     e["trimmedCoilWidth"] = ["Incoming coil width must be greater than trimmed coil width."];
-                else if (diff is < 1.50m or > 12.00m)
-                    e["trimmedCoilWidth"] = ["Trim (incoming − trimmed) must be within the 1.5\"–12\" trimmer tolerance."];
+                else if (diff is < 1.50m or > 12.00m && !overridden)
+                    e["trimmedCoilWidth"] = ["Trim (incoming − trimmed) is under trimmer tolerance (must be 1.5\"–12\"); resend with trimmedWidthOverridden='Y' to override."];
+                else if (diff is < 1.50m or > 12.00m && string.IsNullOrWhiteSpace(body.TrimmedWidthOverrideUser))
+                    e["trimmedWidthOverrideUser"] = ["trimmedWidthOverrideUser is required to override the trimmer tolerance."];
             }
         }
         return e.Count == 0 ? null : e;
