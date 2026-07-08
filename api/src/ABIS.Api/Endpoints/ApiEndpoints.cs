@@ -1566,11 +1566,17 @@ public static class ApiEndpoints
                 if (await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny) return deny;
                 if (string.IsNullOrWhiteSpace(body.LoginId))
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["loginId"] = ["loginId is required."] });
+                // login_id must be unique (legacy w_user_new:111 "Duplicated user login name!").
+                // A case-insensitive dup would make GetSecurityUserByLoginAsync (QuerySingleOrDefault
+                // + LOWER) throw and GetEffectivePrivilege MAX across two rows — the auth bridge.
+                if (await repo.GetSecurityUserByLoginAsync(body.LoginId, ct) is not null)
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Duplicate login",
+                        detail: $"A user with login '{body.LoginId}' already exists.");
                 var created = await repo.CreateSecurityUserAsync(body, ct);
                 return Results.Created($"/api/security/users/{created.UserId}", created);
             })
            .WithName("CreateSecurityUser").WithTags("Security")
-           .WithSummary("Create an application user (requires User Control).").Produces<SecurityUser>(StatusCodes.Status201Created).ProducesValidationProblem().Produces(StatusCodes.Status403Forbidden);
+           .WithSummary("Create an application user (requires User Control; 409 on a duplicate login).").Produces<SecurityUser>(StatusCodes.Status201Created).ProducesValidationProblem().Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status403Forbidden);
 
         api.MapPost("/security/groups", async (SecurityGroupWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
                 await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny ? deny

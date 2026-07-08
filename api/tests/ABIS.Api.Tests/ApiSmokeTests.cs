@@ -590,6 +590,16 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Duplicate_security_login_is_rejected()
+    {
+        var u = new { loginId = "dupuser", userFirstName = "Dup", userLastName = "User", userStatus = 1 };
+        Assert.Equal(HttpStatusCode.Created, (await _client.PostAsJsonAsync("/api/security/users", u)).StatusCode);
+        // Same login, different case -> 409 (login_id is unique, case-insensitive).
+        var dup = new { loginId = "DupUser", userFirstName = "Other", userLastName = "Person", userStatus = 1 };
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsJsonAsync("/api/security/users", dup)).StatusCode);
+    }
+
+    [Fact]
     public async Task Shipped_skid_cannot_be_warehouse_patched()
     {
         // Seed skid 3003 is shipped (status 0 = GONE) -> warehouse update rejected (409).

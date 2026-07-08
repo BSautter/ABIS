@@ -430,6 +430,7 @@ public static class SqliteFixture
             CREATE TABLE security_user (
                 user_id INTEGER PRIMARY KEY, login_id TEXT, user_last_name TEXT, user_first_name TEXT,
                 user_middle_initial TEXT, last_login_time TEXT, last_modified_date TEXT, user_status INTEGER, user_notes TEXT);
+            CREATE UNIQUE INDEX ux_security_user_login ON security_user (login_id COLLATE NOCASE);
             CREATE TABLE security_group (
                 user_group_id INTEGER PRIMARY KEY, group_name TEXT, group_notes TEXT);
             CREATE TABLE security_application (
