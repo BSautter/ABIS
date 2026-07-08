@@ -92,7 +92,10 @@ test('createOrderWithItems writes via typed DTOs and returns a typed OrderDetail
     items: [new OrderItemWrite({
       enduserPartNum: 'PN-E2E', alloy2: '3003', sheetType: 'FLAT', gauge: 0.05,
       quantity: 1000, quantityPlus: 50, quantityMinus: 25, itemStatus: 1, maxSkidWt: 4000,
-      unitPrice: 1.2345, itemNote: 'line note', packagingSpec1: 'wrap', partNumId: 6001, trimmingRequired: 'Y',
+      unitPrice: 1.2345, itemNote: 'line note', packagingSpec1: 'wrap', partNumId: 6001,
+      // trimming_required='Y' now enforces the edge-trim tolerance, so supply valid trim data
+      // (incoming - trimmed = 2.0", within the 1.5"-12" trimmer window).
+      trimmingRequired: 'Y', incomingCoilWidth: 50, trimmedCoilWidth: 48, trimTypeCode: 1,
     })],
   });
   const detail = await client.createOrderWithItems(body);
@@ -519,7 +522,7 @@ test('coil-ownership flow: certificate(missing) throws ApiException(404) (typed)
 // The transferable-coil picker, optionally scoped to a customer.
 test('coil-ownership flow: transferable coils picker (typed)', async () => {
   const all = await client.getTransferableCoils(undefined, undefined);
-  assert.ok(all.length >= 4);
+  assert.ok(all.length >= 3);   // 5001/5002/5003 have balance > 0; 5004 is fully consumed (excluded)
   const beta = await client.getTransferableCoils(4002, undefined);
   assert.ok(beta.length >= 1);
   assert.ok(beta.every((c) => c.customerId === 4002));
@@ -571,10 +574,10 @@ test('coil-ownership flow: createTransfer requires coil + new owner (typed)', as
 // (MAX of direct + group grants), the admin reads, and the grant/membership writes.
 test('security flow: effective permissions = MAX(direct, group) (typed)', async () => {
   // Seeded: jsmith(9001) in Operators(10). Operators grant: Order Entry=ReadOnly(0),
-  // Coil Inventory=Write(1). jsmith ALSO has a DIRECT Order Entry=Write(1) grant.
+  // Inventory(Coil)=Write(1). jsmith ALSO has a DIRECT Order Entry=Write(1) grant.
   const perms = await client.getUserEffectivePermissions(9001);
   const oe = perms.find((p) => p.applicationName === 'Order Entry');
-  const ci = perms.find((p) => p.applicationName === 'Coil Inventory');
+  const ci = perms.find((p) => p.applicationName === 'Inventory(Coil)');
   assert.ok(oe && ci, 'both granted features present');
   assert.equal(oe.privilege, 1);          // MAX(direct 1, group 0) = 1
   assert.equal(oe.viaGroup, false);       // the direct grant tied the max
