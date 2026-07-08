@@ -473,6 +473,14 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Finished_job_cannot_be_patched()
+    {
+        // Seed job 1003 is Done (job_status 0) -> any modification is rejected (409).
+        var resp = await _client.PatchAsJsonAsync("/api/jobs/1003", new { jobNotes = "try to edit" });
+        Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
+    }
+
+    [Fact]
     public async Task Create_order_returns_201()
     {
         var resp = await _client.PostAsJsonAsync("/api/orders", new { origCustomerId = 4001, origCustomerPo = "PO-HTTP" });

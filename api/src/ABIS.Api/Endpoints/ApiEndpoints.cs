@@ -173,11 +173,18 @@ public static class ApiEndpoints
            .WithSummary("Create a production job.")
            .Produces<AbJob>(StatusCodes.Status201Created);
 
-        api.MapPatch("/jobs/{abJobNum:long}", (long abJobNum, JobPatch body, IAbisRepository repo, HttpContext ctx, IOptions<JsonOptions> json, CancellationToken ct) =>
-                WithIfMatch(ctx, json, () => repo.GetJobAsync(abJobNum, ct), () => repo.PatchJobAsync(abJobNum, body, ct)))
+        api.MapPatch("/jobs/{abJobNum:long}", async (long abJobNum, JobPatch body, IAbisRepository repo, HttpContext ctx, IOptions<JsonOptions> json, CancellationToken ct) =>
+            {
+                // Legacy w_stacker_job_details:498 — a finished job (job_status 0 = Done) is
+                // terminal ("this job is done, nothing can be modified now"); it flows into invoicing.
+                if (await repo.GetJobAsync(abJobNum, ct) is { JobStatus: 0 })
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Job is done",
+                        detail: $"Job {abJobNum} is done and cannot be modified.");
+                return await WithIfMatch(ctx, json, () => repo.GetJobAsync(abJobNum, ct), () => repo.PatchJobAsync(abJobNum, body, ct));
+            })
            .WithName("PatchJob").WithTags("Jobs")
-           .WithSummary("Update a job's status, notes, men, or finish time. Supports If-Match.")
-           .Produces<AbJob>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status412PreconditionFailed);
+           .WithSummary("Update a job's status, notes, men, or finish time (409 if the job is done). Supports If-Match.")
+           .Produces<AbJob>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status412PreconditionFailed);
 
         // ---- Coils (inventory) -----------------------------------------
         api.MapGet("/coils", async (IAbisRepository repo, CancellationToken ct,
