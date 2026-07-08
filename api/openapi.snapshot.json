@@ -5094,7 +5094,7 @@
         "tags": [
           "Receiving"
         ],
-        "summary": "Mint coil inventory for the BOL's lines (legacy w_coil_receiving save) — creates COIL rows (status 2/new, 11/on-hold if damaged) and links them. Idempotent.",
+        "summary": "Mint coil inventory for the BOL's lines (legacy w_coil_receiving save) — creates COIL rows (status 2/new, 11/on-hold if damaged) and links them. Idempotent; 400 if the BOL has no coils.",
         "operationId": "MintBolCoils",
         "parameters": [
           {
@@ -5117,6 +5117,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Bad Request"
           },
           "404": {
             "description": "Not Found"
