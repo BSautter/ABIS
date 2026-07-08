@@ -174,7 +174,11 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
         // 500 (would overflow the column, ORA-01438 — found live on codi-ABIS).
         Assert.Equal(HttpStatusCode.BadRequest,
             (await _client.PostAsJsonAsync("/api/jobs", new { orderAbcNum = 9001, orderItemNum = 7001, materialYield = 92.5 })).StatusCode);
-        // Full order refs with a valid ratio yield -> 201 (yield is optional at create).
+        // A well-formed but non-existent order line -> 400 (ab_job FKs order_item; would be
+        // ORA-02291 -> 500 otherwise — found live on codi-ABIS).
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/jobs", new { orderAbcNum = 999999, orderItemNum = 1 })).StatusCode);
+        // Full order refs (real line) with a valid ratio yield -> 201 (yield is optional at create).
         Assert.Equal(HttpStatusCode.Created,
             (await _client.PostAsJsonAsync("/api/jobs", new { orderAbcNum = 9001, orderItemNum = 7001, lineNum = 110, materialYield = 0.92 })).StatusCode);
     }
@@ -823,6 +827,19 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
         var got = await resp.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(0, got.GetProperty("sheetTareWt").GetDecimal());
+    }
+
+    [Fact]
+    public async Task Coil_create_requires_existing_customer()
+    {
+        // coil.customer_id FKs to customer — a non-existent customer must be a clean 400, not a
+        // bare ORA-02291 -> 500 (live-only: SQLite doesn't enforce the FK). Fresh org so the
+        // dup-coil guard doesn't intercept it first.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/coils",
+            new { coilAlloy2 = "9099", netWt = 12000, coilWidth = 48.0, coilOrgNum = "ORG-NOCUST", customerId = 999999, coilMidNum = "X" })).StatusCode);
+        // A seeded customer (4001) -> 201.
+        Assert.Equal(HttpStatusCode.Created, (await _client.PostAsJsonAsync("/api/coils",
+            new { coilAlloy2 = "9099", netWt = 12000, coilWidth = 48.0, coilOrgNum = "ORG-YESCUST", customerId = 4001, coilMidNum = "X" })).StatusCode);
     }
 
     [Fact]

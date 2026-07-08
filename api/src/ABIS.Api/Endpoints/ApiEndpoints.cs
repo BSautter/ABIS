@@ -168,6 +168,14 @@ public static class ApiEndpoints
             {
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
+                // The order line must exist — ab_job FKs to order_item. Return a clean 400 rather
+                // than letting the insert fail as ORA-02291 → 500 (live-only: SQLite doesn't
+                // enforce the FK). Validate() has already guaranteed both refs are present.
+                if (await repo.GetOrderItemAsync(body.OrderAbcNum!.Value, body.OrderItemNum!.Value, ct) is null)
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["orderItemNum"] = ["orderAbcNum/orderItemNum must reference an existing order line."],
+                    });
                 var created = await repo.CreateJobAsync(body, ct);
                 return Results.Created($"/api/jobs/{created.AbJobNum}", created);
             })
@@ -239,6 +247,19 @@ public static class ApiEndpoints
                     await repo.CoilExistsByKeyAsync(body.CoilOrgNum!, body.CustomerId, body.CoilMidNum, ct))
                     return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Duplicate coil",
                         detail: "A coil with this original number already exists for this customer and MID (duplicated coil original number).");
+                // Referenced customers must exist — coil FKs both customer_id and coil_from_cust_id
+                // to customer. Return a clean 400 rather than a bare ORA-02291 → 500 (live-only:
+                // SQLite doesn't enforce the FK).
+                if (body.CustomerId is > 0 && await repo.GetCustomerAsync(body.CustomerId.Value, ct) is null)
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["customerId"] = ["customerId must reference an existing customer."],
+                    });
+                if (body.CoilFromCustId is > 0 && await repo.GetCustomerAsync(body.CoilFromCustId.Value, ct) is null)
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["coilFromCustId"] = ["coilFromCustId must reference an existing customer."],
+                    });
                 var created = await repo.CreateCoilAsync(body, ct);
                 return Results.Created($"/api/coils/{created.CoilAbcNum}", created);
             })
