@@ -22,6 +22,18 @@ public sealed class PieceWeightRequest
     public int? MaxSkidWt { get; set; }
 }
 
+/// <summary>Set a coil's recovery-worksheet flags for a job (legacy recovery_job_coil). The
+/// coil + job come from the route; each flag is 0/1 (NUMBER(1,0)). productTypeId must reference
+/// an existing product type when supplied.</summary>
+public sealed class RecoveryJobCoilWrite
+{
+    public int? SpecialAttention { get; set; }
+    public int? SpecialHandling { get; set; }
+    public int? CoilRejected { get; set; }
+    public int? CoilRebanded { get; set; }
+    public long? ProductTypeId { get; set; }
+}
+
 /// <summary>Shared "at save" normalization surface for records that carry a coil
 /// edge-trim spec plus skid packaging (part-number master and order line item). Lets a
 /// single helper null out stale trim columns when trimming isn't required and suggest

@@ -1237,6 +1237,68 @@ public sealed class AbisRepository : IAbisRepository
             new { alloy }, cancellationToken: ct));
     }
 
+    private const string RecoveryJobCoilCols =
+        "coil_abc_num AS CoilAbcNum, ab_job_num AS AbJobNum, special_attention AS SpecialAttention, " +
+        "special_handling AS SpecialHandling, coil_rejected AS CoilRejected, coil_rebanded AS CoilRebanded, " +
+        "product_type_id AS ProductTypeId";
+
+    public async Task<IReadOnlyList<RecoveryJobCoil>> GetRecoveryCoilsByJobAsync(long abJobNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<RecoveryJobCoil>(new CommandDefinition(
+            $"SELECT {RecoveryJobCoilCols} FROM recovery_job_coil WHERE ab_job_num = :job ORDER BY coil_abc_num",
+            new { job = abJobNum }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    public async Task<bool> ProcessCoilExistsAsync(long coilAbcNum, long abJobNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM process_coil WHERE coil_abc_num = :coil AND ab_job_num = :job",
+            new { coil = coilAbcNum, job = abJobNum }, cancellationToken: ct)) > 0;
+    }
+
+    public async Task<bool> ProductTypeExistsAsync(long productTypeId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM product_type WHERE product_type_id = :id", new { id = productTypeId },
+            cancellationToken: ct)) > 0;
+    }
+
+    // Upsert a coil's recovery-worksheet flags for a job. Portable (SELECT then UPDATE/INSERT — no
+    // dialect-specific MERGE/UPSERT). The (coil, job) FK to process_coil + product_type FK are
+    // pre-checked at the endpoint, so this just writes.
+    public async Task<RecoveryJobCoil> UpsertRecoveryJobCoilAsync(long coilAbcNum, long abJobNum, RecoveryJobCoilWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var p = new
+        {
+            coil = coilAbcNum, job = abJobNum, sa = body.SpecialAttention, sh = body.SpecialHandling,
+            rej = body.CoilRejected, reb = body.CoilRebanded, pt = body.ProductTypeId
+        };
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM recovery_job_coil WHERE coil_abc_num = :coil AND ab_job_num = :job",
+            new { coil = coilAbcNum, job = abJobNum }, cancellationToken: ct)) > 0;
+        if (exists)
+            await conn.ExecuteAsync(new CommandDefinition(
+                """
+                UPDATE recovery_job_coil SET special_attention = :sa, special_handling = :sh,
+                       coil_rejected = :rej, coil_rebanded = :reb, product_type_id = :pt
+                WHERE coil_abc_num = :coil AND ab_job_num = :job
+                """, p, cancellationToken: ct));
+        else
+            await conn.ExecuteAsync(new CommandDefinition(
+                """
+                INSERT INTO recovery_job_coil (coil_abc_num, ab_job_num, special_attention, special_handling,
+                    coil_rejected, coil_rebanded, product_type_id)
+                VALUES (:coil, :job, :sa, :sh, :rej, :reb, :pt)
+                """, p, cancellationToken: ct));
+        var rows = await GetRecoveryCoilsByJobAsync(abJobNum, ct);
+        return rows.First(r => r.CoilAbcNum == coilAbcNum);
+    }
+
     // Downtime events over a window (optionally one line), joined to the line description.
     public async Task<IReadOnlyList<ProductionDowntimeRow>> GetProductionDowntimeAsync(DateTime? from, DateTime? to, long? lineNum, CancellationToken ct)
     {

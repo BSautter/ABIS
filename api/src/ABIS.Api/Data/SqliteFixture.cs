@@ -394,6 +394,13 @@ public static class SqliteFixture
             CREATE TABLE recovery_report_customer (
                 customer_id INTEGER PRIMARY KEY, customer_name TEXT,
                 all_products TEXT, auto_only TEXT, comm_only TEXT);
+            -- Recovery worksheet: per (coil, job) reband/reject/special flags + product type
+            -- (legacy recovery_job_coil; PK (coil_abc_num, ab_job_num) FK to process_coil).
+            CREATE TABLE recovery_job_coil (
+                coil_abc_num INTEGER NOT NULL, ab_job_num INTEGER NOT NULL,
+                special_attention INTEGER, special_handling INTEGER,
+                coil_rejected INTEGER, coil_rebanded INTEGER, product_type_id INTEGER,
+                PRIMARY KEY (coil_abc_num, ab_job_num));
             CREATE TABLE cust_scrap_type_needed (
                 customer_id INTEGER, scrap_type_id INTEGER,
                 abc_or_mill TEXT, autoparts TEXT, non_autoparts TEXT,
@@ -986,6 +993,15 @@ public static class SqliteFixture
             {
                 new { CustomerId = 4001L, CustomerName = "Alcan / Ford", AllProducts = "N", AutoOnly = "Y", CommOnly = "N" },
                 new { CustomerId = 4002L, CustomerName = "Constellium", AllProducts = "Y", AutoOnly = "N", CommOnly = "N" }
+            });
+        conn.Execute(
+            "INSERT INTO recovery_job_coil (coil_abc_num, ab_job_num, special_attention, special_handling, coil_rejected, coil_rebanded, product_type_id) VALUES (:CoilAbcNum, :AbJobNum, :SpecialAttention, :SpecialHandling, :CoilRejected, :CoilRebanded, :ProductTypeId)",
+            new[]
+            {
+                // Coil 5001 on job 1001: rebanded + flagged for special attention (Automotive).
+                new { CoilAbcNum = 5001L, AbJobNum = 1001L, SpecialAttention = (int?)1, SpecialHandling = (int?)0, CoilRejected = (int?)0, CoilRebanded = (int?)1, ProductTypeId = (long?)1L },
+                // Coil 5003 on job 1002: rejected (matches its process_coil status 3), Commercial.
+                new { CoilAbcNum = 5003L, AbJobNum = 1002L, SpecialAttention = (int?)0, SpecialHandling = (int?)0, CoilRejected = (int?)1, CoilRebanded = (int?)0, ProductTypeId = (long?)2L }
             });
         conn.Execute(
             "INSERT INTO cust_scrap_type_needed (customer_id, scrap_type_id, abc_or_mill, autoparts, non_autoparts) VALUES (:CustomerId, :ScrapTypeId, :AbcOrMill, :Autoparts, :NonAutoparts)",

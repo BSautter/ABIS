@@ -1421,6 +1421,35 @@ public static class ApiEndpoints
            .WithSummary("Piece-weight calculator: blank area (by shape) × gauge × alloy density (from METAL_DENSITY, or an explicit density). Optionally returns pieces per skid for a max skid weight.")
            .Produces<PieceWeightResult>().ProducesValidationProblem();
 
+        // ---- Recovery (legacy w_recovery scrap/reband worksheet) ----
+        api.MapGet("/recovery/jobs/{abJobNum:long}/coils", async (long abJobNum, IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetRecoveryCoilsByJobAsync(abJobNum, ct)))
+           .WithName("GetRecoveryCoils").WithTags("Recovery")
+           .WithSummary("A job's recovery-worksheet coils: reband / reject / special-attention / special-handling flags + product type.")
+           .Produces<IReadOnlyList<RecoveryJobCoil>>();
+
+        api.MapPut("/recovery/jobs/{abJobNum:long}/coils/{coilAbcNum:long}", async (long abJobNum, long coilAbcNum, RecoveryJobCoilWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var e = new Dictionary<string, string[]>();
+                // Flags are NUMBER(1,0) — only 0/1 (or null) are meaningful.
+                if (body.SpecialAttention is not (null or 0 or 1)) e["specialAttention"] = ["specialAttention must be 0 or 1."];
+                if (body.SpecialHandling is not (null or 0 or 1)) e["specialHandling"] = ["specialHandling must be 0 or 1."];
+                if (body.CoilRejected is not (null or 0 or 1)) e["coilRejected"] = ["coilRejected must be 0 or 1."];
+                if (body.CoilRebanded is not (null or 0 or 1)) e["coilRebanded"] = ["coilRebanded must be 0 or 1."];
+                if (e.Count > 0) return Results.ValidationProblem(e);
+                // The recovery record hangs off a processed coil — (coil, job) must exist in
+                // process_coil (FK); return a clean 404 rather than an ORA-02291 500.
+                if (!await repo.ProcessCoilExistsAsync(coilAbcNum, abJobNum, ct))
+                    return Results.NotFound(new { message = $"Coil {coilAbcNum} was not processed on job {abJobNum}." });
+                if (body.ProductTypeId is > 0 && !await repo.ProductTypeExistsAsync(body.ProductTypeId.Value, ct))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["productTypeId"] = ["productTypeId must reference an existing product type."] });
+                var saved = await repo.UpsertRecoveryJobCoilAsync(coilAbcNum, abJobNum, body, ct);
+                return Results.Ok(saved);
+            })
+           .WithName("UpsertRecoveryCoil").WithTags("Recovery")
+           .WithSummary("Set a coil's recovery-worksheet flags for a job (upsert). The coil must have been processed on the job.")
+           .Produces<RecoveryJobCoil>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
         api.MapGet("/reporting/downtime", async (DateTime? from, DateTime? to, IAbisRepository repo, CancellationToken ct, long? lineNum = null) =>
             {
                 var (f, t) = ResolveReportWindow(from, to);

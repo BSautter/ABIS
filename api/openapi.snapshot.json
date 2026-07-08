@@ -5228,6 +5228,111 @@
         }
       }
     },
+    "/api/recovery/jobs/{abJobNum}/coils": {
+      "get": {
+        "tags": [
+          "Recovery"
+        ],
+        "summary": "A job's recovery-worksheet coils: reband / reject / special-attention / special-handling flags + product type.",
+        "operationId": "GetRecoveryCoils",
+        "parameters": [
+          {
+            "name": "abJobNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RecoveryJobCoil"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/recovery/jobs/{abJobNum}/coils/{coilAbcNum}": {
+      "put": {
+        "tags": [
+          "Recovery"
+        ],
+        "summary": "Set a coil's recovery-worksheet flags for a job (upsert). The coil must have been processed on the job.",
+        "operationId": "UpsertRecoveryCoil",
+        "parameters": [
+          {
+            "name": "abJobNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "coilAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoveryJobCoilWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryJobCoil"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/reporting/production-summary": {
       "get": {
         "tags": [
@@ -14214,6 +14319,76 @@
           },
           "commOnly": {
             "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "RecoveryJobCoil": {
+        "type": "object",
+        "properties": {
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "specialAttention": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "specialHandling": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "coilRejected": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "coilRebanded": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "productTypeId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "RecoveryJobCoilWrite": {
+        "type": "object",
+        "properties": {
+          "specialAttention": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "specialHandling": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "coilRejected": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "coilRebanded": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "productTypeId": {
+            "type": "integer",
+            "format": "int64",
             "nullable": true
           }
         },

@@ -134,6 +134,10 @@ public interface IAbisRepository
     Task<IReadOnlyList<ShiftProductionRow>> GetShiftProductionAsync(DateTime from, DateTime to, long? lineNum, CancellationToken ct);
     Task<IReadOnlyList<DowntimeByCauseRow>> GetDowntimeByCauseAsync(DateTime from, DateTime to, long? lineNum, CancellationToken ct);
     Task<decimal?> GetMetalDensityAsync(string alloy, CancellationToken ct);
+    Task<IReadOnlyList<RecoveryJobCoil>> GetRecoveryCoilsByJobAsync(long abJobNum, CancellationToken ct);
+    Task<bool> ProcessCoilExistsAsync(long coilAbcNum, long abJobNum, CancellationToken ct);
+    Task<bool> ProductTypeExistsAsync(long productTypeId, CancellationToken ct);
+    Task<RecoveryJobCoil> UpsertRecoveryJobCoilAsync(long coilAbcNum, long abJobNum, RecoveryJobCoilWrite body, CancellationToken ct);
     Task<PagedResult<ScrapSkid>> GetScrapSkidsAsync(int page, int pageSize, string? orderBy, CancellationToken ct);
     Task<ScrapSkid?> GetScrapSkidAsync(long scrapSkidNum, CancellationToken ct);
     Task<ScrapSkid> CreateScrapSkidAsync(ScrapSkidWrite body, CancellationToken ct);

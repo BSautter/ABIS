@@ -1208,6 +1208,20 @@ public sealed class PieceWeightResult
     public int? PiecesPerSkid { get; set; }
 }
 
+/// <summary>A coil's recovery-worksheet record for a job (legacy recovery_job_coil): the
+/// reband / reject / special-attention / special-handling flags (0/1) and product type. Keyed
+/// by (coil_abc_num, ab_job_num), which must be a processed coil (FK to process_coil).</summary>
+public sealed class RecoveryJobCoil
+{
+    public long CoilAbcNum { get; set; }
+    public long AbJobNum { get; set; }
+    public int? SpecialAttention { get; set; }
+    public int? SpecialHandling { get; set; }
+    public int? CoilRejected { get; set; }
+    public int? CoilRebanded { get; set; }
+    public long? ProductTypeId { get; set; }
+}
+
 /// <summary>One downtime event (legacy w_report_production_downtime): the line, job, and
 /// window. <see cref="DurationMinutes"/> is computed from start/end (portable — no DB
 /// date math).</summary>
