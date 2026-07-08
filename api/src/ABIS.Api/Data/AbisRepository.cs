@@ -1425,6 +1425,30 @@ public sealed class AbisRepository : IAbisRepository
         return rows.AsList();
     }
 
+    // Per-customer finished sheet-skid inventory (legacy d_report_skid_list_per_cust). sheet_skid
+    // has no customer column, so resolve it via sheet_skid ⋈ ab_job ⋈ customer_order ⋈ customer.
+    // Always customer-scoped (the endpoint requires customerId), with an optional status filter.
+    public async Task<IReadOnlyList<CustomerSkidInventoryRow>> GetCustomerSkidInventoryAsync(long customerId, int? status, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<CustomerSkidInventoryRow>(new CommandDefinition(
+            """
+            SELECT s.sheet_skid_num AS SheetSkidNum, s.ab_job_num AS AbJobNum, j.order_abc_num AS OrderAbcNum,
+                   cu.customer_short_name AS CustomerShortName, s.sheet_skid_display_num AS SheetSkidDisplayNum,
+                   s.sheet_net_wt AS SheetNetWt, s.sheet_tare_wt AS SheetTareWt, s.skid_pieces AS SkidPieces,
+                   s.skid_date AS SkidDate, s.skid_location AS SkidLocation, s.skid_sheet_status AS SkidSheetStatus
+            FROM sheet_skid s
+            JOIN ab_job j ON j.ab_job_num = s.ab_job_num
+            JOIN customer_order o ON o.order_abc_num = j.order_abc_num
+            JOIN customer cu ON cu.customer_id = o.orig_customer_id
+            WHERE o.orig_customer_id = :customerId
+              AND (:status IS NULL OR s.skid_sheet_status = :status)
+            ORDER BY s.sheet_skid_num
+            """,
+            new { customerId, status }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
     public async Task<IReadOnlyList<OpcLog>> GetOpcLogsAsync(CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

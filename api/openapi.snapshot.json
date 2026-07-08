@@ -5849,6 +5849,61 @@
         }
       }
     },
+    "/api/reporting/customer-skid-inventory": {
+      "get": {
+        "tags": [
+          "Reporting"
+        ],
+        "summary": "A customer's finished sheet-skid inventory (via job → order), with optional skid status filter. Requires customerId.",
+        "operationId": "GetCustomerSkidInventory",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CustomerSkidInventoryRow"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/sales/quotes": {
       "get": {
         "tags": [
@@ -9878,6 +9933,63 @@
           "totalNetWt": {
             "type": "number",
             "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CustomerSkidInventoryRow": {
+        "type": "object",
+        "properties": {
+          "sheetSkidNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "orderAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "customerShortName": {
+            "type": "string",
+            "nullable": true
+          },
+          "sheetSkidDisplayNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "sheetNetWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "sheetTareWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "skidPieces": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "skidDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "skidLocation": {
+            "type": "string",
+            "nullable": true
+          },
+          "skidSheetStatus": {
+            "type": "integer",
+            "format": "int32",
             "nullable": true
           }
         },

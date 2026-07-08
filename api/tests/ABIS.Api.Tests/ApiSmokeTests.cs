@@ -208,6 +208,34 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Customer_skid_inventory_resolves_via_job_and_order()
+    {
+        // Requires customerId (sheet_skid has no customer column) -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/reporting/customer-skid-inventory")).StatusCode);
+
+        // Customer 4001 owns order 9001 -> jobs 1001/1002 -> skids 3001, 3002, 3004 (via the join).
+        var c4001 = await _client.GetFromJsonAsync<JsonElement>("/api/reporting/customer-skid-inventory?customerId=4001");
+        Assert.True(c4001.GetArrayLength() >= 3);
+        JsonElement s3001 = default; var found = false;
+        foreach (var e in c4001.EnumerateArray())
+            if (e.GetProperty("sheetSkidNum").GetInt64() == 3001) { s3001 = e; found = true; break; }
+        Assert.True(found);
+        Assert.Equal(1001, s3001.GetProperty("abJobNum").GetInt64());
+        Assert.Equal(9001, s3001.GetProperty("orderAbcNum").GetInt64());
+        Assert.Equal(JsonValueKind.String, s3001.GetProperty("customerShortName").ValueKind); // join resolved
+
+        // Customer 4002 (order 9002 -> job 1003) -> skid 3003, not any of 4001's.
+        var c4002 = await _client.GetFromJsonAsync<JsonElement>("/api/reporting/customer-skid-inventory?customerId=4002");
+        foreach (var e in c4002.EnumerateArray())
+            Assert.NotEqual(3001, e.GetProperty("sheetSkidNum").GetInt64());
+
+        // Status filter: 4001's voided skid (3004, status 6) is isolated by status=6.
+        var voided = await _client.GetFromJsonAsync<JsonElement>("/api/reporting/customer-skid-inventory?customerId=4001&status=6");
+        foreach (var e in voided.EnumerateArray())
+            Assert.Equal(6, e.GetProperty("skidSheetStatus").GetInt32());
+    }
+
+    [Fact]
     public async Task Sheet_skid_requires_job_with_an_order()
     {
         // A sheet skid whose job can't resolve an order is refused (w_wh_business:831) -> 400.

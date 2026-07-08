@@ -1363,6 +1363,25 @@ public sealed class ProductionOrderReportRow
     public string? MaterialEndUse { get; set; }
 }
 
+/// <summary>One finished sheet skid in a customer's inventory (legacy
+/// <c>d_report_skid_list_per_cust</c>). sheet_skid has no direct customer column, so this
+/// resolves it through sheet_skid ⋈ ab_job ⋈ customer_order ⋈ customer — the per-customer view
+/// the flat /sheet-skids list can't give.</summary>
+public sealed class CustomerSkidInventoryRow
+{
+    public long SheetSkidNum { get; set; }
+    public long? AbJobNum { get; set; }
+    public long? OrderAbcNum { get; set; }
+    public string? CustomerShortName { get; set; }
+    public string? SheetSkidDisplayNum { get; set; }
+    public decimal? SheetNetWt { get; set; }
+    public decimal? SheetTareWt { get; set; }
+    public int? SkidPieces { get; set; }
+    public DateTime? SkidDate { get; set; }
+    public string? SkidLocation { get; set; }
+    public int? SkidSheetStatus { get; set; }
+}
+
 /// <summary>Result of a feature-permission check (drives UI enable/read-only/hide).</summary>
 public sealed class FeatureAllowedResult
 {

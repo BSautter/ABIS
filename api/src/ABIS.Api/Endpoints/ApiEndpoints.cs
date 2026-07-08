@@ -1456,6 +1456,22 @@ public static class ApiEndpoints
            .WithSummary("Production-order report (job traveler): per-job header + customer / order / order-line specs. Requires a scope filter (job, order, customer, or date).")
            .Produces<IReadOnlyList<ProductionOrderReportRow>>().ProducesValidationProblem();
 
+        api.MapGet("/reporting/customer-skid-inventory", async (IAbisRepository repo, CancellationToken ct,
+                long? customerId = null, int? status = null) =>
+            {
+                // Customer-scoped (sheet_skid has no customer column; resolved via the job/order join).
+                // Require customerId so it never full-scans every skid.
+                if (customerId is null or <= 0)
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["customerId"] = ["customerId is required."],
+                    });
+                return Results.Ok(await repo.GetCustomerSkidInventoryAsync(customerId.Value, status, ct));
+            })
+           .WithName("GetCustomerSkidInventory").WithTags("Reporting")
+           .WithSummary("A customer's finished sheet-skid inventory (via job → order), with optional skid status filter. Requires customerId.")
+           .Produces<IReadOnlyList<CustomerSkidInventoryRow>>().ProducesValidationProblem();
+
         // ---- Quality / Recovery (customer-defect setup) -----------------
         api.MapGet("/quality/scrap-types", async (IAbisRepository repo, CancellationToken ct) =>
                 Results.Ok(await repo.GetScrapTypesAsync(ct)))
