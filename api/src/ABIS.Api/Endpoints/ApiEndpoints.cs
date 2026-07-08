@@ -1570,6 +1570,9 @@ public static class ApiEndpoints
                 if (await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny) return deny;
                 if (string.IsNullOrWhiteSpace(body.LoginId))
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["loginId"] = ["loginId is required."] });
+                // A user must carry a name (legacy w_user_new:120 "No user name entered!" — first OR last).
+                if (string.IsNullOrWhiteSpace(body.UserFirstName) && string.IsNullOrWhiteSpace(body.UserLastName))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["userName"] = ["a first or last name is required."] });
                 // login_id must be unique (legacy w_user_new:111 "Duplicated user login name!").
                 // A case-insensitive dup would make GetSecurityUserByLoginAsync (QuerySingleOrDefault
                 // + LOWER) throw and GetEffectivePrivilege MAX across two rows — the auth bridge.
@@ -1595,20 +1598,29 @@ public static class ApiEndpoints
            .WithSummary("Create a protected feature (requires User Control).").Produces<SecurityApplication>(StatusCodes.Status201Created).Produces(StatusCodes.Status403Forbidden);
 
         api.MapPut("/security/users/{userId:long}/applications/{applicationId:long}", async (long userId, long applicationId, GrantWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
-                await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny ? deny
-                    : await repo.SetUserApplicationGrantAsync(userId, applicationId, body.Privilege ?? 0, ct)
-                        ? Results.NoContent() : Results.NotFound())
+            {
+                if (await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny) return deny;
+                // Privilege is the legacy security level: 0 = ReadOnly, 1 = Write (d_user_app).
+                if (body.Privilege is not (null or 0 or 1))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["privilege"] = ["privilege must be 0 (ReadOnly) or 1 (Write)."] });
+                return await repo.SetUserApplicationGrantAsync(userId, applicationId, body.Privilege ?? 0, ct)
+                    ? Results.NoContent() : Results.NotFound();
+            })
            .WithName("SetUserApplicationGrant").WithTags("Security")
            .WithSummary("Set a user's privilege on a feature (0 = ReadOnly, 1 = Write; requires User Control).")
-           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status403Forbidden);
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status403Forbidden).ProducesValidationProblem();
 
         api.MapPut("/security/groups/{groupId:long}/applications/{applicationId:long}", async (long groupId, long applicationId, GrantWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
-                await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny ? deny
-                    : await repo.SetGroupApplicationGrantAsync(groupId, applicationId, body.Privilege ?? 0, ct)
-                        ? Results.NoContent() : Results.NotFound())
+            {
+                if (await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny) return deny;
+                if (body.Privilege is not (null or 0 or 1))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["privilege"] = ["privilege must be 0 (ReadOnly) or 1 (Write)."] });
+                return await repo.SetGroupApplicationGrantAsync(groupId, applicationId, body.Privilege ?? 0, ct)
+                    ? Results.NoContent() : Results.NotFound();
+            })
            .WithName("SetGroupApplicationGrant").WithTags("Security")
            .WithSummary("Set a group's privilege on a feature (0 = ReadOnly, 1 = Write; requires User Control).")
-           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status403Forbidden);
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status403Forbidden).ProducesValidationProblem();
 
         api.MapPost("/security/users/{userId:long}/groups/{groupId:long}", async (long userId, long groupId, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
                 await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny ? deny

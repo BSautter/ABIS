@@ -1759,7 +1759,7 @@ public sealed class AbisRepository : IAbisRepository
             VALUES (:id, :login, :last, :first, :mi, :status, :notes, :modified)
             """,
             new { id, login = body.LoginId, last = body.UserLastName, first = body.UserFirstName, mi = body.UserMiddleInitial,
-                  status = body.UserStatus, notes = body.UserNotes, modified = (DateTime?)DateTime.UtcNow },
+                  status = body.UserStatus ?? 1, notes = body.UserNotes, modified = (DateTime?)DateTime.UtcNow },   // new users default active (legacy w_user_new)
             transaction: tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
         return (await GetSecurityUserAsync(id, ct))!;

@@ -616,6 +616,20 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Security_grant_privilege_and_new_user_defaults()
+    {
+        // Grant privilege must be 0 or 1: an out-of-range value -> 400; a valid one -> 204.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PutAsJsonAsync("/api/security/users/9001/applications/4", new { privilege = 5 })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.PutAsJsonAsync("/api/security/users/9001/applications/4", new { privilege = 1 })).StatusCode);
+        // A user needs a name (first or last).
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/security/users", new { loginId = "noname" })).StatusCode);
+        // Status defaults to active (1) when omitted.
+        var resp = await _client.PostAsJsonAsync("/api/security/users", new { loginId = "defactive", userFirstName = "Ann" });
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        Assert.Equal(1, (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("userStatus").GetInt32());
+    }
+
+    [Fact]
     public async Task Shipped_skid_cannot_be_warehouse_patched()
     {
         // Seed skid 3003 is shipped (status 0 = GONE) -> warehouse update rejected (409).
