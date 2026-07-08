@@ -1537,6 +1537,87 @@ public static class ApiEndpoints
            .WithSummary("A job's run history. Empty until a future execution engine records runs.")
            .Produces<IReadOnlyList<ScheduledJobRun>>().Produces(StatusCodes.Status404NotFound);
 
+        // ---- Admin: EDI setup config (docs/ADMIN_SUBSYSTEM_PLAN.md #8 setup UI). Manages the
+        // trading-partner / transaction-type config that is hand-maintained in DB tables today. This
+        // is CONFIG ONLY — generation + VAN transport remain stubbed/absent, so nothing is generated
+        // or transmitted; the legacy db01 EDI crontab stays the sole live owner (no-live-firing
+        // guardrail). Gated on the existing "EDI" feature (reads elsewhere; writes need Write). ----
+        const string EdiFeature = "EDI";
+
+        api.MapPost("/admin/edi/types", async (EdiTypeWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, EdiFeature, 1, ct) is { } deny) return deny;
+                if (ValidateEdiType(body) is { } e) return Results.ValidationProblem(e);
+                if (await repo.EdiTypeExistsAsync(body.EdiTypeId, body.EdiVersion!.Trim(), ct))
+                    return Results.Conflict(new { message = $"EDI type {body.EdiTypeId}/{body.EdiVersion!.Trim()} already exists." });
+                var created = await repo.CreateEdiTypeAsync(body, ct);
+                return Results.Created($"/api/admin/edi/types/{created.EdiTypeId}/{created.EdiVersion}", created);
+            })
+           .WithName("CreateEdiType").WithTags("Admin")
+           .WithSummary("Define an EDI transaction type + version (config only — transmits nothing).")
+           .Produces<EdiType>(StatusCodes.Status201Created).ProducesValidationProblem().Produces(StatusCodes.Status409Conflict);
+
+        api.MapPut("/admin/edi/types/{ediTypeId:int}/{ediVersion}", async (int ediTypeId, string ediVersion, EdiTypeWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, EdiFeature, 1, ct) is { } deny) return deny;
+                if (body.EdiTypeDescription is { Length: > 255 })
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["ediTypeDescription"] = ["ediTypeDescription must be 255 characters or fewer."] });
+                var updated = await repo.UpdateEdiTypeDescriptionAsync(ediTypeId, ediVersion, body.EdiTypeDescription, ct);
+                return updated is null ? Results.NotFound() : Results.Ok(updated);
+            })
+           .WithName("UpdateEdiType").WithTags("Admin")
+           .WithSummary("Update an EDI type's description.")
+           .Produces<EdiType>().ProducesValidationProblem().Produces(StatusCodes.Status404NotFound);
+
+        api.MapPost("/admin/edi/customer-routes", async (CustomerEdiWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, EdiFeature, 1, ct) is { } deny) return deny;
+                if (await ValidateCustomerEdiAsync(body, repo, ct) is { } e) return Results.ValidationProblem(e);
+                if (await repo.GetCustomerEdiOneAsync(body.CustomerEdiName!.Trim(), body.CustomerId, ct) is not null)
+                    return Results.Conflict(new { message = $"EDI route '{body.CustomerEdiName!.Trim()}' for customer {body.CustomerId} already exists." });
+                var created = await repo.CreateCustomerEdiAsync(body, ct);
+                return Results.Created($"/api/admin/edi/customer-routes/{created.CustomerId}/{created.CustomerEdiName}", created);
+            })
+           .WithName("CreateCustomerEdiRoute").WithTags("Admin")
+           .WithSummary("Define a trading-partner EDI route (config only). Validates the customer + referenced EDI type exist.")
+           .Produces<CustomerEdi>(StatusCodes.Status201Created).ProducesValidationProblem().Produces(StatusCodes.Status409Conflict);
+
+        api.MapPut("/admin/edi/customer-routes/{customerId:long}/{customerEdiName}", async (long customerId, string customerEdiName, CustomerEdiWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, EdiFeature, 1, ct) is { } deny) return deny;
+                // Route keys come from the path; only the type/version/desc are mutable.
+                body.CustomerEdiName = customerEdiName; body.CustomerId = customerId;
+                if (await ValidateCustomerEdiTypeRefAsync(body, repo, ct) is { } e) return Results.ValidationProblem(e);
+                var updated = await repo.UpdateCustomerEdiAsync(customerEdiName, customerId, body, ct);
+                return updated is null ? Results.NotFound() : Results.Ok(updated);
+            })
+           .WithName("UpdateCustomerEdiRoute").WithTags("Admin")
+           .Produces<CustomerEdi>().ProducesValidationProblem().Produces(StatusCodes.Status404NotFound);
+
+        api.MapDelete("/admin/edi/customer-routes/{customerId:long}/{customerEdiName}", async (long customerId, string customerEdiName, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, EdiFeature, 1, ct) is { } deny) return deny;
+                return await repo.DeleteCustomerEdiAsync(customerEdiName, customerId, ct)
+                    ? Results.NoContent() : Results.NotFound();
+            })
+           .WithName("DeleteCustomerEdiRoute").WithTags("Admin")
+           .WithSummary("Remove a trading-partner EDI route.")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
+
+        api.MapPut("/admin/edi/customers/{customerId:long}/861-flag", async (long customerId, Customer861FlagWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, EdiFeature, 1, ct) is { } deny) return deny;
+                var flag = body.Create861AtReceiving?.Trim().ToUpperInvariant();
+                if (flag is not ("Y" or "N"))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["create861AtReceiving"] = ["create861AtReceiving must be 'Y' or 'N'."] });
+                return await repo.SetCustomer861FlagAsync(customerId, flag, ct)
+                    ? Results.Ok(new { customerId, create861AtReceiving = flag })
+                    : Results.NotFound();
+            })
+           .WithName("SetCustomer861Flag").WithTags("Admin")
+           .WithSummary("Set a customer's 'create 861 at receiving' flag (Y/N). Config only — generates no EDI.")
+           .Produces(StatusCodes.Status200OK).ProducesValidationProblem().Produces(StatusCodes.Status404NotFound);
+
         api.MapGet("/reporting/downtime", async (DateTime? from, DateTime? to, IAbisRepository repo, CancellationToken ct, long? lineNum = null) =>
             {
                 var (f, t) = ResolveReportWindow(from, to);
@@ -2249,6 +2330,50 @@ public static class ApiEndpoints
         foreach (var f in fields)
             if (!f.All(c => char.IsDigit(c) || c is '*' or '/' or '-' or ',')) return false;
         return true;
+    }
+
+    private static Dictionary<string, string[]>? ValidateEdiType(EdiTypeWrite body)
+    {
+        var e = new Dictionary<string, string[]>();
+        if (body.EdiTypeId is <= 0 or > 999) e["ediTypeId"] = ["ediTypeId must be 1–999 (NUMBER(3))."];
+        Req(e, "ediVersion", body.EdiVersion);
+        Max(e, "ediVersion", body.EdiVersion?.Trim(), 18);
+        Max(e, "ediTypeDescription", body.EdiTypeDescription, 255);
+        return e.Count == 0 ? null : e;
+    }
+
+    private static async Task<Dictionary<string, string[]>?> ValidateCustomerEdiAsync(CustomerEdiWrite body, IAbisRepository repo, CancellationToken ct)
+    {
+        var e = new Dictionary<string, string[]>();
+        Req(e, "customerEdiName", body.CustomerEdiName);
+        Max(e, "customerEdiName", body.CustomerEdiName?.Trim(), 18);
+        if (body.CustomerId <= 0) e["customerId"] = ["customerId is required."];
+        Max(e, "ediVersion", body.EdiVersion?.Trim(), 18);
+        Max(e, "customerEdiDesc", body.CustomerEdiDesc, 255);
+        // The route hangs off a real customer — a bad id would be an ORA-02291 500 on Oracle.
+        if (!e.ContainsKey("customerId") && await repo.GetCustomerAsync(body.CustomerId, ct) is null)
+            e["customerId"] = ["customerId must reference an existing customer."];
+        await AppendEdiTypeRefErrorAsync(e, body, repo, ct);
+        return e.Count == 0 ? null : e;
+    }
+
+    /// <summary>Update-time validation for a customer EDI route: the (name, customerId) key is fixed
+    /// by the path, so only the mutable type/version/desc are checked.</summary>
+    private static async Task<Dictionary<string, string[]>?> ValidateCustomerEdiTypeRefAsync(CustomerEdiWrite body, IAbisRepository repo, CancellationToken ct)
+    {
+        var e = new Dictionary<string, string[]>();
+        Max(e, "ediVersion", body.EdiVersion?.Trim(), 18);
+        Max(e, "customerEdiDesc", body.CustomerEdiDesc, 255);
+        await AppendEdiTypeRefErrorAsync(e, body, repo, ct);
+        return e.Count == 0 ? null : e;
+    }
+
+    /// <summary>When a route names a type + version, that pair must exist in edi_type (no dangling route).</summary>
+    private static async Task AppendEdiTypeRefErrorAsync(Dictionary<string, string[]> e, CustomerEdiWrite body, IAbisRepository repo, CancellationToken ct)
+    {
+        if (body.EdiTypeId is { } tid && !string.IsNullOrWhiteSpace(body.EdiVersion)
+            && !e.ContainsKey("ediVersion") && !await repo.EdiTypeExistsAsync(tid, body.EdiVersion!.Trim(), ct))
+            e["ediTypeId"] = ["ediTypeId/ediVersion must reference an existing EDI type."];
     }
 
     /// <summary>Returns a ProblemDetails error dictionary, or null when valid.</summary>

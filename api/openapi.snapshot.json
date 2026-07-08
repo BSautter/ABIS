@@ -497,6 +497,319 @@
         }
       }
     },
+    "/api/admin/edi/types": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Define an EDI transaction type + version (config only — transmits nothing).",
+        "operationId": "CreateEdiType",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EdiTypeWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EdiType"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/admin/edi/types/{ediTypeId}/{ediVersion}": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Update an EDI type's description.",
+        "operationId": "UpdateEdiType",
+        "parameters": [
+          {
+            "name": "ediTypeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "ediVersion",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EdiTypeWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EdiType"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/admin/edi/customer-routes": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Define a trading-partner EDI route (config only). Validates the customer + referenced EDI type exist.",
+        "operationId": "CreateCustomerEdiRoute",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerEdiWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerEdi"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/admin/edi/customer-routes/{customerId}/{customerEdiName}": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "UpdateCustomerEdiRoute",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "customerEdiName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerEdiWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerEdi"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Remove a trading-partner EDI route.",
+        "operationId": "DeleteCustomerEdiRoute",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "customerEdiName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/admin/edi/customers/{customerId}/861-flag": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Set a customer's 'create 861 at receiving' flag (Y/N). Config only — generates no EDI.",
+        "operationId": "SetCustomer861Flag",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Customer861FlagWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/audit-log": {
       "get": {
         "tags": [
@@ -10085,6 +10398,16 @@
         },
         "additionalProperties": false
       },
+      "Customer861FlagWrite": {
+        "type": "object",
+        "properties": {
+          "create861AtReceiving": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "CustomerContact": {
         "type": "object",
         "properties": {
@@ -10197,6 +10520,33 @@
         "additionalProperties": false
       },
       "CustomerEdi": {
+        "type": "object",
+        "properties": {
+          "customerEdiName": {
+            "type": "string",
+            "nullable": true
+          },
+          "customerId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "ediTypeId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "ediVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "customerEdiDesc": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CustomerEdiWrite": {
         "type": "object",
         "properties": {
           "customerEdiName": {
@@ -11352,6 +11702,24 @@
         "additionalProperties": false
       },
       "EdiType": {
+        "type": "object",
+        "properties": {
+          "ediTypeId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ediVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "ediTypeDescription": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "EdiTypeWrite": {
         "type": "object",
         "properties": {
           "ediTypeId": {

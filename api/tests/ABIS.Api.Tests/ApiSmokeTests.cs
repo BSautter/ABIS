@@ -483,6 +483,52 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Admin_edi_setup_config_is_editable_and_validated()
+    {
+        // ---- EDI types ----
+        // Create a new type -> 201; duplicate of the seeded (856/2002FORD) -> 409; bad id -> 400.
+        var create = await _client.PostAsJsonAsync("/api/admin/edi/types",
+            new { ediTypeId = 863, ediVersion = "3040TEST", ediTypeDescription = "Cert test results" });
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsJsonAsync("/api/admin/edi/types",
+            new { ediTypeId = 856, ediVersion = "2002FORD", ediTypeDescription = "dup" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/admin/edi/types",
+            new { ediTypeId = 0, ediVersion = "X" })).StatusCode);
+
+        // Update the seeded type's description -> 200; unknown type -> 404.
+        var upd = await _client.PutAsJsonAsync("/api/admin/edi/types/870/3030", new { ediTypeDescription = "Order status (edited)" });
+        Assert.Equal(HttpStatusCode.OK, upd.StatusCode);
+        Assert.Equal("Order status (edited)", (await upd.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("ediTypeDescription").GetString());
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PutAsJsonAsync("/api/admin/edi/types/999/NOPE", new { ediTypeDescription = "x" })).StatusCode);
+
+        // ---- Customer routes ----
+        // Create a route (customer 4001 + existing type 856/2002FORD) -> 201.
+        var route = await _client.PostAsJsonAsync("/api/admin/edi/customer-routes",
+            new { customerEdiName = "TEST_856_ROUTE", customerId = 4001, ediTypeId = 856, ediVersion = "2002FORD", customerEdiDesc = "test route" });
+        Assert.Equal(HttpStatusCode.Created, route.StatusCode);
+        // Duplicate -> 409; unknown customer -> 400; dangling type ref -> 400.
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsJsonAsync("/api/admin/edi/customer-routes",
+            new { customerEdiName = "ASN_ALCAN_FORD", customerId = 4001, ediTypeId = 856, ediVersion = "2002FORD" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/admin/edi/customer-routes",
+            new { customerEdiName = "GHOST_ROUTE", customerId = 999999 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/admin/edi/customer-routes",
+            new { customerEdiName = "BAD_TYPE_ROUTE", customerId = 4001, ediTypeId = 999, ediVersion = "NOPE" })).StatusCode);
+
+        // Update the route's description -> 200; delete it -> 204; delete again -> 404.
+        Assert.Equal(HttpStatusCode.OK, (await _client.PutAsJsonAsync("/api/admin/edi/customer-routes/4001/TEST_856_ROUTE",
+            new { customerEdiDesc = "edited" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync("/api/admin/edi/customer-routes/4001/TEST_856_ROUTE")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.DeleteAsync("/api/admin/edi/customer-routes/4001/TEST_856_ROUTE")).StatusCode);
+
+        // ---- Per-customer 861 flag ----
+        var flag = await _client.PutAsJsonAsync("/api/admin/edi/customers/4001/861-flag", new { create861AtReceiving = "n" });
+        Assert.Equal(HttpStatusCode.OK, flag.StatusCode);
+        Assert.Equal("N", (await flag.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("create861AtReceiving").GetString());
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PutAsJsonAsync("/api/admin/edi/customers/4001/861-flag", new { create861AtReceiving = "X" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PutAsJsonAsync("/api/admin/edi/customers/999999/861-flag", new { create861AtReceiving = "Y" })).StatusCode);
+    }
+
+    [Fact]
     public async Task Sheet_skid_requires_job_with_an_order()
     {
         // A sheet skid whose job can't resolve an order is refused (w_wh_business:831) -> 400.

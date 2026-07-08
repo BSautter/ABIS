@@ -2977,6 +2977,101 @@ public sealed class AbisRepository : IAbisRepository
         return rows.AsList();
     }
 
+    // ---- EDI setup config (docs/ADMIN_SUBSYSTEM_PLAN.md #8, setup UI). Editing trading-partner /
+    // transaction-type config ONLY — generation + VAN transport stay stubbed/absent, so nothing is
+    // transmitted (the legacy db01 EDI crontab remains the sole live owner). ----
+    private const string EdiTypeCols =
+        "edi_type_id AS EdiTypeId, edi_version AS EdiVersion, edi_type_description AS EdiTypeDescription";
+    private const string CustomerEdiCols =
+        "customer_edi_name AS CustomerEdiName, customer_id AS CustomerId, edi_type_id AS EdiTypeId, " +
+        "edi_version AS EdiVersion, customer_edi_desc AS CustomerEdiDesc";
+
+    public async Task<EdiType?> GetEdiTypeAsync(int ediTypeId, string ediVersion, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.QuerySingleOrDefaultAsync<EdiType>(new CommandDefinition(
+            $"SELECT {EdiTypeCols} FROM edi_type WHERE edi_type_id = :id AND edi_version = :ver",
+            new { id = ediTypeId, ver = ediVersion }, cancellationToken: ct));
+    }
+
+    public async Task<bool> EdiTypeExistsAsync(int ediTypeId, string ediVersion, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM edi_type WHERE edi_type_id = :id AND edi_version = :ver",
+            new { id = ediTypeId, ver = ediVersion }, cancellationToken: ct)) > 0;
+    }
+
+    public async Task<EdiType> CreateEdiTypeAsync(EdiTypeWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var ver = body.EdiVersion!.Trim();
+        await conn.ExecuteAsync(new CommandDefinition(
+            "INSERT INTO edi_type (edi_type_id, edi_version, edi_type_description) VALUES (:id, :ver, :desc)",
+            new { id = body.EdiTypeId, ver, desc = body.EdiTypeDescription }, cancellationToken: ct));
+        return (await GetEdiTypeAsync(body.EdiTypeId, ver, ct))!;
+    }
+
+    public async Task<EdiType?> UpdateEdiTypeDescriptionAsync(int ediTypeId, string ediVersion, string? description, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE edi_type SET edi_type_description = :desc WHERE edi_type_id = :id AND edi_version = :ver",
+            new { id = ediTypeId, ver = ediVersion, desc = description }, cancellationToken: ct));
+        return rows == 0 ? null : await GetEdiTypeAsync(ediTypeId, ediVersion, ct);
+    }
+
+    public async Task<CustomerEdi?> GetCustomerEdiOneAsync(string customerEdiName, long customerId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.QuerySingleOrDefaultAsync<CustomerEdi>(new CommandDefinition(
+            $"SELECT {CustomerEdiCols} FROM customer_edi WHERE customer_edi_name = :name AND customer_id = :cust",
+            new { name = customerEdiName, cust = customerId }, cancellationToken: ct));
+    }
+
+    public async Task<CustomerEdi> CreateCustomerEdiAsync(CustomerEdiWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var name = body.CustomerEdiName!.Trim();
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO customer_edi (customer_edi_name, customer_id, edi_type_id, edi_version, customer_edi_desc)
+            VALUES (:name, :cust, :type, :ver, :desc)
+            """,
+            new { name, cust = body.CustomerId, type = body.EdiTypeId, ver = body.EdiVersion?.Trim(), desc = body.CustomerEdiDesc },
+            cancellationToken: ct));
+        return (await GetCustomerEdiOneAsync(name, body.CustomerId, ct))!;
+    }
+
+    public async Task<CustomerEdi?> UpdateCustomerEdiAsync(string customerEdiName, long customerId, CustomerEdiWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE customer_edi SET edi_type_id = :type, edi_version = :ver, customer_edi_desc = :desc
+            WHERE customer_edi_name = :name AND customer_id = :cust
+            """,
+            new { name = customerEdiName, cust = customerId, type = body.EdiTypeId, ver = body.EdiVersion?.Trim(), desc = body.CustomerEdiDesc },
+            cancellationToken: ct));
+        return rows == 0 ? null : await GetCustomerEdiOneAsync(customerEdiName, customerId, ct);
+    }
+
+    public async Task<bool> DeleteCustomerEdiAsync(string customerEdiName, long customerId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM customer_edi WHERE customer_edi_name = :name AND customer_id = :cust",
+            new { name = customerEdiName, cust = customerId }, cancellationToken: ct)) > 0;
+    }
+
+    public async Task<bool> SetCustomer861FlagAsync(long customerId, string flag, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE customer SET create_861_at_receiving = :flag WHERE customer_id = :id",
+            new { id = customerId, flag }, cancellationToken: ct)) > 0;
+    }
+
     public async Task<ReceivingBol> CreateReceivingBolAsync(ReceivingBolWrite body, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

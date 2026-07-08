@@ -705,3 +705,34 @@ public sealed class ScheduledJobWrite
     /// <summary>Where the definition came from (e.g. <c>imported</c> from crontab, or <c>native</c>).</summary>
     public string? Source { get; set; }
 }
+
+/// <summary>Create/update body for an EDI transaction type + version (edi_type; setup UI,
+/// docs/ADMIN_SUBSYSTEM_PLAN.md #8). Config only — defining a type transmits nothing.</summary>
+public sealed class EdiTypeWrite
+{
+    /// <summary>Transaction-set id, e.g. 856/861/870 (<c>edi_type_id</c>, NUMBER(3): 1–999).</summary>
+    public int EdiTypeId { get; set; }
+    /// <summary>Version/qualifier, e.g. <c>2002FORD</c> (<c>edi_version</c>, VARCHAR2(18)). Part of the key.</summary>
+    public string? EdiVersion { get; set; }
+    public string? EdiTypeDescription { get; set; }
+}
+
+/// <summary>Create/update body for a trading-partner EDI route (customer_edi; setup UI, #8).
+/// Config only. The (name, customerId) pair is the key; the type/version (if set) must reference
+/// an existing edi_type.</summary>
+public sealed class CustomerEdiWrite
+{
+    /// <summary>Route name, e.g. <c>ASN_ALCAN_FORD</c> (<c>customer_edi_name</c>, VARCHAR2(18)).</summary>
+    public string? CustomerEdiName { get; set; }
+    public long CustomerId { get; set; }
+    public int? EdiTypeId { get; set; }
+    public string? EdiVersion { get; set; }
+    public string? CustomerEdiDesc { get; set; }
+}
+
+/// <summary>Set a customer's "create 861 at receiving" EDI flag (customer.create_861_at_receiving,
+/// CHAR Y/N; setup UI, #8). Config only — sets a flag, generates/sends nothing.</summary>
+public sealed class Customer861FlagWrite
+{
+    public string? Create861AtReceiving { get; set; }
+}

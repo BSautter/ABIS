@@ -147,6 +147,15 @@ public interface IAbisRepository
     Task<ScheduledJob?> UpdateScheduledJobAsync(long scheduledJobId, ScheduledJobWrite body, CancellationToken ct);
     Task<ScheduledJob?> SetScheduledJobEnabledAsync(long scheduledJobId, bool enabled, CancellationToken ct);
     Task<IReadOnlyList<ScheduledJobRun>> GetScheduledJobRunsAsync(long scheduledJobId, CancellationToken ct);
+    Task<EdiType?> GetEdiTypeAsync(int ediTypeId, string ediVersion, CancellationToken ct);
+    Task<bool> EdiTypeExistsAsync(int ediTypeId, string ediVersion, CancellationToken ct);
+    Task<EdiType> CreateEdiTypeAsync(EdiTypeWrite body, CancellationToken ct);
+    Task<EdiType?> UpdateEdiTypeDescriptionAsync(int ediTypeId, string ediVersion, string? description, CancellationToken ct);
+    Task<CustomerEdi?> GetCustomerEdiOneAsync(string customerEdiName, long customerId, CancellationToken ct);
+    Task<CustomerEdi> CreateCustomerEdiAsync(CustomerEdiWrite body, CancellationToken ct);
+    Task<CustomerEdi?> UpdateCustomerEdiAsync(string customerEdiName, long customerId, CustomerEdiWrite body, CancellationToken ct);
+    Task<bool> DeleteCustomerEdiAsync(string customerEdiName, long customerId, CancellationToken ct);
+    Task<bool> SetCustomer861FlagAsync(long customerId, string flag, CancellationToken ct);
     Task<PagedResult<ScrapSkid>> GetScrapSkidsAsync(int page, int pageSize, string? orderBy, CancellationToken ct);
     Task<ScrapSkid?> GetScrapSkidAsync(long scrapSkidNum, CancellationToken ct);
     Task<ScrapSkid> CreateScrapSkidAsync(ScrapSkidWrite body, CancellationToken ct);
