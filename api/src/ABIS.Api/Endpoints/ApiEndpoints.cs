@@ -231,11 +231,18 @@ public static class ApiEndpoints
            .WithSummary("Create a coil on receipt.")
            .Produces<Coil>(StatusCodes.Status201Created).ProducesValidationProblem();
 
-        api.MapPatch("/coils/{coilAbcNum:long}", (long coilAbcNum, CoilPatch body, IAbisRepository repo, HttpContext ctx, IOptions<JsonOptions> json, CancellationToken ct) =>
-                WithIfMatch(ctx, json, () => repo.GetCoilAsync(coilAbcNum, ct), () => repo.PatchCoilAsync(coilAbcNum, body, ct)))
+        api.MapPatch("/coils/{coilAbcNum:long}", async (long coilAbcNum, CoilPatch body, IAbisRepository repo, HttpContext ctx, IOptions<JsonOptions> json, CancellationToken ct) =>
+            {
+                // Legacy w_inv_coil (391-404): a coil that is Done(0), Shipped(10), or
+                // Transferred(13) is terminal — its detail can't be modified.
+                if (await repo.GetCoilAsync(coilAbcNum, ct) is { CoilStatus: 0 or 10 or 13 } t)
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Coil is terminal",
+                        detail: $"Coil {coilAbcNum} is {t.CoilStatus switch { 0 => "done", 10 => "shipped", _ => "transferred" }} and cannot be modified.");
+                return await WithIfMatch(ctx, json, () => repo.GetCoilAsync(coilAbcNum, ct), () => repo.PatchCoilAsync(coilAbcNum, body, ct));
+            })
            .WithName("PatchCoil").WithTags("Coils")
-           .WithSummary("Update a coil's status, location, or notes. Supports If-Match.")
-           .Produces<Coil>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status412PreconditionFailed);
+           .WithSummary("Update a coil's status, location, or notes (409 if the coil is done/shipped/transferred). Supports If-Match.")
+           .Produces<Coil>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status412PreconditionFailed);
 
         // ---- Orders -----------------------------------------------------
         api.MapGet("/orders", async (IAbisRepository repo, CancellationToken ct,

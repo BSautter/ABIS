@@ -540,6 +540,18 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Terminal_coil_cannot_be_patched()
+    {
+        var create = await _client.PostAsJsonAsync("/api/coils",
+            new { coilAlloy2 = "9099", netWt = 12000, coilWidth = 48.0, coilOrgNum = "ORG-TERM-1", coilStatus = 1 });
+        var id = (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("coilAbcNum").GetInt64();
+        // A non-terminal coil patches fine (status 1 -> Transferred 13).
+        Assert.Equal(HttpStatusCode.OK, (await _client.PatchAsJsonAsync($"/api/coils/{id}", new { coilStatus = 13 })).StatusCode);
+        // Now terminal (13) -> any further modification is rejected with 409.
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PatchAsJsonAsync($"/api/coils/{id}", new { coilLocation = "X-01" })).StatusCode);
+    }
+
+    [Fact]
     public async Task Create_sheet_skid_returns_201()
     {
         var resp = await _client.PostAsJsonAsync("/api/sheet-skids", new { abJobNum = 1001, sheetNetWt = 2000, skidPieces = 100 });
