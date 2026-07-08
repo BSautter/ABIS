@@ -1203,6 +1203,30 @@ public sealed class AbisRepository : IAbisRepository
         public decimal? ProcessWt { get; set; }
     }
 
+    // Downtime totalled by cause code (legacy d_report_downtime_daily_per_cat): SUM(duration)/60
+    // minutes grouped by dt_instance_detail.instance_item, resolved via detail ⋈ dt_instance for
+    // the date/line window. Plain GROUP BY (no date-truncation), so portable SQLite/Oracle.
+    public async Task<IReadOnlyList<DowntimeByCauseRow>> GetDowntimeByCauseAsync(DateTime from, DateTime to, long? lineNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var p = new DynamicParameters();
+        p.Add("dfrom", from, DbType.DateTime);
+        p.Add("dto", to, DbType.DateTime);
+        var lineFilter = "";
+        if (lineNum is not null) { lineFilter = " AND i.line_num = :line"; p.Add("line", lineNum); }
+        var rows = await conn.QueryAsync<DowntimeByCauseRow>(new CommandDefinition(
+            $"""
+            SELECT d.instance_item AS InstanceItem, COUNT(*) AS Occurrences,
+                   ROUND(COALESCE(SUM(d.duration), 0) / 60.0, 2) AS DurationMinutes
+            FROM dt_instance_detail d
+            JOIN dt_instance i ON i.instance_num = d.instance_num
+            WHERE i.starting_time >= :dfrom AND i.starting_time < :dto{lineFilter}
+            GROUP BY d.instance_item
+            ORDER BY d.instance_item
+            """, p, cancellationToken: ct));
+        return rows.AsList();
+    }
+
     // Downtime events over a window (optionally one line), joined to the line description.
     public async Task<IReadOnlyList<ProductionDowntimeRow>> GetProductionDowntimeAsync(DateTime? from, DateTime? to, long? lineNum, CancellationToken ct)
     {

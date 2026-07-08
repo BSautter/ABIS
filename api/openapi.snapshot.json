@@ -5372,6 +5372,59 @@
         }
       }
     },
+    "/api/reporting/downtime-by-cause": {
+      "get": {
+        "tags": [
+          "Reporting"
+        ],
+        "summary": "Downtime minutes by cause code (SUM dt_instance_detail.duration/60 via dt_instance), optionally one line. Defaults to the last 365 days when unbounded.",
+        "operationId": "GetDowntimeByCause",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "lineNum",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DowntimeByCauseRow"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/reporting/downtime": {
       "get": {
         "tags": [
@@ -10429,6 +10482,25 @@
           "note": {
             "type": "string",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "DowntimeByCauseRow": {
+        "type": "object",
+        "properties": {
+          "instanceItem": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "occurrences": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "durationMinutes": {
+            "type": "number",
+            "format": "double"
           }
         },
         "additionalProperties": false

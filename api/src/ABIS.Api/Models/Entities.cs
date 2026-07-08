@@ -1183,6 +1183,18 @@ public sealed class ShiftProductionRow
     public decimal ProcessedWt { get; set; }
 }
 
+/// <summary>Downtime totalled by cause (legacy <c>d_report_downtime_daily_per_cat</c>):
+/// SUM(dt_instance_detail.duration)/60 minutes grouped by the cause code
+/// (<c>instance_item</c>), resolved via dt_instance_detail ⋈ dt_instance for the date/line
+/// window. <see cref="InstanceItem"/> is the cause/category code (name lookup is a follow-up
+/// once a downtime-category table is modeled).</summary>
+public sealed class DowntimeByCauseRow
+{
+    public int? InstanceItem { get; set; }
+    public int Occurrences { get; set; }
+    public decimal DurationMinutes { get; set; }
+}
+
 /// <summary>One downtime event (legacy w_report_production_downtime): the line, job, and
 /// window. <see cref="DurationMinutes"/> is computed from start/end (portable — no DB
 /// date math).</summary>

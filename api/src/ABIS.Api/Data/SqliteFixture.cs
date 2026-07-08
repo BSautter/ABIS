@@ -331,6 +331,11 @@ public static class SqliteFixture
                 instance_num INTEGER PRIMARY KEY, ab_job_num INTEGER, line_num INTEGER,
                 starting_time TEXT, ending_time TEXT, note TEXT, shift_num INTEGER);
 
+            -- Segmented downtime within an instance (legacy dt_instance_detail): instance_item is
+            -- the cause/category code, duration is seconds (legacy reports SUM(duration)/60 minutes).
+            CREATE TABLE dt_instance_detail (
+                id INTEGER PRIMARY KEY, instance_num INTEGER, instance_item INTEGER, duration REAL, note TEXT);
+
             CREATE TABLE customer_contact (
                 contact_id INTEGER PRIMARY KEY, customer_id INTEGER, first_name TEXT, last_name TEXT,
                 department TEXT, city TEXT, state TEXT, phone1 TEXT, email1 TEXT);
@@ -650,6 +655,17 @@ public static class SqliteFixture
                 new { InstanceNum = 9101L, AbJobNum = (long?)1001L, LineNum = (long?)110L, StartingTime = (DateTime?)d.AddHours(1), EndingTime = (DateTime?)d.AddHours(1).AddMinutes(20), Note = "Coil change", ShiftNum = (long?)7701L },
                 new { InstanceNum = 9102L, AbJobNum = (long?)1003L, LineNum = (long?)120L, StartingTime = (DateTime?)d.AddHours(9), EndingTime = (DateTime?)d.AddHours(9).AddMinutes(10), Note = "Jam", ShiftNum = (long?)7702L },
                 new { InstanceNum = 9103L, AbJobNum = (long?)1001L, LineNum = (long?)110L, StartingTime = (DateTime?)d.AddHours(2), EndingTime = (DateTime?)d.AddHours(2).AddMinutes(5), Note = "Adjust", ShiftNum = (long?)7701L }
+            });
+
+        conn.Execute(
+            "INSERT INTO dt_instance_detail (id, instance_num, instance_item, duration, note) VALUES (:Id, :InstanceNum, :InstanceItem, :Duration, :Note)",
+            new[]
+            {
+                // Cause 1 (coil change): 9101 20min + 9103 5min = 1500s = 25min over 2 events.
+                new { Id = 1L, InstanceNum = 9101L, InstanceItem = (int?)1, Duration = (double?)1200.0, Note = "coil change" },
+                new { Id = 2L, InstanceNum = 9103L, InstanceItem = (int?)1, Duration = (double?)300.0, Note = "coil change" },
+                // Cause 2 (jam): 9102 10min = 600s.
+                new { Id = 3L, InstanceNum = 9102L, InstanceItem = (int?)2, Duration = (double?)600.0, Note = "jam" }
             });
 
         conn.Execute("""

@@ -283,6 +283,31 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Downtime_by_cause_sums_minutes_per_cause()
+    {
+        var arr = await _client.GetFromJsonAsync<JsonElement>(
+            "/api/reporting/downtime-by-cause?from=2026-01-01T00:00:00&to=2027-01-01T00:00:00");
+        // Cause 1 (coil change): instances 9101 (1200s) + 9103 (300s) = 1500s = 25 min over 2 events.
+        JsonElement cause1 = default; var found = false;
+        foreach (var e in arr.EnumerateArray())
+            if (e.GetProperty("instanceItem").GetInt32() == 1) { cause1 = e; found = true; break; }
+        Assert.True(found);
+        Assert.Equal(25m, cause1.GetProperty("durationMinutes").GetDecimal());
+        Assert.Equal(2, cause1.GetProperty("occurrences").GetInt32());
+
+        // Line 110 has only cause 1 (cause 2's instance 9102 is on line 120).
+        var l110 = await _client.GetFromJsonAsync<JsonElement>(
+            "/api/reporting/downtime-by-cause?from=2026-01-01T00:00:00&to=2027-01-01T00:00:00&lineNum=110");
+        foreach (var e in l110.EnumerateArray())
+            Assert.Equal(1, e.GetProperty("instanceItem").GetInt32());
+
+        // Pre-data window -> empty.
+        var outW = await _client.GetFromJsonAsync<JsonElement>(
+            "/api/reporting/downtime-by-cause?from=2000-01-01T00:00:00&to=2001-01-01T00:00:00");
+        Assert.Equal(0, outW.GetArrayLength());
+    }
+
+    [Fact]
     public async Task Sheet_skid_requires_job_with_an_order()
     {
         // A sheet skid whose job can't resolve an order is refused (w_wh_business:831) -> 400.

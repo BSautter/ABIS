@@ -1380,6 +1380,15 @@ public static class ApiEndpoints
            .WithSummary("Per-line, per-day processed weight from shift coils (SUM shift_coil.process_wt via SHIFT), optionally one line. Defaults to the last 365 days when unbounded.")
            .Produces<IReadOnlyList<ShiftProductionRow>>();
 
+        api.MapGet("/reporting/downtime-by-cause", async (DateTime? from, DateTime? to, IAbisRepository repo, CancellationToken ct, long? lineNum = null) =>
+            {
+                var (f, t) = ResolveReportWindow(from, to);
+                return Results.Ok(await repo.GetDowntimeByCauseAsync(f, t, lineNum, ct));
+            })
+           .WithName("GetDowntimeByCause").WithTags("Reporting")
+           .WithSummary("Downtime minutes by cause code (SUM dt_instance_detail.duration/60 via dt_instance), optionally one line. Defaults to the last 365 days when unbounded.")
+           .Produces<IReadOnlyList<DowntimeByCauseRow>>();
+
         api.MapGet("/reporting/downtime", async (DateTime? from, DateTime? to, IAbisRepository repo, CancellationToken ct, long? lineNum = null) =>
             {
                 var (f, t) = ResolveReportWindow(from, to);
