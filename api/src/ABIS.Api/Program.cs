@@ -144,6 +144,25 @@ if (dbOptions.Seed && dbOptions.Dialect == SqlDialect.Sqlite)
     app.Logger.LogInformation("Seeded SQLite fixture at {ConnectionString}", dbOptions.ConnectionString);
 }
 
+// Production (Oracle): idempotently ensure the ABIS-owned tables exist. They are new
+// (not part of the legacy DBO schema), so nothing else creates them — a deploy
+// self-provisions them here, with no manual DDL step. This ONLY creates abis_* tables;
+// it never touches the legacy schema and never fires a scheduled job. Non-fatal: a
+// failure is logged and the dependent admin endpoints 500 until it succeeds, while the
+// rest of the app serves normally.
+if (dbOptions.Dialect == SqlDialect.Oracle)
+{
+    try
+    {
+        await AbisSchema.EnsureOwnedTablesAsync(
+            app.Services.GetRequiredService<IDbConnectionFactory>(), app.Logger);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "ABIS-owned schema ensure failed; admin scheduler endpoints will 500 until it succeeds.");
+    }
+}
+
 // Very first: apply X-Forwarded-* from the nginx proxy so every downstream
 // component (rate limiter, auth, URL generation) sees the real scheme + client IP.
 app.UseForwardedHeaders();

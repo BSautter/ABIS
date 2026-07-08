@@ -1,0 +1,82 @@
+using System.Data.Common;
+using Dapper;
+using Microsoft.Extensions.Logging;
+
+namespace Abis.Api.Data;
+
+/// <summary>
+/// Idempotently provisions ABIS-<em>owned</em> tables on Oracle at startup so a deploy
+/// self-provisions them — no manual DDL step. These are NEW tables the modernization owns
+/// (prefixed <c>abis_</c>), <em>not</em> part of the legacy DBO schema, so nothing else
+/// creates them. Each statement is wrapped in a PL/SQL block that swallows ORA-00955
+/// ("name is already used by an existing object"), making a re-run on an already-provisioned
+/// schema a no-op. No-op on SQLite (the CI fixture models these tables directly).
+/// <para>
+/// STRICTLY schema provisioning: this only ever CREATEs <c>abis_*</c> tables — it never
+/// touches the legacy schema and never fires any scheduled job (the scheduler is inert; see
+/// docs/ADMIN_SUBSYSTEM_PLAN.md and the no-live-firing guardrail). The canonical DDL is
+/// mirrored in docs/data-model/migrations/001_admin_scheduler.sql for manual/DBA use.
+/// </para>
+/// </summary>
+public static class AbisSchema
+{
+    // One statement per array entry, referenced tables before their FKs. Kept in sync with
+    // docs/data-model/migrations/001_admin_scheduler.sql.
+    private static readonly string[] OwnedDdl =
+    [
+        """
+        CREATE TABLE abis_scheduled_job (
+          scheduled_job_id  NUMBER(10)     NOT NULL,
+          job_name          VARCHAR2(100)  NOT NULL,
+          job_description   VARCHAR2(1000),
+          cron_expression   VARCHAR2(128)  NOT NULL,
+          target_operation  VARCHAR2(100),
+          target_args       VARCHAR2(4000),
+          enabled           NUMBER(1)      DEFAULT 0 NOT NULL,
+          source            VARCHAR2(30),
+          created_utc       DATE,
+          updated_utc       DATE,
+          CONSTRAINT pk_abis_scheduled_job PRIMARY KEY (scheduled_job_id))
+        """,
+        "CREATE UNIQUE INDEX ux_abis_scheduled_job_name ON abis_scheduled_job (UPPER(job_name))",
+        """
+        CREATE TABLE abis_job_run (
+          job_run_id        NUMBER(12)     NOT NULL,
+          scheduled_job_id  NUMBER(10)     NOT NULL,
+          started_utc       DATE,
+          finished_utc      DATE,
+          run_status        VARCHAR2(20),
+          affected_count    NUMBER(12),
+          error_text        VARCHAR2(4000),
+          correlation_id    VARCHAR2(64),
+          CONSTRAINT pk_abis_job_run PRIMARY KEY (job_run_id),
+          CONSTRAINT fk_abis_job_run_job FOREIGN KEY (scheduled_job_id)
+            REFERENCES abis_scheduled_job (scheduled_job_id))
+        """,
+        "CREATE INDEX ix_abis_job_run_job ON abis_job_run (scheduled_job_id)"
+    ];
+
+    public static async Task EnsureOwnedTablesAsync(IDbConnectionFactory factory, ILogger logger, CancellationToken ct = default)
+    {
+        // SQLite (dev/CI): the fixture already creates these tables — nothing to do.
+        if (factory.Dialect != SqlDialect.Oracle) return;
+
+        await using var conn = factory.Create();
+        await conn.OpenAsync(ct);
+        foreach (var ddl in OwnedDdl)
+        {
+            // q'[ ... ]' is an Oracle q-quoted literal (the DDL contains no ']'); ORA-00955 means
+            // the object already exists → treat as already-provisioned. Any other error re-raises.
+            var block =
+                $$"""
+                BEGIN
+                  EXECUTE IMMEDIATE q'[{{ddl}}]';
+                EXCEPTION WHEN OTHERS THEN
+                  IF SQLCODE != -955 THEN RAISE; END IF;
+                END;
+                """;
+            await conn.ExecuteAsync(new CommandDefinition(block, cancellationToken: ct));
+        }
+        logger.LogInformation("ABIS-owned schema ensured ({Count} DDL statements applied idempotently).", OwnedDdl.Length);
+    }
+}

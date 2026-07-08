@@ -529,6 +529,17 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Abis_owned_schema_ensure_is_noop_on_sqlite()
+    {
+        // The Oracle startup schema-ensure must be a clean no-op on SQLite (the fixture already
+        // models the abis_* tables) — it returns before opening any connection, never throwing.
+        var factory = new Abis.Api.Data.DbConnectionFactory(
+            new Abis.Api.Data.DatabaseOptions { Provider = "Sqlite", ConnectionString = "Data Source=:memory:" });
+        await Abis.Api.Data.AbisSchema.EnsureOwnedTablesAsync(
+            factory, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+    }
+
+    [Fact]
     public async Task Sheet_skid_requires_job_with_an_order()
     {
         // A sheet skid whose job can't resolve an order is refused (w_wh_business:831) -> 400.
