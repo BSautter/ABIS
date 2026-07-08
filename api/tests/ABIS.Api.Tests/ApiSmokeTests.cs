@@ -600,6 +600,22 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Coil_transfer_performed_by_comes_from_the_principal()
+    {
+        // An OIDC end-user (X-User-Login) transferring coil 5001 (owner 4001 -> 4002): the
+        // certificate's performedBy is their login, not the client-supplied "SPOOFED".
+        var req = new HttpRequestMessage(HttpMethod.Post, "/api/coil-ownership/transfers")
+        {
+            Content = JsonContent.Create(new { coilAbcNumOrig = 5001, customerIdNew = 4002, transferPerformedBy = "SPOOFED" }),
+        };
+        req.Headers.Add("X-User-Login", "auditor7");
+        var resp = await _client.SendAsync(req);
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        var created = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("auditor7", created.GetProperty("transferPerformedBy").GetString());
+    }
+
+    [Fact]
     public async Task Shipped_skid_cannot_be_warehouse_patched()
     {
         // Seed skid 3003 is shipped (status 0 = GONE) -> warehouse update rejected (409).

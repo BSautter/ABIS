@@ -1483,7 +1483,7 @@ public static class ApiEndpoints
            .WithSummary("Coils eligible to transfer, with their current owner (the coil picker).")
            .Produces<IReadOnlyList<TransferableCoil>>();
 
-        api.MapPost("/coil-ownership/transfers", async (CoilOwnershipTransferWrite body, IAbisRepository repo, CancellationToken ct) =>
+        api.MapPost("/coil-ownership/transfers", async (CoilOwnershipTransferWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
             {
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
@@ -1494,6 +1494,10 @@ public static class ApiEndpoints
                     && owner == body.CustomerIdNew)
                     return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "No ownership change",
                         detail: $"Coil {coilId} is already owned by customer {body.CustomerIdNew}; nothing to transfer.");
+                // Provenance: stamp the certificate's performed-by from the authenticated principal
+                // (legacy used sqlca.logid), so an OIDC end-user can't spoof it. An API-key service
+                // account has no login, so it keeps the body value.
+                body.TransferPerformedBy = ResolveLogin(ctx) ?? body.TransferPerformedBy;
                 var created = await repo.CreateCoilOwnershipTransferAsync(body, ct);
                 return created is null
                     ? Results.NotFound(new { message = $"Coil {body.CoilAbcNumOrig} not found." })
