@@ -170,9 +170,13 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
         // A supplied yield must be positive ("Invalid yield value.", w_stacker_job_details:272) -> 400.
         Assert.Equal(HttpStatusCode.BadRequest,
             (await _client.PostAsJsonAsync("/api/jobs", new { orderAbcNum = 9001, orderItemNum = 7001, materialYield = 0 })).StatusCode);
-        // Full order refs (yield optional at create) -> 201.
+        // material_yield is a NUMBER(2,2) ratio (<= 0.99): a percentage-style value -> 400, not a
+        // 500 (would overflow the column, ORA-01438 — found live on codi-ABIS).
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/jobs", new { orderAbcNum = 9001, orderItemNum = 7001, materialYield = 92.5 })).StatusCode);
+        // Full order refs with a valid ratio yield -> 201 (yield is optional at create).
         Assert.Equal(HttpStatusCode.Created,
-            (await _client.PostAsJsonAsync("/api/jobs", new { orderAbcNum = 9001, orderItemNum = 7001, lineNum = 110, materialYield = 92.5 })).StatusCode);
+            (await _client.PostAsJsonAsync("/api/jobs", new { orderAbcNum = 9001, orderItemNum = 7001, lineNum = 110, materialYield = 0.92 })).StatusCode);
     }
 
     [Fact]

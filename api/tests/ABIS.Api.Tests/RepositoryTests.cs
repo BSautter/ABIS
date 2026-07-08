@@ -56,7 +56,7 @@ public sealed class RepositoryTests : IDisposable
     {
         var job = await _repo.GetJobAsync(1001, CancellationToken.None);
         Assert.NotNull(job);
-        Assert.Equal(92.5m, job!.MaterialYield);
+        Assert.Equal(0.92m, job!.MaterialYield);
         Assert.NotNull(job.CreateDate);          // date round-trip
         Assert.Null(job.TimeDateFinished);
 
@@ -408,7 +408,7 @@ public sealed class RepositoryTests : IDisposable
         Assert.NotNull(patched);
         Assert.Equal(7, patched!.JobStatus);
         Assert.Equal("patched", patched.JobNotes);
-        Assert.Equal(92.5m, patched.MaterialYield);   // untouched field preserved
+        Assert.Equal(0.92m, patched.MaterialYield);   // untouched field preserved
     }
 
     [Fact]

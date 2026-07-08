@@ -2074,6 +2074,11 @@ public static class ApiEndpoints
         // Material yield drives the sheet-weight rollup; a zero/negative yield is rejected
         // ("Invalid yield value.", w_stacker_job_details:272). Optional at create, positive when set.
         Positive(e, "materialYield", body.MaterialYield);
+        // material_yield is stored as NUMBER(2,2) — a ratio in (0, 0.99] (live data is 0.99, i.e.
+        // 99%). Reject an out-of-range value with a clean 400 rather than letting it overflow the
+        // column as ORA-01438 → 500 (found deploying to codi-ABIS: a percentage-style 92.5 blew up).
+        if (body.MaterialYield is > 0.99m)
+            e["materialYield"] = ["materialYield must be a ratio of 0.99 or less (e.g. 0.92 for 92% yield)."];
         return e.Count == 0 ? null : e;
     }
 
