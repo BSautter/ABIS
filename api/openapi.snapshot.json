@@ -1110,7 +1110,7 @@
         "tags": [
           "Coils"
         ],
-        "summary": "Update a coil's status, location, or notes. Supports If-Match.",
+        "summary": "Update a coil's status, location, or notes (409 if the coil is done/shipped/transferred). Supports If-Match.",
         "operationId": "PatchCoil",
         "parameters": [
           {
@@ -1146,6 +1146,9 @@
           },
           "404": {
             "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
           },
           "412": {
             "description": "Precondition Failed"
@@ -2542,7 +2545,7 @@
         "tags": [
           "Jobs"
         ],
-        "summary": "Update a job's status, notes, men, or finish time. Supports If-Match.",
+        "summary": "Update a job's status, notes, men, or finish time (409 if the job is done). Supports If-Match.",
         "operationId": "PatchJob",
         "parameters": [
           {
@@ -2578,6 +2581,9 @@
           },
           "404": {
             "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
           },
           "412": {
             "description": "Precondition Failed"
@@ -6269,7 +6275,7 @@
         "tags": [
           "Security"
         ],
-        "summary": "Create an application user (requires User Control).",
+        "summary": "Create an application user (requires User Control; 409 on a duplicate login).",
         "operationId": "CreateSecurityUser",
         "requestBody": {
           "content": {
@@ -6301,6 +6307,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Conflict"
           },
           "403": {
             "description": "Forbidden"
@@ -6666,6 +6675,16 @@
           "403": {
             "description": "Forbidden"
           },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Unauthorized"
           }
@@ -6718,6 +6737,16 @@
           },
           "403": {
             "description": "Forbidden"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized"
@@ -8202,7 +8231,7 @@
         "tags": [
           "Warehouse"
         ],
-        "summary": "Warehouse update of a sheet skid (location / ticket / status).",
+        "summary": "Warehouse update of a sheet skid (location / ticket / status; 409 if the skid has shipped).",
         "operationId": "UpdateSheetSkidWarehouse",
         "parameters": [
           {
@@ -8238,6 +8267,9 @@
           },
           "404": {
             "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
           },
           "400": {
             "description": "Bad Request",
