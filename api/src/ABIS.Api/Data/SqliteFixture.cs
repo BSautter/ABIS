@@ -319,6 +319,14 @@ public static class SqliteFixture
                 shift_num INTEGER PRIMARY KEY, start_time TEXT, end_time TEXT, line_num INTEGER,
                 schedule_type INTEGER, dt_total REAL, operator_initial TEXT, shift_data_status INTEGER, note TEXT);
 
+            -- Coils run within a shift (legacy shift_coil): process_wt is the weight processed;
+            -- shift_num ties it to the shift (and thus its line + date). Column names mirror Oracle.
+            CREATE TABLE shift_coil (
+                shift_num INTEGER, coil_run_num INTEGER, coil_abc_num INTEGER, ab_job_num INTEGER,
+                coil_begin_wt REAL, coil_end_wt REAL, coil_begin_time TEXT, coil_end_time TEXT,
+                coil_begin_status INTEGER, coil_end_status INTEGER, process_wt REAL, note TEXT,
+                PRIMARY KEY (shift_num, coil_run_num));
+
             CREATE TABLE dt_instance (
                 instance_num INTEGER PRIMARY KEY, ab_job_num INTEGER, line_num INTEGER,
                 starting_time TEXT, ending_time TEXT, note TEXT, shift_num INTEGER);
@@ -617,6 +625,20 @@ public static class SqliteFixture
             {
                 new { ShiftNum = 7701L, StartTime = (DateTime?)d, EndTime = (DateTime?)d.AddHours(8), LineNum = (long?)110L, ScheduleType = (int?)1, DtTotal = (decimal?)45.0m, OperatorInitial = "JS", ShiftDataStatus = (int?)1, Note = "Day shift" },
                 new { ShiftNum = 7702L, StartTime = (DateTime?)d.AddHours(8), EndTime = (DateTime?)d.AddHours(16), LineNum = (long?)120L, ScheduleType = (int?)1, DtTotal = (decimal?)12.0m, OperatorInitial = "RM", ShiftDataStatus = (int?)0, Note = "Afternoon shift" }
+            });
+
+        conn.Execute(
+            """
+            INSERT INTO shift_coil (shift_num, coil_run_num, coil_abc_num, ab_job_num, coil_begin_wt, coil_end_wt, process_wt, note)
+            VALUES (:ShiftNum, :CoilRunNum, :CoilAbcNum, :AbJobNum, :CoilBeginWt, :CoilEndWt, :ProcessWt, :Note)
+            """,
+            new[]
+            {
+                // Shift 7701 (line 110, day d): two coils processed -> 5000 + 3000 = 8000 lbs.
+                new { ShiftNum = 7701L, CoilRunNum = 1, CoilAbcNum = (long?)5001L, AbJobNum = (long?)1001L, CoilBeginWt = (decimal?)12000m, CoilEndWt = (decimal?)7000m, ProcessWt = (decimal?)5000m, Note = "run 1" },
+                new { ShiftNum = 7701L, CoilRunNum = 2, CoilAbcNum = (long?)5002L, AbJobNum = (long?)1001L, CoilBeginWt = (decimal?)8000m, CoilEndWt = (decimal?)5000m, ProcessWt = (decimal?)3000m, Note = "run 2" },
+                // Shift 7702 (line 120, day d): one coil -> 4000 lbs.
+                new { ShiftNum = 7702L, CoilRunNum = 1, CoilAbcNum = (long?)5003L, AbJobNum = (long?)1003L, CoilBeginWt = (decimal?)10000m, CoilEndWt = (decimal?)6000m, ProcessWt = (decimal?)4000m, Note = "run 1" }
             });
 
         conn.Execute("""

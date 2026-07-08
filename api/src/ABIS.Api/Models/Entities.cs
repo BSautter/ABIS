@@ -1170,6 +1170,19 @@ public sealed class MonthlyProductionRow
     public double? ProcessedWt { get; set; }
 }
 
+/// <summary>Per-line, per-day processed weight from shift coils (legacy
+/// <c>d_daily_prod_total_wt_per_line</c>): SUM(shift_coil.process_wt) grouped by line + day,
+/// resolved via shift_coil ⋈ shift. The operational daily-production heartbeat.</summary>
+public sealed class ShiftProductionRow
+{
+    public long? LineNum { get; set; }
+    public string? LineDesc { get; set; }
+    public string Day { get; set; } = "";
+    public int ShiftCount { get; set; }
+    public int CoilCount { get; set; }
+    public decimal ProcessedWt { get; set; }
+}
+
 /// <summary>One downtime event (legacy w_report_production_downtime): the line, job, and
 /// window. <see cref="DurationMinutes"/> is computed from start/end (portable — no DB
 /// date math).</summary>

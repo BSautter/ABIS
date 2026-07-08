@@ -1371,6 +1371,15 @@ public static class ApiEndpoints
            .WithSummary("Production rolled up by month (YYYY-MM): jobs touched + processed weight. Defaults to the last 365 days when unbounded.")
            .Produces<IReadOnlyList<MonthlyProductionRow>>();
 
+        api.MapGet("/reporting/shift-production", async (DateTime? from, DateTime? to, IAbisRepository repo, CancellationToken ct, long? lineNum = null) =>
+            {
+                var (f, t) = ResolveReportWindow(from, to);
+                return Results.Ok(await repo.GetShiftProductionAsync(f, t, lineNum, ct));
+            })
+           .WithName("GetShiftProduction").WithTags("Reporting")
+           .WithSummary("Per-line, per-day processed weight from shift coils (SUM shift_coil.process_wt via SHIFT), optionally one line. Defaults to the last 365 days when unbounded.")
+           .Produces<IReadOnlyList<ShiftProductionRow>>();
+
         api.MapGet("/reporting/downtime", async (DateTime? from, DateTime? to, IAbisRepository repo, CancellationToken ct, long? lineNum = null) =>
             {
                 var (f, t) = ResolveReportWindow(from, to);

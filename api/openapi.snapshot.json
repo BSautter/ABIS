@@ -5319,6 +5319,59 @@
         }
       }
     },
+    "/api/reporting/shift-production": {
+      "get": {
+        "tags": [
+          "Reporting"
+        ],
+        "summary": "Per-line, per-day processed weight from shift coils (SUM shift_coil.process_wt via SHIFT), optionally one line. Defaults to the last 365 days when unbounded.",
+        "operationId": "GetShiftProduction",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "lineNum",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ShiftProductionRow"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/reporting/downtime": {
       "get": {
         "tags": [
@@ -15132,6 +15185,37 @@
             "type": "integer",
             "format": "int32",
             "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ShiftProductionRow": {
+        "type": "object",
+        "properties": {
+          "lineNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "lineDesc": {
+            "type": "string",
+            "nullable": true
+          },
+          "day": {
+            "type": "string",
+            "nullable": true
+          },
+          "shiftCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "coilCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "processedWt": {
+            "type": "number",
+            "format": "double"
           }
         },
         "additionalProperties": false

@@ -1158,6 +1158,51 @@ public sealed class AbisRepository : IAbisRepository
         public double? Wt { get; set; }
     }
 
+    // Per-line, per-day processed weight from shift coils (legacy d_daily_prod_total_wt_per_line:
+    // SUM(shift_coil.process_wt) grouped by TO_Date(shift.start_time)). Bucket the day in C# — like
+    // GetMonthlyProductionAsync — to avoid a DB date-truncation function that differs SQLite/Oracle.
+    public async Task<IReadOnlyList<ShiftProductionRow>> GetShiftProductionAsync(DateTime from, DateTime to, long? lineNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var p = new DynamicParameters();
+        p.Add("dfrom", from, DbType.DateTime);
+        p.Add("dto", to, DbType.DateTime);
+        var lineFilter = "";
+        if (lineNum is not null) { lineFilter = " AND s.line_num = :line"; p.Add("line", lineNum); }
+        var raw = await conn.QueryAsync<ShiftCoilRaw>(new CommandDefinition(
+            $"""
+            SELECT s.line_num AS LineNum, l.line_desc AS LineDesc, s.shift_num AS ShiftNum,
+                   s.start_time AS StartTime, sc.process_wt AS ProcessWt
+            FROM shift_coil sc
+            JOIN shift s ON s.shift_num = sc.shift_num
+            LEFT JOIN line l ON l.line_num = s.line_num
+            WHERE s.start_time >= :dfrom AND s.start_time < :dto{lineFilter}
+            """, p, cancellationToken: ct));
+        return raw
+            .Where(x => x.StartTime.HasValue)
+            .GroupBy(x => new { x.LineNum, x.LineDesc, Day = x.StartTime!.Value.ToString("yyyy-MM-dd") })
+            .OrderBy(g => g.Key.LineNum).ThenBy(g => g.Key.Day)
+            .Select(g => new ShiftProductionRow
+            {
+                LineNum = g.Key.LineNum,
+                LineDesc = g.Key.LineDesc,
+                Day = g.Key.Day,
+                ShiftCount = g.Select(x => x.ShiftNum).Distinct().Count(),
+                CoilCount = g.Count(),
+                ProcessedWt = Math.Round(g.Sum(x => x.ProcessWt ?? 0m), 2),
+            })
+            .ToList();
+    }
+
+    private sealed class ShiftCoilRaw
+    {
+        public long? LineNum { get; set; }
+        public string? LineDesc { get; set; }
+        public long ShiftNum { get; set; }
+        public DateTime? StartTime { get; set; }
+        public decimal? ProcessWt { get; set; }
+    }
+
     // Downtime events over a window (optionally one line), joined to the line description.
     public async Task<IReadOnlyList<ProductionDowntimeRow>> GetProductionDowntimeAsync(DateTime? from, DateTime? to, long? lineNum, CancellationToken ct)
     {

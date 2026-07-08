@@ -257,6 +257,32 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Shift_production_rolls_up_by_line_and_day()
+    {
+        var arr = await _client.GetFromJsonAsync<JsonElement>(
+            "/api/reporting/shift-production?from=2026-01-01T00:00:00&to=2027-01-01T00:00:00");
+        // Line 110's seeded shift 7701 ran two coils -> 5000 + 3000 = 8000 lbs, 2 coils, 1 shift.
+        JsonElement l110 = default; var found = false;
+        foreach (var e in arr.EnumerateArray())
+            if (e.GetProperty("lineNum").GetInt64() == 110) { l110 = e; found = true; break; }
+        Assert.True(found);
+        Assert.Equal(8000m, l110.GetProperty("processedWt").GetDecimal());
+        Assert.Equal(2, l110.GetProperty("coilCount").GetInt32());
+        Assert.Equal(1, l110.GetProperty("shiftCount").GetInt32());
+
+        // Line filter -> only line 110.
+        var only110 = await _client.GetFromJsonAsync<JsonElement>(
+            "/api/reporting/shift-production?from=2026-01-01T00:00:00&to=2027-01-01T00:00:00&lineNum=110");
+        foreach (var e in only110.EnumerateArray())
+            Assert.Equal(110, e.GetProperty("lineNum").GetInt64());
+
+        // Pre-data window -> empty (the date filter applies).
+        var outW = await _client.GetFromJsonAsync<JsonElement>(
+            "/api/reporting/shift-production?from=2000-01-01T00:00:00&to=2001-01-01T00:00:00");
+        Assert.Equal(0, outW.GetArrayLength());
+    }
+
+    [Fact]
     public async Task Sheet_skid_requires_job_with_an_order()
     {
         // A sheet skid whose job can't resolve an order is refused (w_wh_business:831) -> 400.
