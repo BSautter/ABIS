@@ -276,6 +276,17 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task Voided_skids_are_excluded_from_the_job_skid_count()
+    {
+        // Seed skid 3004 (job 1002) is voided (status 6): it physically exists on the job...
+        var all = await _repo.GetJobSheetSkidsAsync(1002, CancellationToken.None);
+        Assert.Contains(all, s => s.SheetSkidNum == 3004);
+        // ...but the billed skid count excludes it (legacy w_e_car_folder:701).
+        var inv = await _repo.GetInvoiceComputationAsync(1002, CancellationToken.None);
+        Assert.Equal(0, inv!.SkidCount);
+    }
+
+    [Fact]
     public async Task GetInvoiceCoils_carries_billed_weight()
     {
         // The rejected/rebanded list now sources the prior-process term, so BilledWeight is exact
@@ -504,9 +515,9 @@ public sealed class RepositoryTests : IDisposable
     {
         var created = await _repo.CreateSheetSkidAsync(
             new SheetSkidWrite { AbJobNum = 1001, SheetNetWt = 1990m, SkidPieces = 100 }, CancellationToken.None);
-        Assert.Equal(3004, created.SheetSkidNum);   // MAX(3003) + 1
+        Assert.Equal(3005, created.SheetSkidNum);   // MAX(3004) + 1
 
-        var fetched = await _repo.GetSheetSkidAsync(3004, CancellationToken.None);
+        var fetched = await _repo.GetSheetSkidAsync(3005, CancellationToken.None);
         Assert.Equal(1001, fetched!.AbJobNum);
     }
 

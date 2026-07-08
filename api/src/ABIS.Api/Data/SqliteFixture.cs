@@ -730,7 +730,10 @@ public static class SqliteFixture
             {
                 new { SheetSkidNum = 3001L, AbJobNum = (long?)1001L, SheetSkidDisplayNum = "110-1001-01", SheetNetWt = 1980m, SheetTareWt = 50m, SkidPieces = (int?)100, SkidDate = (DateTime?)d.AddHours(4), SkidLocation = "WH-A-01", SkidSheetStatus = (int?)1, SkidTicketIfWhed = "T-3001" },
                 new { SheetSkidNum = 3002L, AbJobNum = (long?)1001L, SheetSkidDisplayNum = "110-1001-02", SheetNetWt = 1975m, SheetTareWt = 50m, SkidPieces = (int?)100, SkidDate = (DateTime?)d.AddHours(5), SkidLocation = "WH-A-02", SkidSheetStatus = (int?)1, SkidTicketIfWhed = (string?)null },
-                new { SheetSkidNum = 3003L, AbJobNum = (long?)1003L, SheetSkidDisplayNum = "120-1003-01", SheetNetWt = 2400m, SheetTareWt = 60m, SkidPieces = (int?)80, SkidDate = (DateTime?)d.AddDays(3), SkidLocation = (string?)null, SkidSheetStatus = (int?)0, SkidTicketIfWhed = (string?)null }
+                new { SheetSkidNum = 3003L, AbJobNum = (long?)1003L, SheetSkidDisplayNum = "120-1003-01", SheetNetWt = 2400m, SheetTareWt = 60m, SkidPieces = (int?)80, SkidDate = (DateTime?)d.AddDays(3), SkidLocation = (string?)null, SkidSheetStatus = (int?)0, SkidTicketIfWhed = (string?)null },
+                // Voided skid (status 6) on job 1002 — must be EXCLUDED from billed/folder skid counts
+                // (legacy w_e_car_folder:701). Zero weights so it doesn't skew the tare/net buckets.
+                new { SheetSkidNum = 3004L, AbJobNum = (long?)1002L, SheetSkidDisplayNum = "115-1002-VOID", SheetNetWt = 0m, SheetTareWt = 0m, SkidPieces = (int?)0, SkidDate = (DateTime?)d.AddDays(1), SkidLocation = (string?)null, SkidSheetStatus = (int?)6, SkidTicketIfWhed = (string?)null }
             });
 
         conn.Execute("""
