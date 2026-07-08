@@ -389,7 +389,16 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     public async Task Get_job_skids_returns_two()
     {
         var body = await _client.GetFromJsonAsync<JsonElement>("/api/jobs/1001/skids");
-        Assert.Equal(2, body.GetArrayLength());
+        // The two seeded skids (3001, 3002) are present; other tests may add more to the shared fixture,
+        // so assert their presence rather than an exact count.
+        bool has3001 = false, has3002 = false;
+        foreach (var s in body.EnumerateArray())
+        {
+            var num = s.GetProperty("sheetSkidNum").GetInt64();
+            if (num == 3001L) has3001 = true;
+            if (num == 3002L) has3002 = true;
+        }
+        Assert.True(has3001 && has3002, "both seeded job-1001 skids present");
     }
 
     [Fact]
@@ -564,6 +573,20 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     {
         var resp = await _client.PostAsJsonAsync("/api/sheet-skids", new { abJobNum = 1001, sheetNetWt = 2000, skidPieces = 100 });
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Sheet_skid_weight_bounds_and_default_status()
+    {
+        // Valid -> 201, and a new skid defaults to WH-ready status 8 (legacy w_wh_business:1485).
+        var ok = await _client.PostAsJsonAsync("/api/sheet-skids", new { abJobNum = 1001, sheetNetWt = 2000, sheetTareWt = 50, skidPieces = 100 });
+        Assert.Equal(HttpStatusCode.Created, ok.StatusCode);
+        Assert.Equal(8, (await ok.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("skidSheetStatus").GetInt32());
+        // Missing net, zero net, over-weight net (>30000), and over-weight tare (>8000) each -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/sheet-skids", new { abJobNum = 1001, skidPieces = 10 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/sheet-skids", new { abJobNum = 1001, sheetNetWt = 0 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/sheet-skids", new { abJobNum = 1001, sheetNetWt = 30001 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/sheet-skids", new { abJobNum = 1001, sheetNetWt = 2000, sheetTareWt = 8001 })).StatusCode);
     }
 
     [Fact]

@@ -2062,6 +2062,13 @@ public static class ApiEndpoints
         var e = new Dictionary<string, string[]>();
         if (body.AbJobNum <= 0) e["abJobNum"] = ["abJobNum is required."];
         Max(e, "sheetSkidDisplayNum", body.SheetSkidDisplayNum, 16);
+        // Weight sanity (legacy w_stacker_skid_edit:87-95: tare 0..8000, net 0..30000;
+        // w_wh_business:809 requires a non-zero net). A finished skid must carry a positive weight.
+        Req(e, "sheetNetWt", body.SheetNetWt);
+        if (body.SheetNetWt is { } n && (n <= 0m || n > 30000m))
+            e["sheetNetWt"] = ["sheetNetWt must be greater than 0 and at most 30000."];
+        if (body.SheetTareWt is { } t && (t < 0m || t > 8000m))
+            e["sheetTareWt"] = ["sheetTareWt must be between 0 and 8000."];
         return e.Count == 0 ? null : e;
     }
 

@@ -1033,8 +1033,8 @@ public sealed class AbisRepository : IAbisRepository
         await conn.ExecuteAsync(new CommandDefinition(
             """
             INSERT INTO sheet_skid (sheet_skid_num, ab_job_num, sheet_skid_display_num, sheet_net_wt,
-                sheet_tare_wt, skid_pieces, skid_date)
-            VALUES (:id, :job, :display, :net, :tare, :pieces, :dval)
+                sheet_tare_wt, skid_pieces, skid_date, skid_sheet_status)
+            VALUES (:id, :job, :display, :net, :tare, :pieces, :dval, 8)
             """,
             new
             {
