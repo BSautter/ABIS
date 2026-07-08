@@ -163,7 +163,99 @@ public sealed class InvoiceCoil
     public DateTime? ProcessDate { get; set; }
     public int? CoilStatus { get; set; }
     public int? ProcessCoilStatus { get; set; }
+
+    /// <summary><c>MAX(process_quantity)</c> across this coil's process rows whose quantity is
+    /// strictly below this job's <see cref="ProcessQuantity"/> — the "prior-process" term of the
+    /// legacy billed-weight rule (<c>w_invoice.wf_rejected_coil_wt</c>). Null when there is none.</summary>
+    public decimal? MaxPriorProcessQuantity { get; set; }
+
+    /// <summary>The legacy billed weight for this coil: <c>MAX(shift-end-or-balance,
+    /// prior-process-qty)</c> per <see cref="Data.InvoiceBilling.RejectedCoilBilledWeight"/>. This is
+    /// the figure that must drive the invoice — not a raw sum of <see cref="ProcessEndWt"/>.</summary>
+    public decimal BilledWeight => Data.InvoiceBilling.RejectedCoilBilledWeight(
+        ProcessEndWt, NetWtBalance, MaxPriorProcessQuantity);
 }
+
+/// <summary>A saved invoice record for a job (table <c>INVOICE</c>: composite key
+/// <c>(ab_job_num, invoice_num)</c>, plus a <c>timestamp</c> date and free-text <c>notes</c>).
+/// The weight buckets are <b>computed at report time</b> (see <see cref="InvoiceComputation"/>),
+/// never stored here — this row only records that an invoice number/date was issued for a job.</summary>
+public sealed class Invoice
+{
+    public long AbJobNum { get; set; }
+    public string InvoiceNum { get; set; } = "";
+    /// <summary>The invoice date (legacy <c>em_date</c>, defaulting to "today"). Maps to the
+    /// reserved-word column <c>"TIMESTAMP"</c>.</summary>
+    public DateTime? Timestamp { get; set; }
+    public string? Notes { get; set; }
+}
+
+/// <summary>The fully computed invoice for a job: the customer/PO/spec header plus every weight
+/// bucket, reproducing legacy <c>w_invoice.ue_display_doc_info</c> (lines 109–360) and the
+/// tare/offal derivations from <c>wf_set_values</c>. All weights are exact (the rejected/rebanded
+/// buckets use the <see cref="Data.InvoiceBilling"/> rule, not a naive sum).</summary>
+public sealed class InvoiceComputation
+{
+    // ---- header / spec block ----
+    public long AbJobNum { get; set; }
+    public long? OrderAbcNum { get; set; }
+    public long? OrderItemNum { get; set; }
+    /// <summary>Blanking line (<c>line.line_desc</c>).</summary>
+    public string? LineDesc { get; set; }
+    public string? CustomerShortName { get; set; }
+    /// <summary>End-user / ship-to short name (<c>customer.customer_short_name</c> via
+    /// <c>customer_order.enduser_id</c>); null when the order has no end user.</summary>
+    public string? Enduser { get; set; }
+    public string? OrigCustomerPo { get; set; }
+    public string? Alloy { get; set; }
+    public string? Temper { get; set; }
+    public decimal? Gauge { get; set; }
+    /// <summary>The blank shape name (<c>order_item.sheet_type</c>).</summary>
+    public string? SheetType { get; set; }
+    /// <summary>The dimension spec string (e.g. "48.00000 X 96.00000"), built per-shape from the
+    /// order line's geometry exactly as the legacy CHOOSE CASE did (w_invoice:173–230).</summary>
+    public string? SpecWidthLength { get; set; }
+    public string? EnduserPartNum { get; set; }
+    public string? OrderItemDesc { get; set; }
+
+    // ---- weight buckets (all exact) ----
+    /// <summary>Net weight: <c>SUM(process_coil.process_quantity)</c> for the job (all applied coils).</summary>
+    public decimal NetWt { get; set; }
+    /// <summary>Unapplied: <c>SUM(process_quantity)</c> where <c>process_coil_status = 2</c>
+    /// (applied to the job but never used).</summary>
+    public decimal UnappliedWt { get; set; }
+    /// <summary>Rejected: Σ billed weight over the job's <c>process_coil_status = 3</c> coils.</summary>
+    public decimal RejectedWt { get; set; }
+    /// <summary>Rebanded: Σ billed weight over the job's <c>process_coil_status = 7</c> coils.</summary>
+    public decimal RebandedWt { get; set; }
+    /// <summary>Processed: <c>SUM(production_sheet_item.prod_item_net_wt)</c> for the job.</summary>
+    public decimal ProcessedWt { get; set; }
+    /// <summary>Total scrap: <c>SUM(return_scrap_item.return_item_net_wt)</c> for the job.</summary>
+    public decimal ScrapWt { get; set; }
+    /// <summary>Sheet tare: <c>SUM(sheet_skid.sheet_tare_wt)</c> for the job.</summary>
+    public decimal TareWt { get; set; }
+    /// <summary>Offal: <c>processed + scrap + rejected + unapplied − net</c> (legacy
+    /// <c>wf_set_values</c>, using the exact rejected figure).</summary>
+    public decimal OffalWt { get; set; }
+    /// <summary>Offal as a percent of net weight (0 when net is 0).</summary>
+    public decimal OffalPct { get; set; }
+    public int SkidCount { get; set; }
+    /// <summary>Scrap type name when the job has a single scrap type, "Multiple" for more than one,
+    /// null for none (legacy scrap-status derivation).</summary>
+    public string? ScrapStatus { get; set; }
+
+    /// <summary>The rejected/rebanded coils that drive the billing, each with its
+    /// <see cref="InvoiceCoil.BilledWeight"/>.</summary>
+    public List<InvoiceCoil> Coils { get; set; } = [];
+}
+
+/// <summary>Outcome of an invoice save: created, or rejected because the referenced job does not
+/// exist (FK), or because that <c>(ab_job_num, invoice_num)</c> already exists (PK conflict).</summary>
+public enum InvoiceSaveOutcome { Created, JobNotFound, Duplicate }
+
+/// <summary>The result of <c>CreateInvoiceAsync</c>: the <see cref="Outcome"/> plus the created
+/// <see cref="Invoice"/> (only when <see cref="Outcome"/> is <see cref="InvoiceSaveOutcome.Created"/>).</summary>
+public sealed record InvoiceSaveResult(InvoiceSaveOutcome Outcome, Invoice? Invoice);
 
 /// <summary>A commercial order header (table <c>customer_order</c>).</summary>
 public sealed class CustomerOrder
@@ -354,11 +446,50 @@ public sealed class CoilInventoryGroup
 public sealed class Customer
 {
     public long CustomerId { get; set; }
-    public string? CustomerName { get; set; }
+    public string? CustomerName { get; set; }          // customer_full_name
     public string? CustomerShortName { get; set; }
+    public int? CustomerType { get; set; }
+    // Address
+    public string? CustomerStreet { get; set; }
     public string? CustomerCity { get; set; }
     public string? CustomerState { get; set; }
     public string? CustomerZip { get; set; }
+    public string? CustomerCountry { get; set; }
+    public string? CustomerPhoneNumber { get; set; }
+    public string? CustomerFaxNumber { get; set; }
+    // Lifecycle + relationships
+    public DateTime? CustomerCreateDate { get; set; }
+    public DateTime? CustomerMaintDate { get; set; }
+    public string? CustomerNotes { get; set; }
+    public long? ParentId { get; set; }
+    public string? CustomerExternalId { get; set; }
+    // Tax
+    public string? TaxId { get; set; }
+    public string? TaxExemptionNum { get; set; }
+    public decimal? TaxRate { get; set; }
+    public long? CustomerDunsNumber { get; set; }
+    public string? CustomerDunsNumberString { get; set; }
+    // Bill-to
+    public string? BillToStreet { get; set; }
+    public string? BillToCity { get; set; }
+    public string? BillToState { get; set; }
+    public string? BillToZip { get; set; }
+    // EDI / behavior control flags (CHAR(1) "Y"/"N"): drive downstream EDI, receiving,
+    // labeling, and shipping behavior — the reason this master must be fully writable.
+    public string? DesadvReq { get; set; }
+    public string? EdiReq { get; set; }
+    public string? QrCodeReq { get; set; }
+    public string? ValidateMaterial { get; set; }
+    public string? UsePackageNum { get; set; }
+    public string? UseCustomerWebsite4Shipping { get; set; }
+    public string? CashDateRequired { get; set; }
+    public string? CashDateOnBol { get; set; }
+    public string? CoilCertLabelReq { get; set; }
+    public string? Create861AtReceiving { get; set; }
+    public string? InvReportSaveasXlsx { get; set; }
+    public string? CustPoOnInvSkidReport { get; set; }
+    public string? UseEdiCodeNotDuns { get; set; }
+    public string? PlantCode { get; set; }
 }
 
 /// <summary>A finished output skid produced by a job (table <c>sheet_skid</c>).</summary>

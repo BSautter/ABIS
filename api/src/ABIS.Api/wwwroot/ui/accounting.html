@@ -29,6 +29,14 @@
   .pill { background:var(--bg); border:1px solid var(--bd); border-radius:12px; padding:1px 8px; font-size:12px; }
   .err { color:#cf222e; min-height:18px; }
   .summary { margin-top:8px; font-weight:600; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+  td.r, th.r { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  table.tight th { width:auto; }
+  table.buckets th { font-weight:600; color:#1f2328; }
+  .hint { color:#8b949e; font-size:12px; margin-top:4px; }
+  #result { display:grid; gap:16px; }
+  #result[hidden] { display:none; }
+  @media (max-width:800px){ .grid2 { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
@@ -70,17 +78,50 @@
 
 <main>
   <section>
-    <h2>Invoice — rejected / rebanded coils for a job</h2>
+    <h2>Invoice — compute for a job</h2>
     <form id="jobForm" class="row">
       <div><label>Job #</label><br /><input id="fJob" type="number" placeholder="ab_job_num" style="width:140px" /></div>
-      <button type="submit">Load invoice coils</button>
+      <button type="submit">Load invoice</button>
     </form>
-    <div class="muted summary" id="summary"></div>
-    <table>
-      <thead><tr><th>Coil #</th><th>Org #</th><th>Mid #</th><th>Lot</th><th>Gauge</th><th>Net wt</th><th>Net bal</th><th>Process end wt</th><th>Qty</th><th>Processed</th><th>Disposition</th></tr></thead>
-      <tbody id="coils"></tbody>
-    </table>
+    <div class="hint">Billed weight uses the exact legacy rule — MAX(shift-end or coil balance, prior-process qty) — not a naive sum.</div>
   </section>
+
+  <div id="result" hidden>
+    <div class="grid2">
+      <section>
+        <h2>Header &amp; specification</h2>
+        <table class="tight"><tbody id="spec"></tbody></table>
+      </section>
+      <section>
+        <h2>Weight summary</h2>
+        <table class="buckets">
+          <thead><tr><th>Bucket</th><th class="r">Weight</th><th class="r">% of net</th></tr></thead>
+          <tbody id="buckets"></tbody>
+        </table>
+      </section>
+    </div>
+
+    <section>
+      <h2>Rejected / rebanded coils</h2>
+      <table>
+        <thead><tr><th>Org #</th><th>ABC #</th><th class="r">Init wt</th><th class="r">Cur bal</th><th class="r">Beginning wt</th><th class="r">Max prior</th><th class="r">End wt</th><th>Status</th><th class="r">Billed wt</th></tr></thead>
+        <tbody id="coils"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Save invoice</h2>
+      <form id="saveForm" class="row">
+        <div><label>Invoice #</label><br /><input id="fInv" placeholder="invoice_num" style="width:180px" maxlength="32" /></div>
+        <div style="flex:1; min-width:220px"><label>Notes</label><br /><input id="fNotes" placeholder="optional" style="width:100%" maxlength="2048" /></div>
+        <button type="submit">Save invoice</button>
+      </form>
+      <table>
+        <thead><tr><th>Invoice #</th><th>Date</th><th>Notes</th><th>Document</th></tr></thead>
+        <tbody id="saved"></tbody>
+      </table>
+    </section>
+  </div>
 
   <section><div id="err" class="err"></div></section>
 </main>

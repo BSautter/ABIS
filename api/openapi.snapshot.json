@@ -11,7 +11,7 @@
         "tags": [
           "Accounting"
         ],
-        "summary": "Rejected (3) / rebanded (7) coils for a job's invoice.",
+        "summary": "Rejected (3) / rebanded (7) coils for a job's invoice, each with its exact billed weight.",
         "operationId": "GetInvoiceCoils",
         "parameters": [
           {
@@ -37,6 +37,176 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/accounting/invoices/{abJobNum}/computation": {
+      "get": {
+        "tags": [
+          "Accounting"
+        ],
+        "summary": "Computed invoice for a job (weight buckets + spec) with exact rejected-coil billing.",
+        "operationId": "GetInvoiceComputation",
+        "parameters": [
+          {
+            "name": "abJobNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceComputation"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/accounting/invoices": {
+      "get": {
+        "tags": [
+          "Accounting"
+        ],
+        "summary": "Saved invoice records for a job.",
+        "operationId": "GetInvoices",
+        "parameters": [
+          {
+            "name": "abJobNum",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Invoice"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Accounting"
+        ],
+        "summary": "Save an invoice record (number + date + notes) for a job.",
+        "operationId": "CreateInvoice",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvoiceWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invoice"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/accounting/invoices/{abJobNum}/{invoiceNum}": {
+      "get": {
+        "tags": [
+          "Accounting"
+        ],
+        "summary": "Get one saved invoice by job + invoice number.",
+        "operationId": "GetInvoice",
+        "parameters": [
+          {
+            "name": "abJobNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "invoiceNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invoice"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
           },
           "401": {
             "description": "Unauthorized"
@@ -447,6 +617,16 @@
               }
             }
           },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Unauthorized"
           }
@@ -575,7 +755,7 @@
         "tags": [
           "CoilOwnership"
         ],
-        "summary": "Record a coil-ownership transfer (issues a certificate; re-points coil ownership).",
+        "summary": "Record a coil-ownership transfer (issues a certificate; re-points coil ownership). 409 if the new owner already owns the coil.",
         "operationId": "CreateCoilOwnershipTransfer",
         "requestBody": {
           "content": {
@@ -600,6 +780,9 @@
           },
           "404": {
             "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
           },
           "400": {
             "description": "Bad Request",
@@ -1628,6 +1811,168 @@
         }
       }
     },
+    "/api/documents/sheet-skid/{sheetSkidNum}": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Printable sheet-skid tag (HTML with a Code 39 barcode).",
+        "operationId": "SheetSkidTag",
+        "parameters": [
+          {
+            "name": "sheetSkidNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/documents/scrap-skid/{scrapSkidNum}": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Printable scrap-skid tag (HTML with a Code 39 barcode).",
+        "operationId": "ScrapSkidTag",
+        "parameters": [
+          {
+            "name": "scrapSkidNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/documents/coil-label/{coilAbcNum}": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Printable coil ABC label (HTML with a Code 39 barcode) — the coil-receiving scanner tag.",
+        "operationId": "CoilLabel",
+        "parameters": [
+          {
+            "name": "coilAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/documents/transfer-certificate/{certificateNum}": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Printable coil-ownership transfer certificate (toll-processing document) as HTML.",
+        "operationId": "TransferCertificate",
+        "parameters": [
+          {
+            "name": "certificateNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/documents/invoice/{abJobNum}": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Printable invoice for a job (weight rollups + spec block). Optional invoiceNum stamps the saved number/date.",
+        "operationId": "InvoiceDocument",
+        "parameters": [
+          {
+            "name": "abJobNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "invoiceNum",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/downtime": {
       "get": {
         "tags": [
@@ -2449,6 +2794,33 @@
                   "type": "array",
                   "items": {
                     "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/lookups/shape-types": {
+      "get": {
+        "tags": [
+          "Lookups"
+        ],
+        "summary": "Blank shape catalog: each shape's dimension schema (names + which carry a tolerance) and die count — drives a dynamic per-shape form.",
+        "operationId": "ListShapeTypes",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ShapeTypeInfo"
                   }
                 }
               }
@@ -3330,6 +3702,118 @@
         }
       }
     },
+    "/api/orders/{orderAbcNum}/items/{orderItemNum}/shape": {
+      "get": {
+        "tags": [
+          "OrderItems"
+        ],
+        "summary": "Get an order line's blank geometry — the shape's dimensions (value + tolerances) and dies.",
+        "operationId": "GetOrderItemShape",
+        "parameters": [
+          {
+            "name": "orderAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "orderItemNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderItemShape"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "OrderItems"
+        ],
+        "summary": "Set an order line's blank geometry for its shape (upsert; aligns the line's sheet_type).",
+        "operationId": "PutOrderItemShape",
+        "parameters": [
+          {
+            "name": "orderAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "orderItemNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderItemShapeWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderItemShape"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/orders": {
       "get": {
         "tags": [
@@ -3800,7 +4284,7 @@
         "tags": [
           "Parts"
         ],
-        "summary": "Replace a part-number record. Supports If-Match.",
+        "summary": "Replace a part-number record (blocked with 409 if the part is applied to any order). Supports If-Match.",
         "operationId": "UpdatePart",
         "parameters": [
           {
@@ -3837,8 +4321,108 @@
           "404": {
             "description": "Not Found"
           },
+          "409": {
+            "description": "Conflict"
+          },
           "412": {
             "description": "Precondition Failed"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/parts/{partNumId}/shape": {
+      "get": {
+        "tags": [
+          "Parts"
+        ],
+        "summary": "Get a part-master's blank geometry — the shape's dimensions (value + tolerances).",
+        "operationId": "GetPartShape",
+        "parameters": [
+          {
+            "name": "partNumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartShape"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Parts"
+        ],
+        "summary": "Set a part-master's blank geometry for its shape (upsert; aligns the part's sheet_type; 409 if the part is applied to any order).",
+        "operationId": "PutPartShape",
+        "parameters": [
+          {
+            "name": "partNumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PartShapeWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartShape"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
           },
           "400": {
             "description": "Bad Request",
@@ -8546,6 +9130,15 @@
             "type": "string",
             "nullable": true
           },
+          "customerType": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "customerStreet": {
+            "type": "string",
+            "nullable": true
+          },
           "customerCity": {
             "type": "string",
             "nullable": true
@@ -8555,6 +9148,135 @@
             "nullable": true
           },
           "customerZip": {
+            "type": "string",
+            "nullable": true
+          },
+          "customerCountry": {
+            "type": "string",
+            "nullable": true
+          },
+          "customerPhoneNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "customerFaxNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "customerCreateDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "customerMaintDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "customerNotes": {
+            "type": "string",
+            "nullable": true
+          },
+          "parentId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "customerExternalId": {
+            "type": "string",
+            "nullable": true
+          },
+          "taxId": {
+            "type": "string",
+            "nullable": true
+          },
+          "taxExemptionNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "taxRate": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "customerDunsNumber": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "customerDunsNumberString": {
+            "type": "string",
+            "nullable": true
+          },
+          "billToStreet": {
+            "type": "string",
+            "nullable": true
+          },
+          "billToCity": {
+            "type": "string",
+            "nullable": true
+          },
+          "billToState": {
+            "type": "string",
+            "nullable": true
+          },
+          "billToZip": {
+            "type": "string",
+            "nullable": true
+          },
+          "desadvReq": {
+            "type": "string",
+            "nullable": true
+          },
+          "ediReq": {
+            "type": "string",
+            "nullable": true
+          },
+          "qrCodeReq": {
+            "type": "string",
+            "nullable": true
+          },
+          "validateMaterial": {
+            "type": "string",
+            "nullable": true
+          },
+          "usePackageNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "useCustomerWebsite4Shipping": {
+            "type": "string",
+            "nullable": true
+          },
+          "cashDateRequired": {
+            "type": "string",
+            "nullable": true
+          },
+          "cashDateOnBol": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilCertLabelReq": {
+            "type": "string",
+            "nullable": true
+          },
+          "create861AtReceiving": {
+            "type": "string",
+            "nullable": true
+          },
+          "invReportSaveasXlsx": {
+            "type": "string",
+            "nullable": true
+          },
+          "custPoOnInvSkidReport": {
+            "type": "string",
+            "nullable": true
+          },
+          "useEdiCodeNotDuns": {
+            "type": "string",
+            "nullable": true
+          },
+          "plantCode": {
             "type": "string",
             "nullable": true
           }
@@ -9053,6 +9775,15 @@
             "type": "string",
             "nullable": true
           },
+          "customerType": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "customerStreet": {
+            "type": "string",
+            "nullable": true
+          },
           "customerCity": {
             "type": "string",
             "nullable": true
@@ -9062,6 +9793,125 @@
             "nullable": true
           },
           "customerZip": {
+            "type": "string",
+            "nullable": true
+          },
+          "customerCountry": {
+            "type": "string",
+            "nullable": true
+          },
+          "customerPhoneNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "customerFaxNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "customerNotes": {
+            "type": "string",
+            "nullable": true
+          },
+          "parentId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "customerExternalId": {
+            "type": "string",
+            "nullable": true
+          },
+          "taxId": {
+            "type": "string",
+            "nullable": true
+          },
+          "taxExemptionNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "taxRate": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "customerDunsNumber": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "customerDunsNumberString": {
+            "type": "string",
+            "nullable": true
+          },
+          "billToStreet": {
+            "type": "string",
+            "nullable": true
+          },
+          "billToCity": {
+            "type": "string",
+            "nullable": true
+          },
+          "billToState": {
+            "type": "string",
+            "nullable": true
+          },
+          "billToZip": {
+            "type": "string",
+            "nullable": true
+          },
+          "desadvReq": {
+            "type": "string",
+            "nullable": true
+          },
+          "ediReq": {
+            "type": "string",
+            "nullable": true
+          },
+          "qrCodeReq": {
+            "type": "string",
+            "nullable": true
+          },
+          "validateMaterial": {
+            "type": "string",
+            "nullable": true
+          },
+          "usePackageNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "useCustomerWebsite4Shipping": {
+            "type": "string",
+            "nullable": true
+          },
+          "cashDateRequired": {
+            "type": "string",
+            "nullable": true
+          },
+          "cashDateOnBol": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilCertLabelReq": {
+            "type": "string",
+            "nullable": true
+          },
+          "create861AtReceiving": {
+            "type": "string",
+            "nullable": true
+          },
+          "invReportSaveasXlsx": {
+            "type": "string",
+            "nullable": true
+          },
+          "custPoOnInvSkidReport": {
+            "type": "string",
+            "nullable": true
+          },
+          "useEdiCodeNotDuns": {
+            "type": "string",
+            "nullable": true
+          },
+          "plantCode": {
             "type": "string",
             "nullable": true
           }
@@ -9865,6 +10715,29 @@
         },
         "additionalProperties": { }
       },
+      "Invoice": {
+        "type": "object",
+        "properties": {
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "invoiceNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "InvoiceCoil": {
         "type": "object",
         "properties": {
@@ -9926,6 +10799,155 @@
           "processCoilStatus": {
             "type": "integer",
             "format": "int32",
+            "nullable": true
+          },
+          "maxPriorProcessQuantity": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "billedWeight": {
+            "type": "number",
+            "format": "double",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "InvoiceComputation": {
+        "type": "object",
+        "properties": {
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "orderAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "orderItemNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "lineDesc": {
+            "type": "string",
+            "nullable": true
+          },
+          "customerShortName": {
+            "type": "string",
+            "nullable": true
+          },
+          "enduser": {
+            "type": "string",
+            "nullable": true
+          },
+          "origCustomerPo": {
+            "type": "string",
+            "nullable": true
+          },
+          "alloy": {
+            "type": "string",
+            "nullable": true
+          },
+          "temper": {
+            "type": "string",
+            "nullable": true
+          },
+          "gauge": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "sheetType": {
+            "type": "string",
+            "nullable": true
+          },
+          "specWidthLength": {
+            "type": "string",
+            "nullable": true
+          },
+          "enduserPartNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "orderItemDesc": {
+            "type": "string",
+            "nullable": true
+          },
+          "netWt": {
+            "type": "number",
+            "format": "double"
+          },
+          "unappliedWt": {
+            "type": "number",
+            "format": "double"
+          },
+          "rejectedWt": {
+            "type": "number",
+            "format": "double"
+          },
+          "rebandedWt": {
+            "type": "number",
+            "format": "double"
+          },
+          "processedWt": {
+            "type": "number",
+            "format": "double"
+          },
+          "scrapWt": {
+            "type": "number",
+            "format": "double"
+          },
+          "tareWt": {
+            "type": "number",
+            "format": "double"
+          },
+          "offalWt": {
+            "type": "number",
+            "format": "double"
+          },
+          "offalPct": {
+            "type": "number",
+            "format": "double"
+          },
+          "skidCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "scrapStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "coils": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvoiceCoil"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "InvoiceWrite": {
+        "type": "object",
+        "properties": {
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "invoiceNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
             "nullable": true
           }
         },
@@ -10968,6 +11990,62 @@
         },
         "additionalProperties": false
       },
+      "OrderItemShape": {
+        "type": "object",
+        "properties": {
+          "orderAbcNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "orderItemNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "shapeType": {
+            "type": "string",
+            "nullable": true
+          },
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShapeDimension"
+            },
+            "nullable": true
+          },
+          "dies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "OrderItemShapeWrite": {
+        "type": "object",
+        "properties": {
+          "shapeType": {
+            "type": "string",
+            "nullable": true
+          },
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShapeDimension"
+            },
+            "nullable": true
+          },
+          "dies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "OrderItemWrite": {
         "type": "object",
         "properties": {
@@ -11542,6 +12620,44 @@
             "type": "integer",
             "format": "int32",
             "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PartShape": {
+        "type": "object",
+        "properties": {
+          "partNumId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "shapeType": {
+            "type": "string",
+            "nullable": true
+          },
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShapeDimension"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PartShapeWrite": {
+        "type": "object",
+        "properties": {
+          "shapeType": {
+            "type": "string",
+            "nullable": true
+          },
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShapeDimension"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -13293,6 +14409,65 @@
           "userNotes": {
             "type": "string",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ShapeDimension": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "value": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "plusTol": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "minusTol": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ShapeDimensionSpec": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "hasTolerance": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ShapeTypeInfo": {
+        "type": "object",
+        "properties": {
+          "shapeType": {
+            "type": "string",
+            "nullable": true
+          },
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShapeDimensionSpec"
+            },
+            "nullable": true
+          },
+          "dieCount": {
+            "type": "integer",
+            "format": "int32"
           }
         },
         "additionalProperties": false

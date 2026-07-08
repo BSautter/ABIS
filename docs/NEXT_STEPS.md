@@ -45,25 +45,63 @@ sheet skids `3001–3003`, scrap skids `8001–8002`.
 
 ## Next steps, prioritized
 
-The greenfield build is feature-complete; remaining work is **production rollout**.
+The greenfield build is feature-complete — **no subsystem is unbuilt**. What remains is
+a defined set of *completion gaps* on already-built subsystems plus the production
+rollout itself. None is a from-scratch feature.
 
-### 1. Oracle non-prod validation sweep  *(highest leverage)*
-The original `order_entry` pilot ran live, but the modules built since have only been
-exercised on the SQLite fixture + e2e (plus the gated `oracle-smoke` job). Point the API
-at non-prod Oracle (`abc11`) and exercise the newer read/write paths to flush any
-live-only issues — the recurring traps are ORA-01745 (reserved-word binds), ORA-00932
-(CHAR-null COALESCE), and Int64→numeric unboxing (all coded against, none CI-proven on
-the new SQL). See [`ORACLE_VALIDATION.md`](ORACLE_VALIDATION.md).
+**Critical path (what unblocks what):**
+`#1 validation → (#2 861, #3 OIDC in parallel) → #5 cutover tiers 1–4 → #4 edge/OPC → #5 tier 5 (weight capture) → Phase 5 decommission`.
+The Oracle sweep gates everything (cutover can't start on unproven SQL; 861 needs the
+live functions). OIDC gates any plant-wide rollout. Edge/OPC gates only the
+hardware-bound weight-capture cutover. Items #4 and the hardware half of the edge are
+blocked on physical shop-floor access, not code.
+
+### 1. Oracle non-prod validation sweep  *(read paths swept 2026-07-07)*
+The newer modules' **read** paths were swept live against non-prod `abc11` with
+[`../tools/validate_oracle_reads_newmodules.ps1`](../tools/validate_oracle_reads_newmodules.ps1)
++ the new read-only [`../tools/oraq`](../tools/oraq) CLI. **4 live-only bug classes found
+and fixed** (AVG→decimal overflow in 3 reports; stacker-board unbounded `ab_job` scan;
+`:like` reserved-word bind ORA-01745 on sales/quotes + transferable-coils; transferable-
+coils whole-table scan). Full writeup: [`ORACLE_VALIDATION.md`](ORACLE_VALIDATION.md)
+§"Newer-module read sweep". Remaining from this sweep:
+
+- **Sales module tables absent from non-prod** — `sales_quote`/`sales_probability`/
+  `sales_order`/`sales_reminder` don't exist in the `abc11` copy (0 objects, all schemas),
+  so `sales/quotes` → ORA-00942. Code is correct (matches legacy names). **Validate the
+  sales module against prod (192.168.1.9, read-only) or a fuller non-prod copy.**
+- **Performance** — several reports and `stacker/board` use per-row correlated
+  `SUM`/`COUNT` subqueries that are 10–380 s over full history. Rewrite as `GROUP BY`
+  joins, index the `ab_job_num` FKs on `process_coil`/`sheet_skid`, and narrow the default
+  report window. See the perf table in `ORACLE_VALIDATION.md`.
+- **Write paths of the newer modules** not yet swept live (recovery/coil-eval/prod-folder/
+  stacker/sales POSTs) — extend the tagged-write sweep next.
 
 ### 2. OIDC rollout
 Register the provider (browser `Auth:Oidc` + API `Auth:Jwt`, see
 [`../api/README.md`](../api/README.md)); map the OIDC login → `security_user.login_id`;
-then broaden the per-feature **enforcement** (`RequireFeatureAsync`, already on the
-security-admin writes) to other mutating routes per a rollout policy.
+then broaden the per-feature **enforcement** (`RequireFeatureAsync`) to the remaining
+mutating routes.
+
+**Feature-gate status (legacy `f_security_door` parity, `application_name` = 0 ReadOnly /
+1 Write / <0 None).** An `/api` endpoint filter now gates every **mutating** request under
+a mapped domain tag at Write (level 1); an API-key service account (null login) bypasses,
+so only OIDC end-users (or an `X-User-Login` header) are enforced — matching this rollout.
+- **Gated** (`FeatureByTag` in `ApiEndpoints.cs`): Orders/OrderItems/Customers→*Order Entry*,
+  Parts→*Part Number*, Coils→*Inventory(Coil)*, Skids→*Inventory(Skid)*, Warehouse→*Warehouse*,
+  Receiving→*Shipment(Receiving)*, CoilEval/Quality→*Quality Control*, Shifts→*Shift Control*,
+  Maintenance→*Maintenance_logs*. Security-admin writes keep their own inline *User Control* gate.
+- **Deferred (ambiguous tag→feature, verify against live `security_application` first):**
+  Jobs, Stacker, ProdFolder (→*Production Control*?), Shipments (outbound — no legacy door
+  found), Dies, Sketches, ScanLog, Carriers, Downtime, Sales/Accounting. Left ungated until
+  the mapping is confirmed rather than guessed.
+- Before OIDC GA, decide whether to flip unmapped mutations to **default-deny** and to gate
+  reads (legacy gates screen-open at level ≥ 0); today reads are open.
 
 ### 3. Wire the 861 EDI
 `POST /api/receiving-bols/{id}/generate-861` is a documented stub; wire it to the
 per-customer Oracle functions (`f_edi_*_861`) gated on `customer.create_861_at_receiving`.
+This is now the **first slice of the larger EDI-ownership workstream (#8)** — see
+[`ADMIN_SUBSYSTEM_PLAN.md`](ADMIN_SUBSYSTEM_PLAN.md).
 
 ### 4. Edge / OPC
 The edge service skeleton ([`EDGE_SERVICE.md`](EDGE_SERVICE.md)) needs the Softing DA→UA
@@ -73,7 +111,56 @@ bridge + per-device serial formats (needs shop-floor hardware).
 Roll modules over against the live DB in dependency order (read-only first), legacy + new
 on one DB until each is proven, then decommission. See [`PHASE4_CUTOVER_PLAN.md`](PHASE4_CUTOVER_PLAN.md).
 
-### Housekeeping
+### 6–8. Admin subsystem — scheduler, server console, EDI ownership  *(new — requested 2026-07-07)*
+A **new Admin area** (behind the security/OIDC authorization from #2) consolidating
+three requests. Full design in [`ADMIN_SUBSYSTEM_PLAN.md`](ADMIN_SUBSYSTEM_PLAN.md).
+
+- **#6 Cron import + ABIS scheduler** — pull the DB server's scheduled jobs into an
+  ABIS-owned scheduler so they aren't managed on the DB host. **Step 0 is discovery**
+  (enumerate `DBA_SCHEDULER_JOBS`/`DBA_JOBS` + the DB-host crontab, classify
+  importable-vs-not) — the `SMP_*`/`SMAGENTJOB` tables in the schema dump are legacy
+  Oracle Enterprise Manager remnants, *not* business cron; ignore them.
+- **#7 Server/service console** — manage the ABIS deployment (**view + safe restarts
+  only**) and view the non-importable jobs, across **the ABIS box *and* the DB host**.
+  In-DB job control rides on the existing DB connection; only DB-host crontab *viewing*
+  needs a restricted read-only channel. Privilege separation (sudoers allowlist / polkit)
+  is the hard part and gates on a security review.
+- **#8 Full EDI ownership + setup UI** — elevate the read-only EDI surface to the full
+  lifecycle (generation, transport, inbound, FA reconciliation) with an admin setup UI
+  for trading partners/types/DUNS/flags. Generation + setup UI can proceed now; the
+  **transport/orchestration layer is blocked on the `edi.pbl` PB export**. EDI scheduling
+  rides on #6.
+
+Dependencies: all three need #2 (OIDC/enforcement) first; #8's automation needs #6's
+engine; discovery for #6/#7 piggybacks the #1 DB access.
+
+### Housekeeping / smaller open items
+- **Part revision workflow (complements the in-use guard)** — `PUT /parts/{id}` and
+  `/parts/{id}/shape` now return 409 when the part is applied to an order (legacy
+  "revise, don't modify"). Build the action they point to — `POST /parts/{id}/revision`
+  porting `w_part_num_management::ue_create_revision` (lines 529-620): clone the part row to
+  a new `part_num_id` (sequence) with `item_status = 1`, copy the shape dimension row to the
+  new id, and *optionally* copy the routing (the "use old part ID routing?" prompt — routing
+  isn't in the modern model yet). Safest implementation: read the source `Part`, map to a
+  `PartWrite`, call the tested `CreatePartAsync` (assigns the new id), then
+  `UpsertPartShapeAsync(newId, sourceShape)` — no column enumeration. Add a Part→PartWrite
+  mapper (verify it copies every writable column so a revision drops nothing).
+- **Dimension-QC derived in-spec (needs live Oracle)** — the dimensional-check write
+  (`POST /api/coil-eval/skids/{n}/dimension-checks`) now enforces *input hygiene* only
+  (auditor required, at least one measurement, `in_spec ∈ {0,1}`, positive measurements;
+  see `Validate(DimensionCheckWrite)`). The **authoritative** pass/fail — each measured
+  value vs the skid's shape *nominal ± tolerance* — lived in the legacy binary DataWindow
+  `d_skid_dim_check`; the `.srw` (`legacy/src/da/w_dimensional_check_new_skid.srw`) has it
+  commented out, so the field→tolerance mapping (gauge/width/length_oper/length_drive/
+  square/head_dimension → which shape dim + sh_tolerance_plus/minus) is **not reconstructable
+  offline**. Verify the mapping against live Oracle, then compute `in_spec` server-side
+  instead of trusting the client. This is a silent-correctness gate (can pass out-of-spec
+  material) — treat above its size.
+- **WSC32/OPC full call inventory** — Phase 1 left this `[~]`: the integration *surface*
+  is mapped ([`ARCHITECTURE.md`](ARCHITECTURE.md) §Integration surface) but the per-call
+  catalog isn't extracted. Needs the PB source export.
+- **Soft-delete policy** — decide before retiring any screen that deletes (feeds the
+  Phase 4 cutover exit criteria).
 - `SqliteFixture` drop-list idempotency: dev-only re-seed across schema changes can hit
   "table already exists" (CI is always fresh) — make the drop block cover every created table.
 - Low-value reference lookups not yet modeled (alloy heat-treatment, metal density,

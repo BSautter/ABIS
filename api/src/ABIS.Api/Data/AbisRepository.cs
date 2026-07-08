@@ -1,5 +1,6 @@
 using System.Data;
 using System.Data.Common;
+using System.Globalization;
 using Abis.Api.Models;
 using Dapper;
 
@@ -148,9 +149,47 @@ public sealed class AbisRepository : IAbisRepository
         """;
 
     private const string CustomerCols = """
-        customer_id AS CustomerId, customer_full_name AS CustomerName, customer_short_name AS CustomerShortName,
-        customer_city AS CustomerCity, customer_state AS CustomerState, customer_zip AS CustomerZip
+        customer_id AS CustomerId, customer_full_name AS CustomerName, customer_short_name AS CustomerShortName, customer_type AS CustomerType,
+        customer_street AS CustomerStreet, customer_city AS CustomerCity, customer_state AS CustomerState, customer_zip AS CustomerZip,
+        customer_country AS CustomerCountry, customer_phone_number AS CustomerPhoneNumber, customer_fax_number AS CustomerFaxNumber,
+        customer_create_date AS CustomerCreateDate, customer_maint_date AS CustomerMaintDate, customer_notes AS CustomerNotes,
+        parent_id AS ParentId, customer_external_id AS CustomerExternalId,
+        tax_id AS TaxId, tax_exemption_num AS TaxExemptionNum, tax_rate AS TaxRate,
+        customer_duns_number AS CustomerDunsNumber, customer_duns_number_string AS CustomerDunsNumberString,
+        bill_to_street AS BillToStreet, bill_to_city AS BillToCity, bill_to_state AS BillToState, bill_to_zip AS BillToZip,
+        desadv_req AS DesadvReq, edi_req AS EdiReq, qr_code_req AS QrCodeReq, validate_material AS ValidateMaterial,
+        use_package_num AS UsePackageNum, use_customer_website_4shipping AS UseCustomerWebsite4Shipping,
+        cash_date_required AS CashDateRequired, cash_date_on_bol AS CashDateOnBol, coil_cert_label_req AS CoilCertLabelReq,
+        create_861_at_receiving AS Create861AtReceiving, inv_report_saveas_xlsx AS InvReportSaveasXlsx,
+        cust_po_on_inv_skid_report AS CustPoOnInvSkidReport, use_edi_code_not_duns AS UseEdiCodeNotDuns, plant_code AS PlantCode
         """;
+
+    // The full writable customer column set + matching binds + SET clause, kept in lockstep.
+    // Bind :ctype avoids the Oracle reserved word TYPE (ORA-01745).
+    private const string CustomerWriteCols =
+        "customer_full_name, customer_short_name, customer_type, customer_street, customer_city, customer_state, customer_zip, " +
+        "customer_country, customer_phone_number, customer_fax_number, customer_notes, parent_id, customer_external_id, " +
+        "tax_id, tax_exemption_num, tax_rate, customer_duns_number, customer_duns_number_string, " +
+        "bill_to_street, bill_to_city, bill_to_state, bill_to_zip, desadv_req, edi_req, qr_code_req, validate_material, " +
+        "use_package_num, use_customer_website_4shipping, cash_date_required, cash_date_on_bol, coil_cert_label_req, " +
+        "create_861_at_receiving, inv_report_saveas_xlsx, cust_po_on_inv_skid_report, use_edi_code_not_duns, plant_code";
+
+    private const string CustomerWriteVals =
+        ":name, :shortName, :ctype, :street, :city, :state, :zip, :country, :phone, :fax, :notes, :parentId, :extId, " +
+        ":taxId, :taxExempt, :taxRate, :duns, :dunsStr, :billStreet, :billCity, :billState, :billZip, :desadv, :ediReq, :qr, :validateMat, " +
+        ":usePkg, :useWebsite, :cashReq, :cashBol, :coilCert, :create861, :invXlsx, :custPoInv, :useEdiCode, :plantCode";
+
+    private const string CustomerSetClause =
+        "customer_full_name = :name, customer_short_name = :shortName, customer_type = :ctype, customer_street = :street, " +
+        "customer_city = :city, customer_state = :state, customer_zip = :zip, customer_country = :country, " +
+        "customer_phone_number = :phone, customer_fax_number = :fax, customer_notes = :notes, parent_id = :parentId, " +
+        "customer_external_id = :extId, tax_id = :taxId, tax_exemption_num = :taxExempt, tax_rate = :taxRate, " +
+        "customer_duns_number = :duns, customer_duns_number_string = :dunsStr, bill_to_street = :billStreet, " +
+        "bill_to_city = :billCity, bill_to_state = :billState, bill_to_zip = :billZip, desadv_req = :desadv, edi_req = :ediReq, " +
+        "qr_code_req = :qr, validate_material = :validateMat, use_package_num = :usePkg, use_customer_website_4shipping = :useWebsite, " +
+        "cash_date_required = :cashReq, cash_date_on_bol = :cashBol, coil_cert_label_req = :coilCert, " +
+        "create_861_at_receiving = :create861, inv_report_saveas_xlsx = :invXlsx, cust_po_on_inv_skid_report = :custPoInv, " +
+        "use_edi_code_not_duns = :useEdiCode, plant_code = :plantCode";
 
     private const string SheetSkidCols = """
         sheet_skid_num AS SheetSkidNum, ab_job_num AS AbJobNum, sheet_skid_display_num AS SheetSkidDisplayNum,
@@ -504,20 +543,39 @@ public sealed class AbisRepository : IAbisRepository
             $"SELECT {CustomerCols} FROM customer WHERE customer_id = :id", new { id = customerId }, cancellationToken: ct));
     }
 
+    // All writable customer binds in one place (names match CustomerWriteVals / CustomerSetClause).
+    private static DynamicParameters CustomerBinds(CustomerWrite b)
+    {
+        var p = new DynamicParameters();
+        p.Add("name", b.CustomerName); p.Add("shortName", b.CustomerShortName); p.Add("ctype", b.CustomerType);
+        p.Add("street", b.CustomerStreet); p.Add("city", b.CustomerCity); p.Add("state", b.CustomerState); p.Add("zip", b.CustomerZip);
+        p.Add("country", b.CustomerCountry); p.Add("phone", b.CustomerPhoneNumber); p.Add("fax", b.CustomerFaxNumber);
+        p.Add("notes", b.CustomerNotes); p.Add("parentId", b.ParentId); p.Add("extId", b.CustomerExternalId);
+        p.Add("taxId", b.TaxId); p.Add("taxExempt", b.TaxExemptionNum); p.Add("taxRate", b.TaxRate);
+        p.Add("duns", b.CustomerDunsNumber); p.Add("dunsStr", b.CustomerDunsNumberString);
+        p.Add("billStreet", b.BillToStreet); p.Add("billCity", b.BillToCity); p.Add("billState", b.BillToState); p.Add("billZip", b.BillToZip);
+        p.Add("desadv", b.DesadvReq); p.Add("ediReq", b.EdiReq); p.Add("qr", b.QrCodeReq); p.Add("validateMat", b.ValidateMaterial);
+        p.Add("usePkg", b.UsePackageNum); p.Add("useWebsite", b.UseCustomerWebsite4Shipping); p.Add("cashReq", b.CashDateRequired);
+        p.Add("cashBol", b.CashDateOnBol); p.Add("coilCert", b.CoilCertLabelReq); p.Add("create861", b.Create861AtReceiving);
+        p.Add("invXlsx", b.InvReportSaveasXlsx); p.Add("custPoInv", b.CustPoOnInvSkidReport); p.Add("useEdiCode", b.UseEdiCodeNotDuns);
+        p.Add("plantCode", b.PlantCode);
+        return p;
+    }
+
     public async Task<Customer> CreateCustomerAsync(CustomerWrite body, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
 
         var id = await NextIdAsync(conn, tx, "customer", "customer_id", ct);
+        var p = CustomerBinds(body);
+        p.Add("id", id);
+        p.Add("ts", (DateTime?)DateTime.UtcNow, DbType.DateTime);   // create + maint dates
 
         await conn.ExecuteAsync(new CommandDefinition(
-            """
-            INSERT INTO customer (customer_id, customer_full_name, customer_short_name, customer_city, customer_state, customer_zip)
-            VALUES (:id, :name, :shortName, :city, :state, :zip)
-            """,
-            new { id, name = body.CustomerName, shortName = body.CustomerShortName, city = body.CustomerCity, state = body.CustomerState, zip = body.CustomerZip },
-            transaction: tx, cancellationToken: ct));
+            $"INSERT INTO customer (customer_id, customer_create_date, customer_maint_date, {CustomerWriteCols}) " +
+            $"VALUES (:id, :ts, :ts, {CustomerWriteVals})",
+            p, transaction: tx, cancellationToken: ct));
 
         await tx.CommitAsync(ct);
         return (await GetCustomerAsync(id, ct))!;
@@ -526,14 +584,12 @@ public sealed class AbisRepository : IAbisRepository
     public async Task<Customer?> UpdateCustomerAsync(long customerId, CustomerWrite body, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
+        var p = CustomerBinds(body);
+        p.Add("id", customerId);
+        p.Add("ts", (DateTime?)DateTime.UtcNow, DbType.DateTime);   // bump maint date (create date untouched)
         var n = await conn.ExecuteAsync(new CommandDefinition(
-            """
-            UPDATE customer SET customer_full_name = :name, customer_short_name = :shortName,
-                   customer_city = :city, customer_state = :state, customer_zip = :zip
-            WHERE customer_id = :id
-            """,
-            new { name = body.CustomerName, shortName = body.CustomerShortName, city = body.CustomerCity, state = body.CustomerState, zip = body.CustomerZip, id = customerId },
-            cancellationToken: ct));
+            $"UPDATE customer SET {CustomerSetClause}, customer_maint_date = :ts WHERE customer_id = :id",
+            p, cancellationToken: ct));
         return n == 0 ? null : await GetCustomerAsync(customerId, ct);
     }
 
@@ -673,6 +729,228 @@ public sealed class AbisRepository : IAbisRepository
         return n == 0 ? null : await GetOrderItemAsync(orderAbcNum, orderItemNum, ct);
     }
 
+    // ---- Per-item shape geometry ---------------------------------------
+    // A line's blank dimensions live in a table per shape (RECTANGLE/CIRCLE/…), keyed by the
+    // order_item composite key. The shape is order_item.sheet_type; Data/ShapeGeometry maps it
+    // to the table + columns, so one endpoint group serves every shape.
+
+    public IReadOnlyList<ShapeTypeInfo> GetShapeTypes() =>
+        ShapeGeometry.All.Select(def => new ShapeTypeInfo
+        {
+            ShapeType = def.ShapeType,
+            DieCount = def.DieCols.Count,
+            Dimensions = def.Dims.Select(dm => new ShapeDimensionSpec { Name = dm.Name, HasTolerance = dm.PlusCol is not null }).ToList(),
+        }).ToList();
+
+    public async Task<OrderItemShape?> GetOrderItemShapeAsync(long orderAbcNum, long orderItemNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM order_item WHERE order_abc_num = :ord AND order_item_num = :id",
+            new { ord = orderAbcNum, id = orderItemNum }, cancellationToken: ct));
+        if (exists == 0) return null;                       // no such order line
+
+        var sheetType = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
+            "SELECT sheet_type FROM order_item WHERE order_abc_num = :ord AND order_item_num = :id",
+            new { ord = orderAbcNum, id = orderItemNum }, cancellationToken: ct));
+        var shape = new OrderItemShape { OrderAbcNum = orderAbcNum, OrderItemNum = orderItemNum, ShapeType = (sheetType ?? "").Trim().ToUpperInvariant() };
+
+        var def = ShapeGeometry.Resolve(sheetType);
+        if (def is null) return shape;                      // line exists but isn't a dimensioned shape
+        shape.ShapeType = def.ShapeType;
+
+        var select = new List<string>();
+        for (var i = 0; i < def.Dims.Count; i++)
+        {
+            var dm = def.Dims[i];
+            select.Add($"{dm.ValueCol} AS v{i}");
+            if (dm.PlusCol is not null) select.Add($"{dm.PlusCol} AS p{i}");
+            if (dm.MinusCol is not null) select.Add($"{dm.MinusCol} AS m{i}");
+        }
+        for (var j = 0; j < def.DieCols.Count; j++) select.Add($"{def.DieCols[j]} AS die{j}");
+
+        var raw = await conn.QueryFirstOrDefaultAsync(new CommandDefinition(
+            $"SELECT {string.Join(", ", select)} FROM {def.Table} WHERE order_abc_num = :ord AND order_item_num = :id",
+            new { ord = orderAbcNum, id = orderItemNum }, cancellationToken: ct));
+        IDictionary<string, object?>? row = null;
+        if (raw is not null)
+        {
+            row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in (IDictionary<string, object>)raw) row[kv.Key] = kv.Value;
+        }
+
+        for (var i = 0; i < def.Dims.Count; i++)
+        {
+            var dm = def.Dims[i];
+            shape.Dimensions.Add(new ShapeDimension
+            {
+                Name = dm.Name,
+                Value = Dec(row, $"v{i}"),
+                PlusTol = dm.PlusCol is null ? null : Dec(row, $"p{i}"),
+                MinusTol = dm.MinusCol is null ? null : Dec(row, $"m{i}"),
+            });
+        }
+        for (var j = 0; j < def.DieCols.Count; j++)
+            shape.Dies.Add(row is not null && row.TryGetValue($"die{j}", out var dv) ? dv?.ToString() : null);
+        return shape;
+    }
+
+    public async Task<OrderItemShape?> UpsertOrderItemShapeAsync(long orderAbcNum, long orderItemNum, OrderItemShapeWrite body, CancellationToken ct)
+    {
+        var def = ShapeGeometry.Resolve(body.ShapeType);
+        if (def is null) return null;                       // unknown shape → endpoint returns 400
+
+        await using var conn = await OpenAsync(ct);
+        var itemExists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM order_item WHERE order_abc_num = :ord AND order_item_num = :id",
+            new { ord = orderAbcNum, id = orderItemNum }, cancellationToken: ct));
+        if (itemExists == 0) return null;                   // no such order line → 404
+        var current = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
+            "SELECT sheet_type FROM order_item WHERE order_abc_num = :ord AND order_item_num = :id",
+            new { ord = orderAbcNum, id = orderItemNum }, cancellationToken: ct));
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        // Keep the line's sheet_type aligned with the shape being written.
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE order_item SET sheet_type = :st WHERE order_abc_num = :ord AND order_item_num = :id",
+            new { st = def.ShapeType, ord = orderAbcNum, id = orderItemNum }, transaction: tx, cancellationToken: ct));
+
+        // If the shape changed, drop the old shape's row so it can't linger.
+        var oldDef = ShapeGeometry.Resolve(current);
+        if (oldDef is not null && !string.Equals(oldDef.Table, def.Table, StringComparison.OrdinalIgnoreCase))
+            await conn.ExecuteAsync(new CommandDefinition(
+                $"DELETE FROM {oldDef.Table} WHERE order_abc_num = :ord AND order_item_num = :id",
+                new { ord = orderAbcNum, id = orderItemNum }, transaction: tx, cancellationToken: ct));
+
+        // Upsert = delete + insert (portable; the row is small and single-keyed).
+        await conn.ExecuteAsync(new CommandDefinition(
+            $"DELETE FROM {def.Table} WHERE order_abc_num = :ord AND order_item_num = :id",
+            new { ord = orderAbcNum, id = orderItemNum }, transaction: tx, cancellationToken: ct));
+
+        var cols = new List<string> { "order_item_num", "order_abc_num" };
+        var vals = new List<string> { ":id", ":ord" };
+        var p = new DynamicParameters();
+        p.Add("id", orderItemNum);
+        p.Add("ord", orderAbcNum);
+        for (var i = 0; i < def.Dims.Count; i++)
+        {
+            var dm = def.Dims[i];
+            var val = body.Dimensions.FirstOrDefault(x => string.Equals(x.Name, dm.Name, StringComparison.OrdinalIgnoreCase));
+            cols.Add(dm.ValueCol); vals.Add($":v{i}"); p.Add($"v{i}", val?.Value, DbType.Decimal);
+            if (dm.PlusCol is not null) { cols.Add(dm.PlusCol); vals.Add($":p{i}"); p.Add($"p{i}", val?.PlusTol, DbType.Decimal); }
+            if (dm.MinusCol is not null) { cols.Add(dm.MinusCol); vals.Add($":m{i}"); p.Add($"m{i}", val?.MinusTol, DbType.Decimal); }
+        }
+        for (var j = 0; j < def.DieCols.Count; j++)
+        {
+            cols.Add(def.DieCols[j]); vals.Add($":die{j}");
+            p.Add($"die{j}", j < body.Dies.Count ? body.Dies[j] : null, DbType.String);
+        }
+        await conn.ExecuteAsync(new CommandDefinition(
+            $"INSERT INTO {def.Table} ({string.Join(", ", cols)}) VALUES ({string.Join(", ", vals)})",
+            p, transaction: tx, cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
+        return await GetOrderItemShapeAsync(orderAbcNum, orderItemNum, ct);
+    }
+
+    private static decimal? Dec(IDictionary<string, object?>? row, string key) =>
+        row is not null && row.TryGetValue(key, out var v) && v is not null and not DBNull
+            ? Convert.ToDecimal(v) : null;
+
+    // Part-master geometry — the same shapes/dimensions as the order-item level, but keyed by
+    // part_num_id (single key) in the PART_NUM_* tables, with no die columns.
+
+    public async Task<PartShape?> GetPartShapeAsync(long partNumId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM part_num WHERE part_num_id = :id", new { id = partNumId }, cancellationToken: ct));
+        if (exists == 0) return null;
+
+        var sheetType = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
+            "SELECT sheet_type FROM part_num WHERE part_num_id = :id", new { id = partNumId }, cancellationToken: ct));
+        var shape = new PartShape { PartNumId = partNumId, ShapeType = (sheetType ?? "").Trim().ToUpperInvariant() };
+
+        var def = ShapeGeometry.Resolve(sheetType);
+        if (def is null) return shape;
+        shape.ShapeType = def.ShapeType;
+
+        var select = new List<string>();
+        for (var i = 0; i < def.Dims.Count; i++)
+        {
+            var dm = def.Dims[i];
+            select.Add($"{dm.ValueCol} AS v{i}");
+            if (dm.PlusCol is not null) select.Add($"{dm.PlusCol} AS p{i}");
+            if (dm.MinusCol is not null) select.Add($"{dm.MinusCol} AS m{i}");
+        }
+        var raw = await conn.QueryFirstOrDefaultAsync(new CommandDefinition(
+            $"SELECT {string.Join(", ", select)} FROM {def.PartTable} WHERE part_num_id = :id",
+            new { id = partNumId }, cancellationToken: ct));
+        IDictionary<string, object?>? row = null;
+        if (raw is not null)
+        {
+            row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in (IDictionary<string, object>)raw) row[kv.Key] = kv.Value;
+        }
+        for (var i = 0; i < def.Dims.Count; i++)
+        {
+            var dm = def.Dims[i];
+            shape.Dimensions.Add(new ShapeDimension
+            {
+                Name = dm.Name,
+                Value = Dec(row, $"v{i}"),
+                PlusTol = dm.PlusCol is null ? null : Dec(row, $"p{i}"),
+                MinusTol = dm.MinusCol is null ? null : Dec(row, $"m{i}"),
+            });
+        }
+        return shape;
+    }
+
+    public async Task<PartShape?> UpsertPartShapeAsync(long partNumId, PartShapeWrite body, CancellationToken ct)
+    {
+        var def = ShapeGeometry.Resolve(body.ShapeType);
+        if (def is null) return null;                       // unknown shape → endpoint returns 400
+
+        await using var conn = await OpenAsync(ct);
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM part_num WHERE part_num_id = :id", new { id = partNumId }, cancellationToken: ct));
+        if (exists == 0) return null;                       // no such part → 404
+        var current = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
+            "SELECT sheet_type FROM part_num WHERE part_num_id = :id", new { id = partNumId }, cancellationToken: ct));
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE part_num SET sheet_type = :st WHERE part_num_id = :id",
+            new { st = def.ShapeType, id = partNumId }, transaction: tx, cancellationToken: ct));
+
+        var oldDef = ShapeGeometry.Resolve(current);
+        if (oldDef is not null && !string.Equals(oldDef.PartTable, def.PartTable, StringComparison.OrdinalIgnoreCase))
+            await conn.ExecuteAsync(new CommandDefinition(
+                $"DELETE FROM {oldDef.PartTable} WHERE part_num_id = :id", new { id = partNumId }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            $"DELETE FROM {def.PartTable} WHERE part_num_id = :id", new { id = partNumId }, transaction: tx, cancellationToken: ct));
+
+        var cols = new List<string> { "part_num_id" };
+        var vals = new List<string> { ":id" };
+        var p = new DynamicParameters();
+        p.Add("id", partNumId);
+        for (var i = 0; i < def.Dims.Count; i++)
+        {
+            var dm = def.Dims[i];
+            var val = body.Dimensions.FirstOrDefault(x => string.Equals(x.Name, dm.Name, StringComparison.OrdinalIgnoreCase));
+            cols.Add(dm.ValueCol); vals.Add($":v{i}"); p.Add($"v{i}", val?.Value, DbType.Decimal);
+            if (dm.PlusCol is not null) { cols.Add(dm.PlusCol); vals.Add($":p{i}"); p.Add($"p{i}", val?.PlusTol, DbType.Decimal); }
+            if (dm.MinusCol is not null) { cols.Add(dm.MinusCol); vals.Add($":m{i}"); p.Add($"m{i}", val?.MinusTol, DbType.Decimal); }
+        }
+        await conn.ExecuteAsync(new CommandDefinition(
+            $"INSERT INTO {def.PartTable} ({string.Join(", ", cols)}) VALUES ({string.Join(", ", vals)})",
+            p, transaction: tx, cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
+        return await GetPartShapeAsync(partNumId, ct);
+    }
+
     public async Task WriteAuditAsync(string source, bool success, string? notes, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
@@ -782,7 +1060,7 @@ public sealed class AbisRepository : IAbisRepository
             $"""
             SELECT l.line_num AS LineNum, l.line_desc AS LineDesc,
                    COUNT(j.ab_job_num) AS JobCount,
-                   AVG(j.material_yield) AS AvgYield,
+                   ROUND(AVG(j.material_yield), 4) AS AvgYield,
                    COALESCE(SUM((SELECT SUM(pc.process_end_wt) FROM process_coil pc WHERE pc.ab_job_num = j.ab_job_num)), 0.0) AS ProcessedWt
             FROM line l
             LEFT JOIN ab_job j ON j.line_num = l.line_num{dateFilter}
@@ -804,7 +1082,7 @@ public sealed class AbisRepository : IAbisRepository
         var rows = (await conn.QueryAsync<LineEfficiencyRow>(new CommandDefinition(
             $"""
             SELECT l.line_num AS LineNum, l.line_desc AS LineDesc,
-                   COUNT(j.ab_job_num) AS JobCount, AVG(j.material_yield) AS AvgYield,
+                   COUNT(j.ab_job_num) AS JobCount, ROUND(AVG(j.material_yield), 4) AS AvgYield,
                    COALESCE(SUM((SELECT SUM(pc.process_end_wt) FROM process_coil pc WHERE pc.ab_job_num = j.ab_job_num)), 0.0) AS ProcessedWt
             FROM line l
             LEFT JOIN ab_job j ON j.line_num = l.line_num{jobFilter}
@@ -1051,7 +1329,7 @@ public sealed class AbisRepository : IAbisRepository
         var rows = await conn.QueryAsync<QaMechanicalRow>(new CommandDefinition(
             $"""
             SELECT test_type AS TestType, COUNT(*) AS ResultCount,
-                   AVG(yts_val) AS AvgYts, AVG(uts_val) AS AvgUts, AVG(elong_val) AS AvgElong
+                   ROUND(AVG(yts_val), 4) AS AvgYts, ROUND(AVG(uts_val), 4) AS AvgUts, ROUND(AVG(elong_val), 4) AS AvgElong
             FROM pst_test_result {clause}
             GROUP BY test_type
             ORDER BY test_type
@@ -1145,10 +1423,10 @@ public sealed class AbisRepository : IAbisRepository
             FROM sales_quote q
             LEFT JOIN customer c ON c.customer_id = q.customer_id
             LEFT JOIN customer_contact cc ON cc.contact_id = q.contact_id
-            WHERE (:like IS NULL
-                   OR c.customer_short_name LIKE :like OR q.end_use LIKE :like OR q.alloy LIKE :like)
+            WHERE (:pat IS NULL
+                   OR c.customer_short_name LIKE :pat OR q.end_use LIKE :pat OR q.alloy LIKE :pat)
             ORDER BY q.created_date DESC, q.quote_id, q.quote_revision_id
-            """, new { like }, cancellationToken: ct));
+            """, new { pat = like }, cancellationToken: ct));
         return rows.AsList();
     }
 
@@ -1311,7 +1589,11 @@ public sealed class AbisRepository : IAbisRepository
     }
 
     // The coil picker (legacy d_ownership_transfer_coil_list): coils that can be transferred,
-    // with their current owner. Optional customer scope + a text search on org-num / lot / notes.
+    // with their current owner. A coil is transferable only if it still has material left —
+    // net_wt_balance > 0. Without that predicate the query returns the entire coil table
+    // (~150k rows on the live DB, of which only ~8.8k have a balance) — unusably slow
+    // (~200s) and wrong (consumed coils can't be transferred). Optional customer scope + a
+    // text search on org-num / lot / notes narrow it further.
     public async Task<IReadOnlyList<TransferableCoil>> GetTransferableCoilsAsync(long? customerId, string? search, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
@@ -1324,10 +1606,11 @@ public sealed class AbisRepository : IAbisRepository
                    c.coil_width AS CoilWidth, c.net_wt_balance AS NetWtBalance, c.coil_notes AS CoilNotes
             FROM coil c
             LEFT JOIN customer cu ON cu.customer_id = c.customer_id
-            WHERE (:cust IS NULL OR c.customer_id = :cust)
-              AND (:like IS NULL OR c.coil_org_num LIKE :like OR c.lot_num LIKE :like OR c.coil_notes LIKE :like)
+            WHERE c.net_wt_balance > 0
+              AND (:cust IS NULL OR c.customer_id = :cust)
+              AND (:pat IS NULL OR c.coil_org_num LIKE :pat OR c.lot_num LIKE :pat OR c.coil_notes LIKE :pat)
             ORDER BY c.coil_abc_num
-            """, new { cust = customerId, like }, cancellationToken: ct));
+            """, new { cust = customerId, pat = like }, cancellationToken: ct));
         return rows.AsList();
     }
 
@@ -1653,21 +1936,207 @@ public sealed class AbisRepository : IAbisRepository
     public async Task<IReadOnlyList<InvoiceCoil>> GetInvoiceCoilsAsync(long abJobNum, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
-        // Faithful to the legacy d_rej_reband_coil_list_for_invoice: rejected (3) and
-        // rebanded (7) coils on a job — the billing-relevant coils. coil ⋈ process_coil.
-        var rows = await conn.QueryAsync<InvoiceCoil>(new CommandDefinition(
+        return (await GetInvoiceCoilsAsync(conn, null, abJobNum, ct)).AsList();
+    }
+
+    /// <summary>The rejected (3) / rebanded (7) coils on a job (legacy
+    /// <c>d_rej_reband_coil_list_for_invoice</c>: <c>coil ⋈ process_coil</c>), each carrying the
+    /// components of the legacy billed-weight rule — the shift-end weight, the coil balance, and
+    /// <c>MaxPriorProcessQuantity</c> (the correlated MAX of prior-pass quantities below this job's
+    /// quantity). <see cref="InvoiceCoil.BilledWeight"/> then applies the rule. Runs on any open
+    /// connection so the invoice computation can share it.</summary>
+    private static async Task<IEnumerable<InvoiceCoil>> GetInvoiceCoilsAsync(
+        DbConnection conn, DbTransaction? tx, long abJobNum, CancellationToken ct) =>
+        await conn.QueryAsync<InvoiceCoil>(new CommandDefinition(
             """
             SELECT pc.ab_job_num AS AbJobNum, pc.coil_abc_num AS CoilAbcNum,
                    c.coil_org_num AS CoilOrgNum, c.coil_mid_num AS CoilMidNum, c.lot_num AS LotNum,
                    c.coil_gauge AS CoilGauge, c.net_wt AS NetWt, c.net_wt_balance AS NetWtBalance,
                    pc.process_end_wt AS ProcessEndWt, pc.process_quantity AS ProcessQuantity,
                    pc.process_date AS ProcessDate, c.coil_status AS CoilStatus,
-                   pc.process_coil_status AS ProcessCoilStatus
+                   pc.process_coil_status AS ProcessCoilStatus,
+                   (SELECT MAX(pp.process_quantity) FROM process_coil pp
+                     WHERE pp.coil_abc_num = pc.coil_abc_num
+                       AND pp.process_quantity < pc.process_quantity) AS MaxPriorProcessQuantity
             FROM coil c JOIN process_coil pc ON c.coil_abc_num = pc.coil_abc_num
             WHERE pc.process_coil_status IN (3, 7) AND pc.ab_job_num = :id
             ORDER BY pc.coil_abc_num DESC
-            """, new { id = abJobNum }, cancellationToken: ct));
+            """, new { id = abJobNum }, transaction: tx, cancellationToken: ct));
+
+    // ---- Invoice save (legacy w_invoice: number + date + notes) ----
+    // The INVOICE table is (ab_job_num, invoice_num, "TIMESTAMP", notes) with a composite PK;
+    // "TIMESTAMP" is an Oracle reserved word so the column is always quoted, and no bind is named
+    // :timestamp (it would raise ORA-01745). The weight buckets are computed, never stored here.
+
+    public async Task<IReadOnlyList<Invoice>> GetInvoicesAsync(long abJobNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<Invoice>(new CommandDefinition(
+            """
+            SELECT ab_job_num AS AbJobNum, invoice_num AS InvoiceNum,
+                   "TIMESTAMP" AS Timestamp, notes AS Notes
+            FROM invoice WHERE ab_job_num = :job
+            ORDER BY invoice_num
+            """, new { job = abJobNum }, cancellationToken: ct));
         return rows.AsList();
+    }
+
+    public async Task<Invoice?> GetInvoiceAsync(long abJobNum, string invoiceNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.QueryFirstOrDefaultAsync<Invoice>(new CommandDefinition(
+            """
+            SELECT ab_job_num AS AbJobNum, invoice_num AS InvoiceNum,
+                   "TIMESTAMP" AS Timestamp, notes AS Notes
+            FROM invoice WHERE ab_job_num = :job AND invoice_num = :inv
+            """, new { job = abJobNum, inv = invoiceNum }, cancellationToken: ct));
+    }
+
+    public async Task<InvoiceSaveResult> CreateInvoiceAsync(InvoiceWrite body, CancellationToken ct)
+    {
+        var invoiceNum = body.InvoiceNum!.Trim();
+        var tstamp = body.Timestamp ?? DateTime.UtcNow;
+        await using var conn = await OpenAsync(ct);
+
+        // The job must exist (INVOICE.ab_job_num is an FK to AB_JOB).
+        var jobExists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM ab_job WHERE ab_job_num = :job", new { job = body.AbJobNum }, cancellationToken: ct));
+        if (jobExists == 0) return new InvoiceSaveResult(InvoiceSaveOutcome.JobNotFound, null);
+
+        // (ab_job_num, invoice_num) is the PK — a repeat is a conflict, not a silent overwrite.
+        var dup = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM invoice WHERE ab_job_num = :job AND invoice_num = :inv",
+            new { job = body.AbJobNum, inv = invoiceNum }, cancellationToken: ct));
+        if (dup > 0) return new InvoiceSaveResult(InvoiceSaveOutcome.Duplicate, null);
+
+        var p = new DynamicParameters();
+        p.Add("job", body.AbJobNum);
+        p.Add("inv", invoiceNum);
+        p.Add("tstamp", tstamp, DbType.DateTime);
+        p.Add("notes", body.Notes);
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO invoice (ab_job_num, invoice_num, "TIMESTAMP", notes)
+            VALUES (:job, :inv, :tstamp, :notes)
+            """, p, cancellationToken: ct));
+
+        return new InvoiceSaveResult(InvoiceSaveOutcome.Created,
+            new Invoice { AbJobNum = body.AbJobNum, InvoiceNum = invoiceNum, Timestamp = tstamp, Notes = body.Notes });
+    }
+
+    // ---- Invoice computation (legacy w_invoice.ue_display_doc_info + wf_set_values) ----
+    // Every weight bucket for a job's invoice, computed at report time. Header/spec join
+    // ab_job⋈line⋈customer_order⋈customer(⋈enduser)⋈order_item; the rejected/rebanded buckets
+    // apply the exact legacy MAX rule (InvoiceBilling), not a naive sum of process_end_wt.
+
+    public async Task<InvoiceComputation?> GetInvoiceComputationAsync(long abJobNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+
+        var inv = await conn.QueryFirstOrDefaultAsync<InvoiceComputation>(new CommandDefinition(
+            """
+            SELECT j.ab_job_num AS AbJobNum, j.order_abc_num AS OrderAbcNum, j.order_item_num AS OrderItemNum,
+                   l.line_desc AS LineDesc, co.orig_customer_po AS OrigCustomerPo,
+                   cust.customer_short_name AS CustomerShortName, eu.customer_short_name AS Enduser,
+                   oi.sheet_type AS SheetType, oi.alloy2 AS Alloy, oi.temper AS Temper, oi.gauge AS Gauge,
+                   oi.enduser_part_num AS EnduserPartNum, oi.order_item_desc AS OrderItemDesc
+            FROM ab_job j
+            LEFT JOIN line l ON l.line_num = j.line_num
+            LEFT JOIN customer_order co ON co.order_abc_num = j.order_abc_num
+            LEFT JOIN customer cust ON cust.customer_id = co.orig_customer_id
+            LEFT JOIN customer eu ON eu.customer_id = co.enduser_id
+            LEFT JOIN order_item oi ON oi.order_abc_num = j.order_abc_num AND oi.order_item_num = j.order_item_num
+            WHERE j.ab_job_num = :id
+            """, new { id = abJobNum }, cancellationToken: ct));
+        if (inv is null) return null;                       // no such job → 404
+
+        // Net weight = SUM(process_quantity) over all the job's applied coils.
+        inv.NetWt = await conn.ExecuteScalarAsync<decimal>(new CommandDefinition(
+            "SELECT COALESCE(SUM(process_quantity), 0) FROM process_coil WHERE ab_job_num = :id",
+            new { id = abJobNum }, cancellationToken: ct));
+        // Unapplied = SUM(process_quantity) where process_coil_status = 2 (applied but never used).
+        inv.UnappliedWt = await conn.ExecuteScalarAsync<decimal>(new CommandDefinition(
+            "SELECT COALESCE(SUM(process_quantity), 0) FROM process_coil WHERE ab_job_num = :id AND process_coil_status = 2",
+            new { id = abJobNum }, cancellationToken: ct));
+
+        inv.ProcessedWt = await conn.ExecuteScalarAsync<decimal>(new CommandDefinition(
+            "SELECT COALESCE(SUM(prod_item_net_wt), 0) FROM production_sheet_item WHERE ab_job_num = :id",
+            new { id = abJobNum }, cancellationToken: ct));
+        inv.ScrapWt = await conn.ExecuteScalarAsync<decimal>(new CommandDefinition(
+            "SELECT COALESCE(SUM(return_item_net_wt), 0) FROM return_scrap_item WHERE ab_job_num = :id",
+            new { id = abJobNum }, cancellationToken: ct));
+        inv.TareWt = await conn.ExecuteScalarAsync<decimal>(new CommandDefinition(
+            "SELECT COALESCE(SUM(sheet_tare_wt), 0) FROM sheet_skid WHERE ab_job_num = :id",
+            new { id = abJobNum }, cancellationToken: ct));
+        inv.SkidCount = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT COUNT(*) FROM sheet_skid WHERE ab_job_num = :id",
+            new { id = abJobNum }, cancellationToken: ct));
+
+        // Rejected/rebanded billed weights: the exact per-coil MAX rule, summed by disposition.
+        inv.Coils = (await GetInvoiceCoilsAsync(conn, null, abJobNum, ct)).AsList();
+        inv.RejectedWt = inv.Coils.Where(c => c.ProcessCoilStatus == 3).Sum(c => c.BilledWeight);
+        inv.RebandedWt = inv.Coils.Where(c => c.ProcessCoilStatus == 7).Sum(c => c.BilledWeight);
+
+        // Offal = processed + scrap + rejected + unapplied − net (legacy wf_set_values, using the
+        // exact rejected figure; the vestigial legacy copy left rejnet stubbed at 0).
+        inv.OffalWt = inv.ProcessedWt + inv.ScrapWt + inv.RejectedWt + inv.UnappliedWt - inv.NetWt;
+        inv.OffalPct = inv.NetWt == 0 ? 0 : Math.Round(inv.OffalWt / inv.NetWt * 100m, 4);
+
+        // Scrap status: the single scrap type's name, "Multiple" for >1 scrap skid, else null
+        // (legacy d_report_new_skid_num row-count branch). scrap_ab_job_num is a CHAR column, so
+        // bind the job as a string (a numeric bind would risk ORA-01722 on non-numeric rows).
+        var scrapTypes = (await conn.QueryAsync<int?>(new CommandDefinition(
+            "SELECT scrap_type FROM scrap_skid WHERE scrap_ab_job_num = :jobtxt",
+            new { jobtxt = abJobNum.ToString(CultureInfo.InvariantCulture) }, cancellationToken: ct))).AsList();
+        inv.ScrapStatus = scrapTypes.Count switch
+        {
+            0 => null,
+            1 => ScrapTypeName(scrapTypes[0]),
+            _ => "Multiple",
+        };
+
+        // Spec string (Width X Length …) from the order line's shape geometry, per the legacy
+        // per-shape CHOOSE CASE (w_invoice:173–230). Reuses the shape-geometry read path.
+        if (inv.OrderAbcNum is { } ord && inv.OrderItemNum is { } item)
+        {
+            var shape = await GetOrderItemShapeAsync(ord, item, ct);
+            inv.SpecWidthLength = BuildSpec(shape);
+        }
+        return inv;
+    }
+
+    /// <summary>Legacy scrap-type code → label (w_invoice:330–347).</summary>
+    private static string? ScrapTypeName(int? type) => type switch
+    {
+        1 => "Rej. Sheet-Mill",
+        2 => "Accu. Scrap",
+        3 => "Others",
+        4 => "Trailer",
+        5 => "Rej. Sheet-Process",
+        6 => "Sample",
+        7 => "Tote",
+        8 => "Edge Trim",
+        _ => null,
+    };
+
+    /// <summary>Builds the invoice dimension spec string from a line's shape geometry, matching the
+    /// legacy per-shape ordering (w_invoice:173–230): W×L for rectangle/parallelogram/chevron/etc.,
+    /// diameter for a circle, the single side for a fender, and W×short×long for the trapezoids.</summary>
+    private static string? BuildSpec(Models.OrderItemShape? shape)
+    {
+        if (shape is null || shape.Dimensions.Count == 0) return null;
+        decimal? Dim(string name) => shape.Dimensions.FirstOrDefault(d =>
+            string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase))?.Value;
+        static string F(decimal? v) => v is null ? "" : v.Value.ToString("0.#####", CultureInfo.InvariantCulture);
+
+        return shape.ShapeType switch
+        {
+            "CIRCLE" => F(Dim("diameter")),
+            "FENDER" => F(Dim("side")),
+            "TRAPEZOID" or "LTRAPEZOID" or "RTRAPEZOID"
+                => $"{F(Dim("width"))} X {F(Dim("shortLength"))} X {F(Dim("longLength"))}",
+            _ => $"{F(Dim("width"))} X {F(Dim("length"))}",   // rectangle, parallelogram, chevron, reinforcement, liftgate
+        };
     }
 
     public async Task<SheetSkid?> UpdateSheetSkidWarehouseAsync(long sheetSkidNum, SheetSkidWarehousePatch patch, CancellationToken ct)
@@ -1879,6 +2348,15 @@ public sealed class AbisRepository : IAbisRepository
             p,
             cancellationToken: ct));
         return n == 0 ? null : await GetPartAsync(partNumId, ct);
+    }
+
+    public async Task<bool> IsPartInUseAsync(long partNumId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        // Legacy w_part_num_management guards modify/delete with the same COUNT on order_item.
+        return await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM order_item WHERE part_num_id = :id",
+            new { id = partNumId }, cancellationToken: ct)) > 0;
     }
 
     public Task<PagedResult<Die>> GetDiesAsync(int page, int pageSize, int? status, string? orderBy, CancellationToken ct) =>
@@ -2364,6 +2842,12 @@ public sealed class AbisRepository : IAbisRepository
 
     // ---- Stacker line board / error log (legacy stacker_110) ----
 
+    // The stacker board is a live line monitor of the jobs *running* on a line. It must
+    // show only ACTIVE work — job_status IN (1 InProcess, 2 New, 4 OnHold) — and exclude
+    // finished (0 Done) and cancelled (3) jobs. Without this filter the query scans the
+    // whole ab_job history (~94k Done rows on the live DB), each with two correlated
+    // COUNTs — effectively a hang. The SQLite fixture is tiny so CI never saw it; the
+    // live non-prod sweep did. Status codes per ab_job_status_desc (verified live).
     public async Task<IReadOnlyList<StackerBoardRow>> GetStackerBoardAsync(long? lineNum, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
@@ -2373,7 +2857,8 @@ public sealed class AbisRepository : IAbisRepository
                    (SELECT COUNT(*) FROM process_coil pc WHERE pc.ab_job_num = j.ab_job_num) AS CoilCount,
                    (SELECT COUNT(*) FROM sheet_skid ss WHERE ss.ab_job_num = j.ab_job_num) AS SkidCount
             FROM ab_job j
-            WHERE (:line IS NULL OR j.line_num = :line)
+            WHERE j.job_status NOT IN (0, 3)
+              AND (:line IS NULL OR j.line_num = :line)
             ORDER BY j.ab_job_num DESC
             """, new { line = lineNum }, cancellationToken: ct));
         return rows.AsList();

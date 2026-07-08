@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ABIS Blank Geometry</title>
+<style>
+  :root { --bd:#d0d7de; --bg:#f6f8fa; --ac:#0969da; }
+  * { box-sizing: border-box; }
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 0; color: #1f2328; }
+  body.busy { cursor: progress; }
+  body.busy button { opacity:.6; pointer-events:none; }
+  header { background:#24292f; color:#fff; padding:10px 16px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  header nav { display:flex; gap:12px; flex-wrap:wrap; }
+  header nav a { color:#9ecbff; text-decoration:none; }
+  header .key { margin-left:auto; display:flex; gap:6px; align-items:center; }
+  main { max-width:900px; margin:0 auto; padding:16px; display:grid; gap:16px; }
+  section { border:1px solid var(--bd); border-radius:8px; padding:14px; }
+  h2 { font-size:14px; margin:0 0 10px; text-transform:uppercase; letter-spacing:.04em; color:#57606a; }
+  label { font-size:12px; color:#57606a; }
+  input, select, button { font:inherit; padding:6px 8px; border:1px solid var(--bd); border-radius:6px; }
+  button { background:var(--ac); color:#fff; border-color:var(--ac); cursor:pointer; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:end; }
+  .muted { color:#8b949e; }
+  .pill { background:var(--bg); border:1px solid var(--bd); border-radius:12px; padding:1px 8px; font-size:12px; }
+  .err { color:#cf222e; min-height:18px; }
+  .ok { color:#1a7f37; min-height:18px; }
+  table { width:100%; border-collapse:collapse; margin-top:8px; }
+  th, td { text-align:left; padding:6px 6px; border-bottom:1px solid var(--bd); font-size:13px; }
+  th { color:#57606a; font-weight:600; }
+  .dimval { width:120px; } .tol { width:90px; } .die { width:150px; }
+  fieldset { border:1px solid var(--bd); border-radius:6px; padding:8px 12px; }
+  legend { color:#57606a; font-size:12px; padding:0 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ABIS Blank Geometry <span class="pill">greenfield</span></h1>
+  <nav>
+    <a href="/ui/order-entry.html">Order entry</a>
+    <a href="/ui/parts.html">Parts</a>
+    <a href="/ui/index.html">Home</a>
+  </nav>
+  <div class="key">
+    <label for="apiKey" style="color:#fff">X-Api-Key</label>
+    <input id="apiKey" placeholder="dev-local-key" style="width:160px" />
+  </div>
+</header>
+
+<main>
+  <section>
+    <h2>Target</h2>
+    <div class="row">
+      <div>
+        <label>Edit the geometry of</label><br />
+        <select id="mode">
+          <option value="item">Order line</option>
+          <option value="part">Part master</option>
+        </select>
+      </div>
+      <div id="itemKeys" class="row">
+        <div><label>Order #</label><br /><input id="orderNum" placeholder="e.g. 9001" style="width:120px" /></div>
+        <div><label>Line #</label><br /><input id="itemNum" placeholder="e.g. 7001" style="width:90px" /></div>
+      </div>
+      <div id="partKeys" class="row" style="display:none">
+        <div><label>Part id</label><br /><input id="partNum" placeholder="e.g. 6001" style="width:120px" /></div>
+      </div>
+      <button id="btnLoad" type="button">Load</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Shape</h2>
+    <div class="row">
+      <div>
+        <label>Shape type</label><br />
+        <select id="shapeType"><option value="">— pick a shape —</option></select>
+      </div>
+      <span id="loaded" class="muted"></span>
+    </div>
+    <form id="dimForm">
+      <div id="dims"></div>
+      <fieldset id="dieBox" style="margin-top:10px; display:none">
+        <legend>Dies (order line only)</legend>
+        <div id="dies" class="row"></div>
+      </fieldset>
+      <div class="row" style="margin-top:12px">
+        <button id="btnSave" type="button">Save geometry</button>
+        <span id="ok" class="ok"></span>
+      </div>
+    </form>
+  </section>
+
+  <section><div id="err" class="err"></div></section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const key = () => ($('apiKey').value || 'dev-local-key');
+const setErr = (m) => { $('err').textContent = m || ''; };
+const setOk = (m) => { $('ok').textContent = m || ''; };
+const busy = (b) => document.body.classList.toggle('busy', b);
+let CATALOG = {};   // shapeType -> { dimensions:[{name,hasTolerance}], dieCount }
+
+async function api(path, opts = {}) {
+  const res = await fetch('/api' + path, {
+    ...opts,
+    headers: { 'X-Api-Key': key(), 'Content-Type': 'application/json', ...(opts.headers || {}) },
+  });
+  if (!res.ok) {
+    let detail = res.status + ' ' + res.statusText;
+    try { const j = await res.json(); detail = (j.title || detail) + (j.errors ? ' — ' + JSON.stringify(j.errors) : ''); } catch {}
+    throw new Error(detail);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+const isPart = () => $('mode').value === 'part';
+const targetPath = () => isPart()
+  ? `/parts/${encodeURIComponent($('partNum').value.trim())}/shape`
+  : `/orders/${encodeURIComponent($('orderNum').value.trim())}/items/${encodeURIComponent($('itemNum').value.trim())}/shape`;
+
+function onModeChange() {
+  $('itemKeys').style.display = isPart() ? 'none' : 'flex';
+  $('partKeys').style.display = isPart() ? 'flex' : 'none';
+  $('dieBox').style.display = 'none';
+}
+
+async function loadCatalog() {
+  const list = await api('/lookups/shape-types');
+  CATALOG = {};
+  const sel = $('shapeType');
+  sel.innerHTML = '<option value="">— pick a shape —</option>';
+  for (const s of list) {
+    CATALOG[s.shapeType] = s;
+    const o = document.createElement('option');
+    o.value = s.shapeType; o.textContent = s.shapeType;
+    sel.appendChild(o);
+  }
+}
+
+// Render the dimension/die inputs for the selected shape, optionally prefilled from a loaded shape.
+function renderForm(shape) {
+  const type = $('shapeType').value;
+  const spec = CATALOG[type];
+  const dims = $('dims');
+  dims.innerHTML = '';
+  if (!spec) { $('dieBox').style.display = 'none'; return; }
+
+  const byName = {};
+  (shape?.dimensions || []).forEach((d) => { byName[d.name.toLowerCase()] = d; });
+
+  const t = document.createElement('table');
+  t.innerHTML = '<thead><tr><th>Dimension</th><th>Value</th><th>+ tol</th><th>− tol</th></tr></thead>';
+  const tb = document.createElement('tbody');
+  for (const d of spec.dimensions) {
+    const cur = byName[d.name.toLowerCase()] || {};
+    const tr = document.createElement('tr');
+    const tolCells = d.hasTolerance
+      ? `<td><input class="tol" data-plus="${d.name}" value="${cur.plusTol ?? ''}" /></td>
+         <td><input class="tol" data-minus="${d.name}" value="${cur.minusTol ?? ''}" /></td>`
+      : `<td class="muted">—</td><td class="muted">—</td>`;
+    tr.innerHTML = `<td>${d.name}</td><td><input class="dimval" data-val="${d.name}" value="${cur.value ?? ''}" /></td>${tolCells}`;
+    tb.appendChild(tr);
+  }
+  t.appendChild(tb);
+  dims.appendChild(t);
+
+  // Dies: order line only, dieCount slots.
+  const dieBox = $('dieBox'), dieRow = $('dies');
+  dieRow.innerHTML = '';
+  if (!isPart() && spec.dieCount > 0) {
+    dieBox.style.display = 'block';
+    for (let i = 0; i < spec.dieCount; i++) {
+      const wrap = document.createElement('div');
+      wrap.innerHTML = `<label>Die ${i + 1}</label><br /><input class="die" data-die="${i}" value="${(shape?.dies || [])[i] ?? ''}" />`;
+      dieRow.appendChild(wrap);
+    }
+  } else { dieBox.style.display = 'none'; }
+}
+
+async function load() {
+  setErr(''); setOk(''); busy(true);
+  try {
+    const shape = await api(targetPath());
+    $('shapeType').value = shape.shapeType || '';
+    renderForm(shape);
+    $('loaded').textContent = shape.shapeType
+      ? `loaded ${shape.shapeType} (${shape.dimensions.filter((d) => d.value != null).length}/${shape.dimensions.length} dims set)`
+      : 'this line/part has no dimensioned shape yet — pick one';
+  } catch (e) { setErr('Load failed: ' + e.message); }
+  finally { busy(false); }
+}
+
+function collect() {
+  const num = (el) => { const v = el.value.trim(); return v === '' ? null : Number(v); };
+  const dimensions = [...document.querySelectorAll('[data-val]')].map((el) => {
+    const name = el.getAttribute('data-val');
+    const plus = document.querySelector(`[data-plus="${name}"]`);
+    const minus = document.querySelector(`[data-minus="${name}"]`);
+    return { name, value: num(el), plusTol: plus ? num(plus) : null, minusTol: minus ? num(minus) : null };
+  });
+  const dies = [...document.querySelectorAll('[data-die]')].map((el) => el.value.trim() || null);
+  return { shapeType: $('shapeType').value, dimensions, dies };
+}
+
+async function save() {
+  setErr(''); setOk(''); busy(true);
+  try {
+    if (!$('shapeType').value) throw new Error('Pick a shape type first.');
+    const saved = await api(targetPath(), { method: 'PUT', body: JSON.stringify(collect()) });
+    renderForm(saved);
+    setOk('✓ Saved ' + saved.shapeType + ' geometry.');
+  } catch (e) { setErr('Save failed: ' + e.message); }
+  finally { busy(false); }
+}
+
+$('mode').addEventListener('change', onModeChange);
+$('shapeType').addEventListener('change', () => renderForm(null));
+$('btnLoad').addEventListener('click', load);
+$('btnSave').addEventListener('click', save);
+loadCatalog().catch((e) => setErr('Could not load shape catalog: ' + e.message));
+</script>
+</body>
+</html>

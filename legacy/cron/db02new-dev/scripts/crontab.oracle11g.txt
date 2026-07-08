@@ -1,0 +1,5 @@
+00 03 1 * * /export/home/oracle9i/scripts/delete_backups.ksh >> /export/home/oracle11g/logs/delete_backups.log 2>&1 
+#0 1,13 * * * /export/home/oracle11g/scripts/export.ksh >/export/home/oracle11g/cron_export.log
+
+#Alex Gerlants. 06/08/2026. 2516 Cleveland-Cliff EDI_CCSC
+27 16 * * * /export/home/oracle11g/scripts/abis_scripts/846.sh 

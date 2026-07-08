@@ -1,8 +1,11 @@
 using Abis.Api.Data;
+using Abis.Api.Documents;
 using Abis.Api.Middleware;
 using Abis.Api.Models;
 using Abis.Api.Security;
+using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using JsonOptions = Microsoft.AspNetCore.Http.Json.JsonOptions;
 
@@ -15,6 +18,31 @@ namespace Abis.Api.Endpoints;
 /// and client codegen (NSwag / openapi-generator) produces real models.</summary>
 public static class ApiEndpoints
 {
+    /// <summary>Maps a modern endpoint tag → the legacy security feature name that
+    /// <c>f_security_door</c> checks (see <c>legacy/src/security/f_security_door.srf</c>).
+    /// A <b>mutating</b> request (POST/PUT/PATCH/DELETE) under a mapped tag requires the
+    /// caller to hold Write (level 1) on that feature — mirroring the legacy screens, which
+    /// gate writes with <c>IF f_security_door("…") = 1</c>. Only tags that map 1:1 to a
+    /// single legacy feature are listed; ambiguous tags (Shipments, Dies, Sketches, Sales,
+    /// Accounting, Downtime, Jobs, Stacker, ScanLog, Carriers, ProdFolder) are intentionally
+    /// left ungated pending live <c>security_application</c> verification — see NEXT_STEPS.
+    /// Security-admin writes keep their own inline "User Control"/"User Group Control" gates.</summary>
+    private static readonly IReadOnlyDictionary<string, string> FeatureByTag = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Orders"] = "Order Entry",
+        ["OrderItems"] = "Order Entry",
+        ["Customers"] = "Order Entry",          // customer master is edited from the order-entry module
+        ["Parts"] = "Part Number",
+        ["Coils"] = "Inventory(Coil)",
+        ["Skids"] = "Inventory(Skid)",
+        ["Warehouse"] = "Warehouse",
+        ["Receiving"] = "Shipment(Receiving)",
+        ["CoilEval"] = "Quality Control",
+        ["Quality"] = "Quality Control",
+        ["Shifts"] = "Shift Control",
+        ["Maintenance"] = "Maintenance_logs",
+    };
+
     public static IEndpointRouteBuilder MapAbisApi(this IEndpointRouteBuilder app)
     {
         app.MapGet("/", (IHostEnvironment env) => Results.Ok(new
@@ -69,6 +97,28 @@ public static class ApiEndpoints
         // whole group so it appears on every operation in the contract.
         var api = app.MapGroup("/api").RequireAuthorization().RequireRateLimiting(RateLimitOptions.PolicyName);
         api.WithMetadata(new ProducesResponseTypeAttribute(StatusCodes.Status401Unauthorized));
+
+        // App-wide authorization gate (legacy f_security_door parity). For every mutating
+        // request under a mapped domain tag, an OIDC end-user must hold Write (level 1) on
+        // the mapped feature; a null login (API-key service account) bypasses, matching the
+        // rollout policy. Reads (GET) are never gated here. This runs after authentication,
+        // so ctx.User / X-User-Login is resolved. See FeatureByTag.
+        api.AddEndpointFilter(async (fctx, next) =>
+        {
+            var http = fctx.HttpContext;
+            var method = http.Request.Method;
+            if (HttpMethods.IsPost(method) || HttpMethods.IsPut(method) || HttpMethods.IsPatch(method) || HttpMethods.IsDelete(method))
+            {
+                var tag = http.GetEndpoint()?.Metadata.GetMetadata<ITagsMetadata>()?.Tags is { Count: > 0 } tags ? tags[0] : null;
+                if (tag is not null && FeatureByTag.TryGetValue(tag, out var feature))
+                {
+                    var repo = http.RequestServices.GetRequiredService<IAbisRepository>();
+                    if (await RequireFeatureAsync(http, repo, feature, 1, http.RequestAborted) is { } deny)
+                        return deny;
+                }
+            }
+            return await next(fctx);
+        });
 
         // ---- Jobs -------------------------------------------------------
         api.MapGet("/jobs", async (IAbisRepository repo, CancellationToken ct,
@@ -299,6 +349,32 @@ public static class ApiEndpoints
            .WithSummary("Replace an order line item (by order + line number). Supports If-Match.")
            .Produces<OrderItem>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status412PreconditionFailed).ProducesValidationProblem();
 
+        // ---- Order-item blank geometry (the shape's dimensions) --------
+        api.MapGet("/orders/{orderAbcNum:long}/items/{orderItemNum:long}/shape", async (long orderAbcNum, long orderItemNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetOrderItemShapeAsync(orderAbcNum, orderItemNum, ct) is { } shape
+                    ? Results.Ok(shape)
+                    : Results.NotFound())
+           .WithName("GetOrderItemShape").WithTags("OrderItems")
+           .WithSummary("Get an order line's blank geometry — the shape's dimensions (value + tolerances) and dies.")
+           .Produces<OrderItemShape>().Produces(StatusCodes.Status404NotFound);
+
+        api.MapPut("/orders/{orderAbcNum:long}/items/{orderItemNum:long}/shape", async (long orderAbcNum, long orderItemNum, OrderItemShapeWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                // The shape must be a known dimensioned shape; distinguishes a bad shape (400)
+                // from a missing order line (404).
+                if (ShapeGeometry.Resolve(body.ShapeType) is null)
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["shapeType"] = [$"Unknown shape type '{body.ShapeType}'. See /api/lookups/shape-types."],
+                    });
+                return await repo.UpsertOrderItemShapeAsync(orderAbcNum, orderItemNum, body, ct) is { } saved
+                    ? Results.Ok(saved)
+                    : Results.NotFound();
+            })
+           .WithName("PutOrderItemShape").WithTags("OrderItems")
+           .WithSummary("Set an order line's blank geometry for its shape (upsert; aligns the line's sheet_type).")
+           .Produces<OrderItemShape>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
         // ---- Parts (part-number master) --------------------------------
         api.MapGet("/parts", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, long? customerId = null, string? alloy = null, string? sort = null, string? dir = null) =>
@@ -334,11 +410,45 @@ public static class ApiEndpoints
             {
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
+                // Legacy w_part_num_management: a part already applied to one or more orders
+                // cannot be modified in place — it must be revised. Block with 409 Conflict.
+                if (await repo.IsPartInUseAsync(partNumId, ct))
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Part in use",
+                        detail: "Can't modify this part because it has already been applied to one or more orders. Create a revision instead.");
                 return await WithIfMatch(ctx, json, () => repo.GetPartAsync(partNumId, ct), () => repo.UpdatePartAsync(partNumId, body, ct));
             })
            .WithName("UpdatePart").WithTags("Parts")
-           .WithSummary("Replace a part-number record. Supports If-Match.")
-           .Produces<Part>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status412PreconditionFailed).ProducesValidationProblem();
+           .WithSummary("Replace a part-number record (blocked with 409 if the part is applied to any order). Supports If-Match.")
+           .Produces<Part>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status412PreconditionFailed).ProducesValidationProblem();
+
+        // Part-master blank geometry (same shapes as order items; dimensions only, no dies).
+        api.MapGet("/parts/{partNumId:long}/shape", async (long partNumId, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetPartShapeAsync(partNumId, ct) is { } shape
+                    ? Results.Ok(shape)
+                    : Results.NotFound())
+           .WithName("GetPartShape").WithTags("Parts")
+           .WithSummary("Get a part-master's blank geometry — the shape's dimensions (value + tolerances).")
+           .Produces<PartShape>().Produces(StatusCodes.Status404NotFound);
+
+        api.MapPut("/parts/{partNumId:long}/shape", async (long partNumId, PartShapeWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (ShapeGeometry.Resolve(body.ShapeType) is null)
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["shapeType"] = [$"Unknown shape type '{body.ShapeType}'. See /api/lookups/shape-types."],
+                    });
+                // Same modify-in-use guard as the part record: geometry of an applied part is
+                // frozen (legacy w_part_num_management modifies the whole part or not at all).
+                if (await repo.IsPartInUseAsync(partNumId, ct))
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Part in use",
+                        detail: "Can't modify this part's geometry because it has already been applied to one or more orders. Create a revision instead.");
+                return await repo.UpsertPartShapeAsync(partNumId, body, ct) is { } saved
+                    ? Results.Ok(saved)
+                    : Results.NotFound();
+            })
+           .WithName("PutPartShape").WithTags("Parts")
+           .WithSummary("Set a part-master's blank geometry for its shape (upsert; aligns the part's sheet_type; 409 if the part is applied to any order).")
+           .Produces<PartShape>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
 
         // ---- Dies (die / tooling) --------------------------------------
         api.MapGet("/dies", async (IAbisRepository repo, CancellationToken ct,
@@ -541,12 +651,14 @@ public static class ApiEndpoints
 
         api.MapPost("/coil-eval/skids/{sheetSkidNum:long}/dimension-checks", async (long sheetSkidNum, DimensionCheckWrite body, IAbisRepository repo, CancellationToken ct) =>
             {
+                if (Validate(body) is { } problems)
+                    return Results.ValidationProblem(problems);
                 var created = await repo.CreateDimensionCheckAsync(sheetSkidNum, body, ct);
                 return Results.Created($"/api/coil-eval/skids/{sheetSkidNum}/dimension-checks/{created.DimensionCheckNum}", created);
             })
            .WithName("CreateDimensionCheck").WithTags("CoilEval")
            .WithSummary("Record a dimensional QC check on a sheet-skid piece (in-spec pass/fail).")
-           .Produces<SheetSkidDimensionCheck>(StatusCodes.Status201Created);
+           .Produces<SheetSkidDimensionCheck>(StatusCodes.Status201Created).ProducesValidationProblem();
 
         api.MapGet("/coil-eval/jobs/{abJobNum:long}/eval-scrap", async (long abJobNum, IAbisRepository repo, CancellationToken ct) =>
                 Results.Ok(await repo.GetEvalScrapAsync(abJobNum, ct)))
@@ -1017,6 +1129,53 @@ public static class ApiEndpoints
            .WithSummary("Get one sheet skid by id.")
            .Produces<SheetSkid>().Produces(StatusCodes.Status404NotFound);
 
+        // ---- Documents (server-rendered printable HTML; skid tags first) ----
+        api.MapGet("/documents/sheet-skid/{sheetSkidNum:long}", async (long sheetSkidNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetSheetSkidAsync(sheetSkidNum, ct) is { } skid
+                    ? Results.Content(HtmlDocuments.SheetSkidTag(skid), "text/html; charset=utf-8")
+                    : Results.NotFound())
+           .WithName("SheetSkidTag").WithTags("Documents")
+           .WithSummary("Printable sheet-skid tag (HTML with a Code 39 barcode).")
+           .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
+
+        api.MapGet("/documents/scrap-skid/{scrapSkidNum:long}", async (long scrapSkidNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetScrapSkidAsync(scrapSkidNum, ct) is { } skid
+                    ? Results.Content(HtmlDocuments.ScrapSkidTag(skid), "text/html; charset=utf-8")
+                    : Results.NotFound())
+           .WithName("ScrapSkidTag").WithTags("Documents")
+           .WithSummary("Printable scrap-skid tag (HTML with a Code 39 barcode).")
+           .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
+
+        api.MapGet("/documents/coil-label/{coilAbcNum:long}", async (long coilAbcNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetCoilAsync(coilAbcNum, ct) is { } coil
+                    ? Results.Content(HtmlDocuments.CoilLabel(coil), "text/html; charset=utf-8")
+                    : Results.NotFound())
+           .WithName("CoilLabel").WithTags("Documents")
+           .WithSummary("Printable coil ABC label (HTML with a Code 39 barcode) — the coil-receiving scanner tag.")
+           .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
+
+        api.MapGet("/documents/transfer-certificate/{certificateNum:long}", async (long certificateNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetCoilOwnershipTransferCertificateAsync(certificateNum, ct) is { } cert
+                    ? Results.Content(HtmlDocuments.TransferCertificate(cert), "text/html; charset=utf-8")
+                    : Results.NotFound())
+           .WithName("TransferCertificate").WithTags("Documents")
+           .WithSummary("Printable coil-ownership transfer certificate (toll-processing document) as HTML.")
+           .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
+
+        // The full invoice document (legacy w_invoice / d_report_invoice_data): customer/enduser/PO,
+        // shape spec, alloy/temper/gauge, and every weight bucket with the exact rejected-coil rule.
+        // Optional invoiceNum stamps a saved invoice's number + date onto the document.
+        api.MapGet("/documents/invoice/{abJobNum:long}", async (long abJobNum, string? invoiceNum, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var comp = await repo.GetInvoiceComputationAsync(abJobNum, ct);
+                if (comp is null) return Results.NotFound();
+                var saved = string.IsNullOrWhiteSpace(invoiceNum) ? null : await repo.GetInvoiceAsync(abJobNum, invoiceNum, ct);
+                return Results.Content(HtmlDocuments.InvoiceDoc(comp, saved), "text/html; charset=utf-8");
+            })
+           .WithName("InvoiceDocument").WithTags("Documents")
+           .WithSummary("Printable invoice for a job (weight rollups + spec block). Optional invoiceNum stamps the saved number/date.")
+           .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
+
         api.MapPost("/sheet-skids", async (SheetSkidWrite body, IAbisRepository repo, CancellationToken ct) =>
             {
                 if (Validate(body) is { } problems)
@@ -1047,8 +1206,56 @@ public static class ApiEndpoints
         api.MapGet("/accounting/rej-reband-coils", async (long abJobNum, IAbisRepository repo, CancellationToken ct) =>
                 Results.Ok(await repo.GetInvoiceCoilsAsync(abJobNum, ct)))
            .WithName("GetInvoiceCoils").WithTags("Accounting")
-           .WithSummary("Rejected (3) / rebanded (7) coils for a job's invoice.")
+           .WithSummary("Rejected (3) / rebanded (7) coils for a job's invoice, each with its exact billed weight.")
            .Produces<IReadOnlyList<InvoiceCoil>>();
+
+        // The computed invoice for a job: header + spec + every weight bucket
+        // (net/unapplied/rejected/rebanded/processed/scrap/tare/offal & %). The rejected/rebanded
+        // figures use the exact legacy MAX billed-weight rule, not the naive process_end_wt sum.
+        api.MapGet("/accounting/invoices/{abJobNum:long}/computation", async (long abJobNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetInvoiceComputationAsync(abJobNum, ct) is { } comp
+                    ? Results.Ok(comp)
+                    : Results.NotFound())
+           .WithName("GetInvoiceComputation").WithTags("Accounting")
+           .WithSummary("Computed invoice for a job (weight buckets + spec) with exact rejected-coil billing.")
+           .Produces<InvoiceComputation>().Produces(StatusCodes.Status404NotFound);
+
+        // Saved invoice records for a job (legacy w_invoice Save).
+        api.MapGet("/accounting/invoices", async (long abJobNum, IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetInvoicesAsync(abJobNum, ct)))
+           .WithName("GetInvoices").WithTags("Accounting")
+           .WithSummary("Saved invoice records for a job.")
+           .Produces<IReadOnlyList<Invoice>>();
+
+        api.MapGet("/accounting/invoices/{abJobNum:long}/{invoiceNum}", async (long abJobNum, string invoiceNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetInvoiceAsync(abJobNum, invoiceNum, ct) is { } inv
+                    ? Results.Ok(inv)
+                    : Results.NotFound())
+           .WithName("GetInvoice").WithTags("Accounting")
+           .WithSummary("Get one saved invoice by job + invoice number.")
+           .Produces<Invoice>().Produces(StatusCodes.Status404NotFound);
+
+        // Save an invoice (number + date + notes). 404 unknown job; 409 duplicate (ab_job_num, invoice_num).
+        api.MapPost("/accounting/invoices", async (InvoiceWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (Validate(body) is { } problems)
+                    return Results.ValidationProblem(problems);
+                var result = await repo.CreateInvoiceAsync(body, ct);
+                return result.Outcome switch
+                {
+                    InvoiceSaveOutcome.Created => Results.Created(
+                        $"/api/accounting/invoices/{result.Invoice!.AbJobNum}/{Uri.EscapeDataString(result.Invoice.InvoiceNum)}", result.Invoice),
+                    InvoiceSaveOutcome.JobNotFound => Results.Problem(statusCode: StatusCodes.Status404NotFound,
+                        title: "Job not found", detail: $"No job with ab_job_num {body.AbJobNum}."),
+                    InvoiceSaveOutcome.Duplicate => Results.Problem(statusCode: StatusCodes.Status409Conflict,
+                        title: "Invoice exists", detail: $"Invoice '{body.InvoiceNum?.Trim()}' already exists for job {body.AbJobNum}."),
+                    _ => Results.Problem(statusCode: StatusCodes.Status500InternalServerError),
+                };
+            })
+           .WithName("CreateInvoice").WithTags("Accounting")
+           .WithSummary("Save an invoice record (number + date + notes) for a job.")
+           .Produces<Invoice>(StatusCodes.Status201Created).ProducesValidationProblem()
+           .Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
 
         // ---- Reporting (daily production) -------------------------------
         // Per-line production roll-up over an optional date window (by job start).
@@ -1261,15 +1468,22 @@ public static class ApiEndpoints
             {
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
+                // A transfer to the coil's *current* owner changes nothing but would still mint a
+                // certificate and write coil_from_cust_id = customer_id — reject the no-op. (Legacy
+                // required a new customer but didn't check it differed from the current owner.)
+                if (body.CoilAbcNumOrig is { } coilId && await repo.GetCoilAsync(coilId, ct) is { CustomerId: { } owner }
+                    && owner == body.CustomerIdNew)
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "No ownership change",
+                        detail: $"Coil {coilId} is already owned by customer {body.CustomerIdNew}; nothing to transfer.");
                 var created = await repo.CreateCoilOwnershipTransferAsync(body, ct);
                 return created is null
                     ? Results.NotFound(new { message = $"Coil {body.CoilAbcNumOrig} not found." })
                     : Results.Created($"/api/coil-ownership/transfers/{created.CertificateNum}/certificate", created);
             })
            .WithName("CreateCoilOwnershipTransfer").WithTags("CoilOwnership")
-           .WithSummary("Record a coil-ownership transfer (issues a certificate; re-points coil ownership).")
+           .WithSummary("Record a coil-ownership transfer (issues a certificate; re-points coil ownership). 409 if the new owner already owns the coil.")
            .Produces<CoilOwnershipTransfer>(StatusCodes.Status201Created)
-           .Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+           .Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
 
         // ---- Security / authorization (legacy security.pbl) ----
         api.MapGet("/security/users", async (IAbisRepository repo, CancellationToken ct) =>
@@ -1427,6 +1641,12 @@ public static class ApiEndpoints
            .WithSummary("List distinct alloys (reference data for dropdowns).")
            .Produces<IEnumerable<string>>();
 
+        api.MapGet("/lookups/shape-types", (IAbisRepository repo) =>
+                Results.Ok(repo.GetShapeTypes()))
+           .WithName("ListShapeTypes").WithTags("Lookups")
+           .WithSummary("Blank shape catalog: each shape's dimension schema (names + which carry a tolerance) and die count — drives a dynamic per-shape form.")
+           .Produces<IReadOnlyList<ShapeTypeInfo>>();
+
         api.MapGet("/lookups/lines", async (IAbisRepository repo, CancellationToken ct) =>
                 Results.Ok(await repo.GetLinesAsync(ct)))
            .WithName("ListLines").WithTags("Lookups")
@@ -1566,6 +1786,16 @@ public static class ApiEndpoints
     }
 
     /// <summary>Returns a ProblemDetails error dictionary, or null when valid.</summary>
+    private static Dictionary<string, string[]>? Validate(InvoiceWrite body)
+    {
+        var e = new Dictionary<string, string[]>();
+        if (body.AbJobNum <= 0) e["abJobNum"] = ["abJobNum is required."];
+        Req(e, "invoiceNum", body.InvoiceNum);
+        Max(e, "invoiceNum", body.InvoiceNum?.Trim(), 32);   // invoice_num VARCHAR2(32)
+        Max(e, "notes", body.Notes, 2048);                   // notes VARCHAR2(2048)
+        return e.Count == 0 ? null : e;
+    }
+
     private static Dictionary<string, string[]>? Validate(CustomerWrite body)
     {
         var e = new Dictionary<string, string[]>();
@@ -1591,7 +1821,68 @@ public static class ApiEndpoints
         Max(e, "flatness", body.Flatness, 255);
         Max(e, "materialEndUse", body.MaterialEndUse, 255);
         Max(e, "orderItemDesc", body.OrderItemDesc, 255);
+
+        // Edge-trim tolerance (legacy w_order_entry:496-549). When trimming is required the
+        // trim data must be complete and incoming ≥ trimmed (both HARD errors → Return 0/-8).
+        // The trim amount (incoming − trimmed) must sit within the 1.5"–12" trimmer tolerance
+        // (Alex Gerlants 06/16/2017, per Dan Polkinhorne) — but that breach is OVERRIDABLE:
+        // legacy prompts Yes/No and, on override, stamps trimmed_width_overridden='Y' +
+        // trimmed_width_override_user and logs it. We mirror that: out-of-tolerance is a 400
+        // unless trimmedWidthOverridden='Y' is sent, in which case an override user is required.
+        if (string.Equals(body.TrimmingRequired?.Trim(), "Y", StringComparison.OrdinalIgnoreCase))
+        {
+            if (body.IncomingCoilWidth is null) e["incomingCoilWidth"] = ["incomingCoilWidth is required when trimming is required."];
+            if (body.TrimmedCoilWidth is null) e["trimmedCoilWidth"] = ["trimmedCoilWidth is required when trimming is required."];
+            if (body.TrimTypeCode is null) e["trimTypeCode"] = ["trimTypeCode is required when trimming is required."];
+            if (body.IncomingCoilWidth is { } inc && body.TrimmedCoilWidth is { } trm)
+            {
+                var diff = inc - trm;
+                var overridden = string.Equals(body.TrimmedWidthOverridden?.Trim(), "Y", StringComparison.OrdinalIgnoreCase);
+                if (diff < 0m)
+                    e["trimmedCoilWidth"] = ["Incoming coil width must be greater than trimmed coil width."];
+                else if (diff is < 1.50m or > 12.00m && !overridden)
+                    e["trimmedCoilWidth"] = ["Trim (incoming − trimmed) is under trimmer tolerance (must be 1.5\"–12\"); resend with trimmedWidthOverridden='Y' to override."];
+                else if (diff is < 1.50m or > 12.00m && string.IsNullOrWhiteSpace(body.TrimmedWidthOverrideUser))
+                    e["trimmedWidthOverrideUser"] = ["trimmedWidthOverrideUser is required to override the trimmer tolerance."];
+            }
+        }
         return e.Count == 0 ? null : e;
+    }
+
+    private static Dictionary<string, string[]>? Validate(DimensionCheckWrite body)
+    {
+        // Input hygiene for the dimensional QC gate (table sheet_skid_dimension_check).
+        // NOTE: the authoritative pass/fail — comparing each measured value to the skid's
+        // shape nominal ± tolerance — lives in the legacy binary DataWindow d_skid_dim_check
+        // and is NOT reconstructable from the vendored source; it is deferred to a
+        // live-Oracle-verified increment (see docs/NEXT_STEPS.md). Until then in_spec is a
+        // human-entered flag, so we at least refuse to record a garbage or empty check that
+        // the repository would silently default to in_spec=1 (pass).
+        var e = new Dictionary<string, string[]>();
+        Max(e, "checkedBy", body.CheckedBy, 30);
+        Max(e, "note", body.Note, 255);
+        // Require the auditor: a QC record with no "checked by" is not traceable.
+        Req(e, "checkedBy", body.CheckedBy);
+        // in_spec is a pass/fail flag: only 0 (fail) or 1 (pass) are meaningful.
+        if (body.InSpec is not (null or 0 or 1))
+            e["inSpec"] = ["inSpec must be 0 (fail) or 1 (pass)."];
+        // Don't record a blank check — at least one measurement must be present.
+        if (body.Gauge is null && body.Width is null && body.LengthOper is null &&
+            body.LengthDrive is null && body.Square is null && body.HeadDimension is null)
+            e["measurements"] = ["At least one measurement (gauge, width, lengthOper, lengthDrive, square, headDimension) is required."];
+        // A physical measurement can't be zero or negative.
+        Positive(e, "gauge", body.Gauge);
+        Positive(e, "width", body.Width);
+        Positive(e, "lengthOper", body.LengthOper);
+        Positive(e, "lengthDrive", body.LengthDrive);
+        Positive(e, "square", body.Square);
+        Positive(e, "headDimension", body.HeadDimension);
+        return e.Count == 0 ? null : e;
+    }
+
+    private static void Positive(Dictionary<string, string[]> e, string field, decimal? v)
+    {
+        if (v is { } d && d <= 0m) e[field] = [$"{field} must be greater than zero."];
     }
 
     private static Dictionary<string, string[]>? Validate(PartWrite body)

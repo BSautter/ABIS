@@ -46,6 +46,12 @@ public interface IAbisRepository
     Task<OrderItem> CreateOrderItemAsync(long orderAbcNum, OrderItemWrite body, CancellationToken ct);
     Task<OrderItem?> UpdateOrderItemAsync(long orderAbcNum, long orderItemNum, OrderItemWrite body, CancellationToken ct);
 
+    // Per-item blank geometry — the shape's dimensions/dies, stored in a table per shape
+    // (RECTANGLE/CIRCLE/…). GetShapeTypes is the catalog behind /lookups/shape-types.
+    Task<OrderItemShape?> GetOrderItemShapeAsync(long orderAbcNum, long orderItemNum, CancellationToken ct);
+    Task<OrderItemShape?> UpsertOrderItemShapeAsync(long orderAbcNum, long orderItemNum, OrderItemShapeWrite body, CancellationToken ct);
+    IReadOnlyList<ShapeTypeInfo> GetShapeTypes();
+
     // ---- Customers (read + write) --------------------------------------
     Task<PagedResult<Customer>> GetCustomersAsync(int page, int pageSize, string? name, string? orderBy, CancellationToken ct);
     Task<Customer?> GetCustomerAsync(long customerId, CancellationToken ct);
@@ -62,6 +68,10 @@ public interface IAbisRepository
     Task<SheetSkid> CreateSheetSkidAsync(SheetSkidWrite body, CancellationToken ct);
     Task<SheetSkid?> UpdateSheetSkidWarehouseAsync(long sheetSkidNum, SheetSkidWarehousePatch patch, CancellationToken ct);
     Task<IReadOnlyList<InvoiceCoil>> GetInvoiceCoilsAsync(long abJobNum, CancellationToken ct);
+    Task<IReadOnlyList<Invoice>> GetInvoicesAsync(long abJobNum, CancellationToken ct);
+    Task<Invoice?> GetInvoiceAsync(long abJobNum, string invoiceNum, CancellationToken ct);
+    Task<InvoiceSaveResult> CreateInvoiceAsync(InvoiceWrite body, CancellationToken ct);
+    Task<InvoiceComputation?> GetInvoiceComputationAsync(long abJobNum, CancellationToken ct);
     Task<IReadOnlyList<OpcLog>> GetOpcLogsAsync(CancellationToken ct);
     Task<IReadOnlyList<OpcLogDetail>> GetOpcLogDetailsAsync(long opcLogId, CancellationToken ct);
     Task<IReadOnlyList<string>> GetOpcItemsAsync(CancellationToken ct);
@@ -132,6 +142,13 @@ public interface IAbisRepository
     Task<Part?> GetPartAsync(long partNumId, CancellationToken ct);
     Task<Part> CreatePartAsync(PartWrite body, CancellationToken ct);
     Task<Part?> UpdatePartAsync(long partNumId, PartWrite body, CancellationToken ct);
+    /// <summary>True when any order_item references this part (part_num_id) — the legacy
+    /// modify/delete-in-use guard (w_part_num_management): an applied part must be revised,
+    /// not edited in place.</summary>
+    Task<bool> IsPartInUseAsync(long partNumId, CancellationToken ct);
+    // Part-master blank geometry (PART_NUM_* dimension tables; dimensions only, no dies).
+    Task<PartShape?> GetPartShapeAsync(long partNumId, CancellationToken ct);
+    Task<PartShape?> UpsertPartShapeAsync(long partNumId, PartShapeWrite body, CancellationToken ct);
     Task<PagedResult<Die>> GetDiesAsync(int page, int pageSize, int? status, string? orderBy, CancellationToken ct);
     Task<Die?> GetDieAsync(long dieId, CancellationToken ct);
     Task<Die> CreateDieAsync(DieWrite body, CancellationToken ct);

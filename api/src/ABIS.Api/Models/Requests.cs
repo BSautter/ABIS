@@ -9,9 +9,45 @@ public sealed class CustomerWrite
     /// <summary>Maps to <c>customer_full_name</c> (required, NOT NULL).</summary>
     public string? CustomerName { get; set; }
     public string? CustomerShortName { get; set; }
+    public int? CustomerType { get; set; }
+    // Address
+    public string? CustomerStreet { get; set; }
     public string? CustomerCity { get; set; }
     public string? CustomerState { get; set; }
     public string? CustomerZip { get; set; }
+    public string? CustomerCountry { get; set; }
+    public string? CustomerPhoneNumber { get; set; }
+    public string? CustomerFaxNumber { get; set; }
+    // Relationships / notes
+    public string? CustomerNotes { get; set; }
+    public long? ParentId { get; set; }
+    public string? CustomerExternalId { get; set; }
+    // Tax
+    public string? TaxId { get; set; }
+    public string? TaxExemptionNum { get; set; }
+    public decimal? TaxRate { get; set; }
+    public long? CustomerDunsNumber { get; set; }
+    public string? CustomerDunsNumberString { get; set; }
+    // Bill-to
+    public string? BillToStreet { get; set; }
+    public string? BillToCity { get; set; }
+    public string? BillToState { get; set; }
+    public string? BillToZip { get; set; }
+    // EDI / behavior control flags ("Y"/"N") — drive downstream EDI/receiving/label/ship.
+    public string? DesadvReq { get; set; }
+    public string? EdiReq { get; set; }
+    public string? QrCodeReq { get; set; }
+    public string? ValidateMaterial { get; set; }
+    public string? UsePackageNum { get; set; }
+    public string? UseCustomerWebsite4Shipping { get; set; }
+    public string? CashDateRequired { get; set; }
+    public string? CashDateOnBol { get; set; }
+    public string? CoilCertLabelReq { get; set; }
+    public string? Create861AtReceiving { get; set; }
+    public string? InvReportSaveasXlsx { get; set; }
+    public string? CustPoOnInvSkidReport { get; set; }
+    public string? UseEdiCodeNotDuns { get; set; }
+    public string? PlantCode { get; set; }
 }
 
 /// <summary>Create or fully replace a part-number record. <see cref="CustomerId"/>
@@ -584,4 +620,20 @@ public sealed class LineErrorWrite
     public long? AbJobNum { get; set; }
     public string? Title { get; set; }
     public string? Message { get; set; }
+}
+
+/// <summary>Save an invoice record for a job (legacy <c>w_invoice</c> Save: invoice number + date
+/// + notes). The <c>(ab_job_num, invoice_num)</c> pair is the natural key; the weight buckets are
+/// computed at report time, not persisted. <see cref="AbJobNum"/> must reference an existing job
+/// and <see cref="InvoiceNum"/> is required (both NOT NULL in the INVOICE table).</summary>
+public sealed class InvoiceWrite
+{
+    public long AbJobNum { get; set; }
+    /// <summary>The invoice number (<c>invoice_num</c>, VARCHAR2(32) NOT NULL).</summary>
+    public string? InvoiceNum { get; set; }
+    /// <summary>Invoice date (<c>"TIMESTAMP"</c> DATE). Optional — defaults to the server's
+    /// current date when omitted (legacy <c>em_date</c> defaults to Today()).</summary>
+    public DateTime? Timestamp { get; set; }
+    /// <summary>Free-text notes (<c>notes</c>, VARCHAR2(2048)).</summary>
+    public string? Notes { get; set; }
 }

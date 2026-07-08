@@ -46,6 +46,200 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task OrderItem_shape_geometry_round_trips_over_http()
+    {
+        // Seeded line 7001 is a RECTANGLE.
+        var get = await _client.GetFromJsonAsync<JsonElement>("/api/orders/9001/items/7001/shape");
+        Assert.Equal("RECTANGLE", get.GetProperty("shapeType").GetString());
+        Assert.Contains(get.GetProperty("dimensions").EnumerateArray(), d => d.GetProperty("name").GetString() == "length");
+
+        // PUT circle geometry onto line 7002.
+        var put = await _client.PutAsJsonAsync("/api/orders/9001/items/7002/shape", new
+        {
+            shapeType = "CIRCLE",
+            dimensions = new[] { new { name = "diameter", value = 30.0, plusTol = 0.2, minusTol = 0.2 } },
+            dies = new[] { "DIE-HTTP" },
+        });
+        put.EnsureSuccessStatusCode();
+        var saved = await put.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("CIRCLE", saved.GetProperty("shapeType").GetString());
+
+        // Unknown shape -> 400.
+        var bad = await _client.PutAsJsonAsync("/api/orders/9001/items/7002/shape",
+            new { shapeType = "NOPE", dimensions = Array.Empty<object>(), dies = Array.Empty<string>() });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+
+        // Missing line -> 404.
+        var missing = await _client.GetAsync("/api/orders/9001/items/9999/shape");
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+
+        // Catalog lists all 10 shapes.
+        var types = await _client.GetFromJsonAsync<JsonElement>("/api/lookups/shape-types");
+        Assert.Equal(10, types.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Part_shape_geometry_round_trips_over_http()
+    {
+        // Seed part 6001 is a RECTANGLE.
+        var get = await _client.GetFromJsonAsync<JsonElement>("/api/parts/6001/shape");
+        Assert.Equal("RECTANGLE", get.GetProperty("shapeType").GetString());
+
+        var put = await _client.PutAsJsonAsync("/api/parts/6002/shape", new
+        {
+            shapeType = "CIRCLE",
+            dimensions = new[] { new { name = "diameter", value = 18.0, plusTol = 0.1, minusTol = 0.1 } },
+        });
+        put.EnsureSuccessStatusCode();
+        var saved = await put.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("CIRCLE", saved.GetProperty("shapeType").GetString());
+
+        var missing = await _client.GetAsync("/api/parts/999999/shape");
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+    }
+
+    [Fact]
+    public async Task Skid_tag_documents_render_printable_html_with_barcode()
+    {
+        var resp = await _client.GetAsync("/api/documents/sheet-skid/3001");
+        resp.EnsureSuccessStatusCode();
+        Assert.Equal("text/html", resp.Content.Headers.ContentType!.MediaType);
+        var html = await resp.Content.ReadAsStringAsync();
+        Assert.Contains("SHEET SKID TAG", html);
+        Assert.Contains("3001", html);
+        Assert.Contains("<svg", html);      // Code 39 barcode present
+        Assert.Contains("<rect", html);     // ...with rendered bars
+
+        var scrap = await _client.GetAsync("/api/documents/scrap-skid/8001");
+        scrap.EnsureSuccessStatusCode();
+        Assert.Contains("SCRAP SKID TAG", await scrap.Content.ReadAsStringAsync());
+
+        var coil = await _client.GetAsync("/api/documents/coil-label/5001");
+        coil.EnsureSuccessStatusCode();
+        var coilHtml = await coil.Content.ReadAsStringAsync();
+        Assert.Contains("COIL ABC LABEL", coilHtml);
+        Assert.Contains("5001", coilHtml);
+
+        // Coil-ownership transfer certificate (seeded cert 8001, customers 4001 -> 4002).
+        var cert = await _client.GetAsync("/api/documents/transfer-certificate/8001");
+        cert.EnsureSuccessStatusCode();
+        var certHtml = await cert.Content.ReadAsStringAsync();
+        Assert.Contains("CERTIFICATE OF COIL OWNERSHIP TRANSFER", certHtml);
+        Assert.Contains("Certificate #8001", certHtml);
+        Assert.Contains("<rect", certHtml);   // barcode of the certificate number
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/documents/transfer-certificate/999999")).StatusCode);
+
+        var noDoc = await _client.GetAsync("/api/documents/sheet-skid/999999");
+        Assert.Equal(HttpStatusCode.NotFound, noDoc.StatusCode);
+    }
+
+    [Fact]
+    public async Task Order_item_edge_trim_tolerance_is_enforced()
+    {
+        static object Item(double? inc, double? trm) => new
+        {
+            enduserPartNum = "PN-TRIM", sheetType = "RECTANGLE",
+            trimmingRequired = "Y", incomingCoilWidth = inc, trimmedCoilWidth = trm, trimTypeCode = 1,
+        };
+        // Under tolerance (0.1" < 1.5"), over tolerance (13" > 12"), and incoming < trimmed -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/orders/9001/items", Item(48.0, 47.9))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/orders/9001/items", Item(60.0, 47.0))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/orders/9001/items", Item(40.0, 45.0))).StatusCode);
+        // Trimming required but widths missing -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/orders/9001/items", new { enduserPartNum = "PN-TRIM", sheetType = "RECTANGLE", trimmingRequired = "Y" })).StatusCode);
+        // Valid trim (2.0" within tolerance) -> 201; trimming not required -> widths irrelevant -> 201.
+        Assert.Equal(HttpStatusCode.Created, (await _client.PostAsJsonAsync("/api/orders/9001/items", Item(48.0, 46.0))).StatusCode);
+        Assert.Equal(HttpStatusCode.Created,
+            (await _client.PostAsJsonAsync("/api/orders/9001/items", new { enduserPartNum = "PN-NOTRIM", sheetType = "RECTANGLE", trimmingRequired = "N" })).StatusCode);
+        // Out-of-tolerance is OVERRIDABLE: override flag without a user -> 400; with a user -> 201.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/orders/9001/items",
+            new { enduserPartNum = "PN-TRIM", sheetType = "RECTANGLE", trimmingRequired = "Y", incomingCoilWidth = 60.0, trimmedCoilWidth = 47.0, trimTypeCode = 1, trimmedWidthOverridden = "Y" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await _client.PostAsJsonAsync("/api/orders/9001/items",
+            new { enduserPartNum = "PN-TRIM", sheetType = "RECTANGLE", trimmingRequired = "Y", incomingCoilWidth = 60.0, trimmedCoilWidth = 47.0, trimTypeCode = 1, trimmedWidthOverridden = "Y", trimmedWidthOverrideUser = "qa" })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Dimension_check_input_is_validated()
+    {
+        const string url = "/api/coil-eval/skids/3001/dimension-checks";
+        // Missing checkedBy (auditor) -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { width = 48.0 })).StatusCode);
+        // Blank check with no measurements would silently default to in_spec=1 (pass) -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { checkedBy = "qa" })).StatusCode);
+        // in_spec outside {0,1} -> 400; non-positive measurement -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { checkedBy = "qa", width = 48.0, inSpec = 5 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { checkedBy = "qa", width = 0.0 })).StatusCode);
+        // Valid fail record -> 201, and the entered in_spec (0) is honored (not defaulted to pass).
+        var ok = await _client.PostAsJsonAsync(url, new { checkedBy = "qa", pcNumber = 1, gauge = 0.125, width = 48.0, inSpec = 0 });
+        Assert.Equal(HttpStatusCode.Created, ok.StatusCode);
+        var created = await ok.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(0, created.GetProperty("inSpec").GetInt32());
+    }
+
+    // Post the given body with the API key plus an optional X-User-Login (simulates an OIDC
+    // end-user for the security gate; null = pure API-key service account).
+    private async Task<HttpResponseMessage> PostAsUser(string? login, string url, object body)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(body) };
+        if (login is not null) req.Headers.Add("X-User-Login", login);
+        return await _client.SendAsync(req);
+    }
+
+    [Fact]
+    public async Task Domain_write_endpoints_enforce_feature_gate()
+    {
+        // Intentionally INVALID body (missing required sheetType): a caller past the gate
+        // gets 400 at validation and NO row is created — keeps this test free of side effects
+        // on order 9001, which other tests count.
+        object badItem() => new { enduserPartNum = "PN-GATE" };
+        // jsmith holds Write on "Order Entry" (direct grant) -> gate lets it through (then 400).
+        Assert.NotEqual(HttpStatusCode.Forbidden, (await PostAsUser("jsmith", "/api/orders/9001/items", badItem())).StatusCode);
+        // mlee has only "User Control"; no "Order Entry" grant -> gated 403 before the handler.
+        Assert.Equal(HttpStatusCode.Forbidden, (await PostAsUser("mlee", "/api/orders/9001/items", badItem())).StatusCode);
+        // No X-User-Login = API-key service account -> bypasses the gate (rollout policy).
+        Assert.NotEqual(HttpStatusCode.Forbidden, (await PostAsUser(null, "/api/orders/9001/items", badItem())).StatusCode);
+
+        // A different feature: coils gate on "Inventory(Coil)". mlee lacks it -> 403 at the gate,
+        // before the handler, so nothing is inserted regardless of the body.
+        Assert.Equal(HttpStatusCode.Forbidden, (await PostAsUser("mlee", "/api/coils", new { coilOrgNum = "ORG-GATE" })).StatusCode);
+
+        // A read (GET) is never gated, even for a user (mlee) with no grant on that feature.
+        var getReq = new HttpRequestMessage(HttpMethod.Get, "/api/orders");
+        getReq.Headers.Add("X-User-Login", "mlee");
+        Assert.NotEqual(HttpStatusCode.Forbidden, (await _client.SendAsync(getReq)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Part_applied_to_an_order_cannot_be_modified()
+    {
+        // Seeded item 7003 references part 6003 -> in use -> modify blocked with 409.
+        var inUse = await _client.PutAsJsonAsync("/api/parts/6003", new { customerId = 4002, enduserPartNum = "PN-3003-C", sheetType = "PLATE" });
+        Assert.Equal(HttpStatusCode.Conflict, inUse.StatusCode);
+        // The same guard covers the part's geometry (an applied part is frozen entirely).
+        var inUseShape = await _client.PutAsJsonAsync("/api/parts/6003/shape", new { shapeType = "RECTANGLE" });
+        Assert.Equal(HttpStatusCode.Conflict, inUseShape.StatusCode);
+        // Part 6001 is not referenced by any order_item -> both the record and geometry updates pass the guard.
+        var free = await _client.PutAsJsonAsync("/api/parts/6001", new { customerId = 4001, enduserPartNum = "PN-3003-A", sheetType = "RECTANGLE" });
+        Assert.NotEqual(HttpStatusCode.Conflict, free.StatusCode);
+        var freeShape = await _client.PutAsJsonAsync("/api/parts/6001/shape", new { shapeType = "RECTANGLE" });
+        Assert.NotEqual(HttpStatusCode.Conflict, freeShape.StatusCode);
+    }
+
+    [Fact]
+    public async Task Coil_transfer_to_current_owner_is_rejected()
+    {
+        // Seed coil 5002 is owned by customer 4001. Transferring it to 4001 is a no-op -> 409.
+        var noop = await _client.PostAsJsonAsync("/api/coil-ownership/transfers",
+            new { coilAbcNumOrig = 5002, customerIdNew = 4001 });
+        Assert.Equal(HttpStatusCode.Conflict, noop.StatusCode);
+        // A real change of owner (4001 -> 4002) is allowed and issues a certificate.
+        var real = await _client.PostAsJsonAsync("/api/coil-ownership/transfers",
+            new { coilAbcNumOrig = 5002, customerIdNew = 4002 });
+        Assert.Equal(HttpStatusCode.Created, real.StatusCode);
+    }
+
+    [Fact]
     public async Task A_supplied_request_id_is_echoed()
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, "/health");
@@ -572,6 +766,55 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
         Assert.True(doc.GetProperty("paths").GetProperty("/api/jobs/{abJobNum}").GetProperty("get")
             .GetProperty("responses").TryGetProperty("404", out _));
         Assert.True(doc.GetProperty("components").GetProperty("schemas").TryGetProperty("AbJob", out _));
+    }
+
+    [Fact]
+    public async Task Invoice_save_read_and_computation_over_http()
+    {
+        // Save an invoice for job 1001.
+        var post = await _client.PostAsJsonAsync("/api/accounting/invoices",
+            new { abJobNum = 1001, invoiceNum = "INV-HTTP-1", notes = "http test" });
+        Assert.Equal(HttpStatusCode.Created, post.StatusCode);
+        var created = await post.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("INV-HTTP-1", created.GetProperty("invoiceNum").GetString());
+
+        // Duplicate (ab_job_num, invoice_num) → 409.
+        var dup = await _client.PostAsJsonAsync("/api/accounting/invoices",
+            new { abJobNum = 1001, invoiceNum = "INV-HTTP-1" });
+        Assert.Equal(HttpStatusCode.Conflict, dup.StatusCode);
+
+        // Unknown job → 404; missing invoiceNum → 400.
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await _client.PostAsJsonAsync("/api/accounting/invoices", new { abJobNum = 999999, invoiceNum = "X" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/accounting/invoices", new { abJobNum = 1001 })).StatusCode);
+
+        // The saved record is listed for the job.
+        var list = await _client.GetFromJsonAsync<JsonElement>("/api/accounting/invoices?abJobNum=1001");
+        Assert.Contains(list.EnumerateArray(), e => e.GetProperty("invoiceNum").GetString() == "INV-HTTP-1");
+
+        // The computed invoice for the rejected-coil job 1002 exposes the exact billed reject.
+        var comp = await _client.GetFromJsonAsync<JsonElement>("/api/accounting/invoices/1002/computation");
+        Assert.Equal(1500m, comp.GetProperty("rejectedWt").GetDecimal());
+        Assert.Equal(60m, comp.GetProperty("netWt").GetDecimal());
+        Assert.Equal(1500m, comp.GetProperty("coils")[0].GetProperty("billedWeight").GetDecimal());
+    }
+
+    [Fact]
+    public async Task Invoice_document_renders_html_for_a_job()
+    {
+        // Printable invoice for job 1002, stamped with the seeded invoice number/date.
+        var doc = await _client.GetAsync("/api/documents/invoice/1002?invoiceNum=INV-1002-A");
+        Assert.Equal(HttpStatusCode.OK, doc.StatusCode);
+        Assert.Equal("text/html", doc.Content.Headers.ContentType!.MediaType);
+        var html = await doc.Content.ReadAsStringAsync();
+        Assert.Contains("Aluminum Blanking", html);
+        Assert.Contains("INV-1002-A", html);
+        Assert.Contains("Rejected", html);
+        Assert.Contains("Weight summary", html);
+
+        // Unknown job → 404.
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/documents/invoice/999999")).StatusCode);
     }
 
     /// <summary>Boots the app with env-var overrides pointing at a unique temp SQLite db.</summary>

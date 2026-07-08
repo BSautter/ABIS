@@ -142,6 +142,144 @@ reads resolved** against the real schema:
 > The script leaves clearly-tagged `ZZ_WRITE_TEST` rows and prints tag-based
 > `DELETE` cleanup SQL (run it in SQL Developer, then `COMMIT`).
 
+## Invoice billing validation (greenfield accounting slice)
+
+The commercial invoice (save + document + the rejected/rebanded billed-weight rule) computes
+figures that **bill trading partners**, so the numbers must be exact on real data — not just on
+the SQLite fixture. A read-only runbook lives at
+[`../tools/validate_oracle_invoice.ps1`](../tools/validate_oracle_invoice.ps1) (every query goes
+through `tools/oraq`, which refuses anything but a single `SELECT`/`WITH`):
+
+```powershell
+# from inside the user's network (the cloud sandbox cannot reach Oracle's listener)
+pwsh tools/validate_oracle_invoice.ps1 -Cs "Data Source=192.168.1.230:1521/abc11;User Id=dbo;Password=<pw>;"
+```
+
+It checks, against live non-prod `abc11` (schema `DBO`):
+
+1. **Connectivity** + that `INVOICE`, `PRODUCTION_SHEET_ITEM`, `RETURN_SCRAP_ITEM` exist on the real schema.
+2. **The reserved-word column reads when quoted** — `SELECT … "TIMESTAMP" … FROM invoice` (an unquoted
+   `timestamp` would raise `ORA-00904`; the repo always quotes it, and no bind is named `:timestamp`
+   — same `ORA-01745` reserved-word class as the earlier `:desc/:date/:like` fixes).
+3. **The exact billed-weight rule runs on Oracle and diverges from the naive sum on real data** — it
+   lists real jobs where `SUM(MAX(shift-end-or-balance, prior-process-qty))` over the reject/reband
+   coils differs from the old `SUM(process_end_wt)`, then deep-dives one job (header + per-coil billed
+   vs naive + every weight bucket). Any row where `billed <> naive` is a case the old browser sum
+   would have mis-billed.
+
+The greenfield SQL is deliberately portable (a correlated `MAX(process_quantity < …)` subquery and
+`COALESCE`, not Oracle-only `GREATEST`); the C# applies the final `Math.Max`. `scrap_ab_job_num` is a
+`CHAR` column, so the scrap-status/tare queries bind the job as a **string** (a numeric bind risks
+`ORA-01722` on any non-numeric row).
+
+### Result — run against non-prod Oracle 11g (`abc11`, schema `DBO`), 2026-07-07
+
+**Validated live. The billed figures are exact, and the fix is material — the naive sum mis-bills to
+zero on real data.**
+
+- **Schema present:** `INVOICE`, `PRODUCTION_SHEET_ITEM`, `RETURN_SCRAP_ITEM` all exist on `DBO`.
+- **Reserved-word column reads when quoted:** `SELECT … "TIMESTAMP" … FROM invoice` ran clean (no
+  `ORA-00904`); the table has 0 rows in non-prod (no invoices saved there yet), which is fine — the
+  point is the SQL shape is valid on Oracle. (Connectivity note: the very first `SELECT 1 FROM dual`
+  returned `ORA-50000: request timed out` on a cold connect, but every subsequent query returned real
+  data — the instance is up; the first-connect timeout was transient.)
+- **The exact rule runs on Oracle and diverges hugely from the naive sum.** Of the reject/reband jobs,
+  the top 8 by divergence **all have `naive_total = 0`** because `process_end_wt` is NULL on those
+  rejected coils — so the old browser `SUM(process_end_wt)` would have billed **nothing**, while the
+  correct rule (falling back to `net_wt_balance`) bills 118k–160k lb per job:
+
+  | ab_job_num | reject coils | billed (rule) | naive (old) |
+  |---|---:|---:|---:|
+  | 39782 | 7 | 159,510 | 0 |
+  | 27358 | 8 | 157,385 | 0 |
+  | 27427 | 8 | 155,172 | 0 |
+  | 25267 | 7 | 140,025 | 0 |
+  | 33938 | 6 | 139,455 | 0 |
+
+- **Deep-dive job 39782** (NOVELIS-KINGSTON, Liftgate 6111-T4E, PO 68371354): all 7 rejected coils have
+  a null shift-end weight, so each bills at its coil balance (21,520 + 22,925 + 22,890 + 23,665 +
+  23,185 + 22,495 + 22,830 = **159,510 lb**); the naive path would bill 0. Buckets computed cleanly:
+  net 280,586 · processed 98,867 · scrap 21,739 · tare 4,774 · 19 skids. This exercises the exact
+  **balance-fallback branch** of `InvoiceBilling.RejectedCoilBilledWeight` on live data.
+
+This confirms the header joins, the correlated `MAX(process_quantity < …)` subquery, `COALESCE`
+fallback, the quoted `"TIMESTAMP"`, and the string-bound `scrap_ab_job_num` all work on Oracle, and
+that shipping the naive sum would have **under-billed rejected coils to zero** on real jobs. Reproduce
+with [`../tools/validate_oracle_invoice.ps1`](../tools/validate_oracle_invoice.ps1).
+
+## Newer-module read sweep — run against Oracle 11g (2026-07-07)
+
+The modules built *after* the original validation (reporting, accounting, quality/
+recovery, coil-eval, prod-folder, stacker, sales, coil-ownership, parts, carriers,
+warehouse, security) had only ever run on the SQLite fixture. Swept read-only against
+live non-prod `abc11` with
+[`../tools/validate_oracle_reads_newmodules.ps1`](../tools/validate_oracle_reads_newmodules.ps1)
+(and ad-hoc data-dictionary checks via the new read-only
+[`../tools/oraq`](../tools/oraq) CLI). **~40 read/report endpoints; 4 live-only bug
+classes found and fixed, 1 environment gap, plus performance findings.**
+
+**Bugs found and fixed** (all green on SQLite CI — only live data exposed them):
+
+- **`ORA` decimal overflow on `AVG` →** `reporting/production-summary` &
+  `reporting/line-efficiency` returned **500**: ODP.NET materialises an Oracle `NUMBER`
+  as `System.Decimal` before Dapper maps it to `double?`, and `AVG(material_yield)`'s
+  ~40-digit result **overflows `Decimal`**. Fixed by bounding the scale in SQL —
+  `ROUND(AVG(...), 4)` — at all three `AVG` sites (`GetProductionSummaryAsync`,
+  `GetLineEfficiencyAsync`, `GetQaMechanicalAsync`). Reproduced + confirmed fixed
+  directly at the SQL layer with `oraq`.
+- **Stacker board unbounded scan →** `stacker/board` **hung** (>hundreds of seconds):
+  `GetStackerBoardAsync` scanned the whole `ab_job` history (**93,835 of 97,390 rows are
+  `Done`**), each with two correlated `COUNT` subqueries. Fixed by filtering to active
+  work — `job_status NOT IN (0 Done, 3 Cancelled)` — per the real `ab_job_status_desc`
+  codes (verified live: `0 Done / 1 InProcess / 2 New / 3 Cancelled / 4 OnHold`). The
+  fixture's status codes were corrected to match reality; a regression test was added.
+- **Reserved-word bind `:like` (`ORA-01745`) →** `sales/quotes` &
+  `coil-ownership/transferable-coils` returned **500**: `LIKE` is an Oracle reserved
+  word, so a bind *named* `:like` is rejected (SQLite accepts it). Renamed the bind to
+  `:pat` in both queries. Same trap class as the write-path `:desc/:date/:by` fixes.
+- **Transferable-coils whole-table scan →** `coil-ownership/transferable-coils`
+  returned the **entire coil table (149,563 rows, ~200 s)** because it had no
+  "transferable" predicate. A coil is transferable only if material remains, so added
+  `net_wt_balance > 0` (live data: only **8,835** coils qualify, **0** NULL balances —
+  a safe, exact filter). **200 s → ~10 s** unscoped (and fast when scoped by
+  customer/search, the normal path). Regression test added (fixture coil 5004 set to a
+  zero balance so it is excluded).
+
+**Environment gap (not a code bug):**
+
+- `sales/quotes` returns **`ORA-00942: table or view does not exist`**. The sales
+  module's tables (`sales_quote`, `sales_probability`, `sales_order`, `sales_reminder`)
+  are **absent from ALL three databases** — cross-referenced live (2026-07-07) against
+  non-prod (`192.168.1.230:1521/abc11`), dev (`192.168.1.11:1523/abc11`), and **prod**
+  (`192.168.1.9:1523/abc11`): **0** matching objects in any schema on any of them. All
+  three carry the same complete 412-table `DBO` schema (real tables like `customer_order`,
+  `coil` present), so this isn't a partial copy — the sales/quote tables **were never
+  deployed anywhere**, even though the legacy `d_sales_quote_*` DataWindows reference
+  them. **Product decision needed:** was the sales/quoting feature ever live? Either the
+  greenfield sales-quote surface should be dropped/parked, or the tables need creating.
+  The rest of the sales surface (`sales/contacts`, over the real `customer_contact`)
+  passes.
+
+**Performance findings (functional, but slow on real data — follow-up optimization):**
+
+| Endpoint | Live time | Cause |
+|---|---:|---|
+| `reporting/line-efficiency` | ~380 s | per-line `AVG` + per-job correlated `SUM(process_end_wt)` + downtime merge over full history |
+| `reporting/production-summary` | ~106 s | per-job correlated `SUM(process_end_wt)` subquery |
+| `reporting/downtime` | ~75 s | full-history scan |
+| `reporting/open-shipments` | ~30 s | |
+| `stacker/board` | ~28 s | two correlated `COUNT` subqueries over the ~950 active jobs |
+| `coil-ownership/transferable-coils` (unscoped) | ~10 s | returns all 8,835 balance-bearing coils |
+
+Recommended: rewrite the correlated `SUM`/`COUNT` subqueries as `GROUP BY` joins,
+add indexes on the `ab_job_num` FK columns of `process_coil`/`sheet_skid`, and default
+the reporting date window to something narrower than 7 years. Tracked in
+[`NEXT_STEPS.md`](NEXT_STEPS.md).
+
+> Everything else in the sweep — the other 14 reporting endpoints, accounting,
+> quality/recovery, coil-eval, prod-folder, stacker line-errors, parts, carriers,
+> warehouse, and security reads — **passed clean** against live Oracle.
+
 ## 1. Connectivity smoke (no schema needed)
 
 Confirms the driver connects and the dialect probe works (`SELECT 1 FROM dual`):

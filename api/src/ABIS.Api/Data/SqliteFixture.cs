@@ -23,10 +23,33 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS process_coil;
             DROP TABLE IF EXISTS customer_order;
             DROP TABLE IF EXISTS order_item;
+            DROP TABLE IF EXISTS rectangle;
+            DROP TABLE IF EXISTS circle;
+            DROP TABLE IF EXISTS chevron;
+            DROP TABLE IF EXISTS fender;
+            DROP TABLE IF EXISTS parallelogram;
+            DROP TABLE IF EXISTS trapezoid;
+            DROP TABLE IF EXISTS left_trapezoid;
+            DROP TABLE IF EXISTS right_trapezoid;
+            DROP TABLE IF EXISTS reinforcement;
+            DROP TABLE IF EXISTS liftgate_shape;
+            DROP TABLE IF EXISTS part_num_rectangle;
+            DROP TABLE IF EXISTS part_num_circle;
+            DROP TABLE IF EXISTS part_num_chevron;
+            DROP TABLE IF EXISTS part_num_fender;
+            DROP TABLE IF EXISTS part_num_parallelogram;
+            DROP TABLE IF EXISTS part_num_trapezoid;
+            DROP TABLE IF EXISTS part_num_left_trapezoid;
+            DROP TABLE IF EXISTS part_num_right_trapezoid;
+            DROP TABLE IF EXISTS part_num_reinforcement;
+            DROP TABLE IF EXISTS part_num_liftgate;
             DROP TABLE IF EXISTS pst_test_result;
             DROP TABLE IF EXISTS customer;
             DROP TABLE IF EXISTS sheet_skid;
             DROP TABLE IF EXISTS scrap_skid;
+            DROP TABLE IF EXISTS production_sheet_item;
+            DROP TABLE IF EXISTS return_scrap_item;
+            DROP TABLE IF EXISTS invoice;
             DROP TABLE IF EXISTS process_partial_skid;
             DROP TABLE IF EXISTS temp_test_result;
             DROP TABLE IF EXISTS opc_action_log;
@@ -116,6 +139,61 @@ public static class SqliteFixture
                 starting_goods_material_num TEXT, finished_goods_material_num TEXT, cust_prod_line_id TEXT, billto_albl TEXT,
                 PRIMARY KEY (order_abc_num, order_item_num));
 
+            -- Per-item blank geometry: one table per shape, keyed by the order_item composite
+            -- key (see Data/ShapeGeometry). Decimals are REAL (SQLite affinity gotcha).
+            CREATE TABLE rectangle (order_item_num INTEGER, order_abc_num INTEGER,
+                rt_length REAL, rt_length_plus REAL, rt_length_minus REAL, rt_width REAL, rt_width_plus REAL, rt_width_minus REAL,
+                rt_die1 TEXT, rt_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
+            CREATE TABLE circle (order_item_num INTEGER, order_abc_num INTEGER,
+                c_diameter REAL, c_diameter_plus REAL, c_diameter_minus REAL, c_die1 TEXT, c_die2 TEXT,
+                PRIMARY KEY (order_abc_num, order_item_num));
+            CREATE TABLE chevron (order_item_num INTEGER, order_abc_num INTEGER,
+                ch_length REAL, ch_length_plus REAL, ch_length_minus REAL, ch_width REAL, ch_width_plus REAL, ch_width_minus REAL,
+                ch_die TEXT, PRIMARY KEY (order_abc_num, order_item_num));
+            CREATE TABLE fender (order_item_num INTEGER, order_abc_num INTEGER,
+                fe_side REAL, fe_side_plus REAL, fe_side_minus REAL, fe_die1 TEXT, fe_die2 TEXT,
+                fe_length REAL, fe_length_plus REAL, fe_length_minus REAL, PRIMARY KEY (order_abc_num, order_item_num));
+            CREATE TABLE parallelogram (order_item_num INTEGER, order_abc_num INTEGER,
+                p_length REAL, p_length_plus REAL, p_length_minus REAL, p_width REAL, p_width_plus REAL, p_width_minus REAL,
+                p_angle1 REAL, p_angle2 REAL, p_die1 TEXT, p_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
+            CREATE TABLE trapezoid (order_item_num INTEGER, order_abc_num INTEGER,
+                tr_long_length REAL, tr_long_plus REAL, tr_long_minus REAL, tr_short_length REAL, tr_short_plus REAL, tr_short_minus REAL,
+                tr_width REAL, tr_width_plus REAL, tr_width_minus REAL, tr_die1 TEXT, tr_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
+            CREATE TABLE left_trapezoid (order_item_num INTEGER, order_abc_num INTEGER,
+                ltr_long_length REAL, ltr_long_plus REAL, ltr_long_minus REAL, ltr_short_length REAL, ltr_short_plus REAL, ltr_short_minus REAL,
+                ltr_width REAL, ltr_width_plus REAL, ltr_width_minus REAL, ltr_die1 TEXT, ltr_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
+            CREATE TABLE right_trapezoid (order_item_num INTEGER, order_abc_num INTEGER,
+                rtr_long_length REAL, rtr_long_plus REAL, rtr_long_minus REAL, rtr_short_length REAL, rtr_short_plus REAL, rtr_short_minus REAL,
+                rtr_width REAL, rtr_width_plus REAL, rtr_width_minus REAL, rtr_die1 TEXT, rtr_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
+            CREATE TABLE reinforcement (order_item_num INTEGER, order_abc_num INTEGER,
+                re_width REAL, re_width_plus REAL, re_width_minus REAL, re_length REAL, re_length_plus REAL, re_length_minus REAL,
+                re_die1 TEXT, re_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
+            CREATE TABLE liftgate_shape (order_item_num INTEGER, order_abc_num INTEGER,
+                li_width REAL, li_width_plus REAL, li_width_minus REAL, li_length REAL, li_length_plus REAL, li_length_minus REAL,
+                li_die1 TEXT, li_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
+
+            -- Part-master geometry: same dimensions per shape, keyed by part_num_id, no dies.
+            CREATE TABLE part_num_rectangle (part_num_id INTEGER PRIMARY KEY,
+                rt_length REAL, rt_length_plus REAL, rt_length_minus REAL, rt_width REAL, rt_width_plus REAL, rt_width_minus REAL);
+            CREATE TABLE part_num_circle (part_num_id INTEGER PRIMARY KEY,
+                c_diameter REAL, c_diameter_plus REAL, c_diameter_minus REAL);
+            CREATE TABLE part_num_chevron (part_num_id INTEGER PRIMARY KEY,
+                ch_length REAL, ch_length_plus REAL, ch_length_minus REAL, ch_width REAL, ch_width_plus REAL, ch_width_minus REAL);
+            CREATE TABLE part_num_fender (part_num_id INTEGER PRIMARY KEY,
+                fe_side REAL, fe_side_plus REAL, fe_side_minus REAL, fe_length REAL, fe_length_plus REAL, fe_length_minus REAL);
+            CREATE TABLE part_num_parallelogram (part_num_id INTEGER PRIMARY KEY,
+                p_length REAL, p_length_plus REAL, p_length_minus REAL, p_width REAL, p_width_plus REAL, p_width_minus REAL, p_angle1 REAL, p_angle2 REAL);
+            CREATE TABLE part_num_trapezoid (part_num_id INTEGER PRIMARY KEY,
+                tr_long_length REAL, tr_long_plus REAL, tr_long_minus REAL, tr_short_length REAL, tr_short_plus REAL, tr_short_minus REAL, tr_width REAL, tr_width_plus REAL, tr_width_minus REAL);
+            CREATE TABLE part_num_left_trapezoid (part_num_id INTEGER PRIMARY KEY,
+                ltr_long_length REAL, ltr_long_plus REAL, ltr_long_minus REAL, ltr_short_length REAL, ltr_short_plus REAL, ltr_short_minus REAL, ltr_width REAL, ltr_width_plus REAL, ltr_width_minus REAL);
+            CREATE TABLE part_num_right_trapezoid (part_num_id INTEGER PRIMARY KEY,
+                rtr_long_length REAL, rtr_long_plus REAL, rtr_long_minus REAL, rtr_short_length REAL, rtr_short_plus REAL, rtr_short_minus REAL, rtr_width REAL, rtr_width_plus REAL, rtr_width_minus REAL);
+            CREATE TABLE part_num_reinforcement (part_num_id INTEGER PRIMARY KEY,
+                re_width REAL, re_width_plus REAL, re_width_minus REAL, re_length REAL, re_length_plus REAL, re_length_minus REAL);
+            CREATE TABLE part_num_liftgate (part_num_id INTEGER PRIMARY KEY,
+                li_width REAL, li_width_plus REAL, li_width_minus REAL, li_length REAL, li_length_plus REAL, li_length_minus REAL);
+
             -- Posted mechanical test results. The real PK is the composite
             -- (coil_abc_num, position, created_date, source_id) per oracle_ddl.sql;
             -- coil_abc_num ties a result to its coil, source_id to the capture source.
@@ -126,8 +204,15 @@ public static class SqliteFixture
                 PRIMARY KEY (coil_abc_num, position, created_date, source_id));
 
             CREATE TABLE customer (
-                customer_id INTEGER PRIMARY KEY, customer_full_name TEXT, customer_short_name TEXT,
-                customer_city TEXT, customer_state TEXT, customer_zip TEXT);
+                customer_id INTEGER PRIMARY KEY, customer_full_name TEXT, customer_short_name TEXT, customer_type INTEGER,
+                customer_street TEXT, customer_city TEXT, customer_state TEXT, customer_zip TEXT, customer_country TEXT,
+                customer_phone_number TEXT, customer_fax_number TEXT, customer_create_date TEXT, customer_maint_date TEXT,
+                customer_notes TEXT, parent_id INTEGER, customer_external_id TEXT,
+                tax_id TEXT, tax_exemption_num TEXT, tax_rate REAL, customer_duns_number INTEGER, customer_duns_number_string TEXT,
+                bill_to_street TEXT, bill_to_city TEXT, bill_to_state TEXT, bill_to_zip TEXT,
+                desadv_req TEXT, edi_req TEXT, qr_code_req TEXT, validate_material TEXT, use_package_num TEXT,
+                use_customer_website_4shipping TEXT, cash_date_required TEXT, cash_date_on_bol TEXT, coil_cert_label_req TEXT,
+                create_861_at_receiving TEXT, inv_report_saveas_xlsx TEXT, cust_po_on_inv_skid_report TEXT, use_edi_code_not_duns TEXT, plant_code TEXT);
 
             CREATE TABLE sheet_skid (
                 sheet_skid_num INTEGER PRIMARY KEY, ab_job_num INTEGER, sheet_skid_display_num TEXT,
@@ -138,6 +223,27 @@ public static class SqliteFixture
                 scrap_skid_num INTEGER PRIMARY KEY, scrap_ab_job_num TEXT, scrap_alloy2 TEXT, scrap_temper TEXT,
                 scrap_type INTEGER, scrap_net_wt REAL, scrap_tare_wt REAL, scrap_location TEXT,
                 scrap_notes TEXT, skid_scrap_status INTEGER, scrap_date TEXT);
+
+            -- Finished production items rolled onto a job (legacy production_sheet_item): the
+            -- invoice's "processed weight" bucket = SUM(prod_item_net_wt). Decimals are REAL.
+            CREATE TABLE production_sheet_item (
+                prod_item_num INTEGER PRIMARY KEY, coil_abc_num INTEGER, ab_job_num INTEGER,
+                prod_item_status INTEGER, prod_item_pieces INTEGER, prod_item_net_wt REAL,
+                prod_item_theoretical_wt REAL, prod_item_date TEXT, prod_item_note TEXT, shift_num INTEGER);
+
+            -- Scrap returned against a job (legacy return_scrap_item): the invoice's "total scrap
+            -- weight" bucket = SUM(return_item_net_wt).
+            CREATE TABLE return_scrap_item (
+                return_scrap_item_num INTEGER PRIMARY KEY, coil_abc_num INTEGER, ab_job_num INTEGER,
+                return_item_net_wt REAL, return_item_date TEXT, return_item_notes TEXT,
+                scrap_item_pieces INTEGER, scrap_item_type INTEGER, shift_num INTEGER);
+
+            -- Saved invoice records (legacy w_invoice Save). Composite PK; weight buckets are
+            -- computed at report time, not stored. "timestamp" mirrors the Oracle column name
+            -- (a reserved word there — always quoted in SQL).
+            CREATE TABLE invoice (
+                ab_job_num INTEGER, invoice_num TEXT, timestamp TEXT, notes TEXT,
+                PRIMARY KEY (ab_job_num, invoice_num));
 
             -- In-progress mechanical test results (heap table in Oracle — no PK). The
             -- surrogate id is a SQLite convenience; coil_org_num ties a working result to
@@ -382,17 +488,28 @@ public static class SqliteFixture
         conn.Execute("""
             INSERT INTO order_item (order_item_num, order_abc_num, enduser_part_num, alloy2, temper, gauge, gauge_p, gauge_m,
                 surface, flatness, sheet_type, material_end_use, order_item_desc, pieces_skid,
-                theoretical_unit_wt, unit_price, item_created_dttm)
+                theoretical_unit_wt, unit_price, item_created_dttm, part_num_id)
             VALUES (:OrderItemNum, :OrderAbcNum, :EnduserPartNum, :Alloy2, :Temper, :Gauge, :GaugeP, :GaugeM,
                 :Surface, :Flatness, :SheetType, :MaterialEndUse, :OrderItemDesc, :PiecesSkid,
-                :TheoreticalUnitWt, :UnitPrice, :ItemCreatedDttm)
+                :TheoreticalUnitWt, :UnitPrice, :ItemCreatedDttm, :PartNumId)
             """,
             new[]
             {
-                new { OrderItemNum = 7001L, OrderAbcNum = (long?)9001L, EnduserPartNum = "PN-3003-A", Alloy2 = "3003", Temper = "H14", Gauge = 0.125m, GaugeP = 0.005m, GaugeM = 0.005m, Surface = "MILL", Flatness = "STD", SheetType = "SHEET", MaterialEndUse = "HVAC", OrderItemDesc = "3003 sheet", PiecesSkid = 50, TheoreticalUnitWt = 12.5m, UnitPrice = 1.25m, ItemCreatedDttm = (DateTime?)d },
-                new { OrderItemNum = 7002L, OrderAbcNum = (long?)9001L, EnduserPartNum = "PN-5052-B", Alloy2 = "5052", Temper = "H32", Gauge = 0.0625m, GaugeP = 0.004m, GaugeM = 0.004m, Surface = "MILL", Flatness = "TIGHT", SheetType = "SHEET", MaterialEndUse = "MARINE", OrderItemDesc = "5052 sheet", PiecesSkid = 40, TheoreticalUnitWt = 8.0m, UnitPrice = 1.5m, ItemCreatedDttm = (DateTime?)d },
-                new { OrderItemNum = 7003L, OrderAbcNum = (long?)9002L, EnduserPartNum = "PN-3003-C", Alloy2 = "3003", Temper = "H14", Gauge = 0.25m, GaugeP = 0.01m, GaugeM = 0.01m, Surface = "BRUSHED", Flatness = "STD", SheetType = "PLATE", MaterialEndUse = "GENERAL", OrderItemDesc = "3003 plate", PiecesSkid = 25, TheoreticalUnitWt = 25.0m, UnitPrice = 1.75m, ItemCreatedDttm = (DateTime?)d }
+                // Item 7003 references part 6003 (part_num_id) so 6003 is "in use" — exercises the
+                // part-modify-in-use guard (legacy w_part_num_management: can't modify/delete an
+                // applied part). 7001/7002 are ad-hoc lines with no part master (part_num_id NULL).
+                new { OrderItemNum = 7001L, OrderAbcNum = (long?)9001L, EnduserPartNum = "PN-3003-A", Alloy2 = "3003", Temper = "H14", Gauge = 0.125m, GaugeP = 0.005m, GaugeM = 0.005m, Surface = "MILL", Flatness = "STD", SheetType = "RECTANGLE", MaterialEndUse = "HVAC", OrderItemDesc = "3003 sheet", PiecesSkid = 50, TheoreticalUnitWt = 12.5m, UnitPrice = 1.25m, ItemCreatedDttm = (DateTime?)d, PartNumId = (long?)null },
+                new { OrderItemNum = 7002L, OrderAbcNum = (long?)9001L, EnduserPartNum = "PN-5052-B", Alloy2 = "5052", Temper = "H32", Gauge = 0.0625m, GaugeP = 0.004m, GaugeM = 0.004m, Surface = "MILL", Flatness = "TIGHT", SheetType = "CIRCLE", MaterialEndUse = "MARINE", OrderItemDesc = "5052 sheet", PiecesSkid = 40, TheoreticalUnitWt = 8.0m, UnitPrice = 1.5m, ItemCreatedDttm = (DateTime?)d, PartNumId = (long?)null },
+                new { OrderItemNum = 7003L, OrderAbcNum = (long?)9002L, EnduserPartNum = "PN-3003-C", Alloy2 = "3003", Temper = "H14", Gauge = 0.25m, GaugeP = 0.01m, GaugeM = 0.01m, Surface = "BRUSHED", Flatness = "STD", SheetType = "PLATE", MaterialEndUse = "GENERAL", OrderItemDesc = "3003 plate", PiecesSkid = 25, TheoreticalUnitWt = 25.0m, UnitPrice = 1.75m, ItemCreatedDttm = (DateTime?)d, PartNumId = (long?)6003L }
             });
+
+        // Blank geometry for the two shaped seed items (7001 = RECTANGLE, 7002 = CIRCLE).
+        conn.Execute(
+            "INSERT INTO rectangle (order_item_num, order_abc_num, rt_length, rt_length_plus, rt_length_minus, rt_width, rt_width_plus, rt_width_minus, rt_die1, rt_die2) " +
+            "VALUES (7001, 9001, 48.0, 0.03, 0.03, 24.0, 0.02, 0.02, 'DIE-RT-1', 'DIE-RT-2')");
+        conn.Execute(
+            "INSERT INTO circle (order_item_num, order_abc_num, c_diameter, c_diameter_plus, c_diameter_minus, c_die1, c_die2) " +
+            "VALUES (7002, 9001, 36.5, 0.05, 0.05, 'DIE-C-1', NULL)");
 
         conn.Execute("""
             INSERT INTO part_num (part_num_id, customer_id, enduser_id, enduser_part_num, sheet_type, alloy, temper, gauge, item_status)
@@ -400,10 +517,15 @@ public static class SqliteFixture
             """,
             new[]
             {
-                new { PartNumId = 6001L, CustomerId = (long?)4001L, EnduserId = (long?)null, EnduserPartNum = "PN-3003-A", SheetType = "SHEET", Alloy = "3003", Temper = "H14", Gauge = (decimal?)0.125m, ItemStatus = (int?)1 },
+                new { PartNumId = 6001L, CustomerId = (long?)4001L, EnduserId = (long?)null, EnduserPartNum = "PN-3003-A", SheetType = "RECTANGLE", Alloy = "3003", Temper = "H14", Gauge = (decimal?)0.125m, ItemStatus = (int?)1 },
                 new { PartNumId = 6002L, CustomerId = (long?)4001L, EnduserId = (long?)null, EnduserPartNum = "PN-5052-B", SheetType = "SHEET", Alloy = "5052", Temper = "H32", Gauge = (decimal?)0.0625m, ItemStatus = (int?)1 },
                 new { PartNumId = 6003L, CustomerId = (long?)4002L, EnduserId = (long?)null, EnduserPartNum = "PN-3003-C", SheetType = "PLATE", Alloy = "3003", Temper = "H14", Gauge = (decimal?)0.25m, ItemStatus = (int?)0 }
             });
+
+        // Blank geometry for the RECTANGLE seed part (6001).
+        conn.Execute(
+            "INSERT INTO part_num_rectangle (part_num_id, rt_length, rt_length_plus, rt_length_minus, rt_width, rt_width_plus, rt_width_minus) " +
+            "VALUES (6001, 60.0, 0.02, 0.02, 30.0, 0.02, 0.02)");
 
         conn.Execute("""
             INSERT INTO die (die_id, die_name, owner, status, tool_num, part_name, gross_weight, location, description,
@@ -541,7 +663,8 @@ public static class SqliteFixture
             {
                 new { AbJobNum = 1001L, OrderAbcNum = (long?)9001L, OrderItemNum = (long?)7001L, LineNum = (long?)110L, JobStatus = (int?)1, MaterialYield = (decimal?)92.5m, NumberOfMenUsed = (int?)3, SketchId = (long?)1L, CreateDate = (DateTime?)d, DueDate = (DateTime?)d.AddDays(7), TimeDateStarted = (DateTime?)d.AddHours(1), TimeDateFinished = (DateTime?)null, JobNotes = "Running", SketchJobNote = "" },
                 new { AbJobNum = 1002L, OrderAbcNum = (long?)9001L, OrderItemNum = (long?)7002L, LineNum = (long?)110L, JobStatus = (int?)1, MaterialYield = (decimal?)88.0m, NumberOfMenUsed = (int?)2, SketchId = (long?)2L, CreateDate = (DateTime?)d.AddDays(1), DueDate = (DateTime?)d.AddDays(8), TimeDateStarted = (DateTime?)d.AddDays(1), TimeDateFinished = (DateTime?)null, JobNotes = "Queued", SketchJobNote = "" },
-                new { AbJobNum = 1003L, OrderAbcNum = (long?)9002L, OrderItemNum = (long?)7003L, LineNum = (long?)120L, JobStatus = (int?)2, MaterialYield = (decimal?)95.0m, NumberOfMenUsed = (int?)4, SketchId = (long?)3L, CreateDate = (DateTime?)d.AddDays(2), DueDate = (DateTime?)d.AddDays(5), TimeDateStarted = (DateTime?)d.AddDays(2), TimeDateFinished = (DateTime?)d.AddDays(3), JobNotes = "Complete", SketchJobNote = "" }
+                // job_status 0 = Done (per ab_job_status_desc): this row has a finish time + "Complete" note, so it is Done — and the stacker board must exclude it.
+                new { AbJobNum = 1003L, OrderAbcNum = (long?)9002L, OrderItemNum = (long?)7003L, LineNum = (long?)120L, JobStatus = (int?)0, MaterialYield = (decimal?)95.0m, NumberOfMenUsed = (int?)4, SketchId = (long?)3L, CreateDate = (DateTime?)d.AddDays(2), DueDate = (DateTime?)d.AddDays(5), TimeDateStarted = (DateTime?)d.AddDays(2), TimeDateFinished = (DateTime?)d.AddDays(3), JobNotes = "Complete", SketchJobNote = "" }
             });
 
         conn.Execute("""
@@ -557,7 +680,7 @@ public static class SqliteFixture
                 new { CoilAbcNum = 5001L, CoilAlloy2 = "3003", CoilTemper = "H14", CoilGauge = 0.125m, CoilWidth = 48.5m, CoilLineNum = (long?)110L, CoilLocation = "A-01", CoilMidNum = "MID-5001", CoilOrgNum = "ORG-5001", CoilStatus = (int?)1, CoilNotes = "", CoilEntryDate = (DateTime?)d, CustomerId = (long?)4001L, CoilFromCustId = (long?)4001L, DateReceived = (DateTime?)d, Icra = "ICRA1", LotNum = "LOT-1", NetWt = 12000m, NetWtBalance = 8000m, PiecesPerCase = (int?)0 },
                 new { CoilAbcNum = 5002L, CoilAlloy2 = "3003", CoilTemper = "H14", CoilGauge = 0.125m, CoilWidth = 48.5m, CoilLineNum = (long?)110L, CoilLocation = "A-02", CoilMidNum = "MID-5002", CoilOrgNum = "ORG-5002", CoilStatus = (int?)1, CoilNotes = "", CoilEntryDate = (DateTime?)d, CustomerId = (long?)4001L, CoilFromCustId = (long?)4001L, DateReceived = (DateTime?)d, Icra = "ICRA2", LotNum = "LOT-2", NetWt = 11000m, NetWtBalance = 11000m, PiecesPerCase = (int?)0 },
                 new { CoilAbcNum = 5003L, CoilAlloy2 = "5052", CoilTemper = "H32", CoilGauge = 0.0625m, CoilWidth = 60.0m, CoilLineNum = (long?)110L, CoilLocation = "B-01", CoilMidNum = "MID-5003", CoilOrgNum = "ORG-5003", CoilStatus = (int?)1, CoilNotes = "", CoilEntryDate = (DateTime?)d, CustomerId = (long?)4002L, CoilFromCustId = (long?)4002L, DateReceived = (DateTime?)d, Icra = "ICRA3", LotNum = "LOT-3", NetWt = 9000m, NetWtBalance = 9000m, PiecesPerCase = (int?)0 },
-                new { CoilAbcNum = 5004L, CoilAlloy2 = "5052", CoilTemper = "H32", CoilGauge = 0.0625m, CoilWidth = 60.0m, CoilLineNum = (long?)120L, CoilLocation = "B-02", CoilMidNum = "MID-5004", CoilOrgNum = "ORG-5004", CoilStatus = (int?)3, CoilNotes = "On hold", CoilEntryDate = (DateTime?)d, CustomerId = (long?)4002L, CoilFromCustId = (long?)4002L, DateReceived = (DateTime?)d, Icra = "ICRA4", LotNum = "LOT-4", NetWt = 9500m, NetWtBalance = 9500m, PiecesPerCase = (int?)0 }
+                new { CoilAbcNum = 5004L, CoilAlloy2 = "5052", CoilTemper = "H32", CoilGauge = 0.0625m, CoilWidth = 60.0m, CoilLineNum = (long?)120L, CoilLocation = "B-02", CoilMidNum = "MID-5004", CoilOrgNum = "ORG-5004", CoilStatus = (int?)3, CoilNotes = "On hold", CoilEntryDate = (DateTime?)d, CustomerId = (long?)4002L, CoilFromCustId = (long?)4002L, DateReceived = (DateTime?)d, Icra = "ICRA4", LotNum = "LOT-4", NetWt = 9500m, NetWtBalance = 0m, PiecesPerCase = (int?)0 }   // fully consumed: balance 0 -> excluded from transferable-coils
             });
 
         conn.Execute("""
@@ -569,7 +692,11 @@ public static class SqliteFixture
                 new { AbJobNum = 1001L, CoilAbcNum = 5001L, ProcessCoilStatus = (int?)1, ProcessDate = (DateTime?)d.AddHours(2), ProcessEndWt = 4000m, ProcessQuantity = 200m },
                 new { AbJobNum = 1001L, CoilAbcNum = 5002L, ProcessCoilStatus = (int?)1, ProcessDate = (DateTime?)d.AddHours(3), ProcessEndWt = 0m, ProcessQuantity = 0m },
                 // Job 1002's coil is rejected (status 3) → drives the invoice rej/reband list for that job.
-                new { AbJobNum = 1002L, CoilAbcNum = 5003L, ProcessCoilStatus = (int?)3, ProcessDate = (DateTime?)d.AddDays(2), ProcessEndWt = 1500m, ProcessQuantity = 60m }
+                new { AbJobNum = 1002L, CoilAbcNum = 5003L, ProcessCoilStatus = (int?)3, ProcessDate = (DateTime?)d.AddDays(2), ProcessEndWt = 1500m, ProcessQuantity = 60m },
+                // A prior process pass of coil 5003 (a smaller quantity, on the Done job 1003) so the
+                // invoice billed-weight rule's "max prior-process qty" term (< this job's 60) resolves
+                // to 40 — exercises the correlated subquery in GetInvoiceCoilsAsync.
+                new { AbJobNum = 1003L, CoilAbcNum = 5003L, ProcessCoilStatus = (int?)1, ProcessDate = (DateTime?)d.AddHours(2), ProcessEndWt = 0m, ProcessQuantity = 40m }
             });
 
         conn.Execute("""
@@ -584,13 +711,15 @@ public static class SqliteFixture
             });
 
         conn.Execute("""
-            INSERT INTO customer (customer_id, customer_full_name, customer_short_name, customer_city, customer_state, customer_zip)
-            VALUES (:CustomerId, :CustomerFullName, :CustomerShortName, :CustomerCity, :CustomerState, :CustomerZip)
+            INSERT INTO customer (customer_id, customer_full_name, customer_short_name, customer_city, customer_state, customer_zip,
+                customer_type, edi_req, create_861_at_receiving, plant_code)
+            VALUES (:CustomerId, :CustomerFullName, :CustomerShortName, :CustomerCity, :CustomerState, :CustomerZip,
+                :CustomerType, :EdiReq, :Create861AtReceiving, :PlantCode)
             """,
             new[]
             {
-                new { CustomerId = 4001L, CustomerFullName = "ACME METALS", CustomerShortName = "ACME", CustomerCity = "Detroit", CustomerState = "MI", CustomerZip = "48201" },
-                new { CustomerId = 4002L, CustomerFullName = "BETA FAB", CustomerShortName = "BETA", CustomerCity = "Cleveland", CustomerState = "OH", CustomerZip = "44101" }
+                new { CustomerId = 4001L, CustomerFullName = "ACME METALS", CustomerShortName = "ACME", CustomerCity = "Detroit", CustomerState = "MI", CustomerZip = "48201", CustomerType = (int?)1, EdiReq = "Y", Create861AtReceiving = "Y", PlantCode = "PLT-01" },
+                new { CustomerId = 4002L, CustomerFullName = "BETA FAB", CustomerShortName = "BETA", CustomerCity = "Cleveland", CustomerState = "OH", CustomerZip = "44101", CustomerType = (int?)2, EdiReq = "N", Create861AtReceiving = "N", PlantCode = (string?)null }
             });
 
         conn.Execute("""
@@ -614,6 +743,39 @@ public static class SqliteFixture
             {
                 new { ScrapSkidNum = 8001L, ScrapAbJobNum = "1001", ScrapAlloy2 = "3003", ScrapTemper = "H14", ScrapType = (int?)1, ScrapNetWt = 120m, ScrapTareWt = 20m, ScrapLocation = "SCR-A", ScrapNotes = "", SkidScrapStatus = (int?)1, ScrapDate = (DateTime?)d.AddHours(6) },
                 new { ScrapSkidNum = 8002L, ScrapAbJobNum = "1003", ScrapAlloy2 = "5052", ScrapTemper = "H32", ScrapType = (int?)2, ScrapNetWt = 90m, ScrapTareWt = 20m, ScrapLocation = "SCR-B", ScrapNotes = "", SkidScrapStatus = (int?)1, ScrapDate = (DateTime?)d.AddDays(3) }
+            });
+
+        // Production items → the invoice "processed weight" bucket (SUM per job).
+        conn.Execute("""
+            INSERT INTO production_sheet_item (prod_item_num, coil_abc_num, ab_job_num, prod_item_status, prod_item_pieces, prod_item_net_wt, prod_item_date)
+            VALUES (:ProdItemNum, :CoilAbcNum, :AbJobNum, :ProdItemStatus, :ProdItemPieces, :ProdItemNetWt, :ProdItemDate)
+            """,
+            new[]
+            {
+                new { ProdItemNum = 6001L, CoilAbcNum = (long?)5001L, AbJobNum = (long?)1001L, ProdItemStatus = (int?)1, ProdItemPieces = (int?)95, ProdItemNetWt = 190m, ProdItemDate = (DateTime?)d.AddHours(4) },
+                new { ProdItemNum = 6003L, CoilAbcNum = (long?)5003L, AbJobNum = (long?)1002L, ProdItemStatus = (int?)1, ProdItemPieces = (int?)4,  ProdItemNetWt = 48m,  ProdItemDate = (DateTime?)d.AddDays(2) }
+            });
+
+        // Returned scrap → the invoice "total scrap weight" bucket (SUM per job).
+        conn.Execute("""
+            INSERT INTO return_scrap_item (return_scrap_item_num, coil_abc_num, ab_job_num, return_item_net_wt, scrap_item_pieces, scrap_item_type, return_item_date)
+            VALUES (:ReturnScrapItemNum, :CoilAbcNum, :AbJobNum, :ReturnItemNetWt, :ScrapItemPieces, :ScrapItemType, :ReturnItemDate)
+            """,
+            new[]
+            {
+                new { ReturnScrapItemNum = 6101L, CoilAbcNum = (long?)5001L, AbJobNum = (long?)1001L, ReturnItemNetWt = 30m, ScrapItemPieces = (int?)3, ScrapItemType = (int?)1, ReturnItemDate = (DateTime?)d.AddHours(6) },
+                new { ReturnScrapItemNum = 6102L, CoilAbcNum = (long?)5003L, AbJobNum = (long?)1002L, ReturnItemNetWt = 6m,  ScrapItemPieces = (int?)1, ScrapItemType = (int?)2, ReturnItemDate = (DateTime?)d.AddDays(2) }
+            });
+
+        // Saved invoices (legacy w_invoice Save). Job 1002 is the rejected-coil billing example.
+        conn.Execute("""
+            INSERT INTO invoice (ab_job_num, invoice_num, timestamp, notes)
+            VALUES (:AbJobNum, :InvoiceNum, :Timestamp, :Notes)
+            """,
+            new[]
+            {
+                new { AbJobNum = 1001L, InvoiceNum = "INV-1001-A", Timestamp = (DateTime?)d.AddDays(1), Notes = (string?)null },
+                new { AbJobNum = 1002L, InvoiceNum = "INV-1002-A", Timestamp = (DateTime?)d.AddDays(3), Notes = (string?)"Rejected-coil billing example" }
             });
 
         conn.Execute("""
@@ -869,13 +1031,34 @@ public static class SqliteFixture
             });
 
         // ---- Security / authorization ----
+        // The protected-feature catalog uses the legacy-authoritative application_name values
+        // that f_security_door checks (see legacy/src/security/f_security_door.srf and the
+        // f_security_door("…") call sites across legacy/src). Ids 1-3 predate this and keep
+        // their grants; app 2 was renamed "Coil Inventory" -> "Inventory(Coil)" to match legacy.
         conn.Execute(
             "INSERT INTO security_application (application_id, application_name, application_notes) VALUES (:ApplicationId, :ApplicationName, :ApplicationNotes)",
             new[]
             {
-                new { ApplicationId = 1L, ApplicationName = "Order Entry", ApplicationNotes = "Create/edit orders" },
-                new { ApplicationId = 2L, ApplicationName = "Coil Inventory", ApplicationNotes = "Coil inventory screen" },
-                new { ApplicationId = 3L, ApplicationName = "User Control", ApplicationNotes = "Manage users/groups" }
+                new { ApplicationId = 1L, ApplicationName = "Order Entry", ApplicationNotes = "Create/edit orders, parts picker, customers" },
+                new { ApplicationId = 2L, ApplicationName = "Inventory(Coil)", ApplicationNotes = "Coil inventory screen" },
+                new { ApplicationId = 3L, ApplicationName = "User Control", ApplicationNotes = "Manage users" },
+                new { ApplicationId = 4L, ApplicationName = "Part Number", ApplicationNotes = "Part master" },
+                new { ApplicationId = 5L, ApplicationName = "Inventory(Skid)", ApplicationNotes = "Sheet-skid inventory" },
+                new { ApplicationId = 6L, ApplicationName = "Warehouse", ApplicationNotes = "Warehouse business" },
+                new { ApplicationId = 7L, ApplicationName = "Shipment(Receiving)", ApplicationNotes = "Inbound coil receiving" },
+                new { ApplicationId = 8L, ApplicationName = "Quality Control", ApplicationNotes = "Coil-eval / dimensional QC" },
+                new { ApplicationId = 9L, ApplicationName = "Shift Control", ApplicationNotes = "Shift lifecycle" },
+                new { ApplicationId = 10L, ApplicationName = "Maintenance_logs", ApplicationNotes = "Maintenance logs" },
+                new { ApplicationId = 11L, ApplicationName = "Production Control", ApplicationNotes = "Jobs / production floor" },
+                new { ApplicationId = 12L, ApplicationName = "Part Number Info", ApplicationNotes = "Part info (read)" },
+                new { ApplicationId = 13L, ApplicationName = "User Group Control", ApplicationNotes = "Manage groups" },
+                new { ApplicationId = 14L, ApplicationName = "Scrap Handling", ApplicationNotes = "Scrap skids" },
+                new { ApplicationId = 15L, ApplicationName = "EDI", ApplicationNotes = "EDI transactions" },
+                new { ApplicationId = 16L, ApplicationName = "Downtime report", ApplicationNotes = "Downtime" },
+                new { ApplicationId = 17L, ApplicationName = "Maintenance", ApplicationNotes = "Maintenance main" },
+                new { ApplicationId = 18L, ApplicationName = "Maintenance_parts", ApplicationNotes = "Maintenance parts" },
+                new { ApplicationId = 19L, ApplicationName = "Maintenance_pm", ApplicationNotes = "Preventive maintenance" },
+                new { ApplicationId = 20L, ApplicationName = "Maintenance_pms", ApplicationNotes = "PM schedules" }
             });
         conn.Execute(
             "INSERT INTO security_group (user_group_id, group_name, group_notes) VALUES (:UserGroupId, :GroupName, :GroupNotes)",

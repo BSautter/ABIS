@@ -66,9 +66,11 @@ JS. Pages cross-link; sign in via OIDC or paste the dev key (`dev-local-key`).
 
 By domain (page → what it does):
 - **Commercial** — `order-entry`, `sales` (quote lifecycle), `quotation` (CirclePro
-  calculator), `customers`, `parts`, `accounting` (invoice coils).
+  calculator), `customers`, `parts`, `accounting` (invoice compute/save/print), `shape-editor`
+  (per-line/part blank geometry, dynamic per-shape form).
 - **Coils & inventory** — `coil-inventory`, `coil-ownership` (toll-transfer +
-  certificate), `receiving` (BOL + coil lines + mint), `skids`, `warehouse`.
+  certificate), `receiving` (BOL + coil lines + mint), `skids`, `warehouse`,
+  `documents` (server-rendered printable skid tags w/ barcode — the print layer).
 - **Shop floor** — `jobs`, `das-console` (w_da_sheet), `stacker` (line board + error
   log), `coil-eval` (QC sheet), `prod-folder`, `downtime`, `scan`, `shifts`.
 - **Quality** — `qa-results`, `quality` (recovery).
@@ -101,7 +103,7 @@ running API with `ABIS_BASE=… ABIS_KEY=… npm --prefix clientapp run e2e`.
 
 ```sh
 cd api
-dotnet test                                # 167 tests: repository + HTTP smoke
+dotnet test                                # 195 tests: repository + HTTP smoke
 ```
 
 The typed-client **e2e** suite (`clientapp/e2e/run.mjs`, **58 tests**) drives the
@@ -187,12 +189,18 @@ CI builds this image on every PR (see `.github/workflows/ci.yml`).
 | `GET /api/orders/{orderAbcNum}/items/{orderItemNum}` | One order line item (composite key) |
 | `POST /api/orders/{orderAbcNum}/items` | Add a line item to an order (line number assigned per order, requires `enduserPartNum`) → 201 |
 | `PUT /api/orders/{orderAbcNum}/items/{orderItemNum}` | Replace an order line item |
+| `GET /api/orders/{orderAbcNum}/items/{orderItemNum}/shape` | A line's blank geometry — the shape's dimensions (value + tolerances) and dies |
+| `PUT /api/orders/{orderAbcNum}/items/{orderItemNum}/shape` | Set a line's shape geometry (upsert; aligns `sheet_type`; 400 on unknown shape) |
 | `GET /api/customers?page&pageSize&name&sort&dir` | List customers (paged, sortable) |
 | `GET /api/customers/{customerId}` | One customer |
 | `POST /api/customers` | Create a customer (server-assigned id) → 201 |
 | `PUT /api/customers/{customerId}` | Replace a customer |
 | `GET /api/sheet-skids?page&pageSize&sort&dir` | List finished sheet skids (paged, sortable) |
 | `GET /api/sheet-skids/{sheetSkidNum}` | One sheet skid |
+| `GET /api/documents/sheet-skid/{sheetSkidNum}` | Printable sheet-skid **tag** (HTML + Code 39 barcode) |
+| `GET /api/documents/scrap-skid/{scrapSkidNum}` | Printable scrap-skid **tag** (HTML + Code 39 barcode) |
+| `GET /api/documents/coil-label/{coilAbcNum}` | Printable coil **ABC label** (HTML + Code 39 barcode) — the scanner tag |
+| `GET /api/documents/invoice/{abJobNum}?invoiceNum=` | Printable **invoice** (weight rollups + spec block); optional `invoiceNum` stamps the saved number/date |
 | `POST /api/sheet-skids` | Create a sheet skid (requires `abJobNum`) → 201 |
 | `GET /api/scrap-skids?page&pageSize&sort&dir` | List scrap skids (paged, sortable) |
 | `GET /api/scrap-skids/{scrapSkidNum}` | One scrap skid |
@@ -202,6 +210,8 @@ CI builds this image on every PR (see `.github/workflows/ci.yml`).
 | `GET /api/parts/{partNumId}` | One part-number record |
 | `POST /api/parts` | Create a part-number record (requires `customerId`) → 201 |
 | `PUT /api/parts/{partNumId}` | Replace a part-number record |
+| `GET /api/parts/{partNumId}/shape` | A part-master's blank geometry (shape dimensions; no dies) |
+| `PUT /api/parts/{partNumId}/shape` | Set a part-master's shape geometry (upsert; aligns `sheet_type`; 400 on unknown shape) |
 | `GET /api/dies?page&pageSize&status&sort&dir` | List dies/tooling (paged, filterable, sortable) |
 | `GET /api/dies/{dieId}` | One die |
 | `POST /api/dies` | Create a die/tooling record (requires `dieName`) → 201 |
@@ -249,6 +259,7 @@ CI builds this image on every PR (see `.github/workflows/ci.yml`).
 | `GET /api/test-results?page&pageSize&testType&position&from&to&sort&dir` | List posted mechanical test results (paged, filterable, sortable) |
 | `GET /api/temp-test-results?page&pageSize&testType&position&from&to&sort&dir` | List in-progress (working-set) test results (paged, filterable, sortable) |
 | `GET /api/lookups/alloys` | Distinct alloys (dropdown reference data) |
+| `GET /api/lookups/shape-types` | Blank shape catalog: each shape's dimension schema (names + tolerance flag) + die count (drives a dynamic per-shape form) |
 | `GET /api/lookups/lines` | Production lines (referenced by jobs, coils, downtime) |
 | `GET /api/lookups/groupdepartments` | Maintenance groups/departments (referenced by maintenance logs) |
 | `GET /api/lookups/downtime-causes` | Downtime causes/reasons |
@@ -259,7 +270,10 @@ CI builds this image on every PR (see `.github/workflows/ci.yml`).
 | `GET /api/lookups/customer-edi` | Customer EDI trading-partner configuration (table `customer_edi`) |
 | `GET /api/audit-log?page&pageSize&source&sort&dir` | List the action/audit log, newest first (sortable) |
 | `PATCH /api/sheet-skids/{n}/warehouse` | Warehouse update of a skid (location / ticket / status) |
-| `GET /api/accounting/rej-reband-coils?abJobNum=` | Rejected/rebanded coils that drive a job's invoice |
+| `GET /api/accounting/rej-reband-coils?abJobNum=` | Rejected/rebanded coils that drive a job's invoice, each with its exact billed weight |
+| `GET /api/accounting/invoices/{abJobNum}/computation` | Computed invoice: header + spec + all weight buckets (exact rejected-coil billing) |
+| `GET /api/accounting/invoices?abJobNum=` · `GET …/{abJobNum}/{invoiceNum}` | Saved invoice records for a job / one by number |
+| `POST /api/accounting/invoices` | Save an invoice (number + date + notes) → 201; 404 unknown job; 409 duplicate |
 | `GET /api/quality/{scrap-types,product-types,recovery-customers,customer-defects?customerId=}` | Recovery / customer-defect setup |
 | **Sales** | `GET /api/sales/quotes?search=`, `/quotes/{id}/{rev}`, `/contacts?customerId=`, `…/events`, `…/probability` (+ POST events/probability) — quote lifecycle, follow-ups, win-probability |
 | **Coil ownership** | `GET /api/coil-ownership/transfers?customerId=`, `…/{cert}/certificate`, `…/transferable-coils`; `POST /api/coil-ownership/transfers` (issues certificate, re-points coil owner) |

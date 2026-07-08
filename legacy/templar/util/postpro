@@ -1,0 +1,31 @@
+#! /usr/bin/sh
+#/templar/templar/util/postpro_2_XML.pl $1
+/templar/templar/util/856_3_db.pl $1
+/templar/templar/util/2_997.pl $1  
+/templar/templar/util/997_db.pl $1
+/templar/templar/util/856_2_db_alcan.pl $1
+# /templar/templar/util/856_2_db_aleris.pl $1 #Alex Gerlants. 02/26/2025. 2147_Commonwealth
+/templar/templar/util/997_from_ford.pl $1
+
+#Alex Gerlants. 09/26/2018. Print cert label. Added line below
+/templar/templar/util/863_3_db.pl $1
+
+# Alex Gerlants. 04/02/2019. Arconic EDI
+# Alex Gerlants. 08/21/2024. 2108_Arconic_856_for_Ken-Mac. Process 856 files without "N1*MA"
+/templar/templar/util/856_db_arconic.pl $1
+
+# Alex Gerlants. 02/28/2020. Constellium EDI
+/templar/templar/util/856_const.pl $1     # Constellium 856 inbound
+/templar/templar/util/863_const.pl $1     # Constellium 863 inbound
+/templar/templar/util/997_db_const.pl $1  # Constellium 997 inbound
+
+# Alex Gerlants. 08/21/2024. 2108_Arconic_856_for_Ken-Mac. Process 856 files with "N1*MA"
+/templar/templar/util/856_db_arconic_ken-mac.pl $1
+
+#/templar/templar/util/863_2_db.pl $1 &
+#/templar/templar/util/841_2_text.pl $1 &
+#/templar/templar/util/997_2_text.pl $1
+
+#Alex Gerlants. 02/26/2025. 2147_Commonwealth
+/templar/templar/util/856_db_commonwealth.pl $1
+

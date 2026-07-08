@@ -99,6 +99,97 @@ public sealed class RepositoryTests : IDisposable
         Assert.All(items.Items, i => Assert.Equal("3003", i.Alloy2));
     }
 
+    // ---- Per-item shape geometry ---------------------------------------
+
+    [Fact]
+    public async Task GetOrderItemShape_returns_the_shapes_dimensions_and_dies()
+    {
+        // Seed item 7001 is a RECTANGLE (48 x 24 with tolerances + two dies).
+        var shape = await _repo.GetOrderItemShapeAsync(9001, 7001, CancellationToken.None);
+        Assert.NotNull(shape);
+        Assert.Equal("RECTANGLE", shape!.ShapeType);
+        var length = shape.Dimensions.Single(d => d.Name == "length");
+        Assert.Equal(48.0m, length.Value);
+        Assert.Equal(0.03m, length.PlusTol);
+        Assert.Equal(24.0m, shape.Dimensions.Single(d => d.Name == "width").Value);
+        Assert.Equal(new[] { "DIE-RT-1", "DIE-RT-2" }, shape.Dies);
+
+        // Unknown order line -> null (endpoint -> 404).
+        Assert.Null(await _repo.GetOrderItemShapeAsync(9001, 9999, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task UpsertOrderItemShape_persists_and_reads_back_and_guards()
+    {
+        var body = new OrderItemShapeWrite
+        {
+            ShapeType = "CIRCLE",
+            Dimensions = { new ShapeDimension { Name = "diameter", Value = 40.0m, PlusTol = 0.1m, MinusTol = 0.1m } },
+            Dies = { "DIE-C-NEW" },
+        };
+        var saved = await _repo.UpsertOrderItemShapeAsync(9001, 7002, body, CancellationToken.None);
+        Assert.NotNull(saved);
+        Assert.Equal("CIRCLE", saved!.ShapeType);
+        Assert.Equal(40.0m, saved.Dimensions.Single(d => d.Name == "diameter").Value);
+        Assert.Equal("DIE-C-NEW", saved.Dies[0]);
+
+        // Re-read confirms it persisted.
+        var reread = await _repo.GetOrderItemShapeAsync(9001, 7002, CancellationToken.None);
+        Assert.Equal(40.0m, reread!.Dimensions.Single(d => d.Name == "diameter").Value);
+
+        // Unknown shape -> null (endpoint maps to 400); unknown line -> null (404).
+        Assert.Null(await _repo.UpsertOrderItemShapeAsync(9001, 7002, new OrderItemShapeWrite { ShapeType = "BOGUS" }, CancellationToken.None));
+        Assert.Null(await _repo.UpsertOrderItemShapeAsync(9001, 9999, new OrderItemShapeWrite { ShapeType = "CIRCLE" }, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task UpsertOrderItemShape_changing_shape_drops_the_old_shape_row()
+    {
+        // 7001 starts as RECTANGLE. Change it to CIRCLE, then back-check the RECTANGLE row is gone.
+        await _repo.UpsertOrderItemShapeAsync(9001, 7001,
+            new OrderItemShapeWrite { ShapeType = "CIRCLE", Dimensions = { new ShapeDimension { Name = "diameter", Value = 12.0m } } },
+            CancellationToken.None);
+        var shape = await _repo.GetOrderItemShapeAsync(9001, 7001, CancellationToken.None);
+        Assert.Equal("CIRCLE", shape!.ShapeType);
+        Assert.Equal(12.0m, shape.Dimensions.Single(d => d.Name == "diameter").Value);
+    }
+
+    [Fact]
+    public void GetShapeTypes_catalogs_every_shape_with_its_dimension_schema()
+    {
+        var types = _repo.GetShapeTypes();
+        Assert.Equal(10, types.Count);
+        var rect = types.Single(t => t.ShapeType == "RECTANGLE");
+        Assert.Contains(rect.Dimensions, d => d.Name == "length" && d.HasTolerance);
+        Assert.Equal(2, rect.DieCount);
+        // Parallelogram angles carry no tolerance.
+        var para = types.Single(t => t.ShapeType == "PARALLELOGRAM");
+        Assert.Contains(para.Dimensions, d => d.Name == "angle1" && !d.HasTolerance);
+    }
+
+    [Fact]
+    public async Task PartShape_reads_and_upserts_dimensions_without_dies()
+    {
+        // Seed part 6001 is a RECTANGLE (60 x 30).
+        var shape = await _repo.GetPartShapeAsync(6001, CancellationToken.None);
+        Assert.NotNull(shape);
+        Assert.Equal("RECTANGLE", shape!.ShapeType);
+        Assert.Equal(60.0m, shape.Dimensions.Single(d => d.Name == "length").Value);
+        Assert.Equal(30.0m, shape.Dimensions.Single(d => d.Name == "width").Value);
+
+        // Upsert a CIRCLE onto part 6002; re-read confirms persistence.
+        var saved = await _repo.UpsertPartShapeAsync(6002,
+            new PartShapeWrite { ShapeType = "CIRCLE", Dimensions = { new ShapeDimension { Name = "diameter", Value = 20.0m, PlusTol = 0.1m } } },
+            CancellationToken.None);
+        Assert.Equal("CIRCLE", saved!.ShapeType);
+        var reread = await _repo.GetPartShapeAsync(6002, CancellationToken.None);
+        Assert.Equal(20.0m, reread!.Dimensions.Single(d => d.Name == "diameter").Value);
+
+        // Unknown shape -> null (endpoint 400); unknown part -> null (404).
+        Assert.Null(await _repo.UpsertPartShapeAsync(6001, new PartShapeWrite { ShapeType = "NOPE" }, CancellationToken.None));
+        Assert.Null(await _repo.GetPartShapeAsync(999999, CancellationToken.None));
+    }
+
     [Fact]
     public async Task GetTestResults_filters_by_type_and_orders_desc()
     {
@@ -135,6 +226,107 @@ public sealed class RepositoryTests : IDisposable
         Assert.Equal("1001", scrap[0].ScrapAbJobNum);
     }
 
+    // ---- Accounting / invoice ------------------------------------------
+
+    [Fact]
+    public async Task GetInvoiceComputation_reports_exact_buckets_and_billed_reject()
+    {
+        // Job 1002: order 9001 (ACME / PO-AB-1001), item 7002 (CIRCLE Ø36.5), one rejected coil
+        // (5003) with a shift-end of 1500 and a prior pass of 40 → billed MAX(1500, 40) = 1500.
+        var inv = await _repo.GetInvoiceComputationAsync(1002, CancellationToken.None);
+        Assert.NotNull(inv);
+
+        // Header / spec block.
+        Assert.Equal("Cut-to-length 1", inv!.LineDesc);
+        Assert.Equal("ACME", inv.CustomerShortName);
+        Assert.Null(inv.Enduser);                       // order 9001 has no enduser_id
+        Assert.Equal("PO-AB-1001", inv.OrigCustomerPo);
+        Assert.Equal("CIRCLE", inv.SheetType);
+        Assert.Equal("5052", inv.Alloy);
+        Assert.Equal("H32", inv.Temper);
+        Assert.Equal(0.0625m, inv.Gauge);
+        Assert.Equal("36.5", inv.SpecWidthLength);      // CIRCLE → diameter
+        Assert.Equal("PN-5052-B", inv.EnduserPartNum);
+
+        // Weight buckets — all exact.
+        Assert.Equal(60m, inv.NetWt);                   // SUM(process_quantity)
+        Assert.Equal(0m, inv.UnappliedWt);
+        Assert.Equal(1500m, inv.RejectedWt);            // the MAX rule, NOT the naive process_end_wt sum
+        Assert.Equal(0m, inv.RebandedWt);
+        Assert.Equal(48m, inv.ProcessedWt);             // SUM(prod_item_net_wt)
+        Assert.Equal(6m, inv.ScrapWt);                  // SUM(return_item_net_wt)
+        Assert.Equal(0m, inv.TareWt);                   // no sheet skids on job 1002
+        Assert.Equal(0, inv.SkidCount);
+        Assert.Equal(1494m, inv.OffalWt);               // 48 + 6 + 1500 + 0 − 60
+        Assert.Equal(2490m, inv.OffalPct);              // 1494 / 60 × 100
+        Assert.Null(inv.ScrapStatus);                   // no scrap skids on job 1002
+
+        // The driving coil carries its billed weight and the resolved prior-process term.
+        var coil = Assert.Single(inv.Coils);
+        Assert.Equal(5003, coil.CoilAbcNum);
+        Assert.Equal(3, coil.ProcessCoilStatus);
+        Assert.Equal(40m, coil.MaxPriorProcessQuantity);
+        Assert.Equal(1500m, coil.BilledWeight);
+    }
+
+    [Fact]
+    public async Task GetInvoiceComputation_unknown_job_returns_null()
+    {
+        Assert.Null(await _repo.GetInvoiceComputationAsync(424242, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GetInvoiceCoils_carries_billed_weight()
+    {
+        // The rejected/rebanded list now sources the prior-process term, so BilledWeight is exact
+        // at the source (fixing the browser's naive process_end_wt sum).
+        var coils = await _repo.GetInvoiceCoilsAsync(1002, CancellationToken.None);
+        var c = Assert.Single(coils);
+        Assert.Equal(40m, c.MaxPriorProcessQuantity);
+        Assert.Equal(1500m, c.BilledWeight);
+    }
+
+    [Fact]
+    public async Task CreateInvoice_persists_trimmed_number_and_lists()
+    {
+        var res = await _repo.CreateInvoiceAsync(
+            new InvoiceWrite { AbJobNum = 1003, InvoiceNum = "  INV-1003-X  ", Notes = "n" }, CancellationToken.None);
+        Assert.Equal(InvoiceSaveOutcome.Created, res.Outcome);
+        Assert.Equal("INV-1003-X", res.Invoice!.InvoiceNum);   // trimmed
+
+        var one = await _repo.GetInvoiceAsync(1003, "INV-1003-X", CancellationToken.None);
+        Assert.NotNull(one);
+        Assert.Equal("n", one!.Notes);
+        Assert.Contains(await _repo.GetInvoicesAsync(1003, CancellationToken.None), i => i.InvoiceNum == "INV-1003-X");
+    }
+
+    [Fact]
+    public async Task CreateInvoice_duplicate_is_rejected()
+    {
+        // Job 1002 has a seeded INV-1002-A.
+        var res = await _repo.CreateInvoiceAsync(
+            new InvoiceWrite { AbJobNum = 1002, InvoiceNum = "INV-1002-A" }, CancellationToken.None);
+        Assert.Equal(InvoiceSaveOutcome.Duplicate, res.Outcome);
+    }
+
+    [Fact]
+    public async Task CreateInvoice_unknown_job_is_rejected()
+    {
+        var res = await _repo.CreateInvoiceAsync(
+            new InvoiceWrite { AbJobNum = 424242, InvoiceNum = "X" }, CancellationToken.None);
+        Assert.Equal(InvoiceSaveOutcome.JobNotFound, res.Outcome);
+    }
+
+    [Fact]
+    public async Task GetInvoices_returns_seeded_records()
+    {
+        var list = await _repo.GetInvoicesAsync(1002, CancellationToken.None);
+        var inv = Assert.Single(list);
+        Assert.Equal("INV-1002-A", inv.InvoiceNum);
+        Assert.Equal("Rejected-coil billing example", inv.Notes);
+        Assert.NotNull(inv.Timestamp);
+    }
+
     // ---- Writes ---------------------------------------------------------
 
     [Fact]
@@ -146,6 +338,43 @@ public sealed class RepositoryTests : IDisposable
         Assert.Equal(4003, created.CustomerId);   // MAX(4002) + 1
         var fetched = await _repo.GetCustomerAsync(4003, CancellationToken.None);
         Assert.Equal("GAMMA ALLOYS", fetched!.CustomerName);
+    }
+
+    [Fact]
+    public async Task Customer_master_widening_persists_flags_address_and_tax()
+    {
+        // Seeded EDI/behavior flags round-trip on read.
+        var acme = (await _repo.GetCustomerAsync(4001, CancellationToken.None))!;
+        Assert.Equal("Y", acme.EdiReq);
+        Assert.Equal("Y", acme.Create861AtReceiving);
+        Assert.Equal(1, acme.CustomerType);
+        Assert.Equal("PLT-01", acme.PlantCode);
+
+        // Create with the full field set (address + tax + flags).
+        var created = await _repo.CreateCustomerAsync(new CustomerWrite
+        {
+            CustomerName = "DELTA COIL", CustomerShortName = "DELTA", CustomerType = 3,
+            CustomerStreet = "1 Mill Rd", CustomerCity = "Gary", CustomerState = "IN", CustomerZip = "46402", CustomerCountry = "USA",
+            TaxId = "TX-99", TaxRate = 0.06m, CustomerDunsNumber = 123456789, BillToCity = "Gary",
+            EdiReq = "Y", DesadvReq = "Y", QrCodeReq = "N", CoilCertLabelReq = "Y", Create861AtReceiving = "Y", PlantCode = "PLT-DELTA",
+        }, CancellationToken.None);
+        var got = (await _repo.GetCustomerAsync(created.CustomerId, CancellationToken.None))!;
+        Assert.Equal("DELTA COIL", got.CustomerName);
+        Assert.Equal(3, got.CustomerType);
+        Assert.Equal("1 Mill Rd", got.CustomerStreet);
+        Assert.True(got.TaxRate is > 0.05m and < 0.07m);
+        Assert.Equal(123456789L, got.CustomerDunsNumber);
+        Assert.Equal("Y", got.CoilCertLabelReq);
+        Assert.Equal("PLT-DELTA", got.PlantCode);
+        Assert.NotNull(got.CustomerCreateDate);
+
+        // Update flips flags; maint date is set.
+        var updated = await _repo.UpdateCustomerAsync(4002,
+            new CustomerWrite { CustomerName = "BETA FAB", EdiReq = "Y", Create861AtReceiving = "Y", PlantCode = "PLT-02" },
+            CancellationToken.None);
+        Assert.Equal("Y", updated!.EdiReq);
+        Assert.Equal("PLT-02", updated.PlantCode);
+        Assert.NotNull(updated.CustomerMaintDate);
     }
 
     [Fact]
@@ -569,6 +798,44 @@ public sealed class RepositoryTests : IDisposable
         var scans = await _repo.GetJobScansAsync(1001, CancellationToken.None);
         Assert.Equal(2, scans.Count);
         Assert.All(scans, s => Assert.Equal(1001, s.AbJobNum));
+    }
+
+    [Fact]
+    public async Task GetStackerBoard_shows_only_active_jobs_excluding_done_and_cancelled()
+    {
+        // The board is a live line monitor: active work only (InProcess/New/OnHold),
+        // never Done(0)/Cancelled(3). Seeded job 1003 is Done, so it must be excluded;
+        // 1001 and 1002 are active. Guards the live-only unbounded ab_job-scan bug.
+        var board = await _repo.GetStackerBoardAsync(null, CancellationToken.None);
+        var jobs = board.Select(b => b.AbJobNum).ToList();
+        Assert.Contains(1001L, jobs);
+        Assert.Contains(1002L, jobs);
+        Assert.DoesNotContain(1003L, jobs);
+        Assert.All(board, b => Assert.True(b.JobStatus is 1 or 2 or 4, $"status {b.JobStatus} should be active"));
+
+        // The optional line filter still applies on top of the active filter.
+        var line110 = await _repo.GetStackerBoardAsync(110, CancellationToken.None);
+        Assert.All(line110, b => Assert.Equal(110L, b.LineNum));
+        Assert.Contains(1001L, line110.Select(b => b.AbJobNum));
+    }
+
+    [Fact]
+    public async Task GetTransferableCoils_excludes_zero_balance_coils()
+    {
+        // Transferable = has material left (net_wt_balance > 0). Coil 5004 is fully
+        // consumed (balance 0), so it must not appear; 5001-5003 still have balance.
+        // Guards the live-only whole-table-scan bug (unscoped returned ~150k coils).
+        var coils = await _repo.GetTransferableCoilsAsync(null, null, CancellationToken.None);
+        var ids = coils.Select(c => c.CoilAbcNum).ToList();
+        Assert.Contains(5001L, ids);
+        Assert.Contains(5002L, ids);
+        Assert.Contains(5003L, ids);
+        Assert.DoesNotContain(5004L, ids);   // balance 0 -> excluded
+        Assert.All(coils, c => Assert.True(c.NetWtBalance > 0));
+
+        // Customer scope still narrows within the transferable set.
+        var cust4001 = await _repo.GetTransferableCoilsAsync(4001, null, CancellationToken.None);
+        Assert.All(cust4001, c => Assert.Equal(4001L, c.CustomerId));
     }
 
     // ---- maintenance log -----------------------------------------------
