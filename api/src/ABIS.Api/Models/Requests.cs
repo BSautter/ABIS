@@ -3,6 +3,25 @@ namespace Abis.Api.Models;
 // Write request bodies. Kept separate from the read models so the public write
 // contract is explicit and never silently widened by adding read columns.
 
+/// <summary>Inputs to the piece-weight calculator (legacy w_order_entry suggested piece weight):
+/// blank area (by shape) × gauge × alloy density. Density comes from METAL_DENSITY keyed by
+/// <see cref="Alloy"/>, or an explicit <see cref="Density"/> override. Only the dimensions
+/// relevant to the shape are used (L×W for rectangle/parallelogram/chevron; (long+short)/2 × W
+/// for trapezoids; π·d²/4 for circle).</summary>
+public sealed class PieceWeightRequest
+{
+    public string? ShapeType { get; set; }
+    public decimal? Gauge { get; set; }
+    public string? Alloy { get; set; }
+    public decimal? Density { get; set; }
+    public decimal? Length { get; set; }
+    public decimal? Width { get; set; }
+    public decimal? LongLength { get; set; }
+    public decimal? ShortLength { get; set; }
+    public decimal? Diameter { get; set; }
+    public int? MaxSkidWt { get; set; }
+}
+
 /// <summary>Shared "at save" normalization surface for records that carry a coil
 /// edge-trim spec plus skid packaging (part-number master and order line item). Lets a
 /// single helper null out stale trim columns when trimming isn't required and suggest

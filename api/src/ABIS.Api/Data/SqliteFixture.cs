@@ -336,6 +336,10 @@ public static class SqliteFixture
             CREATE TABLE dt_instance_detail (
                 id INTEGER PRIMARY KEY, instance_num INTEGER, instance_item INTEGER, duration REAL, note TEXT);
 
+            -- Per-alloy density (lb/in^3) for the piece-weight calculator (legacy METAL_DENSITY).
+            CREATE TABLE metal_density (
+                metal_alloy TEXT PRIMARY KEY, metal_density REAL);
+
             CREATE TABLE customer_contact (
                 contact_id INTEGER PRIMARY KEY, customer_id INTEGER, first_name TEXT, last_name TEXT,
                 department TEXT, city TEXT, state TEXT, phone1 TEXT, email1 TEXT);
@@ -666,6 +670,17 @@ public static class SqliteFixture
                 new { Id = 2L, InstanceNum = 9103L, InstanceItem = (int?)1, Duration = (double?)300.0, Note = "coil change" },
                 // Cause 2 (jam): 9102 10min = 600s.
                 new { Id = 3L, InstanceNum = 9102L, InstanceItem = (int?)2, Duration = (double?)600.0, Note = "jam" }
+            });
+
+        conn.Execute(
+            "INSERT INTO metal_density (metal_alloy, metal_density) VALUES (:MetalAlloy, :MetalDensity)",
+            new[]
+            {
+                // Aluminium alloy densities (lb/in^3), plausible values; reconcile with live METAL_DENSITY.
+                new { MetalAlloy = "3003", MetalDensity = (double?)0.099 },
+                new { MetalAlloy = "5052", MetalDensity = (double?)0.097 },
+                new { MetalAlloy = "6061", MetalDensity = (double?)0.098 },
+                new { MetalAlloy = "9099", MetalDensity = (double?)0.100 }
             });
 
         conn.Execute("""

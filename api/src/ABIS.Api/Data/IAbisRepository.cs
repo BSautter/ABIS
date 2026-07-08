@@ -133,6 +133,7 @@ public interface IAbisRepository
     Task<IReadOnlyList<CustomerSkidInventoryRow>> GetCustomerSkidInventoryAsync(long customerId, int? status, CancellationToken ct);
     Task<IReadOnlyList<ShiftProductionRow>> GetShiftProductionAsync(DateTime from, DateTime to, long? lineNum, CancellationToken ct);
     Task<IReadOnlyList<DowntimeByCauseRow>> GetDowntimeByCauseAsync(DateTime from, DateTime to, long? lineNum, CancellationToken ct);
+    Task<decimal?> GetMetalDensityAsync(string alloy, CancellationToken ct);
     Task<PagedResult<ScrapSkid>> GetScrapSkidsAsync(int page, int pageSize, string? orderBy, CancellationToken ct);
     Task<ScrapSkid?> GetScrapSkidAsync(long scrapSkidNum, CancellationToken ct);
     Task<ScrapSkid> CreateScrapSkidAsync(ScrapSkidWrite body, CancellationToken ct);

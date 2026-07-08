@@ -1195,6 +1195,19 @@ public sealed class DowntimeByCauseRow
     public decimal DurationMinutes { get; set; }
 }
 
+/// <summary>Result of the piece-weight calculator: the resolved blank area (in²), the gauge and
+/// alloy density used, the computed piece weight (lb), and — when a max skid weight was given —
+/// how many pieces fit on a skid.</summary>
+public sealed class PieceWeightResult
+{
+    public string? ShapeType { get; set; }
+    public decimal Area { get; set; }
+    public decimal Gauge { get; set; }
+    public decimal Density { get; set; }
+    public decimal PieceWeight { get; set; }
+    public int? PiecesPerSkid { get; set; }
+}
+
 /// <summary>One downtime event (legacy w_report_production_downtime): the line, job, and
 /// window. <see cref="DurationMinutes"/> is computed from start/end (portable — no DB
 /// date math).</summary>

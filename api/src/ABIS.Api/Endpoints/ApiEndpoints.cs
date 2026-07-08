@@ -1389,6 +1389,38 @@ public static class ApiEndpoints
            .WithSummary("Downtime minutes by cause code (SUM dt_instance_detail.duration/60 via dt_instance), optionally one line. Defaults to the last 365 days when unbounded.")
            .Produces<IReadOnlyList<DowntimeByCauseRow>>();
 
+        // ---- Calculator (legacy w_order_entry suggested piece weight) ----
+        api.MapPost("/calculator/piece-weight", async (PieceWeightRequest body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var e = new Dictionary<string, string[]>();
+                if (string.IsNullOrWhiteSpace(body.ShapeType)) e["shapeType"] = ["shapeType is required."];
+                if (body.Gauge is not > 0m) e["gauge"] = ["gauge is required and must be greater than zero."];
+                // Density: an explicit value wins; otherwise look it up by alloy in METAL_DENSITY.
+                var density = body.Density;
+                if (density is null && !string.IsNullOrWhiteSpace(body.Alloy))
+                    density = await repo.GetMetalDensityAsync(body.Alloy!.Trim(), ct);
+                if (density is not > 0m)
+                    e["density"] = ["Provide a positive density, or an alloy present in METAL_DENSITY."];
+                decimal? area = null;
+                if (!string.IsNullOrWhiteSpace(body.ShapeType) && BlankArea(body.ShapeType!, body) is var (a, areaErr))
+                {
+                    area = a;
+                    if (areaErr is not null) e["dimensions"] = [areaErr];
+                }
+                if (e.Count > 0) return Results.ValidationProblem(e);
+
+                var pieceWeight = Math.Round(area!.Value * body.Gauge!.Value * density!.Value, 4);
+                int? piecesPerSkid = body.MaxSkidWt is > 0 && pieceWeight > 0m ? (int)(body.MaxSkidWt.Value / pieceWeight) : null;
+                return Results.Ok(new PieceWeightResult
+                {
+                    ShapeType = body.ShapeType, Area = Math.Round(area.Value, 4), Gauge = body.Gauge.Value,
+                    Density = density.Value, PieceWeight = pieceWeight, PiecesPerSkid = piecesPerSkid,
+                });
+            })
+           .WithName("CalculatePieceWeight").WithTags("Calculator")
+           .WithSummary("Piece-weight calculator: blank area (by shape) × gauge × alloy density (from METAL_DENSITY, or an explicit density). Optionally returns pieces per skid for a max skid weight.")
+           .Produces<PieceWeightResult>().ProducesValidationProblem();
+
         api.MapGet("/reporting/downtime", async (DateTime? from, DateTime? to, IAbisRepository repo, CancellationToken ct, long? lineNum = null) =>
             {
                 var (f, t) = ResolveReportWindow(from, to);
@@ -2021,6 +2053,31 @@ public static class ApiEndpoints
         var resolvedTo = to ?? DateTime.UtcNow;
         var resolvedFrom = from ?? resolvedTo.AddDays(-DefaultReportWindowDays);
         return (resolvedFrom, resolvedTo);
+    }
+
+    // Blank area (in²) for the piece-weight calculator, by shape (legacy w_order_entry:694-823):
+    // L×W for rectangle/parallelogram/chevron/fender; (long+short)/2 × W for the trapezoids;
+    // π·d²/4 for circle. Returns (area, null) or (null, error) when the shape's dims are missing.
+    private static (decimal? area, string? error) BlankArea(string shapeType, PieceWeightRequest r)
+    {
+        var s = new string(shapeType.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+        switch (s)
+        {
+            case "RECTANGLE": case "PARALLELOGRAM": case "CHEVRON": case "FENDER":
+                if (r.Length is not > 0m || r.Width is not > 0m)
+                    return (null, "length and width are required and must be greater than zero.");
+                return (r.Length.Value * r.Width.Value, null);
+            case "TRAPEZOID": case "LTRAPEZOID": case "LEFTTRAPEZOID": case "RTRAPEZOID": case "RIGHTTRAPEZOID":
+                if (r.LongLength is not > 0m || r.ShortLength is not > 0m || r.Width is not > 0m)
+                    return (null, "longLength, shortLength and width are required and must be greater than zero.");
+                return ((r.LongLength.Value + r.ShortLength.Value) / 2m * r.Width.Value, null);
+            case "CIRCLE":
+                if (r.Diameter is not > 0m)
+                    return (null, "diameter is required and must be greater than zero.");
+                return (3.1415927m * (r.Diameter.Value * r.Diameter.Value) / 4m, null);
+            default:
+                return (null, $"Unsupported shapeType '{shapeType}' (supported: rectangle, parallelogram, chevron, fender, trapezoid, left/right trapezoid, circle).");
+        }
     }
 
     // ---- Security enforcement (legacy f_security_door) ----

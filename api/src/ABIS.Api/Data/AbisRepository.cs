@@ -1227,6 +1227,16 @@ public sealed class AbisRepository : IAbisRepository
         return rows.AsList();
     }
 
+    // Alloy density (lb/in^3) for the piece-weight calculator (legacy METAL_DENSITY lookup).
+    // Null when the alloy isn't in the table.
+    public async Task<decimal?> GetMetalDensityAsync(string alloy, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.ExecuteScalarAsync<decimal?>(new CommandDefinition(
+            "SELECT metal_density FROM metal_density WHERE metal_alloy = :alloy",
+            new { alloy }, cancellationToken: ct));
+    }
+
     // Downtime events over a window (optionally one line), joined to the line description.
     public async Task<IReadOnlyList<ProductionDowntimeRow>> GetProductionDowntimeAsync(DateTime? from, DateTime? to, long? lineNum, CancellationToken ct)
     {

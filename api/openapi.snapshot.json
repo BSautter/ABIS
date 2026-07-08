@@ -289,6 +289,50 @@
         }
       }
     },
+    "/api/calculator/piece-weight": {
+      "post": {
+        "tags": [
+          "Calculator"
+        ],
+        "summary": "Piece-weight calculator: blank area (by shape) × gauge × alloy density (from METAL_DENSITY, or an explicit density). Optionally returns pieces per skid for a max skid weight.",
+        "operationId": "CalculatePieceWeight",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PieceWeightRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PieceWeightResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/carriers": {
       "get": {
         "tags": [
@@ -13348,6 +13392,91 @@
             "type": "integer",
             "format": "int32",
             "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PieceWeightRequest": {
+        "type": "object",
+        "properties": {
+          "shapeType": {
+            "type": "string",
+            "nullable": true
+          },
+          "gauge": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "alloy": {
+            "type": "string",
+            "nullable": true
+          },
+          "density": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "length": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "width": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "longLength": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "shortLength": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "diameter": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "maxSkidWt": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PieceWeightResult": {
+        "type": "object",
+        "properties": {
+          "shapeType": {
+            "type": "string",
+            "nullable": true
+          },
+          "area": {
+            "type": "number",
+            "format": "double"
+          },
+          "gauge": {
+            "type": "number",
+            "format": "double"
+          },
+          "density": {
+            "type": "number",
+            "format": "double"
+          },
+          "pieceWeight": {
+            "type": "number",
+            "format": "double"
+          },
+          "piecesPerSkid": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
           }
         },
         "additionalProperties": false

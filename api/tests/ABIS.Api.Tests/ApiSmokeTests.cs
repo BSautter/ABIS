@@ -308,6 +308,36 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Piece_weight_calculator_computes_by_shape_and_density()
+    {
+        // Rectangle 48x48 x gauge 0.1 x explicit density 0.1 = 2304 * 0.1 * 0.1 = 23.04 lb.
+        var resp = await _client.PostAsJsonAsync("/api/calculator/piece-weight",
+            new { shapeType = "RECTANGLE", length = 48.0, width = 48.0, gauge = 0.1, density = 0.1, maxSkidWt = 4608 });
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var r = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(2304m, r.GetProperty("area").GetDecimal());
+        Assert.Equal(23.04m, r.GetProperty("pieceWeight").GetDecimal());
+        Assert.Equal(200, r.GetProperty("piecesPerSkid").GetInt32());   // 4608 / 23.04
+
+        // Circle diameter 40: area = pi*40^2/4 = 1256.63708 -> *0.1*0.1 = 12.5664 lb.
+        var circle = await (await _client.PostAsJsonAsync("/api/calculator/piece-weight",
+            new { shapeType = "CIRCLE", diameter = 40.0, gauge = 0.1, density = 0.1 })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(12.5664m, circle.GetProperty("pieceWeight").GetDecimal());
+
+        // Alloy lookup (3003 is seeded in METAL_DENSITY) resolves a positive density + weight.
+        var byAlloy = await (await _client.PostAsJsonAsync("/api/calculator/piece-weight",
+            new { shapeType = "RECTANGLE", length = 10.0, width = 10.0, gauge = 0.1, alloy = "3003" })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(byAlloy.GetProperty("density").GetDecimal() > 0m);
+        Assert.True(byAlloy.GetProperty("pieceWeight").GetDecimal() > 0m);
+
+        // Unknown alloy (no density) -> 400; missing shape dims -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/calculator/piece-weight",
+            new { shapeType = "RECTANGLE", length = 10.0, width = 10.0, gauge = 0.1, alloy = "ZZZZ" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/calculator/piece-weight",
+            new { shapeType = "RECTANGLE", gauge = 0.1, density = 0.1 })).StatusCode);
+    }
+
+    [Fact]
     public async Task Sheet_skid_requires_job_with_an_order()
     {
         // A sheet skid whose job can't resolve an order is refused (w_wh_business:831) -> 400.
