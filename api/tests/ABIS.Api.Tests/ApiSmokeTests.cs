@@ -639,6 +639,18 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Dimension_check_absolute_bounds_enforced()
+    {
+        const string url = "/api/coil-eval/skids/3001/dimension-checks";
+        // Each measurement out of its legacy range -> 400 (no row created).
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { checkedBy = "qc", pcNumber = 100, gauge = 0.125, width = 48.0 })).StatusCode); // pc > 99
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { checkedBy = "qc", gauge = 2.0, width = 48.0 })).StatusCode);                   // gauge > 1
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { checkedBy = "qc", width = 3.0 })).StatusCode);                                 // width < 5
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { checkedBy = "qc", lengthOper = 1000.0 })).StatusCode);                         // length > 999
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { checkedBy = "qc", square = 10.0 })).StatusCode);                               // square > 9
+    }
+
+    [Fact]
     public async Task Shipped_skid_cannot_be_warehouse_patched()
     {
         // Seed skid 3003 is shipped (status 0 = GONE) -> warehouse update rejected (409).

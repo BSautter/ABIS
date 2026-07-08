@@ -1932,6 +1932,14 @@ public static class ApiEndpoints
         Positive(e, "lengthDrive", body.LengthDrive);
         Positive(e, "square", body.Square);
         Positive(e, "headDimension", body.HeadDimension);
+        // Absolute measurement bounds (legacy u_tabpg_skid_dim_check: pc 1..99, gauge 0..1,
+        // width 5..199, square 0..9, lengths 1..999). Upper bounds on top of the positive checks.
+        if (body.PcNumber is { } pc && (pc < 1 || pc > 99)) e["pcNumber"] = ["pcNumber must be between 1 and 99."];
+        if (body.Gauge is > 1m) e["gauge"] = ["gauge must be at most 1."];
+        if (body.Width is { } w && (w < 5m || w > 199m)) e["width"] = ["width must be between 5 and 199."];
+        if (body.Square is > 9m) e["square"] = ["square must be at most 9."];
+        if (body.LengthOper is > 999m) e["lengthOper"] = ["lengthOper must be at most 999."];
+        if (body.LengthDrive is > 999m) e["lengthDrive"] = ["lengthDrive must be at most 999."];
         return e.Count == 0 ? null : e;
     }
 
