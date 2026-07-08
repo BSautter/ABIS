@@ -626,10 +626,19 @@ public static class ApiEndpoints
            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
 
         api.MapPost("/receiving-bols/{receivingBolId:long}/mint", async (long receivingBolId, IAbisRepository repo, CancellationToken ct) =>
-                await repo.MintBolCoilsAsync(receivingBolId, ct) is { } r ? Results.Ok(r) : Results.NotFound())
+            {
+                var result = await repo.MintBolCoilsAsync(receivingBolId, ct);
+                if (result is null) return Results.NotFound();
+                // Legacy w_coil_receiving:367 — a BOL with no coil lines can't be minted
+                // ("please enter coil information before saving a BOL"); don't silently return Minted=0.
+                if (result.Coils.Count == 0)
+                    return Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Empty BOL",
+                        detail: $"Receiving BOL {receivingBolId} has no coil lines to mint.");
+                return Results.Ok(result);
+            })
            .WithName("MintBolCoils").WithTags("Receiving")
-           .WithSummary("Mint coil inventory for the BOL's lines (legacy w_coil_receiving save) — creates COIL rows (status 2/new, 11/on-hold if damaged) and links them. Idempotent.")
-           .Produces<MintResult>().Produces(StatusCodes.Status404NotFound);
+           .WithSummary("Mint coil inventory for the BOL's lines (legacy w_coil_receiving save) — creates COIL rows (status 2/new, 11/on-hold if damaged) and links them. Idempotent; 400 if the BOL has no coils.")
+           .Produces<MintResult>().Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status404NotFound);
 
         api.MapPost("/receiving-bols/{receivingBolId:long}/generate-861", async (long receivingBolId, IAbisRepository repo, CancellationToken ct) =>
             {

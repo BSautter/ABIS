@@ -630,6 +630,15 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Minting_an_empty_bol_is_rejected()
+    {
+        // Seed BOL 5502 has no coil lines -> mint is a 400, not a silent Minted=0.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsync("/api/receiving-bols/5502/mint", null)).StatusCode);
+        // A non-existent BOL -> 404.
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync("/api/receiving-bols/999999/mint", null)).StatusCode);
+    }
+
+    [Fact]
     public async Task Shipped_skid_cannot_be_warehouse_patched()
     {
         // Seed skid 3003 is shipped (status 0 = GONE) -> warehouse update rejected (409).
