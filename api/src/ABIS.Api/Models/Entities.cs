@@ -1222,6 +1222,32 @@ public sealed class RecoveryJobCoil
     public long? ProductTypeId { get; set; }
 }
 
+/// <summary>One row of the daily recovery report (legacy d_report_recovery_daily_main): a coil's
+/// disposition on a job. The weights come from the live PL/SQL <c>f_get_coil_*</c> functions on
+/// Oracle (ported to equivalent queries on the SQLite fixture): <see cref="ShipWt"/> = finished
+/// weight that shipped, <see cref="ScrapWt"/> = booked scrap, <see cref="RejectedWt"/> = rejected
+/// process weight. <see cref="Yield"/> = ship ÷ incoming coil weight (computed here — the legacy
+/// report has no yield function).</summary>
+public sealed class RecoveryReportRow
+{
+    public long CoilAbcNum { get; set; }
+    public long AbJobNum { get; set; }
+    public string? CoilOrgNum { get; set; }
+    public string? LotNum { get; set; }
+    public string? Alloy { get; set; }
+    public decimal CoilWt { get; set; }
+    public decimal ShipWt { get; set; }
+    public decimal ScrapWt { get; set; }
+    public decimal RejectedWt { get; set; }
+    public decimal Yield { get; set; }
+    public int? CoilRejected { get; set; }
+    public int? CoilRebanded { get; set; }
+    public int? SpecialAttention { get; set; }
+    public int? SpecialHandling { get; set; }
+    public long? ProductTypeId { get; set; }
+    public string? ProductType { get; set; }
+}
+
 /// <summary>One downtime event (legacy w_report_production_downtime): the line, job, and
 /// window. <see cref="DurationMinutes"/> is computed from start/end (portable — no DB
 /// date math).</summary>

@@ -92,6 +92,9 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS security_group_application;
             DROP TABLE IF EXISTS sheet_skid_dimension_check;
             DROP TABLE IF EXISTS quality_coil_eval_scrap;
+            DROP TABLE IF EXISTS sheet_skid_detail;
+            DROP TABLE IF EXISTS recovery_scrap_worksheet;
+            DROP TABLE IF EXISTS quality_scrap_worksheet;
             DROP TABLE IF EXISTS job_efolder_notes;
             DROP TABLE IF EXISTS error_evt;
             DROP TABLE IF EXISTS error_type;
@@ -401,6 +404,21 @@ public static class SqliteFixture
                 special_attention INTEGER, special_handling INTEGER,
                 coil_rejected INTEGER, coil_rebanded INTEGER, product_type_id INTEGER,
                 PRIMARY KEY (coil_abc_num, ab_job_num));
+            -- Links a production sheet item to the skid it shipped on (legacy sheet_skid_detail).
+            -- The recovery ship-weight = SUM(prod_item_net_wt) over items whose skid is in a
+            -- shipping status (f_get_coil_ship_wt joins psi -> ssd -> sheet_skid).
+            CREATE TABLE sheet_skid_detail (
+                sheet_skid_num INTEGER, prod_item_num INTEGER,
+                PRIMARY KEY (sheet_skid_num, prod_item_num));
+            -- Per (coil, job) scrap the recovery clerk booked (legacy recovery_scrap_worksheet); the
+            -- recovery scrap-weight = SUM(scrap_item_net_wt). Falls back to quality_scrap_worksheet
+            -- (the quality clerk's booking) when the recovery worksheet has none.
+            CREATE TABLE recovery_scrap_worksheet (
+                coil_abc_num INTEGER, ab_job_num INTEGER, scrap_item_net_wt REAL,
+                scrap_type_id INTEGER);
+            CREATE TABLE quality_scrap_worksheet (
+                coil_abc_num INTEGER, ab_job_num INTEGER, scrap_item_net_wt REAL,
+                scrap_type_id INTEGER);
             CREATE TABLE cust_scrap_type_needed (
                 customer_id INTEGER, scrap_type_id INTEGER,
                 abc_or_mill TEXT, autoparts TEXT, non_autoparts TEXT,
@@ -817,7 +835,42 @@ public static class SqliteFixture
             new[]
             {
                 new { ProdItemNum = 6001L, CoilAbcNum = (long?)5001L, AbJobNum = (long?)1001L, ProdItemStatus = (int?)1, ProdItemPieces = (int?)95, ProdItemNetWt = 190m, ProdItemDate = (DateTime?)d.AddHours(4) },
-                new { ProdItemNum = 6003L, CoilAbcNum = (long?)5003L, AbJobNum = (long?)1002L, ProdItemStatus = (int?)1, ProdItemPieces = (int?)4,  ProdItemNetWt = 48m,  ProdItemDate = (DateTime?)d.AddDays(2) }
+                new { ProdItemNum = 6003L, CoilAbcNum = (long?)5003L, AbJobNum = (long?)1002L, ProdItemStatus = (int?)1, ProdItemPieces = (int?)4,  ProdItemNetWt = 48m,  ProdItemDate = (DateTime?)d.AddDays(2) },
+                // Coil 5003 shipped on the Done job 1003 — sits on shipped skid 3003 (status 0), so it
+                // drives the recovery ship-weight for that (coil, job).
+                new { ProdItemNum = 6004L, CoilAbcNum = (long?)5003L, AbJobNum = (long?)1003L, ProdItemStatus = (int?)1, ProdItemPieces = (int?)80, ProdItemNetWt = 2000m, ProdItemDate = (DateTime?)d.AddDays(3) }
+            });
+
+        // Which skid each production item shipped on (legacy sheet_skid_detail). Only item 6004 sits
+        // on a shipping-status skid (3003 = Gone), so recovery ship-weight is non-zero for job 1003
+        // and zero for the not-yet-shipped job-1001 items (skid 3001 is status 1).
+        conn.Execute("""
+            INSERT INTO sheet_skid_detail (sheet_skid_num, prod_item_num) VALUES (:SheetSkidNum, :ProdItemNum)
+            """,
+            new[]
+            {
+                new { SheetSkidNum = 3001L, ProdItemNum = 6001L },  // job 1001, skid status 1 -> not shipped
+                new { SheetSkidNum = 3003L, ProdItemNum = 6004L }   // job 1003, skid status 0 -> shipped
+            });
+
+        // Recovery / quality scrap worksheets (legacy recovery_scrap_worksheet + quality fallback).
+        conn.Execute("""
+            INSERT INTO recovery_scrap_worksheet (coil_abc_num, ab_job_num, scrap_item_net_wt, scrap_type_id)
+            VALUES (:CoilAbcNum, :AbJobNum, :ScrapItemNetWt, :ScrapTypeId)
+            """,
+            new[]
+            {
+                // Coil 5003 on the rejected job 1002 — booked recovery scrap.
+                new { CoilAbcNum = 5003L, AbJobNum = 1002L, ScrapItemNetWt = 250m, ScrapTypeId = (int?)1 }
+            });
+        conn.Execute("""
+            INSERT INTO quality_scrap_worksheet (coil_abc_num, ab_job_num, scrap_item_net_wt, scrap_type_id)
+            VALUES (:CoilAbcNum, :AbJobNum, :ScrapItemNetWt, :ScrapTypeId)
+            """,
+            new[]
+            {
+                // Coil 5001 job 1001 has NO recovery-worksheet scrap -> scrap-weight falls back to this.
+                new { CoilAbcNum = 5001L, AbJobNum = 1001L, ScrapItemNetWt = 120m, ScrapTypeId = (int?)2 }
             });
 
         // Returned scrap → the invoice "total scrap weight" bucket (SUM per job).
@@ -1001,7 +1054,10 @@ public static class SqliteFixture
                 // Coil 5001 on job 1001: rebanded + flagged for special attention (Automotive).
                 new { CoilAbcNum = 5001L, AbJobNum = 1001L, SpecialAttention = (int?)1, SpecialHandling = (int?)0, CoilRejected = (int?)0, CoilRebanded = (int?)1, ProductTypeId = (long?)1L },
                 // Coil 5003 on job 1002: rejected (matches its process_coil status 3), Commercial.
-                new { CoilAbcNum = 5003L, AbJobNum = 1002L, SpecialAttention = (int?)0, SpecialHandling = (int?)0, CoilRejected = (int?)1, CoilRebanded = (int?)0, ProductTypeId = (long?)2L }
+                new { CoilAbcNum = 5003L, AbJobNum = 1002L, SpecialAttention = (int?)0, SpecialHandling = (int?)0, CoilRejected = (int?)1, CoilRebanded = (int?)0, ProductTypeId = (long?)2L },
+                // Coil 5003 also ran on the Done job 1003 — clean (nothing flagged), Automotive. Drives
+                // the recovery report's ship-weight path (its output shipped on skid 3003).
+                new { CoilAbcNum = 5003L, AbJobNum = 1003L, SpecialAttention = (int?)0, SpecialHandling = (int?)0, CoilRejected = (int?)0, CoilRebanded = (int?)0, ProductTypeId = (long?)1L }
             });
         conn.Execute(
             "INSERT INTO cust_scrap_type_needed (customer_id, scrap_type_id, abc_or_mill, autoparts, non_autoparts) VALUES (:CustomerId, :ScrapTypeId, :AbcOrMill, :Autoparts, :NonAutoparts)",

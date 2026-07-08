@@ -1299,6 +1299,80 @@ public sealed class AbisRepository : IAbisRepository
         return rows.First(r => r.CoilAbcNum == coilAbcNum);
     }
 
+    // The daily recovery report (legacy d_report_recovery_daily_main): each recovery coil on a job
+    // with its ship / scrap / rejected weights and yield. The weights are the ~production of a web
+    // of tables the legacy PL/SQL walks — on Oracle we CALL those functions directly (f_get_coil_*),
+    // capturing every nuance (coil_track reject fallbacks, the exact skid-status set); on the SQLite
+    // fixture we run the ported equivalents below so CI can exercise the same shape. Yield is
+    // computed here (ship / incoming coil weight) — the legacy report has no yield function.
+    public async Task<IReadOnlyList<RecoveryReportRow>> GetRecoveryReportAsync(long abJobNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        string shipExpr, scrapExpr, rejExpr;
+        if (_factory.Dialect == SqlDialect.Oracle)
+        {
+            // Live PL/SQL — the authoritative weight math (see docs/data-model/oracle_ddl.sql).
+            shipExpr  = "f_get_coil_ship_wt(rjc.coil_abc_num, rjc.ab_job_num)";
+            scrapExpr = "f_get_coil_job_scrap_wt(rjc.coil_abc_num, rjc.ab_job_num)";
+            rejExpr   = "f_get_coil_job_rejected_wt(rjc.coil_abc_num, rjc.ab_job_num)";
+        }
+        else
+        {
+            // Ported equivalents (mirror the f_get_coil_* bodies over the modeled fixture tables).
+            // ship = finished weight on skids in a shipping status (0 Gone, 2 Ready, 8 Warehouse
+            // Ready, 13 Partial Ready).
+            shipExpr =
+                """
+                COALESCE((SELECT SUM(psi.prod_item_net_wt)
+                          FROM production_sheet_item psi
+                          JOIN sheet_skid_detail ssd ON ssd.prod_item_num = psi.prod_item_num
+                          JOIN sheet_skid ss ON ss.sheet_skid_num = ssd.sheet_skid_num
+                          WHERE psi.coil_abc_num = rjc.coil_abc_num AND psi.ab_job_num = rjc.ab_job_num
+                            AND ss.skid_sheet_status IN (0, 2, 8, 13)), 0)
+                """;
+            // scrap = recovery-worksheet scrap; when there is none, the quality worksheet's.
+            scrapExpr =
+                """
+                COALESCE(NULLIF((SELECT SUM(scrap_item_net_wt) FROM recovery_scrap_worksheet
+                                 WHERE coil_abc_num = rjc.coil_abc_num AND ab_job_num = rjc.ab_job_num), 0),
+                         (SELECT SUM(scrap_item_net_wt) FROM quality_scrap_worksheet
+                          WHERE coil_abc_num = rjc.coil_abc_num AND ab_job_num = rjc.ab_job_num),
+                         0)
+                """;
+            // rejected = the rejected process pass's end weight (status 3). The Oracle function also
+            // falls back to MIN(coil_track.coil_cur_netwt) — that path is Oracle-only.
+            rejExpr =
+                """
+                COALESCE((SELECT process_end_wt FROM process_coil
+                          WHERE coil_abc_num = rjc.coil_abc_num AND ab_job_num = rjc.ab_job_num
+                            AND process_coil_status = 3), 0)
+                """;
+        }
+
+        var sql =
+            $"""
+            SELECT rjc.coil_abc_num AS CoilAbcNum, rjc.ab_job_num AS AbJobNum,
+                   c.coil_org_num AS CoilOrgNum, c.lot_num AS LotNum, c.coil_alloy2 AS Alloy,
+                   c.net_wt AS CoilWt,
+                   {shipExpr} AS ShipWt,
+                   {scrapExpr} AS ScrapWt,
+                   {rejExpr} AS RejectedWt,
+                   rjc.coil_rejected AS CoilRejected, rjc.coil_rebanded AS CoilRebanded,
+                   rjc.special_attention AS SpecialAttention, rjc.special_handling AS SpecialHandling,
+                   rjc.product_type_id AS ProductTypeId, pt.product_type AS ProductType
+            FROM recovery_job_coil rjc
+            JOIN coil c ON c.coil_abc_num = rjc.coil_abc_num
+            LEFT JOIN product_type pt ON pt.product_type_id = rjc.product_type_id
+            WHERE rjc.ab_job_num = :job
+            ORDER BY rjc.coil_abc_num
+            """;
+        var rows = (await conn.QueryAsync<RecoveryReportRow>(new CommandDefinition(
+            sql, new { job = abJobNum }, cancellationToken: ct))).AsList();
+        foreach (var r in rows)
+            r.Yield = r.CoilWt > 0 ? Math.Round(r.ShipWt / r.CoilWt, 4) : 0m;
+        return rows;
+    }
+
     // Downtime events over a window (optionally one line), joined to the line description.
     public async Task<IReadOnlyList<ProductionDowntimeRow>> GetProductionDowntimeAsync(DateTime? from, DateTime? to, long? lineNum, CancellationToken ct)
     {

@@ -367,6 +367,41 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Recovery_report_computes_ship_scrap_rejected_and_yield()
+    {
+        static async Task<JsonElement> CoilRow(HttpClient c, long job, long coil)
+        {
+            var list = await c.GetFromJsonAsync<JsonElement>($"/api/recovery/jobs/{job}/report");
+            foreach (var e in list.EnumerateArray())
+                if (e.GetProperty("coilAbcNum").GetInt64() == coil) return e;
+            throw new Xunit.Sdk.XunitException($"coil {coil} not in job {job} recovery report");
+        }
+
+        // Job 1002 / coil 5003: rejected process pass (status 3) -> rejectedWt from process_end_wt;
+        // recovery-worksheet scrap booked; nothing shipped (its only skid is voided) -> shipWt 0.
+        var r1002 = await CoilRow(_client, 1002, 5003);
+        Assert.Equal(9000m, r1002.GetProperty("coilWt").GetDecimal());
+        Assert.Equal(1500m, r1002.GetProperty("rejectedWt").GetDecimal());
+        Assert.Equal(250m, r1002.GetProperty("scrapWt").GetDecimal());
+        Assert.Equal(0m, r1002.GetProperty("shipWt").GetDecimal());
+        Assert.Equal(0m, r1002.GetProperty("yield").GetDecimal());
+        Assert.Equal("Commercial", r1002.GetProperty("productType").GetString());
+
+        // Job 1001 / coil 5001: no recovery-worksheet scrap -> scrapWt falls back to the quality
+        // worksheet (120); not shipped -> shipWt 0; not rejected -> rejectedWt 0.
+        var r1001 = await CoilRow(_client, 1001, 5001);
+        Assert.Equal(120m, r1001.GetProperty("scrapWt").GetDecimal());
+        Assert.Equal(0m, r1001.GetProperty("shipWt").GetDecimal());
+        Assert.Equal(0m, r1001.GetProperty("rejectedWt").GetDecimal());
+
+        // Job 1003 / coil 5003: output shipped on skid 3003 (status 0) -> shipWt 2000;
+        // yield = ship / incoming = 2000 / 9000 = 0.2222.
+        var r1003 = await CoilRow(_client, 1003, 5003);
+        Assert.Equal(2000m, r1003.GetProperty("shipWt").GetDecimal());
+        Assert.Equal(0.2222m, r1003.GetProperty("yield").GetDecimal());
+    }
+
+    [Fact]
     public async Task Sheet_skid_requires_job_with_an_order()
     {
         // A sheet skid whose job can't resolve an order is refused (w_wh_business:831) -> 400.

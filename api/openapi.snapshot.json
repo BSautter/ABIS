@@ -5333,6 +5333,44 @@
         }
       }
     },
+    "/api/recovery/jobs/{abJobNum}/report": {
+      "get": {
+        "tags": [
+          "Recovery"
+        ],
+        "summary": "Daily recovery report for a job: each recovery coil's ship / scrap / rejected weights and yield. Weights come from the live f_get_coil_* functions on Oracle.",
+        "operationId": "GetRecoveryReport",
+        "parameters": [
+          {
+            "name": "abJobNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RecoveryReportRow"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/reporting/production-summary": {
       "get": {
         "tags": [
@@ -14389,6 +14427,81 @@
           "productTypeId": {
             "type": "integer",
             "format": "int64",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "RecoveryReportRow": {
+        "type": "object",
+        "properties": {
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "coilOrgNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "lotNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "alloy": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilWt": {
+            "type": "number",
+            "format": "double"
+          },
+          "shipWt": {
+            "type": "number",
+            "format": "double"
+          },
+          "scrapWt": {
+            "type": "number",
+            "format": "double"
+          },
+          "rejectedWt": {
+            "type": "number",
+            "format": "double"
+          },
+          "yield": {
+            "type": "number",
+            "format": "double"
+          },
+          "coilRejected": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "coilRebanded": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "specialAttention": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "specialHandling": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "productTypeId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "productType": {
+            "type": "string",
             "nullable": true
           }
         },

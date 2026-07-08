@@ -1450,6 +1450,12 @@ public static class ApiEndpoints
            .WithSummary("Set a coil's recovery-worksheet flags for a job (upsert). The coil must have been processed on the job.")
            .Produces<RecoveryJobCoil>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
 
+        api.MapGet("/recovery/jobs/{abJobNum:long}/report", async (long abJobNum, IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetRecoveryReportAsync(abJobNum, ct)))
+           .WithName("GetRecoveryReport").WithTags("Recovery")
+           .WithSummary("Daily recovery report for a job: each recovery coil's ship / scrap / rejected weights and yield. Weights come from the live f_get_coil_* functions on Oracle.")
+           .Produces<IReadOnlyList<RecoveryReportRow>>();
+
         api.MapGet("/reporting/downtime", async (DateTime? from, DateTime? to, IAbisRepository repo, CancellationToken ct, long? lineNum = null) =>
             {
                 var (f, t) = ResolveReportWindow(from, to);
