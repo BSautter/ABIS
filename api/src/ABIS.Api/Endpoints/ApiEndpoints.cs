@@ -1345,39 +1345,57 @@ public static class ApiEndpoints
         // ---- Reporting (daily production) -------------------------------
         // Per-line production roll-up over an optional date window (by job start).
         api.MapGet("/reporting/production-summary", async (DateTime? from, DateTime? to, IAbisRepository repo, CancellationToken ct) =>
-                Results.Ok(await repo.GetProductionSummaryAsync(from, to, ct)))
+            {
+                var (f, t) = ResolveReportWindow(from, to);
+                return Results.Ok(await repo.GetProductionSummaryAsync(f, t, ct));
+            })
            .WithName("GetProductionSummary").WithTags("Reporting")
-           .WithSummary("Per-line production summary (job count, avg yield, processed weight) over an optional date range.")
+           .WithSummary("Per-line production summary (job count, avg yield, processed weight). Defaults to the last 365 days when unbounded.")
            .Produces<IReadOnlyList<ProductionSummaryRow>>();
 
         api.MapGet("/reporting/line-efficiency", async (DateTime? from, DateTime? to, IAbisRepository repo, CancellationToken ct) =>
-                Results.Ok(await repo.GetLineEfficiencyAsync(from, to, ct)))
+            {
+                var (f, t) = ResolveReportWindow(from, to);
+                return Results.Ok(await repo.GetLineEfficiencyAsync(f, t, ct));
+            })
            .WithName("GetLineEfficiency").WithTags("Reporting")
-           .WithSummary("Per-line efficiency: jobs, processed weight, avg yield, and downtime (events + minutes).")
+           .WithSummary("Per-line efficiency: jobs, processed weight, avg yield, and downtime. Defaults to the last 365 days when unbounded.")
            .Produces<IReadOnlyList<LineEfficiencyRow>>();
 
         api.MapGet("/reporting/monthly-production", async (DateTime? from, DateTime? to, IAbisRepository repo, CancellationToken ct) =>
-                Results.Ok(await repo.GetMonthlyProductionAsync(from, to, ct)))
+            {
+                var (f, t) = ResolveReportWindow(from, to);
+                return Results.Ok(await repo.GetMonthlyProductionAsync(f, t, ct));
+            })
            .WithName("GetMonthlyProduction").WithTags("Reporting")
-           .WithSummary("Production rolled up by month (YYYY-MM): jobs touched + processed weight.")
+           .WithSummary("Production rolled up by month (YYYY-MM): jobs touched + processed weight. Defaults to the last 365 days when unbounded.")
            .Produces<IReadOnlyList<MonthlyProductionRow>>();
 
         api.MapGet("/reporting/downtime", async (DateTime? from, DateTime? to, IAbisRepository repo, CancellationToken ct, long? lineNum = null) =>
-                Results.Ok(await repo.GetProductionDowntimeAsync(from, to, lineNum, ct)))
+            {
+                var (f, t) = ResolveReportWindow(from, to);
+                return Results.Ok(await repo.GetProductionDowntimeAsync(f, t, lineNum, ct));
+            })
            .WithName("GetProductionDowntime").WithTags("Reporting")
-           .WithSummary("Downtime events over a window (optionally one line), with computed duration minutes.")
+           .WithSummary("Downtime events (optionally one line), with duration minutes. Defaults to the last 365 days when unbounded.")
            .Produces<IReadOnlyList<ProductionDowntimeRow>>();
 
         api.MapGet("/reporting/on-time", async (DateTime? from, DateTime? to, IAbisRepository repo, CancellationToken ct) =>
-                Results.Ok(await repo.GetOnTimeDeliveryAsync(from, to, ct)))
+            {
+                var (f, t) = ResolveReportWindow(from, to);
+                return Results.Ok(await repo.GetOnTimeDeliveryAsync(f, t, ct));
+            })
            .WithName("GetOnTimeDelivery").WithTags("Reporting")
-           .WithSummary("Per-line on-time delivery (jobs finished on/before due date) over an optional window.")
+           .WithSummary("Per-line on-time delivery (jobs finished on/before due date). Defaults to the last 365 days when unbounded.")
            .Produces<IReadOnlyList<OnTimeRow>>();
 
         api.MapGet("/reporting/customer-shipments", async (DateTime? from, DateTime? to, IAbisRepository repo, CancellationToken ct) =>
-                Results.Ok(await repo.GetCustomerShipmentsAsync(from, to, ct)))
+            {
+                var (f, t) = ResolveReportWindow(from, to);
+                return Results.Ok(await repo.GetCustomerShipmentsAsync(f, t, ct));
+            })
            .WithName("GetCustomerShipments").WithTags("Reporting")
-           .WithSummary("Per-customer shipment roll-up (total / shipped / open + last ship date).")
+           .WithSummary("Per-customer shipment roll-up (total / shipped / open + last ship date). Defaults to the last 365 days when unbounded.")
            .Produces<IReadOnlyList<CustomerShipmentRow>>();
 
         api.MapGet("/reporting/open-shipments", async (IAbisRepository repo, CancellationToken ct) =>
@@ -1423,9 +1441,12 @@ public static class ApiEndpoints
            .Produces<IReadOnlyList<UnmatchedCoilRow>>();
 
         api.MapGet("/reporting/qa-mechanical", async (DateTime? from, DateTime? to, IAbisRepository repo, CancellationToken ct) =>
-                Results.Ok(await repo.GetQaMechanicalAsync(from, to, ct)))
+            {
+                var (f, t) = ResolveReportWindow(from, to);
+                return Results.Ok(await repo.GetQaMechanicalAsync(f, t, ct));
+            })
            .WithName("GetQaMechanical").WithTags("Reporting")
-           .WithSummary("Mechanical test results by test type: count + average YTS/UTS/elongation.")
+           .WithSummary("Mechanical test results by test type: count + average YTS/UTS/elongation. Defaults to the last 365 days when unbounded.")
            .Produces<IReadOnlyList<QaMechanicalRow>>();
 
         api.MapGet("/reporting/scrap-summary", async (IAbisRepository repo, CancellationToken ct) =>
@@ -1970,6 +1991,18 @@ public static class ApiEndpoints
         if (string.Equals(body.TrimmedWidthOverridden?.Trim(), "Y", StringComparison.OrdinalIgnoreCase)
             && ResolveLogin(ctx) is { } login)
             body.TrimmedWidthOverrideUser = login;
+    }
+
+    // Default report window: the time-series reports filter by date, but their from/to are
+    // optional, so an unbounded call scans the whole history on Oracle (harmless on SQLite —
+    // see docs/REPORTING_PERFORMANCE.md). Cap an unbounded (or half-bounded) call to the last
+    // year so it always filters; an explicit bound always wins, only the missing side defaults.
+    private const int DefaultReportWindowDays = 365;
+    private static (DateTime from, DateTime to) ResolveReportWindow(DateTime? from, DateTime? to)
+    {
+        var resolvedTo = to ?? DateTime.UtcNow;
+        var resolvedFrom = from ?? resolvedTo.AddDays(-DefaultReportWindowDays);
+        return (resolvedFrom, resolvedTo);
     }
 
     // ---- Security enforcement (legacy f_security_door) ----

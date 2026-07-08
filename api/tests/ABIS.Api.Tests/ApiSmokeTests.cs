@@ -236,6 +236,27 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Reports_apply_a_bounded_date_window()
+    {
+        static int TotalJobs(JsonElement arr)
+        {
+            var n = 0;
+            foreach (var e in arr.EnumerateArray()) n += e.GetProperty("jobCount").GetInt32();
+            return n;
+        }
+        // Explicit window covering the seed (jobs started 2026-01) -> jobs counted.
+        var inWindow = await _client.GetFromJsonAsync<JsonElement>(
+            "/api/reporting/production-summary?from=2026-01-01T00:00:00&to=2027-01-01T00:00:00");
+        Assert.True(TotalJobs(inWindow) >= 1);
+        // A window before any data -> the date filter is applied -> zero jobs counted.
+        var outOfWindow = await _client.GetFromJsonAsync<JsonElement>(
+            "/api/reporting/production-summary?from=2000-01-01T00:00:00&to=2001-01-01T00:00:00");
+        Assert.Equal(0, TotalJobs(outOfWindow));
+        // No bounds -> defaults to a bounded window (still 200, no full-scan error).
+        Assert.Equal(HttpStatusCode.OK, (await _client.GetAsync("/api/reporting/production-summary")).StatusCode);
+    }
+
+    [Fact]
     public async Task Sheet_skid_requires_job_with_an_order()
     {
         // A sheet skid whose job can't resolve an order is refused (w_wh_business:831) -> 400.

@@ -5189,7 +5189,7 @@
         "tags": [
           "Reporting"
         ],
-        "summary": "Per-line production summary (job count, avg yield, processed weight) over an optional date range.",
+        "summary": "Per-line production summary (job count, avg yield, processed weight). Defaults to the last 365 days when unbounded.",
         "operationId": "GetProductionSummary",
         "parameters": [
           {
@@ -5234,7 +5234,7 @@
         "tags": [
           "Reporting"
         ],
-        "summary": "Per-line efficiency: jobs, processed weight, avg yield, and downtime (events + minutes).",
+        "summary": "Per-line efficiency: jobs, processed weight, avg yield, and downtime. Defaults to the last 365 days when unbounded.",
         "operationId": "GetLineEfficiency",
         "parameters": [
           {
@@ -5279,7 +5279,7 @@
         "tags": [
           "Reporting"
         ],
-        "summary": "Production rolled up by month (YYYY-MM): jobs touched + processed weight.",
+        "summary": "Production rolled up by month (YYYY-MM): jobs touched + processed weight. Defaults to the last 365 days when unbounded.",
         "operationId": "GetMonthlyProduction",
         "parameters": [
           {
@@ -5324,7 +5324,7 @@
         "tags": [
           "Reporting"
         ],
-        "summary": "Downtime events over a window (optionally one line), with computed duration minutes.",
+        "summary": "Downtime events (optionally one line), with duration minutes. Defaults to the last 365 days when unbounded.",
         "operationId": "GetProductionDowntime",
         "parameters": [
           {
@@ -5377,7 +5377,7 @@
         "tags": [
           "Reporting"
         ],
-        "summary": "Per-line on-time delivery (jobs finished on/before due date) over an optional window.",
+        "summary": "Per-line on-time delivery (jobs finished on/before due date). Defaults to the last 365 days when unbounded.",
         "operationId": "GetOnTimeDelivery",
         "parameters": [
           {
@@ -5422,7 +5422,7 @@
         "tags": [
           "Reporting"
         ],
-        "summary": "Per-customer shipment roll-up (total / shipped / open + last ship date).",
+        "summary": "Per-customer shipment roll-up (total / shipped / open + last ship date). Defaults to the last 365 days when unbounded.",
         "operationId": "GetCustomerShipments",
         "parameters": [
           {
@@ -5676,7 +5676,7 @@
         "tags": [
           "Reporting"
         ],
-        "summary": "Mechanical test results by test type: count + average YTS/UTS/elongation.",
+        "summary": "Mechanical test results by test type: count + average YTS/UTS/elongation. Defaults to the last 365 days when unbounded.",
         "operationId": "GetQaMechanical",
         "parameters": [
           {
