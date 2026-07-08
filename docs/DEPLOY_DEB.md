@@ -36,9 +36,15 @@ curl -s http://127.0.0.1:8080/health/ready # {"status":"ready"} = Oracle reachab
 
 > **Sanity of the running code.** The assembly version stays `0.1.0` regardless of git
 > commit, so `GET /` and `dpkg`'s *unpacked* line aren't reliable discriminators — the
-> **`dpkg -s abis` Version** (git-describe) is. For a feature-level check, probe an endpoint
-> that only exists in the new code, e.g. after PR #82:
-> `curl -s http://127.0.0.1:8080/swagger/v1/swagger.json | grep -c transfer-certificate` → `1`.
+> **`dpkg -s abis` Version** (git-describe) is the source of truth. **Swagger is
+> Development-only** (`Program.cs`: `if (app.Environment.IsDevelopment()) UseSwagger()`), so
+> `/swagger/*` **404s on this Production service** — don't use it to check. For a feature-level
+> check, probe a route that only exists in the new code by its **auth behavior**: an existing
+> `/api/*` route answers `401` without a key, a missing route answers `404`:
+> ```sh
+> curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/api/documents/transfer-certificate/1
+> #   401 = route exists (PR #82 code)   |   404 = route missing (old code)
+> ```
 
 ## Config is preserved
 `dpkg -i` swaps `/opt/abis/app/` and restarts; it does **not** touch `/etc/abis/abis.env`
