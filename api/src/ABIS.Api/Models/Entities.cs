@@ -1262,6 +1262,39 @@ public sealed class RecoveryScrapDefectRow
     public decimal Pct { get; set; }
 }
 
+/// <summary>An ABIS-owned scheduled-job definition (admin scheduler registry, docs/ADMIN_SUBSYSTEM_PLAN.md
+/// #6). A record of a job imported off the DB-host crontab so it can be viewed/managed in ABIS.
+/// <see cref="Enabled"/> is a stored flag only — there is NO execution engine in this phase, so a
+/// definition never fires regardless of the flag (the legacy crontab stays the sole live owner
+/// until a single-owner cutover).</summary>
+public sealed class ScheduledJob
+{
+    public long ScheduledJobId { get; set; }
+    public string? JobName { get; set; }
+    public string? JobDescription { get; set; }
+    public string? CronExpression { get; set; }
+    public string? TargetOperation { get; set; }
+    public string? TargetArgs { get; set; }
+    public int Enabled { get; set; }
+    public string? Source { get; set; }
+    public DateTime? CreatedUtc { get; set; }
+    public DateTime? UpdatedUtc { get; set; }
+}
+
+/// <summary>One historical run of a scheduled job (admin scheduler run history). Populated by a
+/// future execution engine — ABIS writes no runs in this phase.</summary>
+public sealed class ScheduledJobRun
+{
+    public long JobRunId { get; set; }
+    public long ScheduledJobId { get; set; }
+    public DateTime? StartedUtc { get; set; }
+    public DateTime? FinishedUtc { get; set; }
+    public string? RunStatus { get; set; }
+    public int? AffectedCount { get; set; }
+    public string? ErrorText { get; set; }
+    public string? CorrelationId { get; set; }
+}
+
 /// <summary>One downtime event (legacy w_report_production_downtime): the line, job, and
 /// window. <see cref="DurationMinutes"/> is computed from start/end (portable — no DB
 /// date math).</summary>

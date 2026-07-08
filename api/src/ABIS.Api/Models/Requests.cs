@@ -685,3 +685,23 @@ public sealed class InvoiceWrite
     /// <summary>Free-text notes (<c>notes</c>, VARCHAR2(2048)).</summary>
     public string? Notes { get; set; }
 }
+
+/// <summary>Create/update body for an admin scheduled-job definition (docs/ADMIN_SUBSYSTEM_PLAN.md
+/// #6). Note: creating/enabling a definition does NOT schedule or run anything in this phase —
+/// there is no execution engine (the legacy crontab stays the sole live owner). <see cref="Enabled"/>
+/// defaults to false on create.</summary>
+public sealed class ScheduledJobWrite
+{
+    /// <summary>Unique, human-readable job name (required; <c>job_name</c>).</summary>
+    public string? JobName { get; set; }
+    public string? JobDescription { get; set; }
+    /// <summary>Standard 5- or 6-field cron expression (required; validated for shape, not fired).</summary>
+    public string? CronExpression { get; set; }
+    /// <summary>The ABIS operation this job would invoke once an engine exists (e.g. <c>edi.generate861</c>).</summary>
+    public string? TargetOperation { get; set; }
+    public string? TargetArgs { get; set; }
+    /// <summary>Stored enable flag. Omitted → false. Never causes execution in this phase.</summary>
+    public bool? Enabled { get; set; }
+    /// <summary>Where the definition came from (e.g. <c>imported</c> from crontab, or <c>native</c>).</summary>
+    public string? Source { get; set; }
+}

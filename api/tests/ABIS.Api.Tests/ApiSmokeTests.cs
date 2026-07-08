@@ -427,6 +427,62 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Admin_scheduled_jobs_crud_is_inert_and_guards_names()
+    {
+        static async Task<JsonElement?> ByName(HttpClient c, string name)
+        {
+            var list = await c.GetFromJsonAsync<JsonElement>("/api/admin/jobs");
+            foreach (var e in list.EnumerateArray())
+                if (e.GetProperty("jobName").GetString() == name) return e;
+            return null;
+        }
+
+        // Seeded definitions are present and DISABLED (imported off crontab, nothing fires).
+        var seeded = await ByName(_client, "edi-861-receiving");
+        Assert.True(seeded is not null);
+        Assert.Equal(0, seeded!.Value.GetProperty("enabled").GetInt32());
+
+        // Create a definition -> 201; enabled defaults to false (inert), source echoed.
+        var create = await _client.PostAsJsonAsync("/api/admin/jobs", new
+        {
+            jobName = "test-nightly-export", jobDescription = "created by test",
+            cronExpression = "0 3 * * *", targetOperation = "report.export", source = "native"
+        });
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        var created = await create.Content.ReadFromJsonAsync<JsonElement>();
+        long id = created.GetProperty("scheduledJobId").GetInt64();
+        Assert.Equal(0, created.GetProperty("enabled").GetInt32());
+
+        // Duplicate name (case-insensitive) -> 409; missing name / bad cron -> 400.
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsJsonAsync("/api/admin/jobs",
+            new { jobName = "EDI-861-Receiving", cronExpression = "* * * * *" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/admin/jobs",
+            new { cronExpression = "0 3 * * *" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/admin/jobs",
+            new { jobName = "bad-cron-job", cronExpression = "not a cron" })).StatusCode);
+
+        // Enable then disable flips the stored flag (still fires nothing — no engine).
+        var enabled = await _client.PostAsync($"/api/admin/jobs/{id}/enable", null);
+        Assert.Equal(1, (await enabled.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("enabled").GetInt32());
+        var disabled = await _client.PostAsync($"/api/admin/jobs/{id}/disable", null);
+        Assert.Equal(0, (await disabled.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("enabled").GetInt32());
+
+        // Update -> 200; update/enable of an unknown id -> 404.
+        var upd = await _client.PutAsJsonAsync($"/api/admin/jobs/{id}",
+            new { jobName = "test-nightly-export", cronExpression = "30 3 * * *", jobDescription = "edited" });
+        Assert.Equal(HttpStatusCode.OK, upd.StatusCode);
+        Assert.Equal("30 3 * * *", (await upd.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("cronExpression").GetString());
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PutAsJsonAsync("/api/admin/jobs/999999",
+            new { jobName = "ghost", cronExpression = "* * * * *" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync("/api/admin/jobs/999999/enable", null)).StatusCode);
+
+        // Run history: seeded job 1 has a historical run; an unknown job -> 404.
+        var runs = await _client.GetFromJsonAsync<JsonElement>("/api/admin/jobs/1/runs");
+        Assert.Contains(runs.EnumerateArray(), r => r.GetProperty("runStatus").GetString() == "ok");
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/admin/jobs/999999/runs")).StatusCode);
+    }
+
+    [Fact]
     public async Task Sheet_skid_requires_job_with_an_order()
     {
         // A sheet skid whose job can't resolve an order is refused (w_wh_business:831) -> 400.

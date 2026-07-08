@@ -140,6 +140,13 @@ public interface IAbisRepository
     Task<RecoveryJobCoil> UpsertRecoveryJobCoilAsync(long coilAbcNum, long abJobNum, RecoveryJobCoilWrite body, CancellationToken ct);
     Task<IReadOnlyList<RecoveryReportRow>> GetRecoveryReportAsync(long abJobNum, CancellationToken ct);
     Task<IReadOnlyList<RecoveryScrapDefectRow>> GetRecoveryScrapByDefectAsync(long abJobNum, CancellationToken ct);
+    Task<IReadOnlyList<ScheduledJob>> GetScheduledJobsAsync(CancellationToken ct);
+    Task<ScheduledJob?> GetScheduledJobAsync(long scheduledJobId, CancellationToken ct);
+    Task<bool> ScheduledJobNameExistsAsync(string jobName, long? excludingId, CancellationToken ct);
+    Task<ScheduledJob> CreateScheduledJobAsync(ScheduledJobWrite body, CancellationToken ct);
+    Task<ScheduledJob?> UpdateScheduledJobAsync(long scheduledJobId, ScheduledJobWrite body, CancellationToken ct);
+    Task<ScheduledJob?> SetScheduledJobEnabledAsync(long scheduledJobId, bool enabled, CancellationToken ct);
+    Task<IReadOnlyList<ScheduledJobRun>> GetScheduledJobRunsAsync(long scheduledJobId, CancellationToken ct);
     Task<PagedResult<ScrapSkid>> GetScrapSkidsAsync(int page, int pageSize, string? orderBy, CancellationToken ct);
     Task<ScrapSkid?> GetScrapSkidAsync(long scrapSkidNum, CancellationToken ct);
     Task<ScrapSkid> CreateScrapSkidAsync(ScrapSkidWrite body, CancellationToken ct);

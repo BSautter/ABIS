@@ -1462,6 +1462,81 @@ public static class ApiEndpoints
            .WithSummary("A job's recovery scrap broken down by defect type (Pareto order, heaviest first) with each defect's share of the total.")
            .Produces<IReadOnlyList<RecoveryScrapDefectRow>>();
 
+        // ---- Admin: scheduled-job registry (docs/ADMIN_SUBSYSTEM_PLAN.md #6). INERT by design —
+        // these endpoints only store/read job DEFINITIONS. There is NO execution engine in this
+        // phase, so nothing here schedules or fires anything; the legacy db01 crontab stays the
+        // sole live owner until a single-owner cutover (see the no-live-firing guardrail). Gated on
+        // the "Scheduler Admin" feature: reads need ReadOnly (0), mutations need Write (1). ----
+        const string SchedFeature = "Scheduler Admin";
+
+        api.MapGet("/admin/jobs", async (HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+                await RequireFeatureAsync(ctx, repo, SchedFeature, 0, ct) is { } deny ? deny
+                    : Results.Ok(await repo.GetScheduledJobsAsync(ct)))
+           .WithName("GetScheduledJobs").WithTags("Admin")
+           .WithSummary("List the admin scheduled-job definitions. INERT — no execution engine runs them in this phase.")
+           .Produces<IReadOnlyList<ScheduledJob>>();
+
+        api.MapGet("/admin/jobs/{id:long}", async (long id, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, SchedFeature, 0, ct) is { } deny) return deny;
+                var job = await repo.GetScheduledJobAsync(id, ct);
+                return job is null ? Results.NotFound() : Results.Ok(job);
+            })
+           .WithName("GetScheduledJob").WithTags("Admin").Produces<ScheduledJob>().Produces(StatusCodes.Status404NotFound);
+
+        api.MapPost("/admin/jobs", async (ScheduledJobWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, SchedFeature, 1, ct) is { } deny) return deny;
+                if (ValidateScheduledJob(body) is { } e) return Results.ValidationProblem(e);
+                if (await repo.ScheduledJobNameExistsAsync(body.JobName!.Trim(), null, ct))
+                    return Results.Conflict(new { message = $"A scheduled job named '{body.JobName!.Trim()}' already exists." });
+                var created = await repo.CreateScheduledJobAsync(body, ct);
+                return Results.Created($"/api/admin/jobs/{created.ScheduledJobId}", created);
+            })
+           .WithName("CreateScheduledJob").WithTags("Admin")
+           .WithSummary("Define a scheduled job (imported or native). Storing it does NOT schedule or run anything — there is no execution engine in this phase.")
+           .Produces<ScheduledJob>(StatusCodes.Status201Created).ProducesValidationProblem().Produces(StatusCodes.Status409Conflict);
+
+        api.MapPut("/admin/jobs/{id:long}", async (long id, ScheduledJobWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, SchedFeature, 1, ct) is { } deny) return deny;
+                if (ValidateScheduledJob(body) is { } e) return Results.ValidationProblem(e);
+                if (await repo.ScheduledJobNameExistsAsync(body.JobName!.Trim(), id, ct))
+                    return Results.Conflict(new { message = $"A scheduled job named '{body.JobName!.Trim()}' already exists." });
+                var updated = await repo.UpdateScheduledJobAsync(id, body, ct);
+                return updated is null ? Results.NotFound() : Results.Ok(updated);
+            })
+           .WithName("UpdateScheduledJob").WithTags("Admin")
+           .Produces<ScheduledJob>().ProducesValidationProblem().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
+
+        api.MapPost("/admin/jobs/{id:long}/enable", async (long id, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, SchedFeature, 1, ct) is { } deny) return deny;
+                var job = await repo.SetScheduledJobEnabledAsync(id, true, ct);
+                return job is null ? Results.NotFound() : Results.Ok(job);
+            })
+           .WithName("EnableScheduledJob").WithTags("Admin")
+           .WithSummary("Set a job's enabled flag on. NOTE: the flag is stored only — it does not cause execution in this phase.")
+           .Produces<ScheduledJob>().Produces(StatusCodes.Status404NotFound);
+
+        api.MapPost("/admin/jobs/{id:long}/disable", async (long id, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, SchedFeature, 1, ct) is { } deny) return deny;
+                var job = await repo.SetScheduledJobEnabledAsync(id, false, ct);
+                return job is null ? Results.NotFound() : Results.Ok(job);
+            })
+           .WithName("DisableScheduledJob").WithTags("Admin").Produces<ScheduledJob>().Produces(StatusCodes.Status404NotFound);
+
+        api.MapGet("/admin/jobs/{id:long}/runs", async (long id, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, SchedFeature, 0, ct) is { } deny) return deny;
+                if (await repo.GetScheduledJobAsync(id, ct) is null) return Results.NotFound();
+                return Results.Ok(await repo.GetScheduledJobRunsAsync(id, ct));
+            })
+           .WithName("GetScheduledJobRuns").WithTags("Admin")
+           .WithSummary("A job's run history. Empty until a future execution engine records runs.")
+           .Produces<IReadOnlyList<ScheduledJobRun>>().Produces(StatusCodes.Status404NotFound);
+
         api.MapGet("/reporting/downtime", async (DateTime? from, DateTime? to, IAbisRepository repo, CancellationToken ct, long? lineNum = null) =>
             {
                 var (f, t) = ResolveReportWindow(from, to);
@@ -2151,6 +2226,29 @@ public static class ApiEndpoints
     private static void Max(Dictionary<string, string[]> e, string field, string? value, int max)
     {
         if (value is not null && value.Length > max) e[field] = [$"{field} must be {max} characters or fewer."];
+    }
+
+    private static Dictionary<string, string[]>? ValidateScheduledJob(ScheduledJobWrite body)
+    {
+        var e = new Dictionary<string, string[]>();
+        Req(e, "jobName", body.JobName);
+        Max(e, "jobName", body.JobName?.Trim(), 100);
+        Req(e, "cronExpression", body.CronExpression);
+        if (!string.IsNullOrWhiteSpace(body.CronExpression) && !IsPlausibleCron(body.CronExpression!))
+            e["cronExpression"] = ["cronExpression must be a 5- or 6-field cron expression."];
+        Max(e, "targetOperation", body.TargetOperation, 100);
+        return e.Count == 0 ? null : e;
+    }
+
+    /// <summary>Loose cron shape check (definition-time validation only — nothing is ever fired
+    /// from it in this phase): 5 or 6 whitespace-separated fields, each using only cron punctuation.</summary>
+    private static bool IsPlausibleCron(string expr)
+    {
+        var fields = expr.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (fields.Length is not (5 or 6)) return false;
+        foreach (var f in fields)
+            if (!f.All(c => char.IsDigit(c) || c is '*' or '/' or '-' or ',')) return false;
+        return true;
     }
 
     /// <summary>Returns a ProblemDetails error dictionary, or null when valid.</summary>

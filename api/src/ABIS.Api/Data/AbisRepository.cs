@@ -1396,6 +1396,105 @@ public sealed class AbisRepository : IAbisRepository
         return rows;
     }
 
+    // ---- Admin scheduler registry (docs/ADMIN_SUBSYSTEM_PLAN.md #6). Definition storage ONLY —
+    // no execution engine exists in this phase, so writing/enabling a definition never fires it. ----
+    private const string ScheduledJobCols =
+        "scheduled_job_id AS ScheduledJobId, job_name AS JobName, job_description AS JobDescription, " +
+        "cron_expression AS CronExpression, target_operation AS TargetOperation, target_args AS TargetArgs, " +
+        "enabled AS Enabled, source AS Source, created_utc AS CreatedUtc, updated_utc AS UpdatedUtc";
+
+    public async Task<IReadOnlyList<ScheduledJob>> GetScheduledJobsAsync(CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<ScheduledJob>(new CommandDefinition(
+            $"SELECT {ScheduledJobCols} FROM abis_scheduled_job ORDER BY job_name", cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    public async Task<ScheduledJob?> GetScheduledJobAsync(long scheduledJobId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.QuerySingleOrDefaultAsync<ScheduledJob>(new CommandDefinition(
+            $"SELECT {ScheduledJobCols} FROM abis_scheduled_job WHERE scheduled_job_id = :id",
+            new { id = scheduledJobId }, cancellationToken: ct));
+    }
+
+    public async Task<bool> ScheduledJobNameExistsAsync(string jobName, long? excludingId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        // excludingId ?? -1: ids are positive, so -1 excludes nothing (avoids a NULL-compare bind).
+        return await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM abis_scheduled_job WHERE LOWER(job_name) = LOWER(:name) AND scheduled_job_id <> :ex",
+            new { name = jobName, ex = excludingId ?? -1 }, cancellationToken: ct)) > 0;
+    }
+
+    public async Task<ScheduledJob> CreateScheduledJobAsync(ScheduledJobWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        // Portable MAX+1 (this ABIS-owned table has no Oracle sequence). Low-write admin table —
+        // the transaction serialises the id assignment.
+        var id = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COALESCE(MAX(scheduled_job_id), 0) + 1 FROM abis_scheduled_job",
+            transaction: tx, cancellationToken: ct));
+        var now = DateTime.UtcNow;
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO abis_scheduled_job (scheduled_job_id, job_name, job_description, cron_expression,
+                target_operation, target_args, enabled, source, created_utc, updated_utc)
+            VALUES (:id, :name, :desc, :cron, :op, :args, :enabled, :source, :created, :updated)
+            """,
+            new
+            {
+                id, name = body.JobName?.Trim(), desc = body.JobDescription, cron = body.CronExpression?.Trim(),
+                op = body.TargetOperation, args = body.TargetArgs, enabled = (body.Enabled ?? false) ? 1 : 0,
+                source = body.Source ?? "native", created = now, updated = now
+            },
+            transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+        return (await GetScheduledJobAsync(id, ct))!;
+    }
+
+    public async Task<ScheduledJob?> UpdateScheduledJobAsync(long scheduledJobId, ScheduledJobWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE abis_scheduled_job SET job_name = :name, job_description = :desc, cron_expression = :cron,
+                target_operation = :op, target_args = :args, enabled = :enabled, source = :source, updated_utc = :updated
+            WHERE scheduled_job_id = :id
+            """,
+            new
+            {
+                id = scheduledJobId, name = body.JobName?.Trim(), desc = body.JobDescription, cron = body.CronExpression?.Trim(),
+                op = body.TargetOperation, args = body.TargetArgs, enabled = (body.Enabled ?? false) ? 1 : 0,
+                source = body.Source ?? "native", updated = DateTime.UtcNow
+            }, cancellationToken: ct));
+        return rows == 0 ? null : await GetScheduledJobAsync(scheduledJobId, ct);
+    }
+
+    public async Task<ScheduledJob?> SetScheduledJobEnabledAsync(long scheduledJobId, bool enabled, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE abis_scheduled_job SET enabled = :enabled, updated_utc = :updated WHERE scheduled_job_id = :id",
+            new { id = scheduledJobId, enabled = enabled ? 1 : 0, updated = DateTime.UtcNow }, cancellationToken: ct));
+        return rows == 0 ? null : await GetScheduledJobAsync(scheduledJobId, ct);
+    }
+
+    public async Task<IReadOnlyList<ScheduledJobRun>> GetScheduledJobRunsAsync(long scheduledJobId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<ScheduledJobRun>(new CommandDefinition(
+            """
+            SELECT job_run_id AS JobRunId, scheduled_job_id AS ScheduledJobId, started_utc AS StartedUtc,
+                   finished_utc AS FinishedUtc, run_status AS RunStatus, affected_count AS AffectedCount,
+                   error_text AS ErrorText, correlation_id AS CorrelationId
+            FROM abis_job_run WHERE scheduled_job_id = :id ORDER BY started_utc DESC
+            """, new { id = scheduledJobId }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
     // Downtime events over a window (optionally one line), joined to the line description.
     public async Task<IReadOnlyList<ProductionDowntimeRow>> GetProductionDowntimeAsync(DateTime? from, DateTime? to, long? lineNum, CancellationToken ct)
     {

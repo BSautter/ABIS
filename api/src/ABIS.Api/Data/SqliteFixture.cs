@@ -92,6 +92,8 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS security_group_application;
             DROP TABLE IF EXISTS sheet_skid_dimension_check;
             DROP TABLE IF EXISTS quality_coil_eval_scrap;
+            DROP TABLE IF EXISTS abis_job_run;
+            DROP TABLE IF EXISTS abis_scheduled_job;
             DROP TABLE IF EXISTS sheet_skid_detail;
             DROP TABLE IF EXISTS recovery_scrap_worksheet;
             DROP TABLE IF EXISTS quality_scrap_worksheet;
@@ -467,6 +469,22 @@ public static class SqliteFixture
                 certificate_num INTEGER PRIMARY KEY, coil_abc_num_orig INTEGER, coil_abc_num_new INTEGER,
                 coil_org_num TEXT, customer_id_orig INTEGER, customer_id_new INTEGER,
                 transfer_datetime TEXT, transfer_performed_by TEXT, authorization_note TEXT, notes TEXT);
+
+            -- Admin scheduler (ABIS-owned, NOT legacy — see docs/ADMIN_SUBSYSTEM_PLAN.md #6). A
+            -- registry of scheduled-job DEFINITIONS imported off the DB-host crontab so they can be
+            -- viewed/managed in ABIS. INERT by design in this phase: no execution engine fires them
+            -- (the legacy crontab on db01 stays the sole live owner until a single-owner cutover —
+            -- see the no-live-firing guardrail). abis_job_run holds run history a future engine will
+            -- write. On Oracle these tables are created by docs/data-model/migrations/001_admin_scheduler.sql.
+            CREATE TABLE abis_scheduled_job (
+                scheduled_job_id INTEGER PRIMARY KEY, job_name TEXT NOT NULL, job_description TEXT,
+                cron_expression TEXT NOT NULL, target_operation TEXT, target_args TEXT,
+                enabled INTEGER NOT NULL DEFAULT 0, source TEXT, created_utc TEXT, updated_utc TEXT);
+            CREATE UNIQUE INDEX ux_abis_scheduled_job_name ON abis_scheduled_job (job_name COLLATE NOCASE);
+            CREATE TABLE abis_job_run (
+                job_run_id INTEGER PRIMARY KEY, scheduled_job_id INTEGER NOT NULL,
+                started_utc TEXT, finished_utc TEXT, run_status TEXT, affected_count INTEGER,
+                error_text TEXT, correlation_id TEXT);
 
             -- Security / authorization (legacy security.pbl). Application-level
             -- authorization only — OIDC handles authentication. Effective privilege on a
@@ -1193,7 +1211,8 @@ public static class SqliteFixture
                 new { ApplicationId = 17L, ApplicationName = "Maintenance", ApplicationNotes = "Maintenance main" },
                 new { ApplicationId = 18L, ApplicationName = "Maintenance_parts", ApplicationNotes = "Maintenance parts" },
                 new { ApplicationId = 19L, ApplicationName = "Maintenance_pm", ApplicationNotes = "Preventive maintenance" },
-                new { ApplicationId = 20L, ApplicationName = "Maintenance_pms", ApplicationNotes = "PM schedules" }
+                new { ApplicationId = 20L, ApplicationName = "Maintenance_pms", ApplicationNotes = "PM schedules" },
+                new { ApplicationId = 21L, ApplicationName = "Scheduler Admin", ApplicationNotes = "Admin scheduled-job registry (view/define; execution disabled)" }
             });
         conn.Execute(
             "INSERT INTO security_group (user_group_id, group_name, group_notes) VALUES (:UserGroupId, :GroupName, :GroupNotes)",
@@ -1230,6 +1249,34 @@ public static class SqliteFixture
             {
                 // jsmith has a DIRECT Write grant on Order Entry; effective = MAX(1 direct, 0 group) = 1.
                 new { UserId = 9001L, ApplicationId = 1L, UserApplicationPrivilege = 1 }
+            });
+
+        // ---- Admin scheduler registry (INERT — definitions only, nothing fires) ----
+        // Two job definitions imported off the DB-host crontab, both DISABLED (enabled=0) so there
+        // is zero chance of the modern stack firing legacy work. abis_job_run carries a historical
+        // run so the run-history read has something to return; ABIS itself writes no runs yet.
+        conn.Execute("""
+            INSERT INTO abis_scheduled_job (scheduled_job_id, job_name, job_description, cron_expression,
+                target_operation, target_args, enabled, source, created_utc, updated_utc)
+            VALUES (:Id, :Name, :Description, :Cron, :Op, :Args, :Enabled, :Source, :Created, :Updated)
+            """,
+            new[]
+            {
+                new { Id = 1L, Name = "edi-861-receiving", Description = "Generate 861 receiving advice (legacy ediprocess.sh)",
+                      Cron = "*/15 * * * *", Op = "edi.generate861", Args = (string?)null, Enabled = 0, Source = "imported",
+                      Created = (DateTime?)d, Updated = (DateTime?)d },
+                new { Id = 2L, Name = "nightly-scrap-rollup", Description = "Nightly scrap rollup report",
+                      Cron = "0 2 * * *", Op = "report.scrapRollup", Args = (string?)null, Enabled = 0, Source = "imported",
+                      Created = (DateTime?)d, Updated = (DateTime?)d }
+            });
+        conn.Execute("""
+            INSERT INTO abis_job_run (job_run_id, scheduled_job_id, started_utc, finished_utc, run_status, affected_count, error_text, correlation_id)
+            VALUES (:RunId, :JobId, :Started, :Finished, :Status, :Affected, :Error, :Corr)
+            """,
+            new[]
+            {
+                new { RunId = 1L, JobId = 1L, Started = (DateTime?)d.AddHours(1), Finished = (DateTime?)d.AddHours(1).AddMinutes(2),
+                      Status = "ok", Affected = (int?)12, Error = (string?)null, Corr = "seed-run-1" }
             });
 
         // ---- Coil evaluation / QC ----
