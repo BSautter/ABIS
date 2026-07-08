@@ -1011,7 +1011,7 @@ public sealed class AbisRepository : IAbisRepository
                 line = body.CoilLineNum, loc = body.CoilLocation, mid = body.CoilMidNum, org = body.CoilOrgNum,
                 status = body.CoilStatus, notes = body.CoilNotes, entry = (DateTime?)DateTime.UtcNow,
                 cust = body.CustomerId, fromCust = body.CoilFromCustId, received = (DateTime?)DateTime.UtcNow,
-                icra = body.Icra, lot = body.LotNum, net = body.NetWt, bal = body.NetWtBalance, pieces = body.PiecesPerCase
+                icra = body.Icra, lot = body.LotNum, net = body.NetWt, bal = body.NetWtBalance ?? body.NetWt, pieces = body.PiecesPerCase
             },
             transaction: tx, cancellationToken: ct));
         await tx.CommitAsync(ct);

@@ -1753,6 +1753,11 @@ public static class ApiEndpoints
         if (value is null) e[field] = [$"{field} is required."];
     }
 
+    private static void Req(Dictionary<string, string[]> e, string field, decimal? value)
+    {
+        if (value is null) e[field] = [$"{field} is required."];
+    }
+
     // ---- Security enforcement (legacy f_security_door) ----
     // The caller's ABIS login: the OIDC preferred_username/name claim, or the X-User-Login
     // header (dev/testing). Null => an API-key service account (full trust, bypasses gates).
@@ -2018,6 +2023,18 @@ public static class ApiEndpoints
         Max(e, "coilNotes", body.CoilNotes, 255);
         Max(e, "icra", body.Icra, 18);
         Max(e, "lotNum", body.LotNum, 18);
+        // Coil identity + weight integrity (legacy w_coil_detail_new:381-391 requires net_wt,
+        // net_balance, width non-null; w_receiving_dock:351 requires org_num len >= 4). net_wt +
+        // width feed billing/derivations so they must be present and positive; net_wt_balance is
+        // NOT required here — it defaults to net_wt on create and is legitimately 0 for a fully
+        // consumed coil. org_num is the coil's business id.
+        Req(e, "netWt", body.NetWt);
+        Positive(e, "netWt", body.NetWt);
+        Req(e, "coilWidth", body.CoilWidth);
+        Positive(e, "coilWidth", body.CoilWidth);
+        Req(e, "coilOrgNum", body.CoilOrgNum);
+        if (!string.IsNullOrWhiteSpace(body.CoilOrgNum) && body.CoilOrgNum.Trim().Length < 4)
+            e["coilOrgNum"] = ["coilOrgNum must be at least 4 characters."];
         return e.Count == 0 ? null : e;
     }
 

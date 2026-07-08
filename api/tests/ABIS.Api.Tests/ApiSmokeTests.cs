@@ -502,13 +502,17 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     [Fact]
     public async Task Create_coil_returns_201_and_is_retrievable()
     {
-        var resp = await _client.PostAsJsonAsync("/api/coils", new { coilAlloy2 = "6061", coilGauge = 0.25, netWt = 15000 });
+        // net_wt + width + a >=4-char org number are now required (coil integrity guard).
+        var resp = await _client.PostAsJsonAsync("/api/coils",
+            new { coilAlloy2 = "6061", coilGauge = 0.25, netWt = 15000, coilWidth = 48.0, coilOrgNum = "ORG-NEW-1" });
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
         Assert.NotNull(resp.Headers.Location);
         var created = await resp.Content.ReadFromJsonAsync<JsonElement>();
         var id = created.GetProperty("coilAbcNum").GetInt64();
         var fetched = await _client.GetFromJsonAsync<JsonElement>($"/api/coils/{id}");
         Assert.Equal("6061", fetched.GetProperty("coilAlloy2").GetString());
+        // net_wt_balance defaults to net_wt when the client omits it (fresh coil).
+        Assert.Equal(15000, fetched.GetProperty("netWtBalance").GetDecimal());
     }
 
     [Fact]
@@ -516,6 +520,23 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     {
         var resp = await _client.PostAsJsonAsync("/api/coils", new { coilGauge = 0.1 });
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Create_coil_weight_and_orgnum_integrity_is_enforced()
+    {
+        // Complete, valid coil (control) -> 201. Non-seeded alloy so it doesn't skew alloy-filter counts.
+        object ok() => new { coilAlloy2 = "9099", netWt = 12000, coilWidth = 48.0, coilOrgNum = "ORG-INT-1" };
+        Assert.Equal(HttpStatusCode.Created, (await _client.PostAsJsonAsync("/api/coils", ok())).StatusCode);
+        // Missing net weight, missing width, zero width, and a too-short org number each -> 400 (no row created).
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/coils",
+            new { coilAlloy2 = "9099", coilWidth = 48.0, coilOrgNum = "ORG-INT-2" })).StatusCode);           // no netWt
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/coils",
+            new { coilAlloy2 = "9099", netWt = 12000, coilOrgNum = "ORG-INT-3" })).StatusCode);              // no width
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/coils",
+            new { coilAlloy2 = "9099", netWt = 12000, coilWidth = 0.0, coilOrgNum = "ORG-INT-4" })).StatusCode); // width 0
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/coils",
+            new { coilAlloy2 = "9099", netWt = 12000, coilWidth = 48.0, coilOrgNum = "AB" })).StatusCode);    // org < 4 chars
     }
 
     [Fact]
