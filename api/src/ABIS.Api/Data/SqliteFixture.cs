@@ -414,11 +414,13 @@ public static class SqliteFixture
             -- recovery scrap-weight = SUM(scrap_item_net_wt). Falls back to quality_scrap_worksheet
             -- (the quality clerk's booking) when the recovery worksheet has none.
             CREATE TABLE recovery_scrap_worksheet (
-                coil_abc_num INTEGER, ab_job_num INTEGER, scrap_item_net_wt REAL,
-                scrap_type_id INTEGER);
+                coil_abc_num INTEGER NOT NULL, ab_job_num INTEGER NOT NULL, scrap_type_id INTEGER NOT NULL,
+                scrap_item_piece INTEGER, scrap_item_net_wt REAL, scrap_item_notes TEXT,
+                PRIMARY KEY (coil_abc_num, ab_job_num, scrap_type_id));
             CREATE TABLE quality_scrap_worksheet (
-                coil_abc_num INTEGER, ab_job_num INTEGER, scrap_item_net_wt REAL,
-                scrap_type_id INTEGER);
+                coil_abc_num INTEGER NOT NULL, ab_job_num INTEGER NOT NULL, scrap_type_id INTEGER NOT NULL,
+                scrap_item_piece INTEGER, scrap_item_net_wt REAL, scrap_item_notes TEXT,
+                PRIMARY KEY (coil_abc_num, ab_job_num, scrap_type_id));
             CREATE TABLE cust_scrap_type_needed (
                 customer_id INTEGER, scrap_type_id INTEGER,
                 abc_or_mill TEXT, autoparts TEXT, non_autoparts TEXT,
@@ -855,22 +857,26 @@ public static class SqliteFixture
 
         // Recovery / quality scrap worksheets (legacy recovery_scrap_worksheet + quality fallback).
         conn.Execute("""
-            INSERT INTO recovery_scrap_worksheet (coil_abc_num, ab_job_num, scrap_item_net_wt, scrap_type_id)
-            VALUES (:CoilAbcNum, :AbJobNum, :ScrapItemNetWt, :ScrapTypeId)
+            INSERT INTO recovery_scrap_worksheet (coil_abc_num, ab_job_num, scrap_type_id, scrap_item_piece, scrap_item_net_wt)
+            VALUES (:CoilAbcNum, :AbJobNum, :ScrapTypeId, :ScrapItemPiece, :ScrapItemNetWt)
             """,
             new[]
             {
-                // Coil 5003 on the rejected job 1002 — booked recovery scrap.
-                new { CoilAbcNum = 5003L, AbJobNum = 1002L, ScrapItemNetWt = 250m, ScrapTypeId = (int?)1 }
+                // Coil 5003 on the rejected job 1002 — booked recovery scrap, split across three defect
+                // types (PK is coil+job+type). Drives both the report's scrap total (500) and the
+                // scrap-by-defect Pareto: DENT 250 (50%), SCR 150 (30%), EDGE 100 (20%).
+                new { CoilAbcNum = 5003L, AbJobNum = 1002L, ScrapTypeId = (int?)1, ScrapItemPiece = (int?)20, ScrapItemNetWt = 250m },
+                new { CoilAbcNum = 5003L, AbJobNum = 1002L, ScrapTypeId = (int?)2, ScrapItemPiece = (int?)10, ScrapItemNetWt = 150m },
+                new { CoilAbcNum = 5003L, AbJobNum = 1002L, ScrapTypeId = (int?)3, ScrapItemPiece = (int?)8,  ScrapItemNetWt = 100m }
             });
         conn.Execute("""
-            INSERT INTO quality_scrap_worksheet (coil_abc_num, ab_job_num, scrap_item_net_wt, scrap_type_id)
-            VALUES (:CoilAbcNum, :AbJobNum, :ScrapItemNetWt, :ScrapTypeId)
+            INSERT INTO quality_scrap_worksheet (coil_abc_num, ab_job_num, scrap_type_id, scrap_item_piece, scrap_item_net_wt)
+            VALUES (:CoilAbcNum, :AbJobNum, :ScrapTypeId, :ScrapItemPiece, :ScrapItemNetWt)
             """,
             new[]
             {
                 // Coil 5001 job 1001 has NO recovery-worksheet scrap -> scrap-weight falls back to this.
-                new { CoilAbcNum = 5001L, AbJobNum = 1001L, ScrapItemNetWt = 120m, ScrapTypeId = (int?)2 }
+                new { CoilAbcNum = 5001L, AbJobNum = 1001L, ScrapTypeId = (int?)2, ScrapItemPiece = (int?)6, ScrapItemNetWt = 120m }
             });
 
         // Returned scrap → the invoice "total scrap weight" bucket (SUM per job).

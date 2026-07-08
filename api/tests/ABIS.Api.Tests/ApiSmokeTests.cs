@@ -378,11 +378,12 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
         }
 
         // Job 1002 / coil 5003: rejected process pass (status 3) -> rejectedWt from process_end_wt;
-        // recovery-worksheet scrap booked; nothing shipped (its only skid is voided) -> shipWt 0.
+        // recovery-worksheet scrap booked across 3 defect types (250+150+100) -> scrapWt 500;
+        // nothing shipped (its only skid is voided) -> shipWt 0.
         var r1002 = await CoilRow(_client, 1002, 5003);
         Assert.Equal(9000m, r1002.GetProperty("coilWt").GetDecimal());
         Assert.Equal(1500m, r1002.GetProperty("rejectedWt").GetDecimal());
-        Assert.Equal(250m, r1002.GetProperty("scrapWt").GetDecimal());
+        Assert.Equal(500m, r1002.GetProperty("scrapWt").GetDecimal());
         Assert.Equal(0m, r1002.GetProperty("shipWt").GetDecimal());
         Assert.Equal(0m, r1002.GetProperty("yield").GetDecimal());
         Assert.Equal("Commercial", r1002.GetProperty("productType").GetString());
@@ -399,6 +400,30 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
         var r1003 = await CoilRow(_client, 1003, 5003);
         Assert.Equal(2000m, r1003.GetProperty("shipWt").GetDecimal());
         Assert.Equal(0.2222m, r1003.GetProperty("yield").GetDecimal());
+    }
+
+    [Fact]
+    public async Task Recovery_scrap_by_defect_is_pareto_ordered_with_shares()
+    {
+        // Job 1002's recovery scrap: DENT 250, SCR 150, EDGE 100 (total 500). The report comes back
+        // heaviest-defect-first with each defect's share of the total.
+        var list = await _client.GetFromJsonAsync<JsonElement>("/api/recovery/jobs/1002/scrap-by-defect");
+        var rows = list.EnumerateArray().ToList();
+        Assert.Equal(3, rows.Count);
+
+        // Pareto order: DENT (250) > SCR (150) > EDGE (100).
+        Assert.Equal("DENT", rows[0].GetProperty("scrapCode").GetString());
+        Assert.Equal(250m, rows[0].GetProperty("netWt").GetDecimal());
+        Assert.Equal(20, rows[0].GetProperty("pieces").GetInt32());
+        Assert.Equal(0.5m, rows[0].GetProperty("pct").GetDecimal());
+        Assert.Equal("SCR", rows[1].GetProperty("scrapCode").GetString());
+        Assert.Equal(0.3m, rows[1].GetProperty("pct").GetDecimal());
+        Assert.Equal("EDGE", rows[2].GetProperty("scrapCode").GetString());
+        Assert.Equal(0.2m, rows[2].GetProperty("pct").GetDecimal());
+
+        // A job with no recovery scrap -> empty (no rows, no divide-by-zero).
+        var none = await _client.GetFromJsonAsync<JsonElement>("/api/recovery/jobs/999999/scrap-by-defect");
+        Assert.Empty(none.EnumerateArray());
     }
 
     [Fact]

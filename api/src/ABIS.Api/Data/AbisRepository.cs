@@ -1373,6 +1373,29 @@ public sealed class AbisRepository : IAbisRepository
         return rows;
     }
 
+    // A job's recovery scrap broken down by defect type (legacy recovery scrap-per-defect / Pareto):
+    // the recovery clerk's booked scrap, summed over the job's coils per scrap type and joined to the
+    // defect names, heaviest defect first. Pct (each defect's share of the job's total scrap) is
+    // computed in C# — portable, and it keeps the divide-by-zero guard out of SQL.
+    public async Task<IReadOnlyList<RecoveryScrapDefectRow>> GetRecoveryScrapByDefectAsync(long abJobNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = (await conn.QueryAsync<RecoveryScrapDefectRow>(new CommandDefinition(
+            """
+            SELECT st.scrap_type_id AS ScrapTypeId, st.scrap_code AS ScrapCode, st.scrap_defect AS ScrapDefect,
+                   SUM(rsw.scrap_item_net_wt) AS NetWt, SUM(rsw.scrap_item_piece) AS Pieces
+            FROM recovery_scrap_worksheet rsw
+            JOIN scrap_type st ON st.scrap_type_id = rsw.scrap_type_id
+            WHERE rsw.ab_job_num = :job
+            GROUP BY st.scrap_type_id, st.scrap_code, st.scrap_defect
+            ORDER BY SUM(rsw.scrap_item_net_wt) DESC, st.scrap_type_id
+            """, new { job = abJobNum }, cancellationToken: ct))).AsList();
+        var total = rows.Sum(r => r.NetWt);
+        if (total > 0)
+            foreach (var r in rows) r.Pct = Math.Round(r.NetWt / total, 4);
+        return rows;
+    }
+
     // Downtime events over a window (optionally one line), joined to the line description.
     public async Task<IReadOnlyList<ProductionDowntimeRow>> GetProductionDowntimeAsync(DateTime? from, DateTime? to, long? lineNum, CancellationToken ct)
     {

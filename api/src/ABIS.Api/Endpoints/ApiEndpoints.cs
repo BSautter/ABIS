@@ -1456,6 +1456,12 @@ public static class ApiEndpoints
            .WithSummary("Daily recovery report for a job: each recovery coil's ship / scrap / rejected weights and yield. Weights come from the live f_get_coil_* functions on Oracle.")
            .Produces<IReadOnlyList<RecoveryReportRow>>();
 
+        api.MapGet("/recovery/jobs/{abJobNum:long}/scrap-by-defect", async (long abJobNum, IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetRecoveryScrapByDefectAsync(abJobNum, ct)))
+           .WithName("GetRecoveryScrapByDefect").WithTags("Recovery")
+           .WithSummary("A job's recovery scrap broken down by defect type (Pareto order, heaviest first) with each defect's share of the total.")
+           .Produces<IReadOnlyList<RecoveryScrapDefectRow>>();
+
         api.MapGet("/reporting/downtime", async (DateTime? from, DateTime? to, IAbisRepository repo, CancellationToken ct, long? lineNum = null) =>
             {
                 var (f, t) = ResolveReportWindow(from, to);

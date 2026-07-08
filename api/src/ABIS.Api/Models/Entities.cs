@@ -1248,6 +1248,20 @@ public sealed class RecoveryReportRow
     public string? ProductType { get; set; }
 }
 
+/// <summary>One defect's slice of a job's recovery scrap (legacy recovery scrap-per-defect /
+/// Pareto). <see cref="NetWt"/> and <see cref="Pieces"/> are summed over the job's coils for that
+/// scrap type; <see cref="Pct"/> is the defect's share of the job's total scrap weight (0–1). Rows
+/// come back in Pareto order (heaviest defect first).</summary>
+public sealed class RecoveryScrapDefectRow
+{
+    public long ScrapTypeId { get; set; }
+    public string? ScrapCode { get; set; }
+    public string? ScrapDefect { get; set; }
+    public decimal NetWt { get; set; }
+    public int Pieces { get; set; }
+    public decimal Pct { get; set; }
+}
+
 /// <summary>One downtime event (legacy w_report_production_downtime): the line, job, and
 /// window. <see cref="DurationMinutes"/> is computed from start/end (portable — no DB
 /// date math).</summary>

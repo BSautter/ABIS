@@ -5371,6 +5371,44 @@
         }
       }
     },
+    "/api/recovery/jobs/{abJobNum}/scrap-by-defect": {
+      "get": {
+        "tags": [
+          "Recovery"
+        ],
+        "summary": "A job's recovery scrap broken down by defect type (Pareto order, heaviest first) with each defect's share of the total.",
+        "operationId": "GetRecoveryScrapByDefect",
+        "parameters": [
+          {
+            "name": "abJobNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RecoveryScrapDefectRow"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/reporting/production-summary": {
       "get": {
         "tags": [
@@ -14503,6 +14541,36 @@
           "productType": {
             "type": "string",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "RecoveryScrapDefectRow": {
+        "type": "object",
+        "properties": {
+          "scrapTypeId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "scrapCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "scrapDefect": {
+            "type": "string",
+            "nullable": true
+          },
+          "netWt": {
+            "type": "number",
+            "format": "double"
+          },
+          "pieces": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pct": {
+            "type": "number",
+            "format": "double"
           }
         },
         "additionalProperties": false
