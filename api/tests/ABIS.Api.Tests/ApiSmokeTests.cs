@@ -160,6 +160,188 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Job_requires_order_refs_and_positive_yield()
+    {
+        // A job must reference the order line it belongs to (w_stacker_job_details:491) -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/jobs", new { lineNum = 110, materialYield = 92.5 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/jobs", new { orderAbcNum = 9001, lineNum = 110 })).StatusCode);
+        // A supplied yield must be positive ("Invalid yield value.", w_stacker_job_details:272) -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/jobs", new { orderAbcNum = 9001, orderItemNum = 7001, materialYield = 0 })).StatusCode);
+        // Full order refs (yield optional at create) -> 201.
+        Assert.Equal(HttpStatusCode.Created,
+            (await _client.PostAsJsonAsync("/api/jobs", new { orderAbcNum = 9001, orderItemNum = 7001, lineNum = 110, materialYield = 92.5 })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Sheet_skid_requires_job_with_an_order()
+    {
+        // A sheet skid whose job can't resolve an order is refused (w_wh_business:831) -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/sheet-skids", new { abJobNum = 999999, sheetNetWt = 2000, skidPieces = 100 })).StatusCode);
+        // Job 1001 belongs to order 9001 -> 201.
+        Assert.Equal(HttpStatusCode.Created,
+            (await _client.PostAsJsonAsync("/api/sheet-skids", new { abJobNum = 1001, sheetNetWt = 2000, skidPieces = 100 })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Part_edge_trim_tolerance_is_enforced()
+    {
+        // The part-master trimming spec shares the order-item edge-trim rule
+        // (legacy w_part_num_new / w_order_entry). Validate(PartWrite) lifts it via the same helper.
+        static object Part(double? inc, double? trm) => new
+        {
+            customerId = 4001, enduserPartNum = "PN-PART-TRIM", sheetType = "RECTANGLE",
+            trimmingRequired = "Y", incomingCoilWidth = inc, trimmedCoilWidth = trm, trimTypeCode = 1,
+        };
+        // Under tolerance (0.1" < 1.5"), over tolerance (13" > 12"), and incoming < trimmed -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/parts", Part(48.0, 47.9))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/parts", Part(60.0, 47.0))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/parts", Part(40.0, 45.0))).StatusCode);
+        // Trimming required but trim data missing (widths + trimTypeCode) -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/parts",
+            new { customerId = 4001, enduserPartNum = "PN-PART-TRIM", sheetType = "RECTANGLE", trimmingRequired = "Y" })).StatusCode);
+        // Valid trim (2.0" within tolerance) -> 201; trimming not required -> widths irrelevant -> 201.
+        Assert.Equal(HttpStatusCode.Created, (await _client.PostAsJsonAsync("/api/parts", Part(48.0, 46.0))).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await _client.PostAsJsonAsync("/api/parts",
+            new { customerId = 4001, enduserPartNum = "PN-PART-NOTRIM", sheetType = "RECTANGLE", trimmingRequired = "N" })).StatusCode);
+        // customerId is required (legacy: a part belongs to a customer) -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/parts",
+            new { enduserPartNum = "PN-PART-NOCUST", sheetType = "RECTANGLE", trimmingRequired = "N" })).StatusCode);
+        // Out-of-tolerance is OVERRIDABLE: override flag without a user -> 400; with a user -> 201.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/parts",
+            new { customerId = 4001, enduserPartNum = "PN-PART-TRIM", sheetType = "RECTANGLE", trimmingRequired = "Y", incomingCoilWidth = 60.0, trimmedCoilWidth = 47.0, trimTypeCode = 1, trimmedWidthOverridden = "Y" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await _client.PostAsJsonAsync("/api/parts",
+            new { customerId = 4001, enduserPartNum = "PN-PART-TRIM", sheetType = "RECTANGLE", trimmingRequired = "Y", incomingCoilWidth = 60.0, trimmedCoilWidth = 47.0, trimTypeCode = 1, trimmedWidthOverridden = "Y", trimmedWidthOverrideUser = "qa" })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Part_save_clears_trim_fields_and_derives_pieces_skid()
+    {
+        static bool IsNullOrAbsent(JsonElement o, string name) =>
+            !o.TryGetProperty(name, out var v) || v.ValueKind == JsonValueKind.Null;
+
+        // Trimming not required: any submitted trim widths are cleared at save (w_part_num_new:562).
+        var noTrim = await _client.PostAsJsonAsync("/api/parts", new
+        {
+            customerId = 4001, enduserPartNum = "PN-NORM-1", sheetType = "RECTANGLE",
+            trimmingRequired = "N", incomingCoilWidth = 48.5, trimmedCoilWidth = 46.0, trimTypeCode = 1,
+        });
+        Assert.Equal(HttpStatusCode.Created, noTrim.StatusCode);
+        var noTrimBody = await noTrim.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(IsNullOrAbsent(noTrimBody, "incomingCoilWidth"));
+        Assert.True(IsNullOrAbsent(noTrimBody, "trimmedCoilWidth"));
+        Assert.True(IsNullOrAbsent(noTrimBody, "trimTypeCode"));
+
+        // pieces_skid omitted -> derived as Int(max_skid_wt / theoretical_unit_wt) = 4000/2 = 2000.
+        var derive = await _client.PostAsJsonAsync("/api/parts", new
+        {
+            customerId = 4001, enduserPartNum = "PN-NORM-2", sheetType = "RECTANGLE",
+            maxSkidWt = 4000, theoreticalUnitWt = 2.0, trimmingRequired = "N",
+        });
+        var deriveBody = await derive.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(2000, deriveBody.GetProperty("piecesSkid").GetInt32());
+
+        // An explicit pieces_skid is preserved — the derivation only fills a missing value.
+        var kept = await _client.PostAsJsonAsync("/api/parts", new
+        {
+            customerId = 4001, enduserPartNum = "PN-NORM-3", sheetType = "RECTANGLE",
+            maxSkidWt = 4000, theoreticalUnitWt = 2.0, piecesSkid = 123, trimmingRequired = "N",
+        });
+        var keptBody = await kept.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(123, keptBody.GetProperty("piecesSkid").GetInt32());
+    }
+
+    [Fact]
+    public async Task Scrap_skid_requires_net_weight()
+    {
+        // Legacy refuses a null/zero scrap-skid net weight ("Skid Net Weight must be populated",
+        // w_office_skid_entry:5413).
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/scrap-skids", new { scrapAbJobNum = "1001", scrapAlloy2 = "3003" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/scrap-skids", new { scrapAbJobNum = "1001", scrapNetWt = 0 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/scrap-skids", new { scrapAbJobNum = "1001", scrapNetWt = 50, scrapTareWt = -5 })).StatusCode);
+        // A real net weight -> 201.
+        Assert.Equal(HttpStatusCode.Created,
+            (await _client.PostAsJsonAsync("/api/scrap-skids", new { scrapAbJobNum = "1001", scrapAlloy2 = "3003", scrapNetWt = 50, scrapType = 1 })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Prod_folder_note_requires_existing_job()
+    {
+        // A note against a phantom job -> 404 (legacy "Job X does not exist.", w_e_car_folder:537).
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await _client.PostAsJsonAsync("/api/prod-folder/jobs/999999/notes", new { userId = 9001, notes = "phantom" })).StatusCode);
+        // A note on a real job with a known author -> 201.
+        Assert.Equal(HttpStatusCode.Created,
+            (await _client.PostAsJsonAsync("/api/prod-folder/jobs/1001/notes", new { userId = 9001, notes = "real note" })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Receiving_coil_cash_date_is_validated()
+    {
+        const string url = "/api/receiving-bols/5501/coils";
+        var year = DateTime.Today.Year; // keep the test in the rolling [year-2 .. year] window
+        // Malformed (not 8 digits) -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync(url, new { coilOrgNum = "CD-1", cashDate = "3/15/26" })).StatusCode);
+        // Month out of range (13) -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync(url, new { coilOrgNum = "CD-2", cashDate = $"1315{year}" })).StatusCode);
+        // Year outside the last-two-years window -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync(url, new { coilOrgNum = "CD-3", cashDate = "03151999" })).StatusCode);
+        // Well-formed, in-window (MMDDYYYY) -> 201.
+        Assert.Equal(HttpStatusCode.Created,
+            (await _client.PostAsJsonAsync(url, new { coilOrgNum = "CD-4", cashDate = $"0315{year}" })).StatusCode);
+        // Cash date omitted -> 201 (presence is a deferred, customer-conditional rule).
+        Assert.Equal(HttpStatusCode.Created,
+            (await _client.PostAsJsonAsync(url, new { coilOrgNum = "CD-5" })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Shift_is_unique_per_line_schedule_and_day()
+    {
+        var day = new DateTime(2026, 5, 20, 6, 0, 0, DateTimeKind.Utc);
+        object Shift(object start, int sched, long line) => new { startTime = start, scheduleType = sched, lineNum = line };
+        // First shift for (line 220, schedule 1, 2026-05-20) -> 201.
+        Assert.Equal(HttpStatusCode.Created,
+            (await _client.PostAsJsonAsync("/api/shifts", Shift(day, 1, 220))).StatusCode);
+        // Second shift, same line + schedule + day (even a different hour) -> 409 conflict.
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await _client.PostAsJsonAsync("/api/shifts", Shift(day.AddHours(9), 1, 220))).StatusCode);
+        // A different schedule type -> 201; a different day -> 201; a different line -> 201.
+        Assert.Equal(HttpStatusCode.Created,
+            (await _client.PostAsJsonAsync("/api/shifts", Shift(day, 2, 220))).StatusCode);
+        Assert.Equal(HttpStatusCode.Created,
+            (await _client.PostAsJsonAsync("/api/shifts", Shift(day.AddDays(1), 1, 220))).StatusCode);
+        Assert.Equal(HttpStatusCode.Created,
+            (await _client.PostAsJsonAsync("/api/shifts", Shift(day, 1, 221))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Shift_time_window_is_validated()
+    {
+        var start = new DateTime(2026, 1, 15, 6, 0, 0, DateTimeKind.Utc);
+        // A shift must have a start time (legacy "Invalid Date Info" on null start/end) -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/shifts", new { lineNum = 110, operatorInitial = "QA" })).StatusCode);
+        // End before start -> 400 (w_shift_info_new:130 "ending time is before starting time").
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/shifts", new { startTime = start, endTime = start.AddHours(-2), lineNum = 110 })).StatusCode);
+        // Open shift (start only, no end yet) -> 201: a shift is opened at start, closed at end.
+        Assert.Equal(HttpStatusCode.Created,
+            (await _client.PostAsJsonAsync("/api/shifts", new { startTime = start, lineNum = 110, operatorInitial = "QA" })).StatusCode);
+        // Completed shift (end after start) -> 201.
+        Assert.Equal(HttpStatusCode.Created,
+            (await _client.PostAsJsonAsync("/api/shifts", new { startTime = start, endTime = start.AddHours(8), lineNum = 110, operatorInitial = "QA" })).StatusCode);
+    }
+
+    [Fact]
     public async Task Dimension_check_input_is_validated()
     {
         const string url = "/api/coil-eval/skids/3001/dimension-checks";
@@ -557,6 +739,72 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Trim_override_user_is_stamped_from_the_principal()
+    {
+        // A throwaway order (own item count) so we don't perturb a seeded order's assertions.
+        var orderResp = await _client.PostAsJsonAsync("/api/orders/with-items", new
+        {
+            order = new { origCustomerId = 4001, origCustomerPo = "PO-OVR" },
+            items = new[] { new { enduserPartNum = "PN-SEED", sheetType = "FLAT" } },
+        });
+        Assert.Equal(HttpStatusCode.Created, orderResp.StatusCode);
+        var orderId = (await orderResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("order").GetProperty("orderAbcNum").GetInt64();
+
+        // An authenticated overrider (X-User-Login jsmith, who has Order Entry Write): an
+        // out-of-tolerance override records THEIR login, not the spoofed body value
+        // (legacy sets trimmed_width_override_user = sqlca.logid).
+        var spoof = new HttpRequestMessage(HttpMethod.Post, $"/api/orders/{orderId}/items")
+        {
+            Content = JsonContent.Create(new
+            {
+                enduserPartNum = "PN-OVR", sheetType = "RECTANGLE",
+                trimmingRequired = "Y", incomingCoilWidth = 60.0, trimmedCoilWidth = 47.0, trimTypeCode = 1,
+                trimmedWidthOverridden = "Y", trimmedWidthOverrideUser = "SPOOFED",
+            }),
+        };
+        spoof.Headers.Add("X-User-Login", "jsmith");
+        var spoofResp = await _client.SendAsync(spoof);
+        Assert.Equal(HttpStatusCode.Created, spoofResp.StatusCode);
+        Assert.Equal("jsmith", (await spoofResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("trimmedWidthOverrideUser").GetString());
+
+        // The stamp runs before validation, so an authenticated overrider needn't send the
+        // field at all — omitting it still yields a stamped user and a 201 (not a 400).
+        var omit = new HttpRequestMessage(HttpMethod.Post, $"/api/orders/{orderId}/items")
+        {
+            Content = JsonContent.Create(new
+            {
+                enduserPartNum = "PN-OVR2", sheetType = "RECTANGLE",
+                trimmingRequired = "Y", incomingCoilWidth = 60.0, trimmedCoilWidth = 47.0, trimTypeCode = 1,
+                trimmedWidthOverridden = "Y",
+            }),
+        };
+        omit.Headers.Add("X-User-Login", "jsmith");
+        var omitResp = await _client.SendAsync(omit);
+        Assert.Equal(HttpStatusCode.Created, omitResp.StatusCode);
+        Assert.Equal("jsmith", (await omitResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("trimmedWidthOverrideUser").GetString());
+    }
+
+    [Fact]
+    public async Task Duplicate_coil_is_rejected()
+    {
+        object Coil(string org, long cust, string mid) => new
+        {
+            coilAlloy2 = "9099", netWt = 12000, coilWidth = 48.0,
+            coilOrgNum = org, customerId = cust, coilMidNum = mid,
+        };
+        // First coil with a fully-identified (org, customer, MID) -> 201.
+        Assert.Equal(HttpStatusCode.Created,
+            (await _client.PostAsJsonAsync("/api/coils", Coil("ORG-DUP-1", 4001, "MID-A"))).StatusCode);
+        // Same org + customer + MID -> 409 duplicate (w_receiving_dock:494).
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await _client.PostAsJsonAsync("/api/coils", Coil("ORG-DUP-1", 4001, "MID-A"))).StatusCode);
+        // Same org + customer but a different MID -> 201 (a distinct coil).
+        Assert.Equal(HttpStatusCode.Created,
+            (await _client.PostAsJsonAsync("/api/coils", Coil("ORG-DUP-1", 4001, "MID-B"))).StatusCode);
+    }
+
+    [Fact]
     public async Task Terminal_coil_cannot_be_patched()
     {
         var create = await _client.PostAsJsonAsync("/api/coils",
@@ -648,6 +896,17 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
         Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { checkedBy = "qc", width = 3.0 })).StatusCode);                                 // width < 5
         Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { checkedBy = "qc", lengthOper = 1000.0 })).StatusCode);                         // length > 999
         Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { checkedBy = "qc", square = 10.0 })).StatusCode);                               // square > 9
+    }
+
+    [Fact]
+    public async Task Die_validation_constrains_flag_owner_and_weight()
+    {
+        // Bad Y/N flag, fractional gross weight, and over-length owner each -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/dies", new { dieName = "D", engineeredScrapYN = "X" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/dies", new { dieName = "D", grossWeight = 1250.5 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/dies", new { dieName = "D", owner = new string('x', 33) })).StatusCode);
+        // Valid Y/N + whole weight -> 201.
+        Assert.Equal(HttpStatusCode.Created, (await _client.PostAsJsonAsync("/api/dies", new { dieName = "D-OK", engineeredScrapYN = "y", grossWeight = 500, owner = "ACME" })).StatusCode);
     }
 
     [Fact]

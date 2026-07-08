@@ -1018,6 +1018,21 @@ public sealed class AbisRepository : IAbisRepository
         return (await GetCoilAsync(id, ct))!;
     }
 
+    // Duplicate-coil guard (legacy w_receiving_dock:494): a coil is a duplicate when another
+    // coil already carries the same original number for the same customer + MID. Matches the
+    // legacy AND on all three keys — with SQL null semantics a null customer/MID never matches,
+    // so dedup only fires when the identifying triple is fully populated (as at receiving).
+    public async Task<bool> CoilExistsByKeyAsync(string coilOrgNum, long? customerId, string? coilMidNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            """
+            SELECT COUNT(*) FROM coil
+            WHERE coil_org_num = :org AND customer_id = :cust AND coil_mid_num = :mid
+            """,
+            new { org = coilOrgNum, cust = customerId, mid = coilMidNum }, cancellationToken: ct)) > 0;
+    }
+
     public async Task<SheetSkid?> GetSheetSkidAsync(long sheetSkidNum, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
@@ -3077,6 +3092,24 @@ public sealed class AbisRepository : IAbisRepository
             transaction: tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
         return (await GetShiftAsync(id, ct))!;
+    }
+
+    // Shift uniqueness per (line, schedule_type, day) — legacy refuses a second shift for the
+    // same line/schedule/date ("Shift information already exists in database.",
+    // w_daily_production_modify_schedule:543). Compared as a [day .. next-day) range on start_time
+    // rather than a DATE()/TRUNC() call so it runs identically on SQLite and Oracle.
+    public async Task<bool> ShiftExistsAsync(long lineNum, int scheduleType, DateTime onDate, CancellationToken ct)
+    {
+        var dayStart = onDate.Date;
+        var dayEnd = dayStart.AddDays(1);
+        await using var conn = await OpenAsync(ct);
+        return await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            """
+            SELECT COUNT(*) FROM shift
+            WHERE line_num = :line AND schedule_type = :sched
+              AND start_time >= :dayStart AND start_time < :dayEnd
+            """,
+            new { line = lineNum, sched = scheduleType, dayStart, dayEnd }, cancellationToken: ct)) > 0;
     }
 
     public async Task<Shift?> UpdateShiftAsync(long shiftNum, ShiftWrite body, CancellationToken ct)

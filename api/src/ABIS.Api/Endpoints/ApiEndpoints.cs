@@ -166,12 +166,14 @@ public static class ApiEndpoints
 
         api.MapPost("/jobs", async (JobWrite body, IAbisRepository repo, CancellationToken ct) =>
             {
+                if (Validate(body) is { } problems)
+                    return Results.ValidationProblem(problems);
                 var created = await repo.CreateJobAsync(body, ct);
                 return Results.Created($"/api/jobs/{created.AbJobNum}", created);
             })
            .WithName("CreateJob").WithTags("Jobs")
-           .WithSummary("Create a production job.")
-           .Produces<AbJob>(StatusCodes.Status201Created);
+           .WithSummary("Create a production job (requires the order refs it belongs to).")
+           .Produces<AbJob>(StatusCodes.Status201Created).ProducesValidationProblem();
 
         api.MapPatch("/jobs/{abJobNum:long}", async (long abJobNum, JobPatch body, IAbisRepository repo, HttpContext ctx, IOptions<JsonOptions> json, CancellationToken ct) =>
             {
@@ -231,12 +233,18 @@ public static class ApiEndpoints
             {
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
+                // Reject a duplicate coil: same original number for the same customer + MID
+                // ("Duplicated coil original number.", w_receiving_dock:494).
+                if (!string.IsNullOrWhiteSpace(body.CoilOrgNum) &&
+                    await repo.CoilExistsByKeyAsync(body.CoilOrgNum!, body.CustomerId, body.CoilMidNum, ct))
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Duplicate coil",
+                        detail: "A coil with this original number already exists for this customer and MID (duplicated coil original number).");
                 var created = await repo.CreateCoilAsync(body, ct);
                 return Results.Created($"/api/coils/{created.CoilAbcNum}", created);
             })
            .WithName("CreateCoil").WithTags("Coils")
-           .WithSummary("Create a coil on receipt.")
-           .Produces<Coil>(StatusCodes.Status201Created).ProducesValidationProblem();
+           .WithSummary("Create a coil on receipt (rejects a duplicate org+customer+MID).")
+           .Produces<Coil>(StatusCodes.Status201Created).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
 
         api.MapPatch("/coils/{coilAbcNum:long}", async (long coilAbcNum, CoilPatch body, IAbisRepository repo, HttpContext ctx, IOptions<JsonOptions> json, CancellationToken ct) =>
             {
@@ -342,10 +350,12 @@ public static class ApiEndpoints
            .WithSummary("Get one order line item by its composite key (order + line number).")
            .Produces<OrderItem>().Produces(StatusCodes.Status404NotFound);
 
-        api.MapPost("/orders/{orderAbcNum:long}/items", async (long orderAbcNum, OrderItemWrite body, IAbisRepository repo, CancellationToken ct) =>
+        api.MapPost("/orders/{orderAbcNum:long}/items", async (long orderAbcNum, OrderItemWrite body, IAbisRepository repo, HttpContext ctx, CancellationToken ct) =>
             {
+                StampTrimOverrideUser(body, ctx);
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
+                NormalizeTrimAndPieces(body);
                 var created = await repo.CreateOrderItemAsync(orderAbcNum, body, ct);
                 return Results.Created($"/api/orders/{orderAbcNum}/items/{created.OrderItemNum}", created);
             })
@@ -355,8 +365,10 @@ public static class ApiEndpoints
 
         api.MapPut("/orders/{orderAbcNum:long}/items/{orderItemNum:long}", async (long orderAbcNum, long orderItemNum, OrderItemWrite body, IAbisRepository repo, HttpContext ctx, IOptions<JsonOptions> json, CancellationToken ct) =>
             {
+                StampTrimOverrideUser(body, ctx);
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
+                NormalizeTrimAndPieces(body);
                 return await WithIfMatch(ctx, json, () => repo.GetOrderItemAsync(orderAbcNum, orderItemNum, ct), () => repo.UpdateOrderItemAsync(orderAbcNum, orderItemNum, body, ct));
             })
            .WithName("UpdateOrderItem").WithTags("OrderItems")
@@ -409,10 +421,12 @@ public static class ApiEndpoints
            .WithSummary("Get one part-number record by id.")
            .Produces<Part>().Produces(StatusCodes.Status404NotFound);
 
-        api.MapPost("/parts", async (PartWrite body, IAbisRepository repo, CancellationToken ct) =>
+        api.MapPost("/parts", async (PartWrite body, IAbisRepository repo, HttpContext ctx, CancellationToken ct) =>
             {
+                StampTrimOverrideUser(body, ctx);
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
+                NormalizeTrimAndPieces(body);
                 var created = await repo.CreatePartAsync(body, ct);
                 return Results.Created($"/api/parts/{created.PartNumId}", created);
             })
@@ -422,6 +436,7 @@ public static class ApiEndpoints
 
         api.MapPut("/parts/{partNumId:long}", async (long partNumId, PartWrite body, IAbisRepository repo, HttpContext ctx, IOptions<JsonOptions> json, CancellationToken ct) =>
             {
+                StampTrimOverrideUser(body, ctx);
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
                 // Legacy w_part_num_management: a part already applied to one or more orders
@@ -429,6 +444,7 @@ public static class ApiEndpoints
                 if (await repo.IsPartInUseAsync(partNumId, ct))
                     return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Part in use",
                         detail: "Can't modify this part because it has already been applied to one or more orders. Create a revision instead.");
+                NormalizeTrimAndPieces(body);
                 return await WithIfMatch(ctx, json, () => repo.GetPartAsync(partNumId, ct), () => repo.UpdatePartAsync(partNumId, body, ct));
             })
            .WithName("UpdatePart").WithTags("Parts")
@@ -610,6 +626,8 @@ public static class ApiEndpoints
             {
                 if (string.IsNullOrWhiteSpace(body.CoilOrgNum))
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["coilOrgNum"] = ["coilOrgNum is required."] });
+                if (CashDateFormatError(body.CashDate) is { } cashErr)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["cashDate"] = [cashErr] });
                 var created = await repo.AddReceivingBolCoilAsync(receivingBolId, body, ct);
                 return created is null
                     ? Results.NotFound(new { message = $"Receiving BOL {receivingBolId} not found." })
@@ -717,6 +735,10 @@ public static class ApiEndpoints
 
         api.MapPost("/prod-folder/jobs/{abJobNum:long}/notes", async (long abJobNum, JobFolderNoteWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
             {
+                // Don't file a note against a phantom job — legacy rejects it with
+                // "Job X does not exist." (w_e_car_folder:537) before anything else.
+                if (await repo.GetJobAsync(abJobNum, ct) is null)
+                    return Results.NotFound();
                 // The author: the resolved OIDC user, else the body's userId (dev API).
                 long? userId = body.UserId;
                 if (userId is null && ResolveLogin(ctx) is { } login)
@@ -728,7 +750,7 @@ public static class ApiEndpoints
             })
            .WithName("AddJobFolderNote").WithTags("ProdFolder")
            .WithSummary("Add a note to a job's e-folder (author from the OIDC user or body userId).")
-           .Produces<JobFolderNote>(StatusCodes.Status201Created).ProducesValidationProblem();
+           .Produces<JobFolderNote>(StatusCodes.Status201Created).Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
 
         // ---- Stacker line board / error log (legacy stacker_110) ----
         api.MapGet("/stacker/board", async (IAbisRepository repo, CancellationToken ct, long? lineNum = null) =>
@@ -931,12 +953,18 @@ public static class ApiEndpoints
             {
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
+                // One shift per (line, schedule_type, day): a scheduled shift already exists is a
+                // conflict — use the update instead (w_daily_production_modify_schedule:543).
+                if (body is { LineNum: { } line, ScheduleType: { } sched, StartTime: { } start }
+                    && await repo.ShiftExistsAsync(line, sched, start, ct))
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Shift already exists",
+                        detail: "A shift already exists for this line, schedule type, and date. Update the existing shift instead.");
                 var created = await repo.CreateShiftAsync(body, ct);
                 return Results.Created($"/api/shifts/{created.ShiftNum}", created);
             })
            .WithName("CreateShift").WithTags("Shifts")
-           .WithSummary("Create a production shift.")
-           .Produces<Shift>(StatusCodes.Status201Created).ProducesValidationProblem();
+           .WithSummary("Create a production shift (one per line + schedule type + day).")
+           .Produces<Shift>(StatusCodes.Status201Created).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
 
         api.MapPut("/shifts/{shiftNum:long}", async (long shiftNum, ShiftWrite body, IAbisRepository repo, HttpContext ctx, IOptions<JsonOptions> json, CancellationToken ct) =>
             {
@@ -1203,11 +1231,19 @@ public static class ApiEndpoints
             {
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
+                // A finished sheet skid must hang off a job that resolves to an order — legacy
+                // refuses a job number with no order ("Can not find order number from job number!!",
+                // w_wh_business:831). Rejects both a phantom job and a job with no order line.
+                if (await repo.GetJobAsync(body.AbJobNum, ct) is not { OrderAbcNum: > 0 })
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["abJobNum"] = ["abJobNum must reference an existing job that belongs to an order."],
+                    });
                 var created = await repo.CreateSheetSkidAsync(body, ct);
                 return Results.Created($"/api/sheet-skids/{created.SheetSkidNum}", created);
             })
            .WithName("CreateSheetSkid").WithTags("Skids")
-           .WithSummary("Create a finished sheet skid.")
+           .WithSummary("Create a finished sheet skid (its job must belong to an order).")
            .Produces<SheetSkid>(StatusCodes.Status201Created).ProducesValidationProblem();
 
         // Warehouse-side update of a finished sheet skid (the legacy w_wh_* windows):
@@ -1808,6 +1844,81 @@ public static class ApiEndpoints
         if (value is null) e[field] = [$"{field} is required."];
     }
 
+    // Edge-trim tolerance (legacy w_order_entry:496-549 / w_part_num_new:523). When trimming is
+    // required, the trim data must be complete and incoming >= trimmed (hard errors); the trim
+    // amount must sit within the 1.5"-12" trimmer tolerance, overridable via
+    // trimmed_width_overridden='Y' + an override user. Shared by order items and part masters.
+    private static void AddEdgeTrimErrors(Dictionary<string, string[]> e, string? trimmingRequired,
+        decimal? incoming, decimal? trimmed, int? trimType, string? overridden, string? overrideUser)
+    {
+        if (!string.Equals(trimmingRequired?.Trim(), "Y", StringComparison.OrdinalIgnoreCase)) return;
+        if (incoming is null) e["incomingCoilWidth"] = ["incomingCoilWidth is required when trimming is required."];
+        if (trimmed is null) e["trimmedCoilWidth"] = ["trimmedCoilWidth is required when trimming is required."];
+        if (trimType is null) e["trimTypeCode"] = ["trimTypeCode is required when trimming is required."];
+        if (incoming is { } inc && trimmed is { } trm)
+        {
+            var diff = inc - trm;
+            var isOverridden = string.Equals(overridden?.Trim(), "Y", StringComparison.OrdinalIgnoreCase);
+            if (diff < 0m)
+                e["trimmedCoilWidth"] = ["Incoming coil width must be greater than trimmed coil width."];
+            else if (diff is < 1.50m or > 12.00m && !isOverridden)
+                e["trimmedCoilWidth"] = ["Trim (incoming − trimmed) is under trimmer tolerance (must be 1.5\"–12\"); resend with trimmedWidthOverridden='Y' to override."];
+            else if (diff is < 1.50m or > 12.00m && string.IsNullOrWhiteSpace(overrideUser))
+                e["trimmedWidthOverrideUser"] = ["trimmedWidthOverrideUser is required to override the trimmer tolerance."];
+        }
+    }
+
+    // "At save" normalization shared by parts and order items (rank 23). Two legacy rules:
+    //  - When trimming isn't required, the trim columns are cleared so a stale incoming/trimmed
+    //    width can't linger on the record (w_part_num_new:562 wf_update_trimming_data(False)).
+    //  - Pieces-per-skid is only a suggestion: when it wasn't supplied, derive it as
+    //    Int(max_skid_wt / theoretical_unit_wt) (w_order_entry:1152) — an explicit value is kept.
+    private static void NormalizeTrimAndPieces(ITrimNormalizable b)
+    {
+        if (!string.Equals(b.TrimmingRequired?.Trim(), "Y", StringComparison.OrdinalIgnoreCase))
+        {
+            b.IncomingCoilWidth = null;
+            b.TrimmedCoilWidth = null;
+            b.TrimTypeCode = null;
+            b.TrimmedWidthOverridden = null;
+            b.TrimmedWidthOverrideUser = null;
+        }
+        if (b.PiecesSkid is null or 0 && b.MaxSkidWt is > 0 && b.TheoreticalUnitWt is > 0m)
+            b.PiecesSkid = (int)(b.MaxSkidWt.Value / b.TheoreticalUnitWt.Value);
+    }
+
+    // A cash_date is stored as an 8-digit MMDDYYYY string. Legacy validates month 1-12,
+    // day 1-31, and a year inside the last two years [today-2 .. today]
+    // (w_coil_detail_new:69-103). Returns an error message, or null when blank (presence is a
+    // separate, customer-conditional rule — deferred) or well-formed.
+    private static string? CashDateFormatError(string? cashDate)
+    {
+        var s = cashDate?.Trim();
+        if (string.IsNullOrEmpty(s)) return null;
+        if (s.Length != 8 || !s.All(char.IsDigit))
+            return "cashDate must be an 8-digit MMDDYYYY string.";
+        var month = int.Parse(s[..2]);
+        var day = int.Parse(s.Substring(2, 2));
+        var year = int.Parse(s[4..]);
+        if (month is < 1 or > 12) return "cashDate month must be 01–12.";
+        if (day is < 1 or > 31) return "cashDate day must be 01–31.";
+        var currentYear = DateTime.Today.Year;
+        if (year < currentYear - 2 || year > currentYear)
+            return $"cashDate year must be between {currentYear - 2} and {currentYear}.";
+        return null;
+    }
+
+    // A trimmer-tolerance override is attributable to whoever is signed in: stamp the
+    // trimmed-width override user from the principal, never client input (legacy sets it to
+    // sqlca.logid, w_order_entry:616). A null login (API-key service account) keeps the
+    // supplied value. Runs before Validate so an authenticated overrider needn't send the field.
+    private static void StampTrimOverrideUser(ITrimNormalizable body, HttpContext ctx)
+    {
+        if (string.Equals(body.TrimmedWidthOverridden?.Trim(), "Y", StringComparison.OrdinalIgnoreCase)
+            && ResolveLogin(ctx) is { } login)
+            body.TrimmedWidthOverrideUser = login;
+    }
+
     // ---- Security enforcement (legacy f_security_door) ----
     // The caller's ABIS login: the OIDC preferred_username/name claim, or the X-User-Login
     // header (dev/testing). Null => an API-key service account (full trust, bypasses gates).
@@ -1884,23 +1995,8 @@ public static class ApiEndpoints
         // legacy prompts Yes/No and, on override, stamps trimmed_width_overridden='Y' +
         // trimmed_width_override_user and logs it. We mirror that: out-of-tolerance is a 400
         // unless trimmedWidthOverridden='Y' is sent, in which case an override user is required.
-        if (string.Equals(body.TrimmingRequired?.Trim(), "Y", StringComparison.OrdinalIgnoreCase))
-        {
-            if (body.IncomingCoilWidth is null) e["incomingCoilWidth"] = ["incomingCoilWidth is required when trimming is required."];
-            if (body.TrimmedCoilWidth is null) e["trimmedCoilWidth"] = ["trimmedCoilWidth is required when trimming is required."];
-            if (body.TrimTypeCode is null) e["trimTypeCode"] = ["trimTypeCode is required when trimming is required."];
-            if (body.IncomingCoilWidth is { } inc && body.TrimmedCoilWidth is { } trm)
-            {
-                var diff = inc - trm;
-                var overridden = string.Equals(body.TrimmedWidthOverridden?.Trim(), "Y", StringComparison.OrdinalIgnoreCase);
-                if (diff < 0m)
-                    e["trimmedCoilWidth"] = ["Incoming coil width must be greater than trimmed coil width."];
-                else if (diff is < 1.50m or > 12.00m && !overridden)
-                    e["trimmedCoilWidth"] = ["Trim (incoming − trimmed) is under trimmer tolerance (must be 1.5\"–12\"); resend with trimmedWidthOverridden='Y' to override."];
-                else if (diff is < 1.50m or > 12.00m && string.IsNullOrWhiteSpace(body.TrimmedWidthOverrideUser))
-                    e["trimmedWidthOverrideUser"] = ["trimmedWidthOverrideUser is required to override the trimmer tolerance."];
-            }
-        }
+        AddEdgeTrimErrors(e, body.TrimmingRequired, body.IncomingCoilWidth, body.TrimmedCoilWidth,
+            body.TrimTypeCode, body.TrimmedWidthOverridden, body.TrimmedWidthOverrideUser);
         return e.Count == 0 ? null : e;
     }
 
@@ -1956,6 +2052,28 @@ public static class ApiEndpoints
         Max(e, "sheetType", body.SheetType, 18);
         Max(e, "alloy", body.Alloy, 8);
         Max(e, "temper", body.Temper, 8);
+        // The same edge-trim rule as order items applies to a part's trimming spec.
+        // (sheetType / gauge / enduser_id / sector are NOT required here: Validate(PartWrite) is
+        // shared by the full-replace PUT, and parts are built up incrementally — enforce those at
+        // a create-specific/finalize point, verified against live Oracle.)
+        AddEdgeTrimErrors(e, body.TrimmingRequired, body.IncomingCoilWidth, body.TrimmedCoilWidth,
+            body.TrimTypeCode, body.TrimmedWidthOverridden, body.TrimmedWidthOverrideUser);
+        return e.Count == 0 ? null : e;
+    }
+
+    private static Dictionary<string, string[]>? Validate(JobWrite body)
+    {
+        var e = new Dictionary<string, string[]>();
+        // A production job belongs to an order line — legacy refuses a job/production order with
+        // no order ("NO ABC Order specified in the production order", w_stacker_job_details:491),
+        // and the sheet-weight rollup resolves the order_item by (order_abc_num, order_item_num).
+        if (body.OrderAbcNum is null or <= 0)
+            e["orderAbcNum"] = ["orderAbcNum is required (a job belongs to an order)."];
+        if (body.OrderItemNum is null or <= 0)
+            e["orderItemNum"] = ["orderItemNum is required (a job targets an order line)."];
+        // Material yield drives the sheet-weight rollup; a zero/negative yield is rejected
+        // ("Invalid yield value.", w_stacker_job_details:272). Optional at create, positive when set.
+        Positive(e, "materialYield", body.MaterialYield);
         return e.Count == 0 ? null : e;
     }
 
@@ -1981,6 +2099,16 @@ public static class ApiEndpoints
         Max(e, "partName", body.PartName, 64);
         Max(e, "location", body.Location, 32);
         Max(e, "description", body.Description, 64);
+        Max(e, "owner", body.Owner, 32);   // the one string field that was unbounded
+        // engineered_scrap_y_n is a Y/N flag (legacy w_die_new / die.engineered_scrap_y_n CHAR(1)).
+        if (!string.IsNullOrWhiteSpace(body.EngineeredScrapYN) && body.EngineeredScrapYN.Trim().ToUpperInvariant() is not ("Y" or "N"))
+            e["engineeredScrapYN"] = ["engineeredScrapYN must be Y or N."];
+        // gross_weight is stored as a whole number (legacy d_die_new integer column).
+        if (body.GrossWeight is { } gw && gw != decimal.Truncate(gw))
+            e["grossWeight"] = ["grossWeight must be a whole number."];
+        // NOTE: num_of_parts_per_hit / status / location value-sets are NOT hard-enforced —
+        // the worklist's {1,2,3} / {0,1,2} / {BLDG #1..3} don't match the real data (seed uses
+        // location RACK-*), so they need live-Oracle confirmation before an enum gate.
         return e.Count == 0 ? null : e;
     }
 
@@ -2128,6 +2256,13 @@ public static class ApiEndpoints
         Max(e, "scrapTemper", body.ScrapTemper, 8);
         Max(e, "scrapLocation", body.ScrapLocation, 18);
         Max(e, "scrapNotes", body.ScrapNotes, 255);
+        // A scrap skid must carry a real net weight — legacy refuses a null/zero skid net
+        // ("Skid Net Weight must be populated", w_office_skid_entry:5413). Tare stays optional
+        // but cannot be negative.
+        if (body.ScrapNetWt is null or <= 0m)
+            e["scrapNetWt"] = ["scrapNetWt is required and must be greater than zero (skid net weight must be populated)."];
+        if (body.ScrapTareWt is < 0m)
+            e["scrapTareWt"] = ["scrapTareWt cannot be negative."];
         return e.Count == 0 ? null : e;
     }
 
@@ -2144,6 +2279,13 @@ public static class ApiEndpoints
         var e = new Dictionary<string, string[]>();
         Max(e, "operatorInitial", body.OperatorInitial, 10);
         Max(e, "note", body.Note, 1024);
+        // A shift must have a start time — legacy treats a null start/end as "Invalid Date Info"
+        // (w_daily_production:197). End time stays optional: a shift is opened when it starts and
+        // closed when it ends. But when an end IS given it cannot precede the start
+        // (w_shift_info_new:130 "Shift ending time is before starting time." -> RETURN -1).
+        Req(e, "startTime", body.StartTime);
+        if (body.StartTime is { } s && body.EndTime is { } end && end < s)
+            e["endTime"] = ["endTime cannot be before startTime."];
         return e.Count == 0 ? null : e;
     }
 

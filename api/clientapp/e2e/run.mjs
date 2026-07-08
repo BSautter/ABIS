@@ -319,7 +319,7 @@ test('parts flow: create, get, update part (typed)', async () => {
   const created = await client.createPart(new PartWrite({
     customerId: 4001, enduserPartNum: 'E2E-PN', sheetType: 'SHEET', alloy: '3003', temper: 'H14', gauge: 0.05, itemStatus: 1,
     gaugeP: 0.002, gaugeM: 0.002, materialEndUse: 'Heat shield', theoreticalUnitWt: 1.2345,
-    incomingCoilWidth: 48.5, trimmedCoilWidth: 47.25, trimmingRequired: 'Y', shTolerancePlus: 3, shToleranceMinus: 2,
+    incomingCoilWidth: 48.5, trimmedCoilWidth: 46.5, trimTypeCode: 1, trimmingRequired: 'Y', shTolerancePlus: 3, shToleranceMinus: 2,
     dieId: 2001, lineNum: 110, spm: 80, autoparts: 1, specialPart: 'N',
     piecesSkid: 500, maxSkidWt: 4000, stacksSkid: 4, supplierCode: 77,
     packagingBands: '2 straps', itemDesc: 'E2E part desc', itemNote: 'E2E note',

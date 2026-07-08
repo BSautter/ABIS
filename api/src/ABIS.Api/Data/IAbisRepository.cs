@@ -28,6 +28,7 @@ public interface IAbisRepository
     Task<IReadOnlyList<CoilProcessing>> GetCoilProcessingAsync(long coilAbcNum, CancellationToken ct);
     Task<IReadOnlyList<CoilInventoryGroup>> GetCoilInventorySummaryAsync(string groupBy, CancellationToken ct);
     Task<Coil> CreateCoilAsync(CoilWrite body, CancellationToken ct);
+    Task<bool> CoilExistsByKeyAsync(string coilOrgNum, long? customerId, string? coilMidNum, CancellationToken ct);
     Task<Coil?> PatchCoilAsync(long coilAbcNum, CoilPatch patch, CancellationToken ct);
 
     // ---- Orders (read + write) -----------------------------------------
@@ -208,6 +209,7 @@ public interface IAbisRepository
     Task<PagedResult<Shift>> GetShiftsAsync(int page, int pageSize, long? lineNum, string? orderBy, CancellationToken ct);
     Task<Shift?> GetShiftAsync(long shiftNum, CancellationToken ct);
     Task<Shift> CreateShiftAsync(ShiftWrite body, CancellationToken ct);
+    Task<bool> ShiftExistsAsync(long lineNum, int scheduleType, DateTime onDate, CancellationToken ct);
     Task<Shift?> UpdateShiftAsync(long shiftNum, ShiftWrite body, CancellationToken ct);
     Task<PagedResult<DowntimeInstance>> GetDowntimeInstancesAsync(int page, int pageSize, long? abJobNum, long? shiftNum, string? orderBy, CancellationToken ct);
     Task<DowntimeInstance?> GetDowntimeInstanceAsync(long instanceNum, CancellationToken ct);

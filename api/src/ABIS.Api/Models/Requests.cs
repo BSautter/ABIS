@@ -3,6 +3,23 @@ namespace Abis.Api.Models;
 // Write request bodies. Kept separate from the read models so the public write
 // contract is explicit and never silently widened by adding read columns.
 
+/// <summary>Shared "at save" normalization surface for records that carry a coil
+/// edge-trim spec plus skid packaging (part-number master and order line item). Lets a
+/// single helper null out stale trim columns when trimming isn't required and suggest
+/// pieces-per-skid when it wasn't supplied (legacy w_part_num_new:562 / w_order_entry:1152).</summary>
+public interface ITrimNormalizable
+{
+    string? TrimmingRequired { get; set; }
+    decimal? IncomingCoilWidth { get; set; }
+    decimal? TrimmedCoilWidth { get; set; }
+    int? TrimTypeCode { get; set; }
+    string? TrimmedWidthOverridden { get; set; }
+    string? TrimmedWidthOverrideUser { get; set; }
+    int? PiecesSkid { get; set; }
+    int? MaxSkidWt { get; set; }
+    decimal? TheoreticalUnitWt { get; set; }
+}
+
 /// <summary>Create or fully replace a customer. <see cref="CustomerName"/> is required.</summary>
 public sealed class CustomerWrite
 {
@@ -52,7 +69,7 @@ public sealed class CustomerWrite
 
 /// <summary>Create or fully replace a part-number record. <see cref="CustomerId"/>
 /// is required (the table's <c>customer_id</c> is NOT NULL).</summary>
-public sealed class PartWrite
+public sealed class PartWrite : ITrimNormalizable
 {
     public long? CustomerId { get; set; }
     public long? EnduserId { get; set; }
@@ -211,7 +228,7 @@ public sealed class CustomerOrderWrite
 /// <summary>Create or replace an order line item (table <c>order_item</c>).
 /// <see cref="EnduserPartNum"/> is required. <c>item_created_dttm</c> is set
 /// server-side on create.</summary>
-public sealed class OrderItemWrite
+public sealed class OrderItemWrite : ITrimNormalizable
 {
     /// <summary>Owning order — part of the order_item composite PK (confirmed real in
     /// the back-check). Optional for a standalone item; set by the server when creating
