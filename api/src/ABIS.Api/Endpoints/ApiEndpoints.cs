@@ -173,11 +173,18 @@ public static class ApiEndpoints
            .WithSummary("Create a production job.")
            .Produces<AbJob>(StatusCodes.Status201Created);
 
-        api.MapPatch("/jobs/{abJobNum:long}", (long abJobNum, JobPatch body, IAbisRepository repo, HttpContext ctx, IOptions<JsonOptions> json, CancellationToken ct) =>
-                WithIfMatch(ctx, json, () => repo.GetJobAsync(abJobNum, ct), () => repo.PatchJobAsync(abJobNum, body, ct)))
+        api.MapPatch("/jobs/{abJobNum:long}", async (long abJobNum, JobPatch body, IAbisRepository repo, HttpContext ctx, IOptions<JsonOptions> json, CancellationToken ct) =>
+            {
+                // Legacy w_stacker_job_details:498 — a finished job (job_status 0 = Done) is
+                // terminal ("this job is done, nothing can be modified now"); it flows into invoicing.
+                if (await repo.GetJobAsync(abJobNum, ct) is { JobStatus: 0 })
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Job is done",
+                        detail: $"Job {abJobNum} is done and cannot be modified.");
+                return await WithIfMatch(ctx, json, () => repo.GetJobAsync(abJobNum, ct), () => repo.PatchJobAsync(abJobNum, body, ct));
+            })
            .WithName("PatchJob").WithTags("Jobs")
-           .WithSummary("Update a job's status, notes, men, or finish time. Supports If-Match.")
-           .Produces<AbJob>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status412PreconditionFailed);
+           .WithSummary("Update a job's status, notes, men, or finish time (409 if the job is done). Supports If-Match.")
+           .Produces<AbJob>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status412PreconditionFailed);
 
         // ---- Coils (inventory) -----------------------------------------
         api.MapGet("/coils", async (IAbisRepository repo, CancellationToken ct,
@@ -231,11 +238,18 @@ public static class ApiEndpoints
            .WithSummary("Create a coil on receipt.")
            .Produces<Coil>(StatusCodes.Status201Created).ProducesValidationProblem();
 
-        api.MapPatch("/coils/{coilAbcNum:long}", (long coilAbcNum, CoilPatch body, IAbisRepository repo, HttpContext ctx, IOptions<JsonOptions> json, CancellationToken ct) =>
-                WithIfMatch(ctx, json, () => repo.GetCoilAsync(coilAbcNum, ct), () => repo.PatchCoilAsync(coilAbcNum, body, ct)))
+        api.MapPatch("/coils/{coilAbcNum:long}", async (long coilAbcNum, CoilPatch body, IAbisRepository repo, HttpContext ctx, IOptions<JsonOptions> json, CancellationToken ct) =>
+            {
+                // Legacy w_inv_coil (391-404): a coil that is Done(0), Shipped(10), or
+                // Transferred(13) is terminal — its detail can't be modified.
+                if (await repo.GetCoilAsync(coilAbcNum, ct) is { CoilStatus: 0 or 10 or 13 } t)
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Coil is terminal",
+                        detail: $"Coil {coilAbcNum} is {t.CoilStatus switch { 0 => "done", 10 => "shipped", _ => "transferred" }} and cannot be modified.");
+                return await WithIfMatch(ctx, json, () => repo.GetCoilAsync(coilAbcNum, ct), () => repo.PatchCoilAsync(coilAbcNum, body, ct));
+            })
            .WithName("PatchCoil").WithTags("Coils")
-           .WithSummary("Update a coil's status, location, or notes. Supports If-Match.")
-           .Produces<Coil>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status412PreconditionFailed);
+           .WithSummary("Update a coil's status, location, or notes (409 if the coil is done/shipped/transferred). Supports If-Match.")
+           .Produces<Coil>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status412PreconditionFailed);
 
         // ---- Orders -----------------------------------------------------
         api.MapGet("/orders", async (IAbisRepository repo, CancellationToken ct,
@@ -612,10 +626,19 @@ public static class ApiEndpoints
            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
 
         api.MapPost("/receiving-bols/{receivingBolId:long}/mint", async (long receivingBolId, IAbisRepository repo, CancellationToken ct) =>
-                await repo.MintBolCoilsAsync(receivingBolId, ct) is { } r ? Results.Ok(r) : Results.NotFound())
+            {
+                var result = await repo.MintBolCoilsAsync(receivingBolId, ct);
+                if (result is null) return Results.NotFound();
+                // Legacy w_coil_receiving:367 — a BOL with no coil lines can't be minted
+                // ("please enter coil information before saving a BOL"); don't silently return Minted=0.
+                if (result.Coils.Count == 0)
+                    return Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Empty BOL",
+                        detail: $"Receiving BOL {receivingBolId} has no coil lines to mint.");
+                return Results.Ok(result);
+            })
            .WithName("MintBolCoils").WithTags("Receiving")
-           .WithSummary("Mint coil inventory for the BOL's lines (legacy w_coil_receiving save) — creates COIL rows (status 2/new, 11/on-hold if damaged) and links them. Idempotent.")
-           .Produces<MintResult>().Produces(StatusCodes.Status404NotFound);
+           .WithSummary("Mint coil inventory for the BOL's lines (legacy w_coil_receiving save) — creates COIL rows (status 2/new, 11/on-hold if damaged) and links them. Idempotent; 400 if the BOL has no coils.")
+           .Produces<MintResult>().Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status404NotFound);
 
         api.MapPost("/receiving-bols/{receivingBolId:long}/generate-861", async (long receivingBolId, IAbisRepository repo, CancellationToken ct) =>
             {
@@ -1193,13 +1216,18 @@ public static class ApiEndpoints
             {
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
+                // Legacy w_inv_skid:1096 — a shipped skid (skid_sheet_status 0 = GONE) is terminal:
+                // "shipped to customer already, no change can be made on it anymore."
+                if (await repo.GetSheetSkidAsync(sheetSkidNum, ct) is { SkidSheetStatus: 0 })
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Skid shipped",
+                        detail: $"Sheet skid {sheetSkidNum} has shipped (status GONE) and cannot be modified.");
                 return await repo.UpdateSheetSkidWarehouseAsync(sheetSkidNum, body, ct) is { } updated
                     ? Results.Ok(updated)
                     : Results.NotFound();
             })
            .WithName("UpdateSheetSkidWarehouse").WithTags("Warehouse")
-           .WithSummary("Warehouse update of a sheet skid (location / ticket / status).")
-           .Produces<SheetSkid>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+           .WithSummary("Warehouse update of a sheet skid (location / ticket / status; 409 if the skid has shipped).")
+           .Produces<SheetSkid>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
 
         // ---- Accounting / Invoicing -------------------------------------
         // The rejected/rebanded coils that drive a job's invoice (legacy w_invoice).
@@ -1464,7 +1492,7 @@ public static class ApiEndpoints
            .WithSummary("Coils eligible to transfer, with their current owner (the coil picker).")
            .Produces<IReadOnlyList<TransferableCoil>>();
 
-        api.MapPost("/coil-ownership/transfers", async (CoilOwnershipTransferWrite body, IAbisRepository repo, CancellationToken ct) =>
+        api.MapPost("/coil-ownership/transfers", async (CoilOwnershipTransferWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
             {
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
@@ -1475,6 +1503,10 @@ public static class ApiEndpoints
                     && owner == body.CustomerIdNew)
                     return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "No ownership change",
                         detail: $"Coil {coilId} is already owned by customer {body.CustomerIdNew}; nothing to transfer.");
+                // Provenance: stamp the certificate's performed-by from the authenticated principal
+                // (legacy used sqlca.logid), so an OIDC end-user can't spoof it. An API-key service
+                // account has no login, so it keeps the body value.
+                body.TransferPerformedBy = ResolveLogin(ctx) ?? body.TransferPerformedBy;
                 var created = await repo.CreateCoilOwnershipTransferAsync(body, ct);
                 return created is null
                     ? Results.NotFound(new { message = $"Coil {body.CoilAbcNumOrig} not found." })
@@ -1547,11 +1579,20 @@ public static class ApiEndpoints
                 if (await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny) return deny;
                 if (string.IsNullOrWhiteSpace(body.LoginId))
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["loginId"] = ["loginId is required."] });
+                // A user must carry a name (legacy w_user_new:120 "No user name entered!" — first OR last).
+                if (string.IsNullOrWhiteSpace(body.UserFirstName) && string.IsNullOrWhiteSpace(body.UserLastName))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["userName"] = ["a first or last name is required."] });
+                // login_id must be unique (legacy w_user_new:111 "Duplicated user login name!").
+                // A case-insensitive dup would make GetSecurityUserByLoginAsync (QuerySingleOrDefault
+                // + LOWER) throw and GetEffectivePrivilege MAX across two rows — the auth bridge.
+                if (await repo.GetSecurityUserByLoginAsync(body.LoginId, ct) is not null)
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Duplicate login",
+                        detail: $"A user with login '{body.LoginId}' already exists.");
                 var created = await repo.CreateSecurityUserAsync(body, ct);
                 return Results.Created($"/api/security/users/{created.UserId}", created);
             })
            .WithName("CreateSecurityUser").WithTags("Security")
-           .WithSummary("Create an application user (requires User Control).").Produces<SecurityUser>(StatusCodes.Status201Created).ProducesValidationProblem().Produces(StatusCodes.Status403Forbidden);
+           .WithSummary("Create an application user (requires User Control; 409 on a duplicate login).").Produces<SecurityUser>(StatusCodes.Status201Created).ProducesValidationProblem().Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status403Forbidden);
 
         api.MapPost("/security/groups", async (SecurityGroupWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
                 await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny ? deny
@@ -1566,20 +1607,29 @@ public static class ApiEndpoints
            .WithSummary("Create a protected feature (requires User Control).").Produces<SecurityApplication>(StatusCodes.Status201Created).Produces(StatusCodes.Status403Forbidden);
 
         api.MapPut("/security/users/{userId:long}/applications/{applicationId:long}", async (long userId, long applicationId, GrantWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
-                await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny ? deny
-                    : await repo.SetUserApplicationGrantAsync(userId, applicationId, body.Privilege ?? 0, ct)
-                        ? Results.NoContent() : Results.NotFound())
+            {
+                if (await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny) return deny;
+                // Privilege is the legacy security level: 0 = ReadOnly, 1 = Write (d_user_app).
+                if (body.Privilege is not (null or 0 or 1))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["privilege"] = ["privilege must be 0 (ReadOnly) or 1 (Write)."] });
+                return await repo.SetUserApplicationGrantAsync(userId, applicationId, body.Privilege ?? 0, ct)
+                    ? Results.NoContent() : Results.NotFound();
+            })
            .WithName("SetUserApplicationGrant").WithTags("Security")
            .WithSummary("Set a user's privilege on a feature (0 = ReadOnly, 1 = Write; requires User Control).")
-           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status403Forbidden);
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status403Forbidden).ProducesValidationProblem();
 
         api.MapPut("/security/groups/{groupId:long}/applications/{applicationId:long}", async (long groupId, long applicationId, GrantWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
-                await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny ? deny
-                    : await repo.SetGroupApplicationGrantAsync(groupId, applicationId, body.Privilege ?? 0, ct)
-                        ? Results.NoContent() : Results.NotFound())
+            {
+                if (await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny) return deny;
+                if (body.Privilege is not (null or 0 or 1))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["privilege"] = ["privilege must be 0 (ReadOnly) or 1 (Write)."] });
+                return await repo.SetGroupApplicationGrantAsync(groupId, applicationId, body.Privilege ?? 0, ct)
+                    ? Results.NoContent() : Results.NotFound();
+            })
            .WithName("SetGroupApplicationGrant").WithTags("Security")
            .WithSummary("Set a group's privilege on a feature (0 = ReadOnly, 1 = Write; requires User Control).")
-           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status403Forbidden);
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status403Forbidden).ProducesValidationProblem();
 
         api.MapPost("/security/users/{userId:long}/groups/{groupId:long}", async (long userId, long groupId, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
                 await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny ? deny
@@ -1753,6 +1803,11 @@ public static class ApiEndpoints
         if (value is null) e[field] = [$"{field} is required."];
     }
 
+    private static void Req(Dictionary<string, string[]> e, string field, decimal? value)
+    {
+        if (value is null) e[field] = [$"{field} is required."];
+    }
+
     // ---- Security enforcement (legacy f_security_door) ----
     // The caller's ABIS login: the OIDC preferred_username/name claim, or the X-User-Login
     // header (dev/testing). Null => an API-key service account (full trust, bypasses gates).
@@ -1877,6 +1932,14 @@ public static class ApiEndpoints
         Positive(e, "lengthDrive", body.LengthDrive);
         Positive(e, "square", body.Square);
         Positive(e, "headDimension", body.HeadDimension);
+        // Absolute measurement bounds (legacy u_tabpg_skid_dim_check: pc 1..99, gauge 0..1,
+        // width 5..199, square 0..9, lengths 1..999). Upper bounds on top of the positive checks.
+        if (body.PcNumber is { } pc && (pc < 1 || pc > 99)) e["pcNumber"] = ["pcNumber must be between 1 and 99."];
+        if (body.Gauge is > 1m) e["gauge"] = ["gauge must be at most 1."];
+        if (body.Width is { } w && (w < 5m || w > 199m)) e["width"] = ["width must be between 5 and 199."];
+        if (body.Square is > 9m) e["square"] = ["square must be at most 9."];
+        if (body.LengthOper is > 999m) e["lengthOper"] = ["lengthOper must be at most 999."];
+        if (body.LengthDrive is > 999m) e["lengthDrive"] = ["lengthDrive must be at most 999."];
         return e.Count == 0 ? null : e;
     }
 
@@ -2018,6 +2081,18 @@ public static class ApiEndpoints
         Max(e, "coilNotes", body.CoilNotes, 255);
         Max(e, "icra", body.Icra, 18);
         Max(e, "lotNum", body.LotNum, 18);
+        // Coil identity + weight integrity (legacy w_coil_detail_new:381-391 requires net_wt,
+        // net_balance, width non-null; w_receiving_dock:351 requires org_num len >= 4). net_wt +
+        // width feed billing/derivations so they must be present and positive; net_wt_balance is
+        // NOT required here — it defaults to net_wt on create and is legitimately 0 for a fully
+        // consumed coil. org_num is the coil's business id.
+        Req(e, "netWt", body.NetWt);
+        Positive(e, "netWt", body.NetWt);
+        Req(e, "coilWidth", body.CoilWidth);
+        Positive(e, "coilWidth", body.CoilWidth);
+        Req(e, "coilOrgNum", body.CoilOrgNum);
+        if (!string.IsNullOrWhiteSpace(body.CoilOrgNum) && body.CoilOrgNum.Trim().Length < 4)
+            e["coilOrgNum"] = ["coilOrgNum must be at least 4 characters."];
         return e.Count == 0 ? null : e;
     }
 
@@ -2026,6 +2101,13 @@ public static class ApiEndpoints
         var e = new Dictionary<string, string[]>();
         if (body.AbJobNum <= 0) e["abJobNum"] = ["abJobNum is required."];
         Max(e, "sheetSkidDisplayNum", body.SheetSkidDisplayNum, 16);
+        // Weight sanity (legacy w_stacker_skid_edit:87-95: tare 0..8000, net 0..30000;
+        // w_wh_business:809 requires a non-zero net). A finished skid must carry a positive weight.
+        Req(e, "sheetNetWt", body.SheetNetWt);
+        if (body.SheetNetWt is { } n && (n <= 0m || n > 30000m))
+            e["sheetNetWt"] = ["sheetNetWt must be greater than 0 and at most 30000."];
+        if (body.SheetTareWt is { } t && (t < 0m || t > 8000m))
+            e["sheetTareWt"] = ["sheetTareWt must be between 0 and 8000."];
         return e.Count == 0 ? null : e;
     }
 

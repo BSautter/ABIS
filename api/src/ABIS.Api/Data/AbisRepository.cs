@@ -1011,7 +1011,7 @@ public sealed class AbisRepository : IAbisRepository
                 line = body.CoilLineNum, loc = body.CoilLocation, mid = body.CoilMidNum, org = body.CoilOrgNum,
                 status = body.CoilStatus, notes = body.CoilNotes, entry = (DateTime?)DateTime.UtcNow,
                 cust = body.CustomerId, fromCust = body.CoilFromCustId, received = (DateTime?)DateTime.UtcNow,
-                icra = body.Icra, lot = body.LotNum, net = body.NetWt, bal = body.NetWtBalance, pieces = body.PiecesPerCase
+                icra = body.Icra, lot = body.LotNum, net = body.NetWt, bal = body.NetWtBalance ?? body.NetWt, pieces = body.PiecesPerCase
             },
             transaction: tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
@@ -1033,8 +1033,8 @@ public sealed class AbisRepository : IAbisRepository
         await conn.ExecuteAsync(new CommandDefinition(
             """
             INSERT INTO sheet_skid (sheet_skid_num, ab_job_num, sheet_skid_display_num, sheet_net_wt,
-                sheet_tare_wt, skid_pieces, skid_date)
-            VALUES (:id, :job, :display, :net, :tare, :pieces, :dval)
+                sheet_tare_wt, skid_pieces, skid_date, skid_sheet_status)
+            VALUES (:id, :job, :display, :net, :tare, :pieces, :dval, 8)
             """,
             new
             {
@@ -1759,7 +1759,7 @@ public sealed class AbisRepository : IAbisRepository
             VALUES (:id, :login, :last, :first, :mi, :status, :notes, :modified)
             """,
             new { id, login = body.LoginId, last = body.UserLastName, first = body.UserFirstName, mi = body.UserMiddleInitial,
-                  status = body.UserStatus, notes = body.UserNotes, modified = (DateTime?)DateTime.UtcNow },
+                  status = body.UserStatus ?? 1, notes = body.UserNotes, modified = (DateTime?)DateTime.UtcNow },   // new users default active (legacy w_user_new)
             transaction: tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
         return (await GetSecurityUserAsync(id, ct))!;
@@ -2068,8 +2068,10 @@ public sealed class AbisRepository : IAbisRepository
         inv.TareWt = await conn.ExecuteScalarAsync<decimal>(new CommandDefinition(
             "SELECT COALESCE(SUM(sheet_tare_wt), 0) FROM sheet_skid WHERE ab_job_num = :id",
             new { id = abJobNum }, cancellationToken: ct));
+        // Voided skids (skid_sheet_status = 6) don't count toward the billed skid total
+        // (legacy w_e_car_folder:701 counts WHERE skid_sheet_status <> 6).
         inv.SkidCount = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
-            "SELECT COUNT(*) FROM sheet_skid WHERE ab_job_num = :id",
+            "SELECT COUNT(*) FROM sheet_skid WHERE ab_job_num = :id AND skid_sheet_status <> 6",
             new { id = abJobNum }, cancellationToken: ct));
 
         // Rejected/rebanded billed weights: the exact per-coil MAX rule, summed by disposition.
@@ -2806,7 +2808,7 @@ public sealed class AbisRepository : IAbisRepository
             SELECT j.ab_job_num AS AbJobNum, j.job_status AS JobStatus, j.line_num AS LineNum,
                    j.order_abc_num AS OrderAbcNum, o.orig_customer_po AS OrigCustomerPo, c.customer_short_name AS CustomerShortName,
                    (SELECT COUNT(*) FROM process_coil pc WHERE pc.ab_job_num = j.ab_job_num) AS CoilCount,
-                   (SELECT COUNT(*) FROM sheet_skid ss WHERE ss.ab_job_num = j.ab_job_num) AS SkidCount,
+                   (SELECT COUNT(*) FROM sheet_skid ss WHERE ss.ab_job_num = j.ab_job_num AND ss.skid_sheet_status <> 6) AS SkidCount,
                    (SELECT COUNT(*) FROM job_efolder_notes n WHERE n.ab_job_num = j.ab_job_num) AS NoteCount
             FROM ab_job j
             LEFT JOIN customer_order o ON o.order_abc_num = j.order_abc_num
@@ -2855,7 +2857,7 @@ public sealed class AbisRepository : IAbisRepository
             """
             SELECT j.ab_job_num AS AbJobNum, j.line_num AS LineNum, j.job_status AS JobStatus, j.order_abc_num AS OrderAbcNum,
                    (SELECT COUNT(*) FROM process_coil pc WHERE pc.ab_job_num = j.ab_job_num) AS CoilCount,
-                   (SELECT COUNT(*) FROM sheet_skid ss WHERE ss.ab_job_num = j.ab_job_num) AS SkidCount
+                   (SELECT COUNT(*) FROM sheet_skid ss WHERE ss.ab_job_num = j.ab_job_num AND ss.skid_sheet_status <> 6) AS SkidCount
             FROM ab_job j
             WHERE j.job_status NOT IN (0, 3)
               AND (:line IS NULL OR j.line_num = :line)

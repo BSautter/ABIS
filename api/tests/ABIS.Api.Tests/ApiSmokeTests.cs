@@ -389,7 +389,16 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     public async Task Get_job_skids_returns_two()
     {
         var body = await _client.GetFromJsonAsync<JsonElement>("/api/jobs/1001/skids");
-        Assert.Equal(2, body.GetArrayLength());
+        // The two seeded skids (3001, 3002) are present; other tests may add more to the shared fixture,
+        // so assert their presence rather than an exact count.
+        bool has3001 = false, has3002 = false;
+        foreach (var s in body.EnumerateArray())
+        {
+            var num = s.GetProperty("sheetSkidNum").GetInt64();
+            if (num == 3001L) has3001 = true;
+            if (num == 3002L) has3002 = true;
+        }
+        Assert.True(has3001 && has3002, "both seeded job-1001 skids present");
     }
 
     [Fact]
@@ -473,6 +482,14 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Finished_job_cannot_be_patched()
+    {
+        // Seed job 1003 is Done (job_status 0) -> any modification is rejected (409).
+        var resp = await _client.PatchAsJsonAsync("/api/jobs/1003", new { jobNotes = "try to edit" });
+        Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
+    }
+
+    [Fact]
     public async Task Create_order_returns_201()
     {
         var resp = await _client.PostAsJsonAsync("/api/orders", new { origCustomerId = 4001, origCustomerPo = "PO-HTTP" });
@@ -502,13 +519,17 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     [Fact]
     public async Task Create_coil_returns_201_and_is_retrievable()
     {
-        var resp = await _client.PostAsJsonAsync("/api/coils", new { coilAlloy2 = "6061", coilGauge = 0.25, netWt = 15000 });
+        // net_wt + width + a >=4-char org number are now required (coil integrity guard).
+        var resp = await _client.PostAsJsonAsync("/api/coils",
+            new { coilAlloy2 = "6061", coilGauge = 0.25, netWt = 15000, coilWidth = 48.0, coilOrgNum = "ORG-NEW-1" });
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
         Assert.NotNull(resp.Headers.Location);
         var created = await resp.Content.ReadFromJsonAsync<JsonElement>();
         var id = created.GetProperty("coilAbcNum").GetInt64();
         var fetched = await _client.GetFromJsonAsync<JsonElement>($"/api/coils/{id}");
         Assert.Equal("6061", fetched.GetProperty("coilAlloy2").GetString());
+        // net_wt_balance defaults to net_wt when the client omits it (fresh coil).
+        Assert.Equal(15000, fetched.GetProperty("netWtBalance").GetDecimal());
     }
 
     [Fact]
@@ -519,10 +540,125 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Create_coil_weight_and_orgnum_integrity_is_enforced()
+    {
+        // Complete, valid coil (control) -> 201. Non-seeded alloy so it doesn't skew alloy-filter counts.
+        object ok() => new { coilAlloy2 = "9099", netWt = 12000, coilWidth = 48.0, coilOrgNum = "ORG-INT-1" };
+        Assert.Equal(HttpStatusCode.Created, (await _client.PostAsJsonAsync("/api/coils", ok())).StatusCode);
+        // Missing net weight, missing width, zero width, and a too-short org number each -> 400 (no row created).
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/coils",
+            new { coilAlloy2 = "9099", coilWidth = 48.0, coilOrgNum = "ORG-INT-2" })).StatusCode);           // no netWt
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/coils",
+            new { coilAlloy2 = "9099", netWt = 12000, coilOrgNum = "ORG-INT-3" })).StatusCode);              // no width
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/coils",
+            new { coilAlloy2 = "9099", netWt = 12000, coilWidth = 0.0, coilOrgNum = "ORG-INT-4" })).StatusCode); // width 0
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/coils",
+            new { coilAlloy2 = "9099", netWt = 12000, coilWidth = 48.0, coilOrgNum = "AB" })).StatusCode);    // org < 4 chars
+    }
+
+    [Fact]
+    public async Task Terminal_coil_cannot_be_patched()
+    {
+        var create = await _client.PostAsJsonAsync("/api/coils",
+            new { coilAlloy2 = "9099", netWt = 12000, coilWidth = 48.0, coilOrgNum = "ORG-TERM-1", coilStatus = 1 });
+        var id = (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("coilAbcNum").GetInt64();
+        // A non-terminal coil patches fine (status 1 -> Transferred 13).
+        Assert.Equal(HttpStatusCode.OK, (await _client.PatchAsJsonAsync($"/api/coils/{id}", new { coilStatus = 13 })).StatusCode);
+        // Now terminal (13) -> any further modification is rejected with 409.
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PatchAsJsonAsync($"/api/coils/{id}", new { coilLocation = "X-01" })).StatusCode);
+    }
+
+    [Fact]
     public async Task Create_sheet_skid_returns_201()
     {
         var resp = await _client.PostAsJsonAsync("/api/sheet-skids", new { abJobNum = 1001, sheetNetWt = 2000, skidPieces = 100 });
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Sheet_skid_weight_bounds_and_default_status()
+    {
+        // Valid -> 201, and a new skid defaults to WH-ready status 8 (legacy w_wh_business:1485).
+        var ok = await _client.PostAsJsonAsync("/api/sheet-skids", new { abJobNum = 1001, sheetNetWt = 2000, sheetTareWt = 50, skidPieces = 100 });
+        Assert.Equal(HttpStatusCode.Created, ok.StatusCode);
+        Assert.Equal(8, (await ok.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("skidSheetStatus").GetInt32());
+        // Missing net, zero net, over-weight net (>30000), and over-weight tare (>8000) each -> 400.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/sheet-skids", new { abJobNum = 1001, skidPieces = 10 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/sheet-skids", new { abJobNum = 1001, sheetNetWt = 0 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/sheet-skids", new { abJobNum = 1001, sheetNetWt = 30001 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/sheet-skids", new { abJobNum = 1001, sheetNetWt = 2000, sheetTareWt = 8001 })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Duplicate_security_login_is_rejected()
+    {
+        var u = new { loginId = "dupuser", userFirstName = "Dup", userLastName = "User", userStatus = 1 };
+        Assert.Equal(HttpStatusCode.Created, (await _client.PostAsJsonAsync("/api/security/users", u)).StatusCode);
+        // Same login, different case -> 409 (login_id is unique, case-insensitive).
+        var dup = new { loginId = "DupUser", userFirstName = "Other", userLastName = "Person", userStatus = 1 };
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsJsonAsync("/api/security/users", dup)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Coil_transfer_performed_by_comes_from_the_principal()
+    {
+        // An OIDC end-user (X-User-Login) transferring coil 5001 (owner 4001 -> 4002): the
+        // certificate's performedBy is their login, not the client-supplied "SPOOFED".
+        var req = new HttpRequestMessage(HttpMethod.Post, "/api/coil-ownership/transfers")
+        {
+            Content = JsonContent.Create(new { coilAbcNumOrig = 5001, customerIdNew = 4002, transferPerformedBy = "SPOOFED" }),
+        };
+        req.Headers.Add("X-User-Login", "auditor7");
+        var resp = await _client.SendAsync(req);
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        var created = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("auditor7", created.GetProperty("transferPerformedBy").GetString());
+    }
+
+    [Fact]
+    public async Task Security_grant_privilege_and_new_user_defaults()
+    {
+        // Grant privilege must be 0 or 1: an out-of-range value -> 400; a valid one -> 204.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PutAsJsonAsync("/api/security/users/9001/applications/4", new { privilege = 5 })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.PutAsJsonAsync("/api/security/users/9001/applications/4", new { privilege = 1 })).StatusCode);
+        // A user needs a name (first or last).
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/security/users", new { loginId = "noname" })).StatusCode);
+        // Status defaults to active (1) when omitted.
+        var resp = await _client.PostAsJsonAsync("/api/security/users", new { loginId = "defactive", userFirstName = "Ann" });
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        Assert.Equal(1, (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("userStatus").GetInt32());
+    }
+
+    [Fact]
+    public async Task Minting_an_empty_bol_is_rejected()
+    {
+        // Seed BOL 5502 has no coil lines -> mint is a 400, not a silent Minted=0.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsync("/api/receiving-bols/5502/mint", null)).StatusCode);
+        // A non-existent BOL -> 404.
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync("/api/receiving-bols/999999/mint", null)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Dimension_check_absolute_bounds_enforced()
+    {
+        const string url = "/api/coil-eval/skids/3001/dimension-checks";
+        // Each measurement out of its legacy range -> 400 (no row created).
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { checkedBy = "qc", pcNumber = 100, gauge = 0.125, width = 48.0 })).StatusCode); // pc > 99
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { checkedBy = "qc", gauge = 2.0, width = 48.0 })).StatusCode);                   // gauge > 1
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { checkedBy = "qc", width = 3.0 })).StatusCode);                                 // width < 5
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { checkedBy = "qc", lengthOper = 1000.0 })).StatusCode);                         // length > 999
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(url, new { checkedBy = "qc", square = 10.0 })).StatusCode);                               // square > 9
+    }
+
+    [Fact]
+    public async Task Shipped_skid_cannot_be_warehouse_patched()
+    {
+        // Seed skid 3003 is shipped (status 0 = GONE) -> warehouse update rejected (409).
+        var blocked = await _client.PatchAsJsonAsync("/api/sheet-skids/3003/warehouse", new { skidTicketIfWhed = "T-EDIT" });
+        Assert.Equal(HttpStatusCode.Conflict, blocked.StatusCode);
+        // Skid 3001 (status 1) is still updatable.
+        var ok = await _client.PatchAsJsonAsync("/api/sheet-skids/3001/warehouse", new { skidTicketIfWhed = "T-WH-OK" });
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
     }
 
     [Fact]
