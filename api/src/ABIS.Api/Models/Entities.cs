@@ -1325,6 +1325,44 @@ public sealed class ScrapByJobRow
     public double? TotalNetWt { get; set; }
 }
 
+/// <summary>One row of the production-order report (legacy <c>d_report_prod_order</c>): a job
+/// header joined to its customer, order and order-line specs — the shop-floor "job traveler".
+/// Execution actuals (job_sheet_wt, job_skid, pitch, …) are a follow-up once those columns are
+/// modeled on <c>ab_job</c>; this first cut covers the order/item spec + job header.</summary>
+public sealed class ProductionOrderReportRow
+{
+    // Job header (ab_job)
+    public long AbJobNum { get; set; }
+    public long? OrderAbcNum { get; set; }
+    public long? OrderItemNum { get; set; }
+    public long? LineNum { get; set; }
+    public int? JobStatus { get; set; }
+    public decimal? MaterialYield { get; set; }
+    public int? NumberOfMenUsed { get; set; }
+    public DateTime? TimeDateStarted { get; set; }
+    public DateTime? TimeDateFinished { get; set; }
+    public DateTime? DueDate { get; set; }
+    public string? SketchJobNote { get; set; }
+    public string? SketchName { get; set; }
+    // Customer + order (customer, customer_order)
+    public string? CustomerShortName { get; set; }
+    public string? OrigCustomerPo { get; set; }
+    public string? EnduserPo { get; set; }
+    public string? SalesOrder { get; set; }
+    public string? ScrapHandingType { get; set; }
+    public int? SheetHandlingType { get; set; }
+    // Order line spec (order_item)
+    public string? EnduserPartNum { get; set; }
+    public string? SheetType { get; set; }
+    public string? Alloy2 { get; set; }
+    public string? Temper { get; set; }
+    public decimal? Gauge { get; set; }
+    public int? Quantity { get; set; }
+    public int? MaxSkidWt { get; set; }
+    public decimal? TheoreticalUnitWt { get; set; }
+    public string? MaterialEndUse { get; set; }
+}
+
 /// <summary>Result of a feature-permission check (drives UI enable/read-only/hide).</summary>
 public sealed class FeatureAllowedResult
 {

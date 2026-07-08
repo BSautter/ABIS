@@ -1388,6 +1388,43 @@ public sealed class AbisRepository : IAbisRepository
         return rows.AsList();
     }
 
+    // Production-order report (legacy d_report_prod_order): a job header joined to its customer,
+    // order and order-line specs. Always scoped by the caller (job / order / customer / date) so
+    // it never full-scans ab_job. Optional filters use the (:p IS NULL OR col = :p) form, which
+    // binds by name here (see GetTransferableCoilsAsync). LEFT JOINs so a job with an incomplete
+    // order/sketch still appears.
+    public async Task<IReadOnlyList<ProductionOrderReportRow>> GetProductionOrderReportAsync(
+        long? abJobNum, long? orderAbcNum, long? customerId, DateTime? from, DateTime? to, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<ProductionOrderReportRow>(new CommandDefinition(
+            """
+            SELECT j.ab_job_num AS AbJobNum, j.order_abc_num AS OrderAbcNum, j.order_item_num AS OrderItemNum,
+                   j.line_num AS LineNum, j.job_status AS JobStatus, j.material_yield AS MaterialYield,
+                   j.number_of_men_used AS NumberOfMenUsed, j.time_date_started AS TimeDateStarted,
+                   j.time_date_finished AS TimeDateFinished, j.due_date AS DueDate, j.sketch_job_note AS SketchJobNote,
+                   sk.sketch_name AS SketchName, cu.customer_short_name AS CustomerShortName,
+                   o.orig_customer_po AS OrigCustomerPo, o.enduser_po AS EnduserPo, o.sales_order AS SalesOrder,
+                   o.scrap_handing_type AS ScrapHandingType, o.sheet_handling_type AS SheetHandlingType,
+                   i.enduser_part_num AS EnduserPartNum, i.sheet_type AS SheetType, i.alloy2 AS Alloy2,
+                   i.temper AS Temper, i.gauge AS Gauge, i.quantity AS Quantity, i.max_skid_wt AS MaxSkidWt,
+                   i.theoretical_unit_wt AS TheoreticalUnitWt, i.material_end_use AS MaterialEndUse
+            FROM ab_job j
+            LEFT JOIN customer_order o ON o.order_abc_num = j.order_abc_num
+            LEFT JOIN order_item i ON i.order_abc_num = j.order_abc_num AND i.order_item_num = j.order_item_num
+            LEFT JOIN customer cu ON cu.customer_id = o.orig_customer_id
+            LEFT JOIN sketch sk ON sk.sketch_id = j.sketch_id
+            WHERE (:abJobNum IS NULL OR j.ab_job_num = :abJobNum)
+              AND (:orderAbcNum IS NULL OR j.order_abc_num = :orderAbcNum)
+              AND (:customerId IS NULL OR o.orig_customer_id = :customerId)
+              AND (:fromDate IS NULL OR j.time_date_started >= :fromDate)
+              AND (:toDate IS NULL OR j.time_date_started <= :toDate)
+            ORDER BY j.ab_job_num
+            """,
+            new { abJobNum, orderAbcNum, customerId, fromDate = from, toDate = to }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
     public async Task<IReadOnlyList<OpcLog>> GetOpcLogsAsync(CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

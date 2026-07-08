@@ -1440,6 +1440,22 @@ public static class ApiEndpoints
            .WithSummary("Scrap by job: skid count + total net weight.")
            .Produces<IReadOnlyList<ScrapByJobRow>>();
 
+        api.MapGet("/reporting/production-order", async (IAbisRepository repo, CancellationToken ct,
+                long? abJobNum = null, long? orderAbcNum = null, long? customerId = null, DateTime? from = null, DateTime? to = null) =>
+            {
+                // A scoped report (the job traveler) — require at least one scope so it never
+                // dumps or full-scans every job in ab_job.
+                if (abJobNum is null && orderAbcNum is null && customerId is null && from is null)
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["filter"] = ["Provide at least one scope: abJobNum, orderAbcNum, customerId, or from (date)."],
+                    });
+                return Results.Ok(await repo.GetProductionOrderReportAsync(abJobNum, orderAbcNum, customerId, from, to, ct));
+            })
+           .WithName("GetProductionOrderReport").WithTags("Reporting")
+           .WithSummary("Production-order report (job traveler): per-job header + customer / order / order-line specs. Requires a scope filter (job, order, customer, or date).")
+           .Produces<IReadOnlyList<ProductionOrderReportRow>>().ProducesValidationProblem();
+
         // ---- Quality / Recovery (customer-defect setup) -----------------
         api.MapGet("/quality/scrap-types", async (IAbisRepository repo, CancellationToken ct) =>
                 Results.Ok(await repo.GetScrapTypesAsync(ct)))

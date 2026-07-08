@@ -184,6 +184,30 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Production_order_report_is_scoped_and_joins_specs()
+    {
+        // Unfiltered -> 400 (the report must be scoped so it never full-scans ab_job).
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/reporting/production-order")).StatusCode);
+
+        // By order 9001 -> its two jobs (1001, 1002) with joined customer/order/item specs.
+        var byOrder = await _client.GetFromJsonAsync<JsonElement>("/api/reporting/production-order?orderAbcNum=9001");
+        Assert.True(byOrder.GetArrayLength() >= 2);
+        JsonElement job1001 = default; var found = false;
+        foreach (var e in byOrder.EnumerateArray())
+            if (e.GetProperty("abJobNum").GetInt64() == 1001) { job1001 = e; found = true; break; }
+        Assert.True(found);
+        Assert.Equal(9001, job1001.GetProperty("orderAbcNum").GetInt64());
+        Assert.Equal("PN-3003-A", job1001.GetProperty("enduserPartNum").GetString());   // order_item 7001
+        Assert.Equal("PO-AB-1001", job1001.GetProperty("origCustomerPo").GetString());  // customer_order
+
+        // By a single job -> exactly one row; by customer 4001 (owns order 9001) -> at least one.
+        var byJob = await _client.GetFromJsonAsync<JsonElement>("/api/reporting/production-order?abJobNum=1001");
+        Assert.Equal(1, byJob.GetArrayLength());
+        var byCust = await _client.GetFromJsonAsync<JsonElement>("/api/reporting/production-order?customerId=4001");
+        Assert.True(byCust.GetArrayLength() >= 1);
+    }
+
+    [Fact]
     public async Task Sheet_skid_requires_job_with_an_order()
     {
         // A sheet skid whose job can't resolve an order is refused (w_wh_business:831) -> 400.

@@ -5770,6 +5770,85 @@
         }
       }
     },
+    "/api/reporting/production-order": {
+      "get": {
+        "tags": [
+          "Reporting"
+        ],
+        "summary": "Production-order report (job traveler): per-job header + customer / order / order-line specs. Requires a scope filter (job, order, customer, or date).",
+        "operationId": "GetProductionOrderReport",
+        "parameters": [
+          {
+            "name": "abJobNum",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "orderAbcNum",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "customerId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProductionOrderReportRow"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/sales/quotes": {
       "get": {
         "tags": [
@@ -13200,6 +13279,134 @@
             "nullable": true
           },
           "lineLocation": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductionOrderReportRow": {
+        "type": "object",
+        "properties": {
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "orderAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "orderItemNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "lineNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "jobStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "materialYield": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "numberOfMenUsed": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "timeDateStarted": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "timeDateFinished": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "sketchJobNote": {
+            "type": "string",
+            "nullable": true
+          },
+          "sketchName": {
+            "type": "string",
+            "nullable": true
+          },
+          "customerShortName": {
+            "type": "string",
+            "nullable": true
+          },
+          "origCustomerPo": {
+            "type": "string",
+            "nullable": true
+          },
+          "enduserPo": {
+            "type": "string",
+            "nullable": true
+          },
+          "salesOrder": {
+            "type": "string",
+            "nullable": true
+          },
+          "scrapHandingType": {
+            "type": "string",
+            "nullable": true
+          },
+          "sheetHandlingType": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "enduserPartNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "sheetType": {
+            "type": "string",
+            "nullable": true
+          },
+          "alloy2": {
+            "type": "string",
+            "nullable": true
+          },
+          "temper": {
+            "type": "string",
+            "nullable": true
+          },
+          "gauge": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "maxSkidWt": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "theoreticalUnitWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "materialEndUse": {
             "type": "string",
             "nullable": true
           }
