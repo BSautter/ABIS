@@ -786,6 +786,42 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Coil_create_without_lot_num_succeeds_and_defaults_it()
+    {
+        // COIL.LOT_NUM is NOT NULL on Oracle (the fixture now mirrors that). A create that omits
+        // lotNum must still succeed — the repo defaults it — instead of ORA-01400 (live-only bug
+        // found deploying to codi-ABIS; SQLite previously allowed the null).
+        var resp = await _client.PostAsJsonAsync("/api/coils",
+            new { coilAlloy2 = "9099", netWt = 12000, coilWidth = 48.0, coilOrgNum = "ORG-LOT-1", customerId = 4001, coilMidNum = "LOTCHK" });
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        var got = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.String, got.GetProperty("lotNum").ValueKind); // defaulted, non-null
+    }
+
+    [Fact]
+    public async Task Scrap_skid_create_without_tare_defaults_to_zero()
+    {
+        // SCRAP_SKID.SCRAP_TARE_WT is NOT NULL on Oracle; omitting tare must default to 0, not 500.
+        var resp = await _client.PostAsJsonAsync("/api/scrap-skids",
+            new { scrapAbJobNum = "1001", scrapAlloy2 = "3003", scrapNetWt = 50, scrapType = 1 });
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        var got = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(0, got.GetProperty("scrapTareWt").GetDecimal());
+    }
+
+    [Fact]
+    public async Task Sheet_skid_create_without_tare_defaults_to_zero()
+    {
+        // SHEET_SKID.SHEET_TARE_WT is NOT NULL on Oracle; omitting tare must default to 0
+        // (legacy: If IsNull(tare) Then tare = 0), not ORA-01400. The typed e2e omits tare too.
+        var resp = await _client.PostAsJsonAsync("/api/sheet-skids",
+            new { abJobNum = 1001, sheetNetWt = 2000, skidPieces = 100 });
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        var got = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(0, got.GetProperty("sheetTareWt").GetDecimal());
+    }
+
+    [Fact]
     public async Task Duplicate_coil_is_rejected()
     {
         object Coil(string org, long cust, string mid) => new

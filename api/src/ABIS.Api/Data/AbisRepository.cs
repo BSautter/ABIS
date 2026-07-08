@@ -992,6 +992,12 @@ public sealed class AbisRepository : IAbisRepository
         return (await GetJobAsync(id, ct))!;
     }
 
+    // Oracle treats '' as NULL, so a required (NOT NULL) text column can't take an empty string.
+    // For business-id text the caller may legitimately not have yet (e.g. lot_num at receipt),
+    // fall back to a single space so the row inserts rather than throwing ORA-01400. SQLite's
+    // laxer NULL handling hides this, so it only ever surfaces against live Oracle.
+    private static string NonNullText(string? s) => string.IsNullOrWhiteSpace(s) ? " " : s;
+
     public async Task<Coil> CreateCoilAsync(CoilWrite body, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
@@ -1011,7 +1017,7 @@ public sealed class AbisRepository : IAbisRepository
                 line = body.CoilLineNum, loc = body.CoilLocation, mid = body.CoilMidNum, org = body.CoilOrgNum,
                 status = body.CoilStatus, notes = body.CoilNotes, entry = (DateTime?)DateTime.UtcNow,
                 cust = body.CustomerId, fromCust = body.CoilFromCustId, received = (DateTime?)DateTime.UtcNow,
-                icra = body.Icra, lot = body.LotNum, net = body.NetWt, bal = body.NetWtBalance ?? body.NetWt, pieces = body.PiecesPerCase
+                icra = body.Icra, lot = NonNullText(body.LotNum), net = body.NetWt, bal = body.NetWtBalance ?? body.NetWt, pieces = body.PiecesPerCase
             },
             transaction: tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
@@ -1053,8 +1059,10 @@ public sealed class AbisRepository : IAbisRepository
             """,
             new
             {
+                // sheet_tare_wt is NOT NULL on Oracle; default an unspecified tare to 0 (SQLite
+                // tolerates the null, so this only bites live — e.g. the typed e2e omits tare).
                 id, job = body.AbJobNum, display = body.SheetSkidDisplayNum, net = body.SheetNetWt,
-                tare = body.SheetTareWt, pieces = body.SkidPieces, dval = (DateTime?)DateTime.UtcNow
+                tare = body.SheetTareWt ?? 0m, pieces = body.SkidPieces, dval = (DateTime?)DateTime.UtcNow
             },
             transaction: tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
@@ -2198,8 +2206,10 @@ public sealed class AbisRepository : IAbisRepository
             """,
             new
             {
+                // scrap_tare_wt is NOT NULL on Oracle; default an unspecified tare to 0 (same
+                // live-only trap as sheet_skid — SQLite tolerates the null, Oracle throws ORA-01400).
                 id, job = body.ScrapAbJobNum, alloy = body.ScrapAlloy2, temper = body.ScrapTemper, type = body.ScrapType,
-                net = body.ScrapNetWt, tare = body.ScrapTareWt, loc = body.ScrapLocation, notes = body.ScrapNotes,
+                net = body.ScrapNetWt, tare = body.ScrapTareWt ?? 0m, loc = body.ScrapLocation, notes = body.ScrapNotes,
                 status = body.SkidScrapStatus, dval = (DateTime?)DateTime.UtcNow
             },
             transaction: tx, cancellationToken: ct));
@@ -2706,7 +2716,7 @@ public sealed class AbisRepository : IAbisRepository
                     {
                         abc = coilAbcNum, org = line.CoilOrgNum, alloy = line.Alloy, temper = line.Temper,
                         gauge = line.CoilGauge, width = line.CoilWidth, status, cust = customerId,
-                        now = (DateTime?)DateTime.UtcNow, lot = line.Lot, net = (decimal?)line.NetWeight
+                        now = (DateTime?)DateTime.UtcNow, lot = NonNullText(line.Lot), net = (decimal?)line.NetWeight
                     },
                     transaction: tx, cancellationToken: ct));
                 await conn.ExecuteAsync(new CommandDefinition(

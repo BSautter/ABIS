@@ -105,9 +105,9 @@ public static class SqliteFixture
             CREATE TABLE coil (
                 coil_abc_num INTEGER PRIMARY KEY, coil_alloy2 TEXT, coil_temper TEXT, coil_gauge REAL,
                 coil_width REAL, coil_line_num INTEGER, coil_location TEXT, coil_mid_num TEXT,
-                coil_org_num TEXT, coil_status INTEGER, coil_notes TEXT, coil_entry_date TEXT,
+                coil_org_num TEXT NOT NULL, coil_status INTEGER, coil_notes TEXT, coil_entry_date TEXT,
                 customer_id INTEGER, coil_from_cust_id INTEGER, date_received TEXT, icra TEXT,
-                lot_num TEXT, net_wt REAL, net_wt_balance REAL, pieces_per_case INTEGER);
+                lot_num TEXT NOT NULL, net_wt REAL NOT NULL, net_wt_balance REAL NOT NULL, pieces_per_case INTEGER);
 
             CREATE TABLE process_coil (
                 ab_job_num INTEGER, coil_abc_num INTEGER, process_coil_status INTEGER,
@@ -216,12 +216,12 @@ public static class SqliteFixture
 
             CREATE TABLE sheet_skid (
                 sheet_skid_num INTEGER PRIMARY KEY, ab_job_num INTEGER, sheet_skid_display_num TEXT,
-                sheet_net_wt REAL, sheet_tare_wt REAL, skid_pieces INTEGER, skid_date TEXT,
+                sheet_net_wt REAL NOT NULL, sheet_tare_wt REAL NOT NULL, skid_pieces INTEGER, skid_date TEXT,
                 skid_location TEXT, skid_sheet_status INTEGER, skid_ticket_if_whed TEXT, skid_from_if_whed TEXT);
 
             CREATE TABLE scrap_skid (
                 scrap_skid_num INTEGER PRIMARY KEY, scrap_ab_job_num TEXT, scrap_alloy2 TEXT, scrap_temper TEXT,
-                scrap_type INTEGER, scrap_net_wt REAL, scrap_tare_wt REAL, scrap_location TEXT,
+                scrap_type INTEGER, scrap_net_wt REAL NOT NULL, scrap_tare_wt REAL NOT NULL, scrap_location TEXT,
                 scrap_notes TEXT, skid_scrap_status INTEGER, scrap_date TEXT);
 
             -- Finished production items rolled onto a job (legacy production_sheet_item): the
@@ -260,8 +260,8 @@ public static class SqliteFixture
                 opc_log_id INTEGER PRIMARY KEY, time_stamp TEXT, source TEXT, success INTEGER, notes TEXT);
 
             CREATE TABLE part_num (
-                part_num_id INTEGER PRIMARY KEY, customer_id INTEGER, enduser_id INTEGER,
-                enduser_part_num TEXT, item_status INTEGER,
+                part_num_id INTEGER PRIMARY KEY, customer_id INTEGER NOT NULL, enduser_id INTEGER,
+                enduser_part_num TEXT, item_status INTEGER NOT NULL,
                 sheet_type TEXT, alloy TEXT, temper TEXT, gauge REAL, gauge_p REAL, gauge_m REAL,
                 surface TEXT, flatness TEXT, material_end_use TEXT, theoretical_unit_wt REAL,
                 incoming_coil_width REAL, trimmed_coil_width REAL, trim_type_code INTEGER, trimming_required TEXT,
