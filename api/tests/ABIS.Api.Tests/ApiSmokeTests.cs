@@ -567,6 +567,17 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Shipped_skid_cannot_be_warehouse_patched()
+    {
+        // Seed skid 3003 is shipped (status 0 = GONE) -> warehouse update rejected (409).
+        var blocked = await _client.PatchAsJsonAsync("/api/sheet-skids/3003/warehouse", new { skidTicketIfWhed = "T-EDIT" });
+        Assert.Equal(HttpStatusCode.Conflict, blocked.StatusCode);
+        // Skid 3001 (status 1) is still updatable.
+        var ok = await _client.PatchAsJsonAsync("/api/sheet-skids/3001/warehouse", new { skidTicketIfWhed = "T-WH-OK" });
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+    }
+
+    [Fact]
     public async Task Order_full_returns_header_customer_and_items()
     {
         var body = await _client.GetFromJsonAsync<JsonElement>("/api/orders/9001/full");

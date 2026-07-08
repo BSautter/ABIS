@@ -1207,13 +1207,18 @@ public static class ApiEndpoints
             {
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
+                // Legacy w_inv_skid:1096 — a shipped skid (skid_sheet_status 0 = GONE) is terminal:
+                // "shipped to customer already, no change can be made on it anymore."
+                if (await repo.GetSheetSkidAsync(sheetSkidNum, ct) is { SkidSheetStatus: 0 })
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Skid shipped",
+                        detail: $"Sheet skid {sheetSkidNum} has shipped (status GONE) and cannot be modified.");
                 return await repo.UpdateSheetSkidWarehouseAsync(sheetSkidNum, body, ct) is { } updated
                     ? Results.Ok(updated)
                     : Results.NotFound();
             })
            .WithName("UpdateSheetSkidWarehouse").WithTags("Warehouse")
-           .WithSummary("Warehouse update of a sheet skid (location / ticket / status).")
-           .Produces<SheetSkid>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+           .WithSummary("Warehouse update of a sheet skid (location / ticket / status; 409 if the skid has shipped).")
+           .Produces<SheetSkid>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
 
         // ---- Accounting / Invoicing -------------------------------------
         // The rejected/rebanded coils that drive a job's invoice (legacy w_invoice).
