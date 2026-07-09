@@ -842,12 +842,17 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
-    public async Task Order_entry_demo_page_is_served()
+    public async Task Operations_dashboard_page_is_served()
     {
         var bare = _factory.CreateClient();   // static files are anonymous
         var resp = await bare.GetAsync("/ui/index.html");
         resp.EnsureSuccessStatusCode();
-        Assert.Contains("ABIS Order Entry", await resp.Content.ReadAsStringAsync());
+        // The landing is now the UI-overhaul operations dashboard shell (index.html loads the
+        // dashboard module, which mounts the shared shell). The order-entry demo lives at
+        // /ui/order-entry.html.
+        var html = await resp.Content.ReadAsStringAsync();
+        Assert.Contains("ABIS — Integrated Operations", html);
+        Assert.Contains("dashboard.js", html);
     }
 
     [Fact]
