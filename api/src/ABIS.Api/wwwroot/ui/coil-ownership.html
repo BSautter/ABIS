@@ -3,89 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ABIS Coil Ownership Transfer</title>
+<title>ABIS — Coil Ownership</title>
+<meta name="color-scheme" content="light dark" />
 <link rel="stylesheet" href="/ui/theme.css" />
 </head>
 <body>
-<header>
-  <h1>ABIS Coil Ownership Transfer <span class="pill">greenfield · typed client</span></h1>
-  <nav>
-    <a href="/ui/order-entry.html">Order entry</a>
-    <a href="/ui/jobs.html">Jobs</a>
-    <a href="/ui/coil-inventory.html">Coil inventory</a>
-    <a href="/ui/coil-ownership.html">Ownership transfer</a>
-    <a href="/ui/customers.html">Customers</a>
-    <a href="/ui/accounting.html">Accounting</a>
-  </nav>
-  <div class="key">
-    <label for="apiKey" style="color:#fff">X-Api-Key</label>
-    <input id="apiKey" placeholder="dev-local-key" style="width:160px" />
-  </div>
-</header>
-
-<main>
-  <section>
-    <div class="tabs">
-      <button id="tab-ledger" type="button">Transfer ledger</button>
-      <button id="tab-new" type="button">New transfer</button>
-    </div>
-
-    <div id="pane-ledger">
-      <div class="grid2">
-        <div>
-          <h2>Transfer ledger</h2>
-          <form id="ledgerForm" class="row">
-            <div><label>Customer id (blank = all)</label><br /><input id="fLedgerCust" type="number" style="width:160px" /></div>
-            <button type="submit">Filter</button>
-          </form>
-          <table>
-            <thead><tr><th>Cert #</th><th>Coil</th><th>Owner change</th><th>Metal</th><th>Bal wt</th><th>When</th><th>By</th></tr></thead>
-            <tbody id="tLedger"></tbody>
-          </table>
-        </div>
-
-        <div id="cert" class="disabled">
-          <h2 id="certTitle">Certificate <span class="muted" style="text-transform:none;letter-spacing:0">(click a transfer)</span></h2>
-          <div id="certBody"></div>
-        </div>
-      </div>
-    </div>
-
-    <div id="pane-new">
-      <h2>Record a new transfer</h2>
-      <p class="muted">Pick the coil to transfer, choose the new owner, then record it. A certificate is issued and the coil's owner is re-pointed (its prior owner is kept).</p>
-
-      <h2 style="margin-top:14px">1 · Pick a coil</h2>
-      <form id="coilForm" class="row">
-        <div><label>Current owner id (optional)</label><br /><input id="fCoilCust" type="number" style="width:150px" /></div>
-        <div><label>Search (org-num / lot / notes)</label><br /><input id="fCoilSearch" style="width:200px" /></div>
-        <button type="submit">Search coils</button>
-      </form>
-      <table>
-        <thead><tr><th>Coil #</th><th>Owner</th><th>Org num</th><th>Lot</th><th>Metal</th><th>Bal wt</th></tr></thead>
-        <tbody id="tCoils"></tbody>
-      </table>
-
-      <h2 style="margin-top:14px">2 · Transfer details</h2>
-      <div class="entry">
-        <div><label>Coil # (orig)</label><input id="tCoilOrig" type="number" /></div>
-        <div><label>New owner (customer id)</label><input id="tCustNew" type="number" /></div>
-        <div><label>New coil # (optional)</label><input id="tCoilNew" type="number" /></div>
-        <div><label>Performed by</label><input id="tPerf" maxlength="32" /></div>
-      </div>
-      <div class="entry">
-        <div style="flex:1; min-width:220px"><label>Authorization note</label><input id="tAuth" maxlength="255" style="width:100%" /></div>
-        <div style="flex:1; min-width:220px"><label>Notes</label><input id="tNotes" maxlength="255" style="width:100%" /></div>
-        <button id="btnTransfer" type="button">Record transfer</button>
-      </div>
-      <div class="muted" id="pickedOwner"></div>
-      <div id="ok" class="ok"></div>
-    </div>
-  </section>
-
-  <section><div id="err" class="err"></div></section>
-</main>
-
+<noscript style="display:block;padding:24px;font:14px system-ui">ABIS requires JavaScript.</noscript>
 <script type="module" src="/ui/app/coil-ownership.js"></script>
 </body>
 </html>
