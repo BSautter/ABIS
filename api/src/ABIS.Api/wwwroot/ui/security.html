@@ -3,78 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ABIS Security</title>
+<title>ABIS — User Security</title>
+<meta name="color-scheme" content="light dark" />
 <link rel="stylesheet" href="/ui/theme.css" />
 </head>
 <body>
-<header>
-  <h1>ABIS Security <span class="pill">authorization · typed client</span></h1>
-  <nav>
-    <a href="/ui/order-entry.html">Order entry</a>
-    <a href="/ui/jobs.html">Jobs</a>
-    <a href="/ui/security.html">Security</a>
-    <a href="/ui/customers.html">Customers</a>
-    <a href="/ui/maintenance.html">Maintenance</a>
-  </nav>
-  <div class="key">
-    <label for="apiKey" style="color:#fff">X-Api-Key</label>
-    <input id="apiKey" placeholder="dev-local-key" style="width:160px" />
-  </div>
-</header>
-
-<main>
-  <section>
-    <div class="note">Application <strong>authorization</strong> only — OIDC handles sign-in. A user's effective privilege on a feature is <strong>MAX(direct grant, group grants)</strong>; 0 = ReadOnly, 1 = Write. Enforce server-side, not just here.</div>
-    <div class="tabs" style="margin-top:10px">
-      <button id="tab-users" type="button">Users</button>
-      <button id="tab-groups" type="button">Groups</button>
-      <button id="tab-apps" type="button">Features</button>
-    </div>
-
-    <div id="pane-users">
-      <div class="grid2">
-        <div>
-          <h2>Users</h2>
-          <table><thead><tr><th>Id</th><th>Login</th><th>Name</th><th>Status</th></tr></thead><tbody id="tUsers"></tbody></table>
-        </div>
-        <div id="detail" class="disabled">
-          <h2 id="detailTitle">User detail <span class="muted" style="text-transform:none;letter-spacing:0">(click a user)</span></h2>
-
-          <h3>Effective permissions</h3>
-          <table><thead><tr><th>Feature</th><th>Privilege</th><th>Source</th></tr></thead><tbody id="tPerms"></tbody></table>
-
-          <h3>Groups</h3>
-          <table><thead><tr><th>Id</th><th>Name</th><th></th></tr></thead><tbody id="tGroups"></tbody></table>
-          <div class="entry">
-            <div><label>Add group id</label><input id="addGroupId" type="number" /></div>
-            <button id="btnAddGroup" type="button">Add to group</button>
-          </div>
-
-          <h3>Direct feature grant</h3>
-          <div class="entry">
-            <div><label>Feature id</label><input id="grantAppId" type="number" /></div>
-            <div><label>Privilege (0=R,1=W)</label><input id="grantPriv" type="number" min="0" max="1" value="1" /></div>
-            <button id="btnGrant" type="button">Set grant</button>
-          </div>
-          <div id="ok" class="ok"></div>
-        </div>
-      </div>
-    </div>
-
-    <div id="pane-groups">
-      <h2>Groups</h2>
-      <table><thead><tr><th>Id</th><th>Name</th><th>Notes</th></tr></thead><tbody id="tAllGroups"></tbody></table>
-    </div>
-
-    <div id="pane-apps">
-      <h2>Protected features</h2>
-      <table><thead><tr><th>Id</th><th>Feature</th><th>Notes</th></tr></thead><tbody id="tApps"></tbody></table>
-    </div>
-  </section>
-
-  <section><div id="err" class="err"></div></section>
-</main>
-
+<noscript style="display:block;padding:24px;font:14px system-ui">ABIS requires JavaScript.</noscript>
 <script type="module" src="/ui/app/security.js"></script>
 </body>
 </html>

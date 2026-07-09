@@ -1,33 +1,82 @@
-// ABIS Maintenance — greenfield (Path C) module replacing the legacy maintenance
-// window. A typed SPA on the Phase-2 API: filterable maintenance-log search and a
-// full load → edit → save form (create or replace). The replace path re-sends all
-// writable fields (probDateTime/probDetails/author are NOT NULL) so a partial
-// edit can't blank them. Through the NSwag-generated, compiler-checked client.
+// ABIS Maintenance — the legacy maintenance window, restyled to the design system in the shared
+// shell (#4 polish). Filterable maintenance-log search and a full load → edit → save form (create
+// or replace). The replace path re-sends all writable fields (probDateTime/probDetails/author are
+// NOT NULL) so a partial edit can't blank them. Through the NSwag-generated, compiler-checked client.
 //
-// Compiled by `tsc` to wwwroot/ui/app/maintenance.js; served at /ui/maintenance.html.
+// Compiled by tsc to wwwroot/ui/app/maintenance.js; served at /ui/maintenance.html.
 import { AbisClient, MaintLogWrite } from './generated/abis-client.js';
-
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
 
-const $ = <T extends HTMLElement = HTMLElement>(sel: string): T =>
-  document.querySelector(sel) as T;
-
-// Auth — a Bearer token (OIDC) or the X-Api-Key field — is attached by ./auth.
-function client(): AbisClient {
-  return new AbisClient('', { fetch: authFetch });
-}
-
+const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
+const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
 const esc = (s: unknown): string =>
-  String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
+  String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
 const setErr = (m: string) => { $('#err').textContent = m; };
 const setOk = (m: string) => { $('#ok').textContent = m; };
 const setBusy = (b: boolean) => document.body.classList.toggle('busy', b);
 const v = (id: string) => $<HTMLInputElement>(id).value.trim();
 const setV = (id: string, value: unknown) => { $<HTMLInputElement>(id).value = value == null ? '' : String(value); };
 const dtLocal = (d: Date | undefined): string => (d == null ? '' : d.toISOString().slice(0, 16));
+const chip = (s: unknown): string => `<span class="chip mut">${esc(s ?? '—')}</span>`;
 
 let editingId: number | null = null;
+
+function scaffold(): string {
+  return `
+  <div class="page">
+    <div class="page-head"><div><div class="eyebrow">Maintenance · Logs</div><h1>Maintenance</h1></div><div class="shift-tag" id="count">—</div></div>
+    <div class="card" style="margin-bottom:16px"><div class="body">
+      <form id="searchForm" class="frow">
+        <div class="fld"><label>Status</label><input id="fStatus" placeholder="e.g. Completed" style="width:130px" /></div>
+        <div class="fld"><label>Dept id</label><input id="fDept" list="deptList" placeholder="id" style="width:90px" /></div>
+        <button class="btn sm" type="submit">Search</button>
+      </form>
+      <div id="err" class="err" style="margin-top:8px"></div>
+    </div></div>
+    <div class="grid">
+      <div class="stack"><div class="card">
+        <header><h2>Maintenance logs</h2></header>
+        <div style="overflow-x:auto"><table class="tbl" style="min-width:460px">
+          <thead><tr><th>Log#</th><th>Status</th><th>Dept</th><th>Problem</th><th>Author</th></tr></thead>
+          <tbody id="logs"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+        </table></div>
+      </div></div>
+      <div class="stack"><div class="card">
+        <header><h2 id="formTitle">New maintenance log</h2></header>
+        <div class="body">
+          <div class="frow">
+            <div class="fld"><label>Status</label><input id="mStatus" placeholder="e.g. Completed" style="width:130px" /></div>
+            <div class="fld"><label>Department</label><input id="mDept" list="deptList" style="width:120px" /></div>
+          </div>
+          <div class="frow" style="margin-top:8px">
+            <div class="fld"><label>System</label><input id="mSystem" style="width:120px" /></div>
+            <div class="fld"><label>Subsystem</label><input id="mSubsystem" style="width:120px" /></div>
+            <div class="fld"><label>Item / device</label><input id="mItem" style="width:120px" /></div>
+          </div>
+          <div class="frow" style="margin-top:8px"><div class="fld"><label>Problem time</label><input id="mProbDt" type="datetime-local" /></div></div>
+          <div class="frow" style="margin-top:8px"><div class="fld" style="flex:1;min-width:200px"><label>Problem details</label><input id="mDetails" /></div></div>
+          <div class="frow" style="margin-top:8px"><div class="fld" style="flex:1;min-width:200px"><label>Actions</label><input id="mActions" /></div></div>
+          <div class="frow" style="margin-top:8px">
+            <div class="fld"><label>Author</label><input id="mAuthor" style="width:110px" /></div>
+            <div class="fld"><label>Reported by</label><input id="mReportedBy" style="width:110px" /></div>
+            <div class="fld"><label>Assigned to</label><input id="mAssignedTo" style="width:110px" /></div>
+          </div>
+          <div class="frow" style="margin-top:8px">
+            <div class="fld"><label>Completed by</label><input id="mCompletedBy" style="width:110px" /></div>
+            <div class="fld"><label>Labor hours</label><input id="mLabor" type="number" step="0.1" style="width:100px" /></div>
+          </div>
+          <div class="frow" style="margin-top:10px;align-items:center">
+            <button class="btn sm" id="btnSave" type="button">Save</button>
+            <button class="btn sm ghost" id="btnNew" type="button">New</button>
+            <span id="ok" class="ok-note"></span>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+  <datalist id="deptList"></datalist>`;
+}
 
 async function search(): Promise<void> {
   setErr(''); setBusy(true);
@@ -35,18 +84,15 @@ async function search(): Promise<void> {
   const dept = v('#fDept') ? Number(v('#fDept')) : undefined;
   try {
     const page = await client().listMaintLogs(1, 50, status, dept, undefined, undefined);
-    const rows = (page.items ?? []).map((m) => `
+    const items = page.items ?? [];
+    $('#logs').innerHTML = items.length ? items.map((m) => `
       <tr class="click" data-id="${m.maintLogId}">
-        <td>${esc(m.maintLogId)}</td>
-        <td>${esc(m.maintLogStatus)}</td>
-        <td>${esc(m.groupDepartmentId)}</td>
-        <td>${esc(m.probDetails)}</td>
-        <td>${esc(m.author)}</td>
-      </tr>`).join('');
-    $('#logs').innerHTML = rows || '<tr><td colspan="5" class="muted">No matching logs.</td></tr>';
+        <td class="mono">${esc(m.maintLogId)}</td><td>${chip(m.maintLogStatus)}</td><td class="mono">${esc(m.groupDepartmentId)}</td>
+        <td>${esc(m.probDetails)}</td><td>${esc(m.author)}</td>
+      </tr>`).join('') : '<tr><td colspan="5" class="muted">No matching logs.</td></tr>';
     $('#count').textContent = `${(page.totalCount ?? 0).toLocaleString()} total`;
     document.querySelectorAll<HTMLTableRowElement>('#logs tr.click').forEach((tr) =>
-      tr.addEventListener('click', () => loadLog(Number(tr.dataset.id))));
+      tr.addEventListener('click', () => void loadLog(Number(tr.dataset.id))));
   } catch (e) { setErr(`Search failed: ${(e as Error).message}`); }
   finally { setBusy(false); }
 }
@@ -107,7 +153,9 @@ async function save(): Promise<void> {
   finally { setBusy(false); }
 }
 
-async function init(): Promise<void> {
+(async () => {
+  const main = await initShell({ active: 'maintenance' });
+  main.innerHTML = scaffold();
   // Department dropdown options as <datalist> hints.
   try {
     const depts = await client().listGroupDepartments();
@@ -116,9 +164,7 @@ async function init(): Promise<void> {
   } catch { /* dropdown is best-effort */ }
   $<HTMLFormElement>('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); void search(); });
   $('#btnNew').addEventListener('click', newLog);
-  $('#btnSave').addEventListener('click', save);
+  $('#btnSave').addEventListener('click', () => void save());
   newLog();
   await search();
-}
-
-void initShell({ active: 'maintenance', adopt: true }).then(init);
+})();

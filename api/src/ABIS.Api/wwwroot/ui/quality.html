@@ -3,68 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ABIS Quality / Recovery</title>
+<title>ABIS — Quality / Recovery</title>
+<meta name="color-scheme" content="light dark" />
 <link rel="stylesheet" href="/ui/theme.css" />
 </head>
 <body>
-<header>
-  <h1>ABIS Quality / Recovery <span class="pill">greenfield · typed client</span></h1>
-  <nav>
-    <a href="/ui/order-entry.html">Order entry</a>
-    <a href="/ui/jobs.html">Jobs</a>
-    <a href="/ui/das-console.html">DAS console</a>
-    <a href="/ui/reporting.html">Reporting</a>
-    <a href="/ui/qa-results.html">QA results</a>
-    <a href="/ui/quality.html">Recovery</a>
-    <a href="/ui/accounting.html">Accounting</a>
-    <a href="/ui/coil-inventory.html">Coil inventory</a>
-    <a href="/ui/customers.html">Customers</a>
-    <a href="/ui/shipping.html">Shipping</a>
-    <a href="/ui/maintenance.html">Maintenance</a>
-  </nav>
-  <div class="key">
-    <label for="apiKey" style="color:#fff">X-Api-Key</label>
-    <input id="apiKey" placeholder="dev-local-key" style="width:160px" />
-  </div>
-</header>
-
-<main>
-  <section>
-    <div class="tabs">
-      <button id="tab-catalog" type="button">Defect catalog</button>
-      <button id="tab-customers" type="button">Recovery customers</button>
-      <button id="tab-defects" type="button">Customer defects</button>
-      <button id="tab-products" type="button">Product types</button>
-    </div>
-
-    <div id="pane-catalog">
-      <h2>Scrap / defect catalog</h2>
-      <table><thead><tr><th>Id</th><th>Code</th><th>Defect</th></tr></thead><tbody id="tScrap"></tbody></table>
-    </div>
-
-    <div id="pane-customers">
-      <h2>Recovery-report customers <span class="muted" style="text-transform:none;letter-spacing:0">(click a row to see their tracked defects)</span></h2>
-      <table><thead><tr><th>Customer</th><th>Name</th><th>All products</th><th>Auto only</th><th>Comm only</th></tr></thead><tbody id="tCust"></tbody></table>
-    </div>
-
-    <div id="pane-defects">
-      <h2>Defects tracked by a customer</h2>
-      <form id="defForm" class="row">
-        <div><label>Customer id</label><br /><input id="fCust" type="number" placeholder="id" style="width:120px" /></div>
-        <button type="submit">Load</button>
-      </form>
-      <table><thead><tr><th>Code</th><th>Defect</th><th>ABC / Mill</th><th>Autoparts</th><th>Non-autoparts</th></tr></thead><tbody id="tDefects"></tbody></table>
-    </div>
-
-    <div id="pane-products">
-      <h2>Product types</h2>
-      <table><thead><tr><th>Id</th><th>Product type</th></tr></thead><tbody id="tProd"></tbody></table>
-    </div>
-  </section>
-
-  <section><div id="err" class="err"></div></section>
-</main>
-
+<noscript style="display:block;padding:24px;font:14px system-ui">ABIS requires JavaScript.</noscript>
 <script type="module" src="/ui/app/quality.js"></script>
 </body>
 </html>
