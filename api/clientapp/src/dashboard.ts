@@ -1,13 +1,16 @@
 // ABIS operations dashboard — the landing screen of the overhauled UI. Mounts the
 // shared shell, then fills it with REAL data from the Phase-2 API (typed client): coil
 // / job / EDI counts, the EDI ledger as an exception-style queue, scrap-by-type, on-hold
-// coils, and the (inert) scheduled-job registry. The live production-floor feed is not
-// wired yet (needs the OPC bridge) and says so rather than faking machine states.
+// coils, and the (inert) scheduled-job registry. The production-floor card reads live per-line
+// run-state from the OPC edge (/run-state, .170→.175 failover) and degrades gracefully to a notice
+// when the edge isn't reachable from the viewer's network, rather than faking machine states.
 //
 // Compiled by tsc to wwwroot/ui/app/dashboard.js; served at /ui/index.html.
 import { AbisClient } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState } from './edge.js';
+import type { RunStateResult } from './edge.js';
 
 const client = new AbisClient('', { fetch: authFetch });
 const esc = (s: unknown): string =>
@@ -24,7 +27,7 @@ function scaffold(): string {
       <div>
         <div class="eyebrow">Real-time operations · MES + ERP</div>
         <h1>Operations dashboard</h1>
-        <p>Live figures from the ABIS API. The production-floor feed arrives with the OPC bridge.</p>
+        <p>Live figures from the ABIS API, with real-time line states from the plant OPC edge.</p>
       </div>
       <div class="shift-tag"><span class="live"></span> <span id="clock">—</span> · Plant 01</div>
     </div>
@@ -48,11 +51,8 @@ function scaffold(): string {
           </table></div>
         </div>
         <div class="card">
-          <header><h2>Production floor</h2><span class="sub">MES</span></header>
-          <div class="body">
-            <div class="alert info"><span class="ai"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg></span>
-              <div class="at"><b>Live floor feed pending</b><p>Real-time machine states connect once the OPC bridge is in place (plant OPC is Classic DA/DCOM). Job &amp; shift actuals below are live.</p></div></div>
-          </div>
+          <header><h2>Production floor</h2><span class="sub">MES · live</span></header>
+          <div class="body" id="floor-feed"><p class="muted">Connecting to line feed…</p></div>
         </div>
       </div>
 
@@ -161,8 +161,48 @@ async function load(main: HTMLElement): Promise<void> {
   } else $(main, '#scrap-body').innerHTML = '<p class="err">Scrap summary unavailable.</p>';
 }
 
+// ---- Live production-floor feed (edge /run-state per line, .170→.175 failover) ----------------
+// The plant's presses by their edge run-state tag. Both OPC boxes read all three (see ./edge).
+const FLOOR_LINES = [
+  { name: 'BL110', tag: 'PLC5-BL110.strokecnt' },
+  { name: 'BL78', tag: 'PLC5-BL78.strokecnt' },
+  { name: 'BL84', tag: 'PLC5-BL84.strokecnt' },
+];
+
+function floorChip(r: RunStateResult): string {
+  if (!r.reachable) return '<span class="chip">offline</span>';
+  if (!r.configured || r.running == null) return '<span class="chip">unknown</span>';
+  return r.running ? '<span class="chip ok">running</span>' : '<span class="chip warn">stopped</span>';
+}
+
+async function pollFloor(main: HTMLElement, bases: string[]): Promise<void> {
+  const results = await Promise.all(FLOOR_LINES.map((l) => fetchRunState(bases, l.tag)));
+  const el = $(main, '#floor-feed');
+  // If NO line reached any edge host, the edge just isn't reachable from here — say so plainly
+  // rather than showing every line as an error.
+  if (results.every((r) => !r.reachable)) {
+    el.innerHTML = `<div class="alert info"><span class="ai"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg></span>
+      <div class="at"><b>Line feed unavailable here</b><p>Can't reach the plant OPC edge (${esc(bases.join(', '))}) from this network — per-line states show on the shop-floor network.</p></div></div>`;
+    return;
+  }
+  const onFallback = results.some((r) => r.reachable && r.via);
+  const rows = FLOOR_LINES.map((l, i) => `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 2px;border-bottom:1px solid var(--line-2)">
+      <span style="font-weight:600">${esc(l.name)}</span>${floorChip(results[i])}</div>`).join('');
+  const foot = onFallback
+    ? '<p class="muted" style="margin-top:9px;font-size:11px">⚠ primary edge (.170) not responding — serving via .175 fallback.</p>'
+    : '';
+  el.innerHTML = rows + foot;
+}
+
+function startFloorFeed(main: HTMLElement): void {
+  const bases = parseEdgeUrls(DEFAULT_EDGE_URLS);
+  void pollFloor(main, bases);
+  window.setInterval(() => void pollFloor(main, bases), 5000);
+}
+
 (async () => {
   const main = await initShell({ active: 'dashboard' });
   main.innerHTML = scaffold();
+  startFloorFeed(main);
   await load(main);
 })();

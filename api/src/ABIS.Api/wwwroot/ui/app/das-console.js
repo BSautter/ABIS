@@ -14,6 +14,7 @@
 import { AbisClient, SheetSkidWrite, ScrapSkidWrite, DowntimeInstanceWrite } from './generated/abis-client.js';
 import { initAuth, authFetch } from './auth.js';
 import { statusChip } from './status-labels.js';
+import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState } from './edge.js';
 const $ = (sel) => document.querySelector(sel);
 const client = () => new AbisClient('', { fetch: authFetch });
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -38,10 +39,7 @@ let dtStart = null; // when the line went down
 let dtEnded = null; // when it resumed (duration frozen, awaiting a reason)
 let runPollTimer = null; // /run-state poll interval
 let dtTickTimer = null; // 1s banner-timer tick
-// The two OPC-box edges as a primary→fallback list (.170 primary, .175 fallback — both read the same
-// presses). The run-state poll tries them in order, so a .170 outage transparently uses .175 and
-// recovers to .170 once it's back. Overridable per station (the #edgeUrl field) and remembered.
-const DEFAULT_EDGE_URLS = 'http://192.168.10.170:8090, http://192.168.9.175:8090';
+// Edge primary→fallback list (.170/.175) + failover read live in ./edge (shared with the dashboard).
 function scaffold() {
     const tab = (id, label) => `<button id="tab-${id}" type="button">${label}</button>`;
     return `
@@ -339,16 +337,14 @@ function startRunStatePoll() {
         setRunInd('—');
         return;
     }
-    // One or more edge hosts, primary first (comma/space separated): .170 primary, .175 fallback.
-    const q = runTag ? `?tag=${encodeURIComponent(runTag)}` : '';
-    const urls = edge.split(/[\s,]+/).map((u) => u.trim().replace(/\/$/, '')).filter(Boolean)
-        .map((b) => `${b}/run-state${q}`);
-    if (urls.length === 0) {
+    // One or more edge hosts, primary first (.170 primary, .175 fallback) — failover lives in ./edge.
+    const bases = parseEdgeUrls(edge);
+    if (bases.length === 0) {
         setRunInd('—');
         return;
     }
-    runPollTimer = window.setInterval(() => void pollRunState(urls), 3000);
-    void pollRunState(urls);
+    runPollTimer = window.setInterval(() => void pollRunState(bases, runTag), 3000);
+    void pollRunState(bases, runTag);
 }
 function stopRunStatePoll() {
     if (runPollTimer != null) {
@@ -356,46 +352,23 @@ function stopRunStatePoll() {
         runPollTimer = null;
     }
 }
-// Try each edge host in order (primary first); use the first that RESPONDS. A host that's unreachable,
-// times out, or errors is skipped so we fail over to the next — matching the .170-primary/.175-fallback
-// setup, and recovering to .170 automatically once it answers again. Only "offline/not responding"
-// triggers failover; a responding host's own unknown read is shown as unknown, not failed over.
-async function pollRunState(urls) {
-    for (let i = 0; i < urls.length; i++) {
-        let s;
-        try {
-            const r = await fetchWithTimeout(urls[i], 2000);
-            if (!r.ok)
-                continue; // this host errored → try the fallback
-            s = await r.json();
-        }
-        catch {
-            continue;
-        } // unreachable/timeout → try the fallback
-        const via = i > 0 ? ' (fallback)' : '';
-        if (!s.configured) {
-            setRunInd(`run-state not configured${via}`);
-            return;
-        }
-        if (s.running == null) {
-            setRunInd(`unknown${via}`);
-            return;
-        }
-        void onRunState(s.running, via);
+// Read this line's run-state across the edge hosts (primary→fallback in ./edge) and drive the banner.
+// Only a real running↔stopped flip acts; unknown/unreachable never opens or closes downtime.
+async function pollRunState(bases, tag) {
+    const s = await fetchRunState(bases, tag);
+    if (!s.reachable) {
+        setRunInd('edge unreachable');
         return;
     }
-    setRunInd('edge unreachable'); // no host responded
-}
-// fetch with an abort timeout so a hung primary doesn't stall the poll before we fail over.
-async function fetchWithTimeout(url, ms) {
-    const ctl = new AbortController();
-    const t = window.setTimeout(() => ctl.abort(), ms);
-    try {
-        return await fetch(url, { cache: 'no-store', signal: ctl.signal });
+    if (!s.configured) {
+        setRunInd(`run-state not configured${s.via}`);
+        return;
     }
-    finally {
-        clearTimeout(t);
+    if (s.running == null) {
+        setRunInd(`unknown${s.via}`);
+        return;
     }
+    void onRunState(s.running, s.via);
 }
 async function onRunState(running, via = '') {
     const prev = lineRunning;
