@@ -28,6 +28,24 @@ const I = {
     acct: '<path d="M4 5h16v6a8 8 0 0 1-16 0z"/><path d="M9 21h6M12 19v2"/>',
     edi: '<path d="M4 7h11M4 12h16M4 17h9"/><path d="M17 4l3 3-3 3"/>',
     admin: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
+    skid: '<rect x="3" y="4" width="18" height="7" rx="1"/><rect x="3" y="13" width="18" height="7" rx="1"/>',
+    stacker: '<path d="M4 20h16M6 20v-6h4v6M14 20v-9h4v9M8 9V5h8v4"/>',
+    wh: '<path d="M3 21V9l9-6 9 6v12M9 21v-6h6v6"/>',
+    folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+    clock2: '<circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/>',
+    chart: '<path d="M4 20V4M4 20h16M8 16v-5M12 16V8M16 16v-8"/>',
+    flask: '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3"/>',
+    gear: '<circle cx="12" cy="12" r="3"/><path d="M4 12h2M18 12h2M12 4v2M12 18v2"/>',
+    users: '<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5"/><path d="M16 6a3 3 0 0 1 0 6M21 20c0-2-1.5-3.5-3.5-4"/>',
+    part: '<path d="M12 2l3 3-3 3-3-3zM2 12l3-3 3 3-3 3zM22 12l-3-3-3 3 3 3zM12 22l3-3-3-3-3 3z"/>',
+    die: '<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1.3"/><circle cx="15" cy="15" r="1.3"/><circle cx="15" cy="9" r="1.3"/>',
+    pen: '<path d="M4 20l4-1 10-10-3-3L5 16z"/><path d="M14 6l3 3"/>',
+    quote: '<path d="M6 3h12v18l-6-3-6 3z"/>',
+    sales: '<path d="M3 17l6-6 4 4 7-7M14 8h5v5"/>',
+    recv: '<path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
+    truck2: '<rect x="1" y="6" width="14" height="10" rx="1"/><path d="M15 9h4l3 3v4h-7z"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>',
+    swap: '<path d="M7 4l-4 4 4 4M3 8h13M17 20l4-4-4-4M21 16H8"/>',
+    wrench: '<path d="M14 7a4 4 0 0 0-5 5l-6 6 2 2 6-6a4 4 0 0 0 5-5l-2 2-2-2z"/>',
 };
 const NAV = [
     { group: 'Overview', items: [
@@ -37,18 +55,42 @@ const NAV = [
             { id: 'jobs', label: 'Jobs & floor', href: '/ui/jobs.html', feature: 'Production Control', icon: I.jobs },
             { id: 'shifts', label: 'Shifts', href: '/ui/shifts.html', feature: 'Shift Control', icon: I.shift },
             { id: 'coils', label: 'Coil inventory', href: '/ui/coil-inventory.html', feature: 'Inventory(Coil)', icon: I.coil },
+            { id: 'skids', label: 'Sheet skids', href: '/ui/skids.html', feature: 'Inventory(Skid)', icon: I.skid },
+            { id: 'stacker', label: 'Stacker board', href: '/ui/stacker.html', feature: 'Warehouse', icon: I.stacker },
+            { id: 'warehouse', label: 'Warehouse', href: '/ui/warehouse.html', feature: 'Warehouse', icon: I.wh },
+            { id: 'prod-folder', label: 'Production folder', href: '/ui/prod-folder.html', feature: 'Production Control', icon: I.folder },
+            { id: 'downtime', label: 'Downtime', href: '/ui/downtime.html', feature: 'Downtime report', icon: I.clock2 },
+            { id: 'opc-log', label: 'OPC log', href: '/ui/opc-log.html', icon: I.chart },
         ] },
     { group: 'Quality', items: [
             { id: 'coil-eval', label: 'Coil evaluation', href: '/ui/coil-eval.html', feature: 'Quality Control', icon: I.qc },
+            { id: 'qa-results', label: 'QA results', href: '/ui/qa-results.html', feature: 'Quality Control', icon: I.flask },
             { id: 'recovery', label: 'Recovery', href: '/ui/recovery.html', feature: 'Quality Control', icon: I.recovery },
+            { id: 'quality', label: 'Recovery setup', href: '/ui/quality.html', feature: 'Quality Control', icon: I.gear },
         ] },
     { group: 'Commercial', items: [
             { id: 'order-entry', label: 'Order entry', href: '/ui/order-entry.html', feature: 'Order Entry', icon: I.order },
+            { id: 'customers', label: 'Customers', href: '/ui/customers.html', feature: 'Order Entry', icon: I.users },
+            { id: 'parts', label: 'Parts', href: '/ui/parts.html', feature: 'Part Number', icon: I.part },
+            { id: 'dies', label: 'Dies', href: '/ui/dies.html', icon: I.die },
+            { id: 'sketches', label: 'Sketches', href: '/ui/sketches.html', icon: I.pen },
+            { id: 'quotation', label: 'Quotation', href: '/ui/quotation.html', icon: I.quote },
+            { id: 'sales', label: 'Sales', href: '/ui/sales.html', icon: I.sales },
+        ] },
+    { group: 'Logistics', items: [
             { id: 'shipping', label: 'Shipping', href: '/ui/shipping.html', feature: 'Warehouse', icon: I.ship },
+            { id: 'receiving', label: 'Receiving', href: '/ui/receiving.html', feature: 'Shipment(Receiving)', icon: I.recv },
+            { id: 'carriers', label: 'Carriers', href: '/ui/carriers.html', icon: I.truck2 },
+            { id: 'coil-ownership', label: 'Coil ownership', href: '/ui/coil-ownership.html', feature: 'Inventory(Coil)', icon: I.swap },
+        ] },
+    { group: 'Finance', items: [
             { id: 'accounting', label: 'Accounting', href: '/ui/accounting.html', icon: I.acct },
         ] },
+    { group: 'Maintenance', items: [
+            { id: 'maintenance', label: 'Maintenance', href: '/ui/maintenance.html', feature: 'Maintenance', icon: I.wrench },
+        ] },
     { group: 'EDI & Admin', items: [
-            { id: 'edi', label: 'EDI operations', href: '/ui/edi.html', feature: 'EDI', icon: I.edi, badge: '3' },
+            { id: 'edi', label: 'EDI operations', href: '/ui/edi.html', feature: 'EDI', icon: I.edi },
             { id: 'admin', label: 'Admin & scheduler', href: '#', feature: 'Scheduler Admin', icon: I.admin, soon: true },
         ] },
 ];
@@ -204,6 +246,12 @@ function loginGate() {
 /** Build the shell chrome, gate the nav to the caller's grants, and return the empty
  *  content element the page renders into. Call once at page startup. */
 export async function initShell(opts) {
+    // Adopt mode: detach the page's existing content up front so it isn't visible behind the
+    // login gate, then re-home it inside the shell once the chrome is built.
+    const adopted = opts.adopt
+        ? [...document.body.children].filter((el) => el.tagName !== 'SCRIPT' && el.tagName !== 'NOSCRIPT')
+        : [];
+    adopted.forEach((el) => el.remove());
     initTheme();
     await initAuth();
     await loginGate();
@@ -215,10 +263,17 @@ export async function initShell(opts) {
     const top = document.createElement('header');
     top.className = 'top';
     top.innerHTML = topHtml();
-    const main = document.createElement('main');
+    // A div (not <main>) so an adopted page's own <main> doesn't nest illegally.
+    const main = document.createElement('div');
     main.className = 'main';
     app.append(rail, top, main);
     document.body.appendChild(app);
+    if (opts.adopt) {
+        const legacy = document.createElement('div');
+        legacy.className = 'legacy';
+        adopted.forEach((el) => legacy.appendChild(el));
+        main.appendChild(legacy);
+    }
     applyTheme(document.documentElement.getAttribute('data-theme'));
     // interactions
     const toggle = () => rail.classList.toggle('collapsed');

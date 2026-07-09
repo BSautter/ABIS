@@ -5,7 +5,8 @@
 //
 // Compiled by `tsc` to wwwroot/ui/app/edi.js; served at /ui/edi.html.
 import { AbisClient } from './generated/abis-client.js';
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 const $ = (sel) => document.querySelector(sel);
 // Auth — a Bearer token (OIDC) or the X-Api-Key field — is attached by ./auth.
 function client() {
@@ -100,4 +101,4 @@ async function init() {
     showTab('tx');
     await Promise.all([loadTransactions(), loadLog(), loadCustomers(), loadTypes()]);
 }
-void initAuth().then(init);
+void initShell({ active: 'edi', adopt: true }).then(init);

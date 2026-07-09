@@ -6,7 +6,8 @@
 // Compiled by `tsc` to wwwroot/ui/app/skids.js; served at /ui/skids.html.
 import { AbisClient, SheetSkidWrite, ScrapSkidWrite } from './generated/abis-client.js';
 
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T =>
   document.querySelector(sel) as T;
@@ -113,4 +114,4 @@ async function init(): Promise<void> {
   await Promise.all([loadSheet(), loadScrap(), loadPartials()]);
 }
 
-void initAuth().then(init);
+void initShell({ active: 'skids', adopt: true }).then(init);

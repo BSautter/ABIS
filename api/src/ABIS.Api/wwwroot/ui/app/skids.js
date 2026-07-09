@@ -5,7 +5,8 @@
 //
 // Compiled by `tsc` to wwwroot/ui/app/skids.js; served at /ui/skids.html.
 import { AbisClient, SheetSkidWrite, ScrapSkidWrite } from './generated/abis-client.js';
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 const $ = (sel) => document.querySelector(sel);
 // Auth — a Bearer token (OIDC) or the X-Api-Key field — is attached by ./auth.
 function client() {
@@ -122,4 +123,4 @@ async function init() {
     showTab('sheet');
     await Promise.all([loadSheet(), loadScrap(), loadPartials()]);
 }
-void initAuth().then(init);
+void initShell({ active: 'skids', adopt: true }).then(init);

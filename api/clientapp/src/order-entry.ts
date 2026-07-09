@@ -8,7 +8,8 @@
 // served at /ui/order-entry.html. See docs/PHASE3_PILOT_LOG.md.
 import { AbisClient, OrderCreateWithItems, CustomerOrderWrite, OrderItemWrite } from './generated/abis-client.js';
 
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T =>
   document.querySelector(sel) as T;
@@ -137,4 +138,4 @@ async function init(): Promise<void> {
   await search();
 }
 
-void initAuth().then(init);
+void initShell({ active: 'order-entry', adopt: true }).then(init);

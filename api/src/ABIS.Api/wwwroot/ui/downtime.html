@@ -4,40 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>ABIS Downtime</title>
-<style>
-  :root { --bd:#d0d7de; --bg:#f6f8fa; --ac:#0969da; }
-  * { box-sizing: border-box; }
-  body { font: 14px/1.5 system-ui, sans-serif; margin: 0; color: #1f2328; }
-  body.busy { cursor: progress; }
-  body.busy button { opacity:.6; pointer-events:none; }
-  header { background:#24292f; color:#fff; padding:10px 16px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
-  header h1 { font-size:16px; margin:0; font-weight:600; }
-  header nav { display:flex; gap:12px; }
-  header nav a { color:#9ecbff; text-decoration:none; }
-  header .key { margin-left:auto; display:flex; gap:6px; align-items:center; }
-  main { max-width:1100px; margin:0 auto; padding:16px; display:grid; gap:16px; grid-template-columns:3fr 2fr; }
-  section { border:1px solid var(--bd); border-radius:8px; padding:14px; }
-  section.wide { grid-column:1 / -1; }
-  h2 { font-size:14px; margin:0 0 10px; text-transform:uppercase; letter-spacing:.04em; color:#57606a; }
-  label { font-size:12px; color:#57606a; }
-  input, select, button { font:inherit; padding:6px 8px; border:1px solid var(--bd); border-radius:6px; }
-  button { background:var(--ac); color:#fff; border-color:var(--ac); cursor:pointer; }
-  button.sec { background:#fff; color:#1f2328; border-color:var(--bd); }
-  table { width:100%; border-collapse:collapse; margin-top:8px; }
-  th, td { text-align:left; padding:5px 6px; border-bottom:1px solid var(--bd); font-size:13px; }
-  th { color:#57606a; font-weight:600; }
-  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:end; }
-  .grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-  .grid .full { grid-column:1 / -1; }
-  .fld label { display:block; }
-  .fld input { width:100%; }
-  .muted { color:#8b949e; }
-  .pill { background:var(--bg); border:1px solid var(--bd); border-radius:12px; padding:1px 8px; font-size:12px; }
-  .err { color:#cf222e; min-height:18px; }
-  .ok { color:#1a7f37; min-height:18px; font-size:13px; }
-  tbody tr.click { cursor:pointer; }
-  tbody tr.click:hover { background:var(--bg); }
-</style>
+<link rel="stylesheet" href="/ui/theme.css" />
 </head>
 <body>
 <header>

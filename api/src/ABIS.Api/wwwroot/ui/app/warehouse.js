@@ -6,7 +6,8 @@
 //
 // Compiled by `tsc` to wwwroot/ui/app/warehouse.js; served at /ui/warehouse.html.
 import { AbisClient, SheetSkidWarehousePatch } from './generated/abis-client.js';
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 const $ = (sel) => document.querySelector(sel);
 // Auth — a Bearer token (OIDC) or the X-Api-Key field — is attached by ./auth.
 function client() {
@@ -93,4 +94,4 @@ async function init() {
     $('#btnRefresh').addEventListener('click', () => void search());
     await search();
 }
-void initAuth().then(init);
+void initShell({ active: 'warehouse', adopt: true }).then(init);

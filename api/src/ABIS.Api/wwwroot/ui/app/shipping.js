@@ -5,7 +5,8 @@
 //
 // Compiled by `tsc` to wwwroot/ui/app/shipping.js; served at /ui/shipping.html.
 import { AbisClient, ShipmentStatusPatch } from './generated/abis-client.js';
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 const $ = (sel) => document.querySelector(sel);
 // Auth — a Bearer token (OIDC) or the X-Api-Key field — is attached by ./auth.
 function client() {
@@ -105,4 +106,4 @@ function init() {
     $('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); void search(); });
     void search();
 }
-void initAuth().then(init);
+void initShell({ active: 'shipping', adopt: true }).then(init);

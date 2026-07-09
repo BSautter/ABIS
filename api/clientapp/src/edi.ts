@@ -6,7 +6,8 @@
 // Compiled by `tsc` to wwwroot/ui/app/edi.js; served at /ui/edi.html.
 import { AbisClient } from './generated/abis-client.js';
 
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T =>
   document.querySelector(sel) as T;
@@ -98,4 +99,4 @@ async function init(): Promise<void> {
   await Promise.all([loadTransactions(), loadLog(), loadCustomers(), loadTypes()]);
 }
 
-void initAuth().then(init);
+void initShell({ active: 'edi', adopt: true }).then(init);

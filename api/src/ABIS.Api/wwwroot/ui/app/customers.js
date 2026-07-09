@@ -6,7 +6,8 @@
 //
 // Compiled by `tsc` to wwwroot/ui/app/customers.js; served at /ui/customers.html.
 import { AbisClient, CustomerWrite, CustomerContactWrite } from './generated/abis-client.js';
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 const $ = (sel) => document.querySelector(sel);
 // Auth — a Bearer token (OIDC) or the X-Api-Key field — is attached by ./auth.
 function client() {
@@ -202,4 +203,4 @@ async function init() {
     newCustomer();
     await search();
 }
-void initAuth().then(init);
+void initShell({ active: 'customers', adopt: true }).then(init);

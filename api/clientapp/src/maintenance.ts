@@ -7,7 +7,8 @@
 // Compiled by `tsc` to wwwroot/ui/app/maintenance.js; served at /ui/maintenance.html.
 import { AbisClient, MaintLogWrite } from './generated/abis-client.js';
 
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T =>
   document.querySelector(sel) as T;
@@ -120,4 +121,4 @@ async function init(): Promise<void> {
   await search();
 }
 
-void initAuth().then(init);
+void initShell({ active: 'maintenance', adopt: true }).then(init);

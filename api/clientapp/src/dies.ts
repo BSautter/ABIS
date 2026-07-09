@@ -6,7 +6,8 @@
 // Compiled by `tsc` to wwwroot/ui/app/dies.js; served at /ui/dies.html.
 import { AbisClient, DieWrite } from './generated/abis-client.js';
 
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T =>
   document.querySelector(sel) as T;
@@ -109,4 +110,4 @@ function init(): void {
   void search();
 }
 
-void initAuth().then(init);
+void initShell({ active: 'dies', adopt: true }).then(init);

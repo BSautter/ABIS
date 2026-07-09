@@ -195,6 +195,53 @@ tbody tr.click { cursor:pointer; }
 .busy { cursor:progress; } .busy button { opacity:.6; pointer-events:none; }
 
 .muted { color:var(--ink-3); } .err { color:var(--crit); font-size:12.5px; min-height:16px; }
+
+/* ============================================================================
+   Legacy compatibility layer — themes the pre-overhaul pages' markup once their own
+   <style>/<header> are stripped and they're adopted into the shell (initShell adopt:true).
+   Everything is scoped under .legacy so it never touches the redesigned pages. Gives a
+   generic responsive card layout; per-page bespoke restyle is the follow-up polish pass.
+   ============================================================================ */
+.legacy { min-width:0; }
+.legacy main { max-width:1240px; margin:0 auto; padding:20px 22px 40px; display:grid; gap:16px;
+  grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); align-items:start; }
+.legacy main > h1 { grid-column:1/-1; font-size:20px; margin:0 0 2px; }
+.legacy section, .legacy .card, .legacy .detail { background:var(--surface); border:1px solid var(--line);
+  border-radius:12px; padding:15px; box-shadow:var(--shadow); min-width:0; }
+.legacy section.wide, .legacy .full, .legacy .wide { grid-column:1/-1; }
+.legacy h2 { font-size:13.5px; margin:0 0 12px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-2); }
+.legacy h3 { font-size:12.5px; margin:12px 0 6px; color:var(--ink-2); }
+.legacy label { font-size:11px; color:var(--ink-2); display:block; margin:8px 0 3px; }
+.legacy input, .legacy select, .legacy textarea { font:inherit; padding:7px 9px; border:1px solid var(--line);
+  border-radius:7px; background:var(--surface-2); color:var(--ink); max-width:100%; }
+.legacy input:focus, .legacy select:focus, .legacy textarea:focus { outline:2px solid var(--accent); outline-offset:1px; }
+.legacy button { font:inherit; padding:8px 13px; border-radius:7px; border:1px solid var(--accent); background:var(--accent);
+  color:var(--accent-ink); cursor:pointer; font-weight:600; }
+.legacy button:hover { filter:brightness(1.06); }
+.legacy button.sec, .legacy button.ghost, .legacy .sec { background:transparent; color:var(--ink); border-color:var(--line); font-weight:500; }
+.legacy button.del, .legacy .del { background:var(--crit-soft); color:var(--crit); border-color:transparent; }
+.legacy .row { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+.legacy .grid { display:grid; gap:12px; }
+.legacy table { width:100%; border-collapse:collapse; margin-top:8px; }
+.legacy th { text-align:left; font-family:var(--font-mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--ink-3); font-weight:500; padding:0 8px 8px; }
+.legacy td { padding:8px; border-top:1px solid var(--line-2); font-size:12.5px; }
+.legacy td.num, .legacy th.num { text-align:right; font-variant-numeric:tabular-nums; }
+.legacy tbody tr.click { cursor:pointer; } .legacy tbody tr.click:hover, .legacy tbody tr:hover { background:var(--surface-2); }
+.legacy .pill { background:var(--surface-2); border:1px solid var(--line); border-radius:20px; padding:1px 9px; font-size:11px;
+  font-family:var(--font-mono); color:var(--ink-2); }
+.legacy .muted { color:var(--ink-3); } .legacy .err { color:var(--crit); min-height:16px; font-size:12.5px; }
+.legacy .ok { color:var(--ok); font-size:12.5px; }
+.legacy .kv { display:flex; gap:18px; flex-wrap:wrap; font-size:13px; }
+.legacy .kv b { color:var(--ink-2); font-weight:600; }
+.legacy .tabs { display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:12px; flex-wrap:wrap; }
+.legacy .tabs button { background:transparent; border:none; border-bottom:2px solid transparent; border-radius:0; color:var(--ink-2);
+  padding:8px 12px; font-weight:500; }
+.legacy .tabs button.active { color:var(--accent); border-bottom-color:var(--accent); }
+.legacy .hdr { font-weight:600; color:var(--ink); } .legacy .line { border-top:1px solid var(--line); margin:10px 0; }
+.legacy .disabled { opacity:.5; pointer-events:none; }
+.legacy nav, .legacy header { display:none; }  /* any residual page-local nav/header is superseded by the shell */
+.legacy a { color:var(--accent); }
 .skeleton { color:transparent !important; background:var(--surface-2); border-radius:5px; animation:sk 1.3s ease-in-out infinite; }
 @keyframes sk { 50% { opacity:.5; } }
 @media (prefers-reduced-motion: reduce){ .skeleton{animation:none;} }

@@ -7,7 +7,8 @@
 // Compiled by `tsc` to wwwroot/ui/app/warehouse.js; served at /ui/warehouse.html.
 import { AbisClient, SheetSkidWarehousePatch } from './generated/abis-client.js';
 
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T =>
   document.querySelector(sel) as T;
@@ -81,4 +82,4 @@ async function init(): Promise<void> {
   await search();
 }
 
-void initAuth().then(init);
+void initShell({ active: 'warehouse', adopt: true }).then(init);

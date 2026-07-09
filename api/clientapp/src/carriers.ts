@@ -6,7 +6,8 @@
 // Compiled by `tsc` to wwwroot/ui/app/carriers.js; served at /ui/carriers.html.
 import { AbisClient, CarrierWrite } from './generated/abis-client.js';
 
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T =>
   document.querySelector(sel) as T;
@@ -101,4 +102,4 @@ async function init(): Promise<void> {
   await search();
 }
 
-void initAuth().then(init);
+void initShell({ active: 'carriers', adopt: true }).then(init);

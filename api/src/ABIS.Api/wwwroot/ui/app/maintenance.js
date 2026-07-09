@@ -6,7 +6,8 @@
 //
 // Compiled by `tsc` to wwwroot/ui/app/maintenance.js; served at /ui/maintenance.html.
 import { AbisClient, MaintLogWrite } from './generated/abis-client.js';
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 const $ = (sel) => document.querySelector(sel);
 // Auth — a Bearer token (OIDC) or the X-Api-Key field — is attached by ./auth.
 function client() {
@@ -134,4 +135,4 @@ async function init() {
     newLog();
     await search();
 }
-void initAuth().then(init);
+void initShell({ active: 'maintenance', adopt: true }).then(init);
