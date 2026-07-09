@@ -2186,6 +2186,48 @@ public sealed class AbisRepository : IAbisRepository
         return (await GetSecurityUserAsync(id, ct))!;
     }
 
+    public async Task<bool> UpdateSecurityUserAsync(long userId, SecurityUserWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE security_user
+               SET login_id = :login, user_last_name = :last, user_first_name = :first,
+                   user_middle_initial = :mi, user_status = :status, user_notes = :notes,
+                   last_modified_date = :modified
+             WHERE user_id = :id
+            """,
+            new { id = userId, login = body.LoginId, last = body.UserLastName, first = body.UserFirstName,
+                  mi = body.UserMiddleInitial, status = body.UserStatus ?? 1, notes = body.UserNotes,
+                  modified = (DateTime?)DateTime.UtcNow }, cancellationToken: ct));
+        return n > 0;
+    }
+
+    // Remove a user and everything keyed to them: direct grants, group memberships, and the ABIS
+    // password credential, then the security_user row — all in one transaction. (The modern app
+    // never created an Oracle DB account for the user, so there is none to drop.)
+    public async Task<bool> DeleteSecurityUserAsync(long userId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var login = await conn.QueryFirstOrDefaultAsync<string?>(new CommandDefinition(
+            "SELECT login_id FROM security_user WHERE user_id = :id", new { id = userId }, cancellationToken: ct));
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM security_user WHERE user_id = :id", new { id = userId }, cancellationToken: ct));
+        if (exists == 0) return false;
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM security_user_application WHERE user_id = :id", new { id = userId }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM security_user_group WHERE user_id = :id", new { id = userId }, transaction: tx, cancellationToken: ct));
+        if (!string.IsNullOrWhiteSpace(login))
+            await conn.ExecuteAsync(new CommandDefinition(
+                "DELETE FROM abis_user_credential WHERE LOWER(login_id) = LOWER(:login)", new { login }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM security_user WHERE user_id = :id", new { id = userId }, transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+        return true;
+    }
+
     public async Task<SecurityGroup> CreateSecurityGroupAsync(SecurityGroupWrite body, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

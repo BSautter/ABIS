@@ -2048,6 +2048,33 @@ public static class ApiEndpoints
            .WithSummary("Set/reset a user's initial password (requires User Control; the user must change it on next sign-in).")
            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status403Forbidden).ProducesValidationProblem();
 
+        // Edit an application user (name / status / notes; and login if it moves). "User Control" gated.
+        api.MapPut("/security/users/{userId:long}", async (long userId, SecurityUserWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny) return deny;
+                if (string.IsNullOrWhiteSpace(body.LoginId))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["loginId"] = ["loginId is required."] });
+                if (string.IsNullOrWhiteSpace(body.UserFirstName) && string.IsNullOrWhiteSpace(body.UserLastName))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["userName"] = ["a first or last name is required."] });
+                // Guard a login rename against colliding with a different user.
+                if (await repo.GetSecurityUserByLoginAsync(body.LoginId, ct) is { } dup && dup.UserId != userId)
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Duplicate login",
+                        detail: $"Another user already uses login '{body.LoginId}'.");
+                return await repo.UpdateSecurityUserAsync(userId, body, ct) ? Results.NoContent() : Results.NotFound();
+            })
+           .WithName("UpdateSecurityUser").WithTags("Security")
+           .WithSummary("Edit an application user's login/name/status (requires User Control; 409 on a colliding login).")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status403Forbidden).ProducesValidationProblem();
+
+        // Remove an application user + their grants, group memberships, and password credential.
+        // (Prefer setting status inactive via PUT if you want to keep the record.) "User Control" gated.
+        api.MapDelete("/security/users/{userId:long}", async (long userId, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+                await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny ? deny
+                    : await repo.DeleteSecurityUserAsync(userId, ct) ? Results.NoContent() : Results.NotFound())
+           .WithName("DeleteSecurityUser").WithTags("Security")
+           .WithSummary("Remove an application user and their grants/groups/credential (requires User Control).")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status403Forbidden);
+
         api.MapPost("/security/groups", async (SecurityGroupWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
                 await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny ? deny
                     : Results.Created("/api/security/groups", await repo.CreateSecurityGroupAsync(body, ct)))

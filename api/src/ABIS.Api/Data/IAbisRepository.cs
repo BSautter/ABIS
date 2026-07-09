@@ -100,6 +100,8 @@ public interface IAbisRepository
     Task<IReadOnlyList<SecurityGroup>> GetUserGroupsAsync(long userId, CancellationToken ct);
     Task<IReadOnlyList<EffectivePermission>> GetUserEffectivePermissionsAsync(long userId, CancellationToken ct);
     Task<SecurityUser> CreateSecurityUserAsync(SecurityUserWrite body, CancellationToken ct);
+    Task<bool> UpdateSecurityUserAsync(long userId, SecurityUserWrite body, CancellationToken ct);
+    Task<bool> DeleteSecurityUserAsync(long userId, CancellationToken ct);
     Task<SecurityGroup> CreateSecurityGroupAsync(SecurityGroupWrite body, CancellationToken ct);
     Task<SecurityApplication> CreateSecurityApplicationAsync(SecurityApplicationWrite body, CancellationToken ct);
     Task<bool> SetUserApplicationGrantAsync(long userId, long applicationId, int privilege, CancellationToken ct);
