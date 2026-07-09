@@ -88,6 +88,7 @@ public static class AbisSchema
           tractor_num      VARCHAR2(30),
           trailer_num      VARCHAR2(30),
           seal_num         VARCHAR2(40),
+          quantity         NUMBER(8),
           truck_status     NUMBER(2)      DEFAULT 0 NOT NULL,
           checkin_time     DATE,
           checkout_time    DATE,
@@ -97,6 +98,9 @@ public static class AbisSchema
           created_by       VARCHAR2(64),
           CONSTRAINT pk_abis_truck_appointment PRIMARY KEY (appointment_id))
         """,
+        // Additive column for tables provisioned before `quantity` existed (idempotent: ORA-01430
+        // "column being added already exists" is swallowed alongside ORA-00955).
+        "ALTER TABLE abis_truck_appointment ADD (quantity NUMBER(8))",
         "CREATE INDEX ix_abis_truck_appt_start ON abis_truck_appointment (scheduled_start)",
         "CREATE INDEX ix_abis_truck_appt_status ON abis_truck_appointment (truck_status)"
     ];
@@ -110,14 +114,16 @@ public static class AbisSchema
         await conn.OpenAsync(ct);
         foreach (var ddl in OwnedDdl)
         {
-            // q'[ ... ]' is an Oracle q-quoted literal (the DDL contains no ']'); ORA-00955 means
-            // the object already exists → treat as already-provisioned. Any other error re-raises.
+            // q'[ ... ]' is an Oracle q-quoted literal (the DDL contains no ']'). Swallow the two
+            // "already provisioned" codes so a re-run is a no-op: ORA-00955 (object already exists,
+            // for CREATE) and ORA-01430 (column being added already exists, for an additive ALTER).
+            // Any other error re-raises.
             var block =
                 $$"""
                 BEGIN
                   EXECUTE IMMEDIATE q'[{{ddl}}]';
                 EXCEPTION WHEN OTHERS THEN
-                  IF SQLCODE != -955 THEN RAISE; END IF;
+                  IF SQLCODE NOT IN (-955, -1430) THEN RAISE; END IF;
                 END;
                 """;
             await conn.ExecuteAsync(new CommandDefinition(block, cancellationToken: ct));

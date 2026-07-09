@@ -8,7 +8,6 @@
 // Compiled by tsc to wwwroot/ui/app/truck-scheduling.js; served at /ui/truck-scheduling.html.
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
-import { statusChip } from './status-labels.js';
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const setErr = (m) => { $('#err').textContent = m; };
@@ -18,6 +17,15 @@ const v = (id) => $(id).value.trim();
 const setV = (id, val) => { $(id).value = val == null ? '' : String(val); };
 const dtShow = (s) => (s ? new Date(s).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
 const tShow = (s) => (s ? new Date(s).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—');
+// The plant's Excel "location status" legend (TRUCK APPTS_TEMPLATE).
+const TRUCK_STATUSES = [
+    [0, 'Pending arrival'], [1, 'Running late'], [2, 'Parked out back'],
+    [3, 'Sent to Bldg 1'], [4, 'Sent to Bldg 2'], [5, 'Sent to Bldg 3'],
+    [6, 'Signed out / gone'], [9, 'Cancelled'],
+];
+// Options for the filter (pass '' → prepends "All") or a row selector (pass the current status).
+const STATUS_OPTS = (sel) => (sel === '' ? '<option value="">All</option>' : '') +
+    TRUCK_STATUSES.map(([n, l]) => `<option value="${n}"${n === sel ? ' selected' : ''}>${l}</option>`).join('');
 async function api(path, method = 'GET', body) {
     return authFetch(path, body === undefined
         ? { method }
@@ -30,7 +38,7 @@ function scaffold() {
     <div class="card" style="margin-bottom:16px"><div class="body">
       <form id="filterForm" class="frow">
         <div class="fld"><label>Direction</label><select id="fDir"><option value="">All</option><option value="INBOUND">Inbound</option><option value="OUTBOUND">Outbound</option></select></div>
-        <div class="fld"><label>Status</label><select id="fStatus"><option value="">All</option><option value="0">Scheduled</option><option value="1">Checked in</option><option value="2">At dock</option><option value="3">Departed</option><option value="8">No-show</option><option value="9">Cancelled</option></select></div>
+        <div class="fld"><label>Status</label><select id="fStatus">${STATUS_OPTS('')}</select></div>
         <button class="btn sm" type="submit">Filter</button>
       </form>
       <div id="err" class="err" style="margin-top:8px"></div>
@@ -40,7 +48,7 @@ function scaffold() {
       <div class="stack"><div class="card">
         <header><h2>Appointments</h2><span class="sub" id="listSub"></span></header>
         <div style="overflow-x:auto"><table class="tbl" style="min-width:720px">
-          <thead><tr><th>Dir</th><th>Carrier</th><th>Dock</th><th>Window</th><th>Truck</th><th>Status</th><th>In / Out</th><th></th></tr></thead>
+          <thead><tr><th>Dir</th><th>Carrier</th><th>Time</th><th class="num">Qty</th><th>Ref</th><th>Location status</th><th>In / Out</th><th></th></tr></thead>
           <tbody id="appts"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
         </table></div>
       </div></div>
@@ -64,8 +72,9 @@ function scaffold() {
             <div class="fld"><label>Seal</label><input id="nSeal" maxlength="40" style="width:100px" /></div>
           </div>
           <div class="frow" style="margin-top:8px">
-            <div class="fld"><label>Ref (shipment / BOL #)</label><input id="nRefId" maxlength="40" style="width:150px" /></div>
-            <div class="fld" style="flex:1;min-width:160px"><label>Notes</label><input id="nNotes" maxlength="255" /></div>
+            <div class="fld"><label># coils / skids</label><input id="nQty" inputmode="numeric" style="width:110px" /></div>
+            <div class="fld"><label>Ref (shipment / BOL #)</label><input id="nRefId" maxlength="40" style="width:140px" /></div>
+            <div class="fld" style="flex:1;min-width:150px"><label>Notes</label><input id="nNotes" maxlength="255" /></div>
           </div>
           <div class="frow" style="margin-top:10px;align-items:center"><button class="btn sm" id="btnSchedule" type="button">Schedule truck</button><span id="ok" class="ok-note"></span></div>
         </div>
@@ -107,35 +116,34 @@ async function load() {
     }
 }
 function row(a) {
-    const truck = [a.tractorNum, a.trailerNum].filter(Boolean).join(' / ') || '—';
-    const window = `${dtShow(a.scheduledStart)}${a.scheduledEnd ? '–' + tShow(a.scheduledEnd) : ''}`;
-    const inout = `${a.checkinTime ? '✓ ' + tShow(a.checkinTime) : '—'} / ${a.checkoutTime ? '✓ ' + tShow(a.checkoutTime) : '—'}`;
     const st = a.truckStatus ?? 0;
+    const inout = `${a.checkinTime ? '✓ ' + tShow(a.checkinTime) : '—'} / ${a.checkoutTime ? '✓ ' + tShow(a.checkoutTime) : '—'}`;
+    const ref = a.refId ? `${a.direction === 'INBOUND' ? 'BOL ' : 'PL '}${esc(a.refId)}` : '—';
+    const canIn = st === 0 || st === 1; // pending / late → still to arrive
+    const canOut = st >= 2 && st <= 5; // parked / at a building → can sign out
     const actions = [
-        st === 0 ? `<button class="btn sm rowact" data-act="check-in" data-id="${a.appointmentId}" type="button">Check in</button>` : '',
-        st === 1 || st === 2 ? `<button class="btn sm rowact" data-act="check-out" data-id="${a.appointmentId}" type="button">Check out</button>` : '',
-        st < 3 ? `<button class="btn sm ghost rowact" data-act="cancel" data-id="${a.appointmentId}" type="button">Cancel</button>` : '',
+        canIn ? `<button class="btn sm rowact" data-act="check-in" data-id="${a.appointmentId}" type="button">Check in</button>` : '',
+        canOut ? `<button class="btn sm rowact" data-act="check-out" data-id="${a.appointmentId}" type="button">Sign out</button>` : '',
     ].join(' ');
     return `<tr>
     <td>${esc(a.direction === 'INBOUND' ? '↓ In' : '↑ Out')}</td>
     <td>${esc(a.carrierName ?? a.carrierId ?? '—')}</td>
-    <td class="mono">${esc(a.dock ?? '—')}</td>
-    <td class="mono">${esc(window)}</td>
-    <td class="mono">${esc(truck)}</td>
-    <td>${statusChip('truckStatus', a.truckStatus)}</td>
+    <td class="mono">${esc(dtShow(a.scheduledStart))}</td>
+    <td class="num mono">${esc(a.quantity ?? '—')}</td>
+    <td class="mono">${ref}</td>
+    <td><select class="rowstatus" data-id="${a.appointmentId}">${STATUS_OPTS(st)}</select></td>
     <td class="mono">${esc(inout)}</td>
     <td>${actions}</td></tr>`;
 }
 function wireRowActions() {
     document.querySelectorAll('#appts .rowact').forEach((b) => b.addEventListener('click', () => void rowAction(b.dataset.act, Number(b.dataset.id))));
+    document.querySelectorAll('#appts .rowstatus').forEach((s) => s.addEventListener('change', () => void setStatus(Number(s.dataset.id), Number(s.value))));
 }
 async function rowAction(act, id) {
     setErr('');
     setBusy(true);
     try {
-        const r = act === 'cancel'
-            ? await api(`/api/truck-appointments/${id}/status`, 'PATCH', { status: 9 })
-            : await api(`/api/truck-appointments/${id}/${act}`, 'POST');
+        const r = await api(`/api/truck-appointments/${id}/${act}`, 'POST');
         if (!r.ok) {
             setErr(`Action failed (${r.status}).`);
             return;
@@ -144,6 +152,24 @@ async function rowAction(act, id) {
     }
     catch (e) {
         setErr(`Action failed: ${e.message}`);
+    }
+    finally {
+        setBusy(false);
+    }
+}
+async function setStatus(id, status) {
+    setErr('');
+    setBusy(true);
+    try {
+        const r = await api(`/api/truck-appointments/${id}/status`, 'PATCH', { status });
+        if (!r.ok) {
+            setErr(`Status update failed (${r.status}).`);
+            return;
+        }
+        await load();
+    }
+    catch (e) {
+        setErr(`Status update failed: ${e.message}`);
     }
     finally {
         setBusy(false);
@@ -165,6 +191,7 @@ async function schedule() {
         refId: v('#nRefId') || null,
         driverName: v('#nDriver') || null, tractorNum: v('#nTractor') || null,
         trailerNum: v('#nTrailer') || null, sealNum: v('#nSeal') || null,
+        quantity: v('#nQty') ? Number(v('#nQty')) : null,
         notes: v('#nNotes') || null,
     };
     try {
@@ -181,7 +208,7 @@ async function schedule() {
         }
         const a = await r.json();
         setOk(`✓ Scheduled appointment #${a.appointmentId}.`);
-        ['#nDock', '#nStart', '#nEnd', '#nDriver', '#nTractor', '#nTrailer', '#nSeal', '#nRefId', '#nNotes'].forEach((i) => setV(i, ''));
+        ['#nDock', '#nStart', '#nEnd', '#nDriver', '#nTractor', '#nTrailer', '#nSeal', '#nQty', '#nRefId', '#nNotes'].forEach((i) => setV(i, ''));
         await load();
     }
     catch (e) {

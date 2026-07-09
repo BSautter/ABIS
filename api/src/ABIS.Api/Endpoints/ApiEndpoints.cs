@@ -1179,12 +1179,12 @@ public static class ApiEndpoints
 
         api.MapPatch("/truck-appointments/{id:long}/status", async (long id, TruckStatusPatch body, IAbisRepository repo, CancellationToken ct) =>
             {
-                if (body.Status is not (0 or 1 or 2 or 3 or 8 or 9))
-                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["status"] = ["status must be 0/1/2/3/8/9."] });
+                if (body.Status is not (0 or 1 or 2 or 3 or 4 or 5 or 6 or 9))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["status"] = ["status must be 0–6 or 9."] });
                 return await repo.SetTruckStatusAsync(id, body.Status.Value, ct) is { } a ? Results.Ok(a) : Results.NotFound();
             })
            .WithName("SetTruckStatus").WithTags("Trucks")
-           .WithSummary("Set a truck appointment's status (2 At dock, 8 No-show, 9 Cancelled, …).")
+           .WithSummary("Set a truck's location status (0 Pending, 1 Late, 2 Parked, 3–5 Sent to Bldg 1–3, 6 Signed out, 9 Cancelled).")
            .Produces<TruckAppointment>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
 
         // ---- Sketches --------------------------------------------------

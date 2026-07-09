@@ -1110,6 +1110,8 @@ public sealed class TruckAppointment
     public string? TractorNum { get; set; }
     public string? TrailerNum { get; set; }
     public string? SealNum { get; set; }
+    /// <summary># coils (inbound) / # skids (outbound) on the truck.</summary>
+    public int? Quantity { get; set; }
     public int TruckStatus { get; set; }
     public DateTime? CheckinTime { get; set; }
     public DateTime? CheckoutTime { get; set; }

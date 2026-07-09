@@ -12,7 +12,9 @@
 -- display snapshot. ref_type/ref_id optionally link the appointment to a SHIPMENT
 -- (packing_list) or RECEIVING (receiving_bol) row.
 --
--- truck_status: 0 Scheduled, 1 Checked-in, 2 At dock, 3 Departed, 8 No-show, 9 Cancelled.
+-- truck_status matches the plant's Excel "location status" legend: 0 Pending arrival,
+-- 1 Running late, 2 Parked out back, 3 Sent to Bldg 1, 4 Sent to Bldg 2, 5 Sent to Bldg 3,
+-- 6 Signed out / gone, 9 Cancelled. quantity = # coils (inbound) / # skids (outbound).
 
 CREATE TABLE abis_truck_appointment (
   appointment_id   NUMBER(12)     NOT NULL,
@@ -28,6 +30,7 @@ CREATE TABLE abis_truck_appointment (
   tractor_num      VARCHAR2(30),
   trailer_num      VARCHAR2(30),
   seal_num         VARCHAR2(40),
+  quantity         NUMBER(8),                 -- # coils (inbound) / # skids (outbound)
   truck_status     NUMBER(2)      DEFAULT 0 NOT NULL,
   checkin_time     DATE,
   checkout_time    DATE,

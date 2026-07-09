@@ -502,7 +502,7 @@ public static class SqliteFixture
             CREATE TABLE abis_truck_appointment (
                 appointment_id INTEGER PRIMARY KEY, direction TEXT NOT NULL, carrier_id INTEGER, carrier_name TEXT,
                 dock TEXT, scheduled_start TEXT, scheduled_end TEXT, ref_type TEXT, ref_id TEXT,
-                driver_name TEXT, tractor_num TEXT, trailer_num TEXT, seal_num TEXT,
+                driver_name TEXT, tractor_num TEXT, trailer_num TEXT, seal_num TEXT, quantity INTEGER,
                 truck_status INTEGER NOT NULL DEFAULT 0, checkin_time TEXT, checkout_time TEXT,
                 notes TEXT, created_utc TEXT, updated_utc TEXT, created_by TEXT);
             CREATE INDEX ix_abis_truck_appt_start ON abis_truck_appointment (scheduled_start);
@@ -1310,19 +1310,20 @@ public static class SqliteFixture
         conn.Execute("""
             INSERT INTO abis_truck_appointment (appointment_id, direction, carrier_id, carrier_name, dock,
                 scheduled_start, scheduled_end, ref_type, ref_id, driver_name, tractor_num, trailer_num, seal_num,
-                truck_status, checkin_time, checkout_time, notes, created_utc, updated_utc, created_by)
+                quantity, truck_status, checkin_time, checkout_time, notes, created_utc, updated_utc, created_by)
             VALUES (:Id, :Direction, :CarrierId, :CarrierName, :Dock, :Start, :End, :RefType, :RefId,
-                :Driver, :Tractor, :Trailer, :Seal, :Status, :CheckIn, :CheckOut, :Notes, :Created, :Updated, :By)
+                :Driver, :Tractor, :Trailer, :Seal, :Qty, :Status, :CheckIn, :CheckOut, :Notes, :Created, :Updated, :By)
             """,
             new[]
             {
+                // truck_status: 0 Pending arrival, 2 Parked out back (see the Excel legend).
                 new { Id = 1L, Direction = "OUTBOUND", CarrierId = (long?)7001L, CarrierName = "Acme Freight", Dock = "D-1",
                       Start = (DateTime?)d.AddHours(8), End = (DateTime?)d.AddHours(9), RefType = "SHIPMENT", RefId = "6001",
-                      Driver = "R. Diaz", Tractor = "TR-114", Trailer = "TL-9902", Seal = "SEAL-4471", Status = 0,
+                      Driver = "R. Diaz", Tractor = "TR-114", Trailer = "TL-9902", Seal = "SEAL-4471", Qty = (int?)18, Status = 0,
                       CheckIn = (DateTime?)null, CheckOut = (DateTime?)null, Notes = "Finished skids for cust 4001", Created = (DateTime?)d, Updated = (DateTime?)d, By = "jsmith" },
                 new { Id = 2L, Direction = "INBOUND", CarrierId = (long?)7002L, CarrierName = "Northline Carriers", Dock = "D-2",
                       Start = (DateTime?)d.AddHours(6), End = (DateTime?)d.AddHours(7), RefType = "RECEIVING", RefId = "5501",
-                      Driver = "M. Cole", Tractor = "TR-088", Trailer = "TL-3310", Seal = (string?)null, Status = 1,
+                      Driver = "M. Cole", Tractor = "TR-088", Trailer = "TL-3310", Seal = (string?)null, Qty = (int?)6, Status = 2,
                       CheckIn = (DateTime?)d.AddHours(6).AddMinutes(5), CheckOut = (DateTime?)null, Notes = "Inbound coils on BOL-IN-001", Created = (DateTime?)d, Updated = (DateTime?)d, By = "jsmith" }
             });
 

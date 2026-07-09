@@ -54,18 +54,18 @@ public sealed class TruckAppointmentTests
         var id = appt.GetProperty("appointmentId").GetInt64();
         Assert.Equal(0, appt.GetProperty("truckStatus").GetInt32());   // Scheduled
 
-        // Gate check-in → status 1, checkinTime stamped.
+        // Gate check-in → "Parked out back" (status 2), checkinTime stamped.
         var checkedIn = await (await c.PostAsync($"/api/truck-appointments/{id}/check-in", null)).Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(1, checkedIn.GetProperty("truckStatus").GetInt32());
+        Assert.Equal(2, checkedIn.GetProperty("truckStatus").GetInt32());
         Assert.NotEqual(JsonValueKind.Null, checkedIn.GetProperty("checkinTime").ValueKind);
 
-        // At dock via status PATCH.
-        var atDock = await (await c.PatchAsJsonAsync($"/api/truck-appointments/{id}/status", new { status = 2 })).Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(2, atDock.GetProperty("truckStatus").GetInt32());
+        // Sent to Bldg 1 (status 3) via the status PATCH.
+        var atBldg = await (await c.PatchAsJsonAsync($"/api/truck-appointments/{id}/status", new { status = 3 })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(3, atBldg.GetProperty("truckStatus").GetInt32());
 
-        // Gate check-out → status 3, checkoutTime stamped.
+        // Gate check-out → "Signed out / gone" (status 6), checkoutTime stamped.
         var checkedOut = await (await c.PostAsync($"/api/truck-appointments/{id}/check-out", null)).Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(3, checkedOut.GetProperty("truckStatus").GetInt32());
+        Assert.Equal(6, checkedOut.GetProperty("truckStatus").GetInt32());
         Assert.NotEqual(JsonValueKind.Null, checkedOut.GetProperty("checkoutTime").ValueKind);
     }
 

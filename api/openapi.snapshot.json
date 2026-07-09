@@ -9909,7 +9909,7 @@
         "tags": [
           "Trucks"
         ],
-        "summary": "Set a truck appointment's status (2 At dock, 8 No-show, 9 Cancelled, …).",
+        "summary": "Set a truck's location status (0 Pending, 1 Late, 2 Parked, 3–5 Sent to Bldg 1–3, 6 Signed out, 9 Cancelled).",
         "operationId": "SetTruckStatus",
         "parameters": [
           {
@@ -17977,6 +17977,11 @@
             "type": "string",
             "nullable": true
           },
+          "quantity": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
           "truckStatus": {
             "type": "integer",
             "format": "int32"
@@ -18100,6 +18105,11 @@
           },
           "sealNum": {
             "type": "string",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32",
             "nullable": true
           },
           "notes": {

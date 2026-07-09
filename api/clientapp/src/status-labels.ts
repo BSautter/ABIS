@@ -100,13 +100,16 @@ const dieStatus: Domain = {
   2: { label: 'Gone', tone: 'mut' },
 };
 
-// abis_truck_appointment.truck_status — new ABIS-owned scheduling subsystem (no legacy source).
+// abis_truck_appointment.truck_status — the plant's Excel "location status" legend
+// (TRUCK APPTS_TEMPLATE): the shaded truck-company field.
 const truckStatus: Domain = {
-  0: { label: 'Scheduled', tone: 'mut' },
-  1: { label: 'Checked in', tone: 'info' },
-  2: { label: 'At dock', tone: 'warn' },
-  3: { label: 'Departed', tone: 'ok' },
-  8: { label: 'No-show', tone: 'crit' },
+  0: { label: 'Pending arrival', tone: 'mut' },
+  1: { label: 'Running late', tone: 'warn' },
+  2: { label: 'Parked out back', tone: 'info' },
+  3: { label: 'Sent to Bldg 1', tone: 'info' },
+  4: { label: 'Sent to Bldg 2', tone: 'info' },
+  5: { label: 'Sent to Bldg 3', tone: 'info' },
+  6: { label: 'Signed out / gone', tone: 'ok' },
   9: { label: 'Cancelled', tone: 'crit' },
 };
 

@@ -595,11 +595,14 @@ public sealed class TruckAppointmentWrite
     public string? TractorNum { get; set; }
     public string? TrailerNum { get; set; }
     public string? SealNum { get; set; }
+    /// <summary># coils (inbound) / # skids (outbound).</summary>
+    public int? Quantity { get; set; }
     public string? Notes { get; set; }
 }
 
-/// <summary>Set a truck appointment's status (0 Scheduled, 1 Checked-in, 2 At dock, 3 Departed,
-/// 8 No-show, 9 Cancelled).</summary>
+/// <summary>Set a truck appointment's status (the Excel "location status" legend): 0 Pending arrival,
+/// 1 Running late, 2 Parked out back, 3 Sent to Bldg 1, 4 Sent to Bldg 2, 5 Sent to Bldg 3,
+/// 6 Signed out / gone, 9 Cancelled.</summary>
 public sealed class TruckStatusPatch
 {
     public int? Status { get; set; }

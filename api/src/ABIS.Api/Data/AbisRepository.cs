@@ -3808,8 +3808,8 @@ public sealed class AbisRepository : IAbisRepository
         appointment_id AS AppointmentId, direction AS Direction, carrier_id AS CarrierId, carrier_name AS CarrierName,
         dock AS Dock, scheduled_start AS ScheduledStart, scheduled_end AS ScheduledEnd, ref_type AS RefType, ref_id AS RefId,
         driver_name AS DriverName, tractor_num AS TractorNum, trailer_num AS TrailerNum, seal_num AS SealNum,
-        truck_status AS TruckStatus, checkin_time AS CheckinTime, checkout_time AS CheckoutTime, notes AS Notes,
-        created_utc AS CreatedUtc, updated_utc AS UpdatedUtc, created_by AS CreatedBy
+        quantity AS Quantity, truck_status AS TruckStatus, checkin_time AS CheckinTime, checkout_time AS CheckoutTime,
+        notes AS Notes, created_utc AS CreatedUtc, updated_utc AS UpdatedUtc, created_by AS CreatedBy
         """;
 
     public Task<PagedResult<TruckAppointment>> GetTruckAppointmentsAsync(int page, int pageSize, string? direction, int? status, DateTime? from, DateTime? to, CancellationToken ct)
@@ -3841,14 +3841,14 @@ public sealed class AbisRepository : IAbisRepository
             """
             INSERT INTO abis_truck_appointment (appointment_id, direction, carrier_id, carrier_name, dock,
                 scheduled_start, scheduled_end, ref_type, ref_id, driver_name, tractor_num, trailer_num, seal_num,
-                truck_status, notes, created_utc, updated_utc, created_by)
+                quantity, truck_status, notes, created_utc, updated_utc, created_by)
             VALUES (:id, :direction, :carrierId, :carrierName, :dock, :start, :end, :refType, :refId,
-                :driver, :tractor, :trailer, :seal, 0, :notes, :now, :now, :by)
+                :driver, :tractor, :trailer, :seal, :quantity, 0, :notes, :now, :now, :by)
             """,
             new { id, direction = body.Direction, carrierId = body.CarrierId, carrierName = body.CarrierName, dock = body.Dock,
                   start = body.ScheduledStart, end = body.ScheduledEnd, refType = body.RefType, refId = body.RefId,
                   driver = body.DriverName, tractor = body.TractorNum, trailer = body.TrailerNum, seal = body.SealNum,
-                  notes = body.Notes, now, by = createdBy },
+                  quantity = body.Quantity, notes = body.Notes, now, by = createdBy },
             transaction: tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
         return (await GetTruckAppointmentAsync(id, ct))!;
@@ -3861,24 +3861,24 @@ public sealed class AbisRepository : IAbisRepository
             """
             UPDATE abis_truck_appointment SET direction=:direction, carrier_id=:carrierId, carrier_name=:carrierName, dock=:dock,
                 scheduled_start=:start, scheduled_end=:end, ref_type=:refType, ref_id=:refId, driver_name=:driver,
-                tractor_num=:tractor, trailer_num=:trailer, seal_num=:seal, notes=:notes, updated_utc=:now
+                tractor_num=:tractor, trailer_num=:trailer, seal_num=:seal, quantity=:quantity, notes=:notes, updated_utc=:now
             WHERE appointment_id=:id
             """,
             new { id, direction = body.Direction, carrierId = body.CarrierId, carrierName = body.CarrierName, dock = body.Dock,
                   start = body.ScheduledStart, end = body.ScheduledEnd, refType = body.RefType, refId = body.RefId,
                   driver = body.DriverName, tractor = body.TractorNum, trailer = body.TrailerNum, seal = body.SealNum,
-                  notes = body.Notes, now = DateTime.UtcNow },
+                  quantity = body.Quantity, notes = body.Notes, now = DateTime.UtcNow },
             cancellationToken: ct));
         return n == 0 ? null : await GetTruckAppointmentAsync(id, ct);
     }
 
-    // Gate check-in: stamp arrival + advance to Checked-in (status 1).
+    // Gate check-in: stamp arrival + set "Parked out back" (status 2, per the Excel legend).
     public Task<TruckAppointment?> CheckInTruckAsync(long id, CancellationToken ct) =>
-        StampTruckAsync(id, "checkin_time=:now, truck_status=1", ct);
+        StampTruckAsync(id, "checkin_time=:now, truck_status=2", ct);
 
-    // Gate check-out: stamp departure + advance to Departed (status 3).
+    // Gate check-out: stamp departure + set "Signed out / gone" (status 6).
     public Task<TruckAppointment?> CheckOutTruckAsync(long id, CancellationToken ct) =>
-        StampTruckAsync(id, "checkout_time=:now, truck_status=3", ct);
+        StampTruckAsync(id, "checkout_time=:now, truck_status=6", ct);
 
     private async Task<TruckAppointment?> StampTruckAsync(long id, string setClause, CancellationToken ct)
     {
