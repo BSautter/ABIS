@@ -43,6 +43,11 @@ let dtEnded: Date | null = null;          // when it resumed (duration frozen, a
 let runPollTimer: number | null = null;   // /run-state poll interval
 let dtTickTimer: number | null = null;    // 1s banner-timer tick
 
+// The two OPC-box edges as a primary→fallback list (.170 primary, .175 fallback — both read the same
+// presses). The run-state poll tries them in order, so a .170 outage transparently uses .175 and
+// recovers to .170 once it's back. Overridable per station (the #edgeUrl field) and remembered.
+const DEFAULT_EDGE_URLS = 'http://192.168.10.170:8090, http://192.168.9.175:8090';
+
 function scaffold(): string {
   const tab = (id: string, label: string) => `<button id="tab-${id}" type="button">${label}</button>`;
   return `
@@ -65,7 +70,7 @@ function scaffold(): string {
       <div id="workarea" class="disabled">
         <div class="dop-scale">
           <strong>⚖ Scale</strong>
-          <input id="edgeUrl" placeholder="http://edge-host:8090 (optional)" style="width:210px" />
+          <input id="edgeUrl" placeholder="http://…:8090 (primary, fallback)" style="width:250px" title="Edge /run-state host(s), primary first — comma-separated for failover. e.g. http://192.168.10.170:8090, http://192.168.9.175:8090 (.170 primary, .175 fallback)" />
           <button class="btn sm ghost" id="btnPull" type="button" style="color:#fff;border-color:var(--rail-line)">Pull weight →</button>
           <input id="runTag" placeholder="PLC run tag (e.g. PLC5-BL84.strokecnt)" style="width:230px" title="The edge item id whose change = this line running" />
           <span id="runInd" class="dop-note" style="color:var(--rail-ink-2);margin-left:auto" title="Line run-state from the edge PLC feed">PLC: —</span>
@@ -304,31 +309,51 @@ function startRunStatePoll(): void {
   if (edge) localStorage.setItem('abis_edge_url', edge);
   localStorage.setItem('abis_run_tag', runTag);
   if (!edge || job == null) { setRunInd('—'); return; }
-  const base = edge.replace(/\/$/, '');
-  const url = `${base}/run-state${runTag ? `?tag=${encodeURIComponent(runTag)}` : ''}`;
-  runPollTimer = window.setInterval(() => void pollRunState(url), 3000);
-  void pollRunState(url);
+  // One or more edge hosts, primary first (comma/space separated): .170 primary, .175 fallback.
+  const q = runTag ? `?tag=${encodeURIComponent(runTag)}` : '';
+  const urls = edge.split(/[\s,]+/).map((u) => u.trim().replace(/\/$/, '')).filter(Boolean)
+    .map((b) => `${b}/run-state${q}`);
+  if (urls.length === 0) { setRunInd('—'); return; }
+  runPollTimer = window.setInterval(() => void pollRunState(urls), 3000);
+  void pollRunState(urls);
 }
 function stopRunStatePoll(): void {
   if (runPollTimer != null) { clearInterval(runPollTimer); runPollTimer = null; }
 }
 
-async function pollRunState(url: string): Promise<void> {
-  let s: { configured?: boolean; running?: boolean | null };
-  try {
-    const r = await fetch(url, { cache: 'no-store' });
-    if (!r.ok) { setRunInd('edge error'); return; }
-    s = await r.json();
-  } catch { setRunInd('edge unreachable'); return; }
-  if (!s.configured) { setRunInd('run-state not configured'); return; }
-  if (s.running == null) { setRunInd('unknown'); return; }
-  void onRunState(s.running);
+// Try each edge host in order (primary first); use the first that RESPONDS. A host that's unreachable,
+// times out, or errors is skipped so we fail over to the next — matching the .170-primary/.175-fallback
+// setup, and recovering to .170 automatically once it answers again. Only "offline/not responding"
+// triggers failover; a responding host's own unknown read is shown as unknown, not failed over.
+async function pollRunState(urls: string[]): Promise<void> {
+  for (let i = 0; i < urls.length; i++) {
+    let s: { configured?: boolean; running?: boolean | null };
+    try {
+      const r = await fetchWithTimeout(urls[i], 2000);
+      if (!r.ok) continue;                         // this host errored → try the fallback
+      s = await r.json();
+    } catch { continue; }                          // unreachable/timeout → try the fallback
+    const via = i > 0 ? ' (fallback)' : '';
+    if (!s.configured) { setRunInd(`run-state not configured${via}`); return; }
+    if (s.running == null) { setRunInd(`unknown${via}`); return; }
+    void onRunState(s.running, via);
+    return;
+  }
+  setRunInd('edge unreachable');                    // no host responded
 }
 
-async function onRunState(running: boolean): Promise<void> {
+// fetch with an abort timeout so a hung primary doesn't stall the poll before we fail over.
+async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
+  const ctl = new AbortController();
+  const t = window.setTimeout(() => ctl.abort(), ms);
+  try { return await fetch(url, { cache: 'no-store', signal: ctl.signal }); }
+  finally { clearTimeout(t); }
+}
+
+async function onRunState(running: boolean, via = ''): Promise<void> {
   const prev = lineRunning;
   lineRunning = running;
-  setRunInd(running ? '🟢 running' : '🔴 stopped');
+  setRunInd(`${running ? '🟢 running' : '🔴 stopped'}${via}`);
   if (prev === running) { if (dtInstance != null) renderDtBanner(); return; }
   if (!running && dtInstance == null) {
     await openAutoDowntime();                 // running/unknown → stopped
@@ -443,7 +468,7 @@ function showTab(name: string): void {
   $<HTMLFormElement>('#jobForm').addEventListener('submit', (e) => { e.preventDefault(); void loadJob(); });
   ['skids', 'scrap', 'downtime'].forEach((t) => $(`#tab-${t}`).addEventListener('click', () => showTab(t)));
   $('#btnPull').addEventListener('click', () => void pullWeight());
-  setV('#edgeUrl', localStorage.getItem('abis_edge_url') ?? '');   // remembered per station
+  setV('#edgeUrl', localStorage.getItem('abis_edge_url') ?? DEFAULT_EDGE_URLS);   // primary→fallback, remembered per station
   setV('#runTag', localStorage.getItem('abis_run_tag') ?? '');
   $('#edgeUrl').addEventListener('change', () => startRunStatePoll());   // (re)start PLC run-state watch
   $('#runTag').addEventListener('change', () => startRunStatePoll());
