@@ -6,7 +6,8 @@
 //
 // Compiled by `tsc` to wwwroot/ui/app/security.js; served at /ui/security.html.
 import { AbisClient, GrantWrite } from './generated/abis-client.js';
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 const $ = (sel) => document.querySelector(sel);
 function client() {
     return new AbisClient('', { fetch: authFetch });
@@ -159,7 +160,7 @@ async function init() {
     $('#btnAddGroup').addEventListener('click', addGroup);
     $('#btnGrant').addEventListener('click', grantUserApp);
     showTab('users');
-    await initAuth();
+    await initShell({ active: 'security', adopt: true });
     await loadUsers();
 }
 void init();

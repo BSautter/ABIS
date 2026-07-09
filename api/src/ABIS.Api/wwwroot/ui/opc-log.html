@@ -4,34 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>ABIS OPC Log</title>
-<style>
-  :root { --bd:#d0d7de; --bg:#f6f8fa; --ac:#0969da; }
-  * { box-sizing: border-box; }
-  body { font: 14px/1.5 system-ui, sans-serif; margin: 0; color: #1f2328; }
-  body.busy { cursor: progress; }
-  header { background:#24292f; color:#fff; padding:10px 16px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
-  header h1 { font-size:16px; margin:0; font-weight:600; }
-  header nav { display:flex; gap:12px; flex-wrap:wrap; }
-  header nav a { color:#9ecbff; text-decoration:none; }
-  header .key { margin-left:auto; display:flex; gap:6px; align-items:center; }
-  main { max-width:1150px; margin:0 auto; padding:16px; display:grid; gap:16px; grid-template-columns:2fr 3fr; }
-  section { border:1px solid var(--bd); border-radius:8px; padding:14px; }
-  section.wide { grid-column:1 / -1; }
-  h2 { font-size:14px; margin:0 0 10px; text-transform:uppercase; letter-spacing:.04em; color:#57606a; }
-  label { font-size:12px; color:#57606a; }
-  input { font:inherit; padding:6px 8px; border:1px solid var(--bd); border-radius:6px; }
-  table { width:100%; border-collapse:collapse; margin-top:8px; }
-  th, td { text-align:left; padding:5px 6px; border-bottom:1px solid var(--bd); font-size:13px; }
-  th { color:#57606a; font-weight:600; }
-  .muted { color:#8b949e; }
-  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size:12px; }
-  .pill { background:var(--bg); border:1px solid var(--bd); border-radius:12px; padding:1px 8px; font-size:12px; }
-  .err { color:#cf222e; min-height:18px; }
-  .note { background:#ddf4ff; border:1px solid #54aeff; border-radius:8px; padding:8px 12px; font-size:13px; }
-  ul.items { columns: 2; margin:8px 0 0; padding-left:18px; }
-  tbody tr.click { cursor:pointer; }
-  tbody tr.click:hover { background:var(--bg); }
-</style>
+<link rel="stylesheet" href="/ui/theme.css" />
 </head>
 <body>
 <header>

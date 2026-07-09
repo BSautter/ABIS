@@ -8,7 +8,8 @@
 // are called through authFetch directly; the typed client stays for the coil list shape.
 //
 // Compiled by `tsc` to wwwroot/ui/app/accounting.js; served at /ui/accounting.html.
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T =>
   document.querySelector(sel) as T;
@@ -147,7 +148,7 @@ async function init(): Promise<void> {
     const inv = t.getAttribute('data-print');
     if (inv) void print(inv);
   });
-  await initAuth();
+  await initShell({ active: 'accounting', adopt: true });
 }
 
 void init();

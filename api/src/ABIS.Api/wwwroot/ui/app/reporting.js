@@ -6,7 +6,8 @@
 //
 // Compiled by `tsc` to wwwroot/ui/app/reporting.js; served at /ui/reporting.html.
 import { AbisClient } from './generated/abis-client.js';
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 const $ = (sel) => document.querySelector(sel);
 function client() {
     return new AbisClient('', { fetch: authFetch });
@@ -220,7 +221,7 @@ function exportCsv() {
 async function init() {
     $('#repForm').addEventListener('submit', (e) => { e.preventDefault(); void run(); });
     $('#btnCsv').addEventListener('click', exportCsv);
-    await initAuth();
+    await initShell({ active: 'reporting', adopt: true });
     await run();
 }
 void init();

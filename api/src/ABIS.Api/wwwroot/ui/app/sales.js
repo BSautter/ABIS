@@ -7,7 +7,8 @@
 //
 // Compiled by `tsc` to wwwroot/ui/app/sales.js; served at /ui/sales.html.
 import { AbisClient, SalesReminderWrite, SalesProbabilityWrite, } from './generated/abis-client.js';
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 const $ = (sel) => document.querySelector(sel);
 // Auth — a Bearer token (OIDC) or the X-Api-Key field — is attached by ./auth.
 function client() {
@@ -193,7 +194,7 @@ async function init() {
     $('#btnEvent').addEventListener('click', addEvent);
     $('#btnProb').addEventListener('click', addProbability);
     showTab('quotes');
-    await initAuth();
+    await initShell({ active: 'sales', adopt: true });
     await loadQuotes();
 }
 void init();

@@ -8,7 +8,7 @@
 // spacing (defaults to a), cw=edge margin, d=coil density (lb/in³), pz=plate length.
 //
 // Compiled by `tsc` to wwwroot/ui/app/quotation.js; served at /ui/quotation.html.
-import { initAuth } from './auth.js';
+import { initShell } from './shell.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T =>
   document.querySelector(sel) as T;
@@ -78,7 +78,7 @@ async function init(): Promise<void> {
   $<HTMLFormElement>('#calcForm').addEventListener('submit', (e) => { e.preventDefault(); calc(); });
   ['#cd', '#a', '#ct', '#cw', '#d', '#pz'].forEach((id) =>
     $<HTMLInputElement>(id).addEventListener('input', () => { if ($<HTMLInputElement>('#cd').value && $<HTMLInputElement>('#a').value) calc(); }));
-  await initAuth(); // keeps the auth bar / key field consistent with the other screens
+  await initShell({ active: 'quotation', adopt: true }); // keeps the auth bar / key field consistent with the other screens
 }
 
 void init();

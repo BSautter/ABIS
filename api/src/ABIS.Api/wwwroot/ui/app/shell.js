@@ -50,6 +50,7 @@ const I = {
 const NAV = [
     { group: 'Overview', items: [
             { id: 'dashboard', label: 'Dashboard', href: '/ui/index.html', icon: I.dash },
+            { id: 'reporting', label: 'Reports', href: '/ui/reporting.html', icon: I.chart },
         ] },
     { group: 'Production', items: [
             { id: 'jobs', label: 'Jobs & floor', href: '/ui/jobs.html', feature: 'Production Control', icon: I.jobs },
@@ -91,6 +92,7 @@ const NAV = [
         ] },
     { group: 'EDI & Admin', items: [
             { id: 'edi', label: 'EDI operations', href: '/ui/edi.html', feature: 'EDI', icon: I.edi },
+            { id: 'security', label: 'User security', href: '/ui/security.html', feature: 'User Control', icon: I.users },
             { id: 'admin', label: 'Admin & scheduler', href: '#', feature: 'Scheduler Admin', icon: I.admin, soon: true },
         ] },
 ];

@@ -7,7 +7,8 @@
 //
 // Compiled by `tsc` to wwwroot/ui/app/coil-ownership.js; served at /ui/coil-ownership.html.
 import { AbisClient, CoilOwnershipTransferWrite } from './generated/abis-client.js';
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 const $ = (sel) => document.querySelector(sel);
 // Auth — a Bearer token (OIDC) or the X-Api-Key field — is attached by ./auth.
 function client() {
@@ -133,7 +134,7 @@ async function init() {
     $('#coilForm').addEventListener('submit', (e) => { e.preventDefault(); void searchCoils(); });
     $('#btnTransfer').addEventListener('click', submitTransfer);
     showTab('ledger');
-    await initAuth();
+    await initShell({ active: 'coil-ownership', adopt: true });
     await loadLedger();
 }
 void init();

@@ -5,7 +5,8 @@
 //
 // Compiled by `tsc` to wwwroot/ui/app/quality.js; served at /ui/quality.html.
 import { AbisClient } from './generated/abis-client.js';
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 const $ = (sel) => document.querySelector(sel);
 // Auth — a Bearer token (OIDC) or the X-Api-Key field — is attached by ./auth.
 function client() {
@@ -83,7 +84,7 @@ async function init() {
     ['catalog', 'customers', 'defects', 'products'].forEach((t) => $(`#tab-${t}`).addEventListener('click', () => showTab(t)));
     $('#defForm').addEventListener('submit', (e) => { e.preventDefault(); void loadDefects(); });
     showTab('catalog');
-    await initAuth();
+    await initShell({ active: 'quality', adopt: true });
     await Promise.all([loadScrapTypes(), loadProductTypes(), loadRecoveryCustomers()]);
 }
 void init();

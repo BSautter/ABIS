@@ -6,7 +6,8 @@
 // Compiled by `tsc` to wwwroot/ui/app/quality.js; served at /ui/quality.html.
 import { AbisClient } from './generated/abis-client.js';
 
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T =>
   document.querySelector(sel) as T;
@@ -77,7 +78,7 @@ async function init(): Promise<void> {
   ['catalog', 'customers', 'defects', 'products'].forEach((t) => $(`#tab-${t}`).addEventListener('click', () => showTab(t)));
   $<HTMLFormElement>('#defForm').addEventListener('submit', (e) => { e.preventDefault(); void loadDefects(); });
   showTab('catalog');
-  await initAuth();
+  await initShell({ active: 'quality', adopt: true });
   await Promise.all([loadScrapTypes(), loadProductTypes(), loadRecoveryCustomers()]);
 }
 

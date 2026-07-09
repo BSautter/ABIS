@@ -8,7 +8,8 @@
 // Compiled by `tsc` to wwwroot/ui/app/coil-ownership.js; served at /ui/coil-ownership.html.
 import { AbisClient, CoilOwnershipTransferWrite } from './generated/abis-client.js';
 
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T =>
   document.querySelector(sel) as T;
@@ -128,7 +129,7 @@ async function init(): Promise<void> {
   $<HTMLFormElement>('#coilForm').addEventListener('submit', (e) => { e.preventDefault(); void searchCoils(); });
   $('#btnTransfer').addEventListener('click', submitTransfer);
   showTab('ledger');
-  await initAuth();
+  await initShell({ active: 'coil-ownership', adopt: true });
   await loadLedger();
 }
 

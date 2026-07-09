@@ -6,7 +6,8 @@
 //
 // Compiled by `tsc` to wwwroot/ui/app/opc-log.js; served at /ui/opc-log.html.
 import { AbisClient } from './generated/abis-client.js';
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 const $ = (sel) => document.querySelector(sel);
 // Auth — a Bearer token (OIDC) or the X-Api-Key field — is attached by ./auth.
 function client() {
@@ -58,7 +59,7 @@ async function loadItems() {
     }
 }
 async function init() {
-    await initAuth();
+    await initShell({ active: 'opc-log', adopt: true });
     await Promise.all([loadLogs(), loadItems()]);
 }
 void init();

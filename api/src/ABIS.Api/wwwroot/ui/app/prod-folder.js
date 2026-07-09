@@ -5,7 +5,8 @@
 //
 // Compiled by `tsc` to wwwroot/ui/app/prod-folder.js; served at /ui/prod-folder.html.
 import { AbisClient, JobFolderNoteWrite } from './generated/abis-client.js';
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 const $ = (sel) => document.querySelector(sel);
 function client() {
     return new AbisClient('', { fetch: authFetch });
@@ -86,6 +87,6 @@ async function addNote() {
 async function init() {
     $('#jobForm').addEventListener('submit', (e) => { e.preventDefault(); void loadFolder(); });
     $('#btnNote').addEventListener('click', addNote);
-    await initAuth();
+    await initShell({ active: 'prod-folder', adopt: true });
 }
 void init();

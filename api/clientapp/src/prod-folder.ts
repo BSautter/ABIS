@@ -6,7 +6,8 @@
 // Compiled by `tsc` to wwwroot/ui/app/prod-folder.js; served at /ui/prod-folder.html.
 import { AbisClient, JobFolderNoteWrite } from './generated/abis-client.js';
 
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T =>
   document.querySelector(sel) as T;
@@ -72,7 +73,7 @@ async function addNote(): Promise<void> {
 async function init(): Promise<void> {
   $<HTMLFormElement>('#jobForm').addEventListener('submit', (e) => { e.preventDefault(); void loadFolder(); });
   $('#btnNote').addEventListener('click', addNote);
-  await initAuth();
+  await initShell({ active: 'prod-folder', adopt: true });
 }
 
 void init();

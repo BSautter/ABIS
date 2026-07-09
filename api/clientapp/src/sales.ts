@@ -10,7 +10,8 @@ import {
   AbisClient, SalesQuote, SalesReminderWrite, SalesProbabilityWrite,
 } from './generated/abis-client.js';
 
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T =>
   document.querySelector(sel) as T;
@@ -174,7 +175,7 @@ async function init(): Promise<void> {
   $('#btnEvent').addEventListener('click', addEvent);
   $('#btnProb').addEventListener('click', addProbability);
   showTab('quotes');
-  await initAuth();
+  await initShell({ active: 'sales', adopt: true });
   await loadQuotes();
 }
 

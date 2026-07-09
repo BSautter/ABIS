@@ -7,7 +7,8 @@
 // Compiled by `tsc` to wwwroot/ui/app/coil-eval.js; served at /ui/coil-eval.html.
 import { AbisClient, DimensionCheckWrite, EvalScrapWrite } from './generated/abis-client.js';
 
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T =>
   document.querySelector(sel) as T;
@@ -114,7 +115,7 @@ async function init(): Promise<void> {
   $<HTMLFormElement>('#skidForm').addEventListener('submit', (e) => { e.preventDefault(); void loadDimChecks(); });
   $('#btnDim').addEventListener('click', addDimCheck);
   $('#btnScrap').addEventListener('click', addScrap);
-  await initAuth();
+  await initShell({ active: 'coil-eval', adopt: true });
 }
 
 void init();

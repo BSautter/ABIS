@@ -6,7 +6,8 @@
 // Compiled by `tsc` to wwwroot/ui/app/stacker.js; served at /ui/stacker.html.
 import { AbisClient, LineErrorWrite } from './generated/abis-client.js';
 
-import { initAuth, authFetch } from './auth.js';
+import { authFetch } from './auth.js';
+import { initShell } from './shell.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T =>
   document.querySelector(sel) as T;
@@ -74,7 +75,7 @@ async function logError(): Promise<void> {
 async function init(): Promise<void> {
   $<HTMLFormElement>('#lineForm').addEventListener('submit', (e) => { e.preventDefault(); void load(); });
   $('#btnErr').addEventListener('click', logError);
-  await initAuth();
+  await initShell({ active: 'stacker', adopt: true });
   await load();
 }
 

@@ -8,7 +8,7 @@
 // spacing (defaults to a), cw=edge margin, d=coil density (lb/in³), pz=plate length.
 //
 // Compiled by `tsc` to wwwroot/ui/app/quotation.js; served at /ui/quotation.html.
-import { initAuth } from './auth.js';
+import { initShell } from './shell.js';
 const $ = (sel) => document.querySelector(sel);
 const setErr = (m) => { $('#err').textContent = m; };
 const numOf = (id) => Number($(id).value.trim());
@@ -74,6 +74,6 @@ async function init() {
     $('#calcForm').addEventListener('submit', (e) => { e.preventDefault(); calc(); });
     ['#cd', '#a', '#ct', '#cw', '#d', '#pz'].forEach((id) => $(id).addEventListener('input', () => { if ($('#cd').value && $('#a').value)
         calc(); }));
-    await initAuth(); // keeps the auth bar / key field consistent with the other screens
+    await initShell({ active: 'quotation', adopt: true }); // keeps the auth bar / key field consistent with the other screens
 }
 void init();
