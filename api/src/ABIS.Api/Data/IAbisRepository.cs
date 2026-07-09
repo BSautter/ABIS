@@ -248,6 +248,8 @@ public interface IAbisRepository
     Task<DowntimeInstance?> GetDowntimeInstanceAsync(long instanceNum, CancellationToken ct);
     Task<DowntimeInstance> CreateDowntimeInstanceAsync(DowntimeInstanceWrite body, CancellationToken ct);
     Task<DowntimeInstance?> UpdateDowntimeInstanceAsync(long instanceNum, DowntimeInstanceWrite body, CancellationToken ct);
+    Task<IReadOnlyList<DowntimeSegment>> GetDowntimeSegmentsAsync(long instanceNum, CancellationToken ct);
+    Task<DowntimeSegment?> AddDowntimeSegmentAsync(long instanceNum, DowntimeSegmentWrite body, CancellationToken ct);
     Task<PagedResult<Sketch>> GetSketchesAsync(int page, int pageSize, int? status, string? orderBy, CancellationToken ct);
     Task<Sketch?> GetSketchAsync(long sketchId, CancellationToken ct);
     Task<Sketch> CreateSketchAsync(SketchWrite body, CancellationToken ct);

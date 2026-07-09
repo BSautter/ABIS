@@ -1117,6 +1117,26 @@ public static class ApiEndpoints
            .WithSummary("Replace a downtime instance. Supports If-Match.")
            .Produces<DowntimeInstance>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status412PreconditionFailed).ProducesValidationProblem();
 
+        api.MapGet("/downtime/{instanceNum:long}/segments", async (long instanceNum, IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetDowntimeSegmentsAsync(instanceNum, ct)))
+           .WithName("GetDowntimeSegments").WithTags("Downtime")
+           .WithSummary("The cause-segments (reason + duration) logged against a downtime instance.")
+           .Produces<IReadOnlyList<DowntimeSegment>>();
+
+        api.MapPost("/downtime/{instanceNum:long}/segments", async (long instanceNum, DowntimeSegmentWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (body.CauseId is null)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["causeId"] = ["A downtime cause is required."] });
+                if (body.DurationSeconds is < 0)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["durationSeconds"] = ["Duration cannot be negative."] });
+                var seg = await repo.AddDowntimeSegmentAsync(instanceNum, body, ct);
+                return seg is null ? Results.NotFound()
+                    : Results.Created($"/api/downtime/{instanceNum}/segments/{seg.Id}", seg);
+            })
+           .WithName("AddDowntimeSegment").WithTags("Downtime")
+           .WithSummary("Add a cause-segment (reason + duration) to a downtime instance.")
+           .Produces<DowntimeSegment>(StatusCodes.Status201Created).Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
         // ---- Sketches --------------------------------------------------
         api.MapGet("/sketches", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, int? status = null, string? sort = null, string? dir = null) =>

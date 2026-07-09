@@ -566,6 +566,17 @@ public sealed class SecurityUserWrite
     public string? UserNotes { get; set; }
 }
 
+/// <summary>Add a downtime cause-segment (<c>dt_instance_detail</c>) to an instance — the reason
+/// (a <c>dt_cause</c> id) + how long it lasted, in seconds.</summary>
+public sealed class DowntimeSegmentWrite
+{
+    /// <summary>The downtime cause (<c>dt_cause.id</c>).</summary>
+    public int? CauseId { get; set; }
+    /// <summary>Duration of this segment, in seconds.</summary>
+    public double? DurationSeconds { get; set; }
+    public string? Note { get; set; }
+}
+
 /// <summary>Create a security group / role (table <c>security_group</c>).</summary>
 public sealed class SecurityGroupWrite
 {

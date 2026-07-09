@@ -785,6 +785,19 @@ public sealed class DowntimeCause
     public string? Note { get; set; }
 }
 
+/// <summary>One cause-segment within a downtime instance (table <c>dt_instance_detail</c>):
+/// <c>InstanceItem</c> is the <c>dt_cause</c> id (the reason), <c>Duration</c> is seconds. The
+/// legacy reports SUM(duration)/60 as minutes-by-cause.</summary>
+public sealed class DowntimeSegment
+{
+    public long Id { get; set; }
+    public long InstanceNum { get; set; }
+    public int? InstanceItem { get; set; }
+    public string? CauseName { get; set; }
+    public double? Duration { get; set; }
+    public string? Note { get; set; }
+}
+
 /// <summary>A transportation method code (table <c>transportation_method</c>).
 /// Referenced by shipments.</summary>
 public sealed class TransportationMethod

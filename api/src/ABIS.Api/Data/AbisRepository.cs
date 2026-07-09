@@ -3757,6 +3757,39 @@ public sealed class AbisRepository : IAbisRepository
         return n == 0 ? null : await GetDowntimeInstanceAsync(instanceNum, ct);
     }
 
+    // Cause-segments of a downtime instance (dt_instance_detail): the reason (instance_item →
+    // dt_cause) + duration seconds. The DAS operator picks a cause when they log downtime.
+    public async Task<IReadOnlyList<DowntimeSegment>> GetDowntimeSegmentsAsync(long instanceNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<DowntimeSegment>(new CommandDefinition(
+            """
+            SELECT d.id AS Id, d.instance_num AS InstanceNum, d.instance_item AS InstanceItem,
+                   c.cause_name AS CauseName, d.duration AS Duration, d.note AS Note
+            FROM dt_instance_detail d LEFT JOIN dt_cause c ON c.id = d.instance_item
+            WHERE d.instance_num = :id ORDER BY d.id
+            """, new { id = instanceNum }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    public async Task<DowntimeSegment?> AddDowntimeSegmentAsync(long instanceNum, DowntimeSegmentWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM dt_instance WHERE instance_num = :id", new { id = instanceNum }, cancellationToken: ct));
+        if (exists == 0) return null;
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var id = await NextIdAsync(conn, tx, "dt_instance_detail", "id", ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO dt_instance_detail (id, instance_num, instance_item, duration, note)
+            VALUES (:id, :inst, :item, :dur, :note)
+            """, new { id, inst = instanceNum, item = body.CauseId, dur = body.DurationSeconds, note = body.Note },
+            transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+        return (await GetDowntimeSegmentsAsync(instanceNum, ct)).FirstOrDefault(s => s.Id == id);
+    }
+
     public async Task<IReadOnlyList<CustomerContact>> GetCustomerContactsAsync(long customerId, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

@@ -351,3 +351,31 @@ tbody tr.click { cursor:pointer; } tbody tr.click:hover { background:var(--surfa
 .das-fault { margin-top:14px; padding:9px 11px; border-radius:9px; background:color-mix(in srgb, var(--stop) 14%, transparent); border:1px solid color-mix(in srgb, var(--stop) 34%, transparent); color:#ffd7de; font-size:12px; display:flex; gap:8px; align-items:flex-start; }
 .das-empty { grid-column:1/-1; text-align:center; color:var(--das-ink-3); padding:60px 0; font-size:14px; }
 .das .chip { border:1px solid var(--das-line); }
+
+/* ============================================================================
+   DAS operator console — the line operator's data-acquisition kiosk (own surface,
+   big touch targets). Themes light/dark via tokens; dark top bar like the board. (#4c)
+   ============================================================================ */
+.dop { max-width:1000px; margin:0 auto; min-height:100dvh; display:flex; flex-direction:column; }
+.dop-top { position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:12px; padding:12px 18px; background:var(--rail); color:#fff; border-bottom:1px solid var(--rail-line); flex-wrap:wrap; }
+.dop-top .logo { width:32px; height:32px; border-radius:8px; display:grid; place-items:center; font-family:var(--font-mono); font-weight:700; font-size:12px; background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:var(--accent-ink); }
+.dop-top .ttl { font-size:15px; font-weight:650; line-height:1.15; }
+.dop-top .ttl small { display:block; font-family:var(--font-mono); font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--rail-ink-2); font-weight:500; }
+.dop-top .sp { flex:1; }
+.dop-top .jobinfo { font-family:var(--font-mono); font-size:13px; color:var(--rail-ink); }
+.dop-body { flex:1; padding:16px 18px; display:flex; flex-direction:column; gap:16px; }
+.dop-scale { display:flex; gap:12px; align-items:center; flex-wrap:wrap; background:var(--rail-2); color:var(--rail-ink); border:1px solid var(--rail-line); border-radius:12px; padding:12px 14px; }
+.dop-scale strong { color:#fff; }
+.dop-scale input { background:var(--rail); border:1px solid var(--rail-line); color:#fff; border-radius:8px; padding:9px 11px; font:inherit; }
+.dop-coils { display:flex; gap:10px; flex-wrap:wrap; }
+.dop-coil { flex:1 1 150px; min-width:150px; text-align:left; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 14px; cursor:pointer; transition:border-color .12s, background .12s; }
+.dop-coil:hover { border-color:var(--accent); }
+.dop-coil.sel { border-color:var(--accent); background:var(--accent-soft); box-shadow:0 0 0 1px var(--accent) inset; }
+.dop-coil .n { font-family:var(--font-mono); font-size:19px; font-weight:650; }
+.dop-coil .m { font-size:12px; color:var(--ink-2); margin-top:2px; }
+.dop-tabs { display:flex; gap:8px; flex-wrap:wrap; }
+.dop-tabs button { flex:1 1 130px; min-height:52px; border-radius:12px; background:var(--surface); border:1px solid var(--line); color:var(--ink); font-size:15px; font-weight:600; }
+.dop-tabs button.active { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+.dop-big { min-height:48px; font-size:15px; }
+.dop input.big, .dop select.big { min-height:46px; font-size:15px; }
+.dop-note { font-size:12px; color:var(--ink-3); }
