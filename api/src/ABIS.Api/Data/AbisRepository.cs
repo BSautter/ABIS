@@ -39,6 +39,11 @@ public sealed class AbisRepository : IAbisRepository
         pieces_per_case AS PiecesPerCase
         """;
 
+    // Legacy w_inv_coil "on-hand inventory" predicate: exclude coils that have left inventory —
+    // 0 Done, 10 Shipped, 13 Transferred, 20 Warehouse-item (w_inv_coil.srw:3575). No balance
+    // predicate (legacy counts a fully-consumed-but-not-yet-status-0 coil as on hand).
+    private const string OnHandCoilPredicate = "coil_status NOT IN (0, 10, 13, 20)";
+
     private const string OrderCols = """
         order_abc_num AS OrderAbcNum, orig_customer_id AS OrigCustomerId, enduser_id AS EnduserId,
         orig_customer_po AS OrigCustomerPo, enduser_po AS EnduserPo, order_type AS OrderType,
@@ -386,7 +391,12 @@ public sealed class AbisRepository : IAbisRepository
     {
         var p = new DynamicParameters();
         var conditions = new List<string>();
+        // Legacy w_inv_coil default: show only ON-HAND coils — coil_status NOT IN
+        // (0 Done, 10 Shipped, 13 Transferred, 20 Warehouse-item). An explicit status search
+        // overrides this default (mirrors wf_search_terms stripping the NOT-IN clause), so the
+        // caller can still pull shipped/transferred/etc. by asking for that status specifically.
         if (status is not null) { conditions.Add("coil_status = :status"); p.Add("status", status); }
+        else { conditions.Add(OnHandCoilPredicate); }
         if (alloy is not null) { conditions.Add("coil_alloy2 = :alloy"); p.Add("alloy", alloy); }
         if (location is not null) { conditions.Add("coil_location LIKE :location"); p.Add("location", $"%{location}%"); }
         if (customerId is not null) { conditions.Add("customer_id = :customerId"); p.Add("customerId", customerId); }
@@ -419,9 +429,12 @@ public sealed class AbisRepository : IAbisRepository
             "location" => "coil_location",
             _ => throw new ArgumentException($"Unsupported groupBy '{groupBy}'. Use 'alloy' or 'location'.", nameof(groupBy))
         };
+        // On-hand rollup only (the endpoint is documented "weight on hand") — same legacy filter
+        // as the coil list so the summary totals match the grid.
         var sql = $"""
             SELECT {col} AS "Key", COUNT(*) AS Count, SUM(net_wt) AS TotalNetWt, SUM(net_wt_balance) AS TotalBalance
             FROM coil
+            WHERE {OnHandCoilPredicate}
             GROUP BY {col}
             ORDER BY {col}
             """;

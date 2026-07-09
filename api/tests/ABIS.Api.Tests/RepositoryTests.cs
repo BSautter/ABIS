@@ -505,7 +505,7 @@ public sealed class RepositoryTests : IDisposable
     {
         var created = await _repo.CreateCoilAsync(
             new CoilWrite { CoilAlloy2 = "6061", CoilGauge = 0.25m, NetWt = 15000m, CoilStatus = 1, CoilOrgNum = "ORG-REPO-1" }, CancellationToken.None);
-        Assert.Equal(5005, created.CoilAbcNum);   // MAX(5004) + 1
+        Assert.Equal(5009, created.CoilAbcNum);   // MAX(5008) + 1
         Assert.Equal("6061", created.CoilAlloy2);
         Assert.NotNull(created.CoilEntryDate);
     }
