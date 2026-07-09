@@ -65,9 +65,9 @@ function scaffold(): string {
       <div id="workarea" class="disabled">
         <div class="dop-scale">
           <strong>⚖ Scale</strong>
-          <input id="edgeUrl" placeholder="http://edge-host:8090 (optional)" style="width:230px" />
+          <input id="edgeUrl" placeholder="http://edge-host:8090 (optional)" style="width:210px" />
           <button class="btn sm ghost" id="btnPull" type="button" style="color:#fff;border-color:var(--rail-line)">Pull weight →</button>
-          <span class="dop-note" style="color:var(--rail-ink-2)">fills the skid net weight</span>
+          <input id="runTag" placeholder="PLC run tag (e.g. PLC5-BL84.strokecnt)" style="width:230px" title="The edge item id whose change = this line running" />
           <span id="runInd" class="dop-note" style="color:var(--rail-ink-2);margin-left:auto" title="Line run-state from the edge PLC feed">PLC: —</span>
         </div>
         <div id="dtBanner" style="display:none;background:#7f1d1d;color:#fff;border-radius:10px;padding:14px 18px;margin-bottom:12px"></div>
@@ -296,22 +296,27 @@ const fmtDur = (ms: number): string => {
 
 // Poll the edge line run-state while a job is loaded and an edge URL is set. Stop→open downtime,
 // resume→finalize. Never acts on an unknown (null) reading — only on a real running↔stopped flip.
+// The edge URL + this line's PLC run tag are remembered per station (localStorage).
 function startRunStatePoll(): void {
   stopRunStatePoll();
   const edge = v('#edgeUrl');
+  const runTag = v('#runTag');
+  if (edge) localStorage.setItem('abis_edge_url', edge);
+  localStorage.setItem('abis_run_tag', runTag);
   if (!edge || job == null) { setRunInd('—'); return; }
   const base = edge.replace(/\/$/, '');
-  runPollTimer = window.setInterval(() => void pollRunState(base), 3000);
-  void pollRunState(base);
+  const url = `${base}/run-state${runTag ? `?tag=${encodeURIComponent(runTag)}` : ''}`;
+  runPollTimer = window.setInterval(() => void pollRunState(url), 3000);
+  void pollRunState(url);
 }
 function stopRunStatePoll(): void {
   if (runPollTimer != null) { clearInterval(runPollTimer); runPollTimer = null; }
 }
 
-async function pollRunState(base: string): Promise<void> {
+async function pollRunState(url: string): Promise<void> {
   let s: { configured?: boolean; running?: boolean | null };
   try {
-    const r = await fetch(`${base}/run-state`, { cache: 'no-store' });
+    const r = await fetch(url, { cache: 'no-store' });
     if (!r.ok) { setRunInd('edge error'); return; }
     s = await r.json();
   } catch { setRunInd('edge unreachable'); return; }
@@ -438,7 +443,10 @@ function showTab(name: string): void {
   $<HTMLFormElement>('#jobForm').addEventListener('submit', (e) => { e.preventDefault(); void loadJob(); });
   ['skids', 'scrap', 'downtime'].forEach((t) => $(`#tab-${t}`).addEventListener('click', () => showTab(t)));
   $('#btnPull').addEventListener('click', () => void pullWeight());
+  setV('#edgeUrl', localStorage.getItem('abis_edge_url') ?? '');   // remembered per station
+  setV('#runTag', localStorage.getItem('abis_run_tag') ?? '');
   $('#edgeUrl').addEventListener('change', () => startRunStatePoll());   // (re)start PLC run-state watch
+  $('#runTag').addEventListener('change', () => startRunStatePoll());
   $('#btnSkid').addEventListener('click', () => void saveSkid());
   $('#btnTag').addEventListener('click', () => void printTag());
   $('#btnScrap').addEventListener('click', () => void saveScrap());

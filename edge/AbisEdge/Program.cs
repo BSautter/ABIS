@@ -8,6 +8,17 @@ using AbisEdge.Tags;
 // so the modern web stack can consume hardware the central API can't reach. It
 // replaces the legacy `da` (WSC32 serial) + OPC integration. See docs/EDGE_SERVICE.md.
 
+// Diagnostic one-shot for the Classic OPC DA path, run on the OPC box (Windows-only, COM):
+//   AbisEdge --probe                       read the default items (Device110.spm/idle), verbose
+//   AbisEdge --probe --browse [filter]     list every leaf tag id (optionally filtered)
+//   AbisEdge --probe <item> [<item> ...]   read specific item ids, surfacing any COM error
+if (args.Length > 0 && string.Equals(args[0], "--probe", StringComparison.OrdinalIgnoreCase))
+{
+    if (!OperatingSystem.IsWindows()) { Console.WriteLine("--probe requires Windows (COM)."); return; }
+    ClassicDaProbe.Run(args.Skip(1).ToArray());
+    return;
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 // --- Configure the device from Edge:Scale:* (env or appsettings) ---------------
@@ -97,22 +108,28 @@ app.MapGet("/tags", (LatestTags tags) => Results.Ok(tags.All()));
 app.MapGet("/tags/{name}", (string name, LatestTags tags) =>
     tags.Get(name) is { } t ? Results.Ok(t) : Results.NotFound(new { tag = name, status = "no-value-yet" }));
 
-// The line's run-state, interpreted from the configured run-state tag — the DAS console polls this
-// to auto-open/close a downtime instance. running: true=running, false=stopped, null=unknown
-// (not configured, no value yet, or a bad-quality read — the console must NOT act on null).
-app.MapGet("/run-state", (LatestTags tags, RunStateConfig cfg) =>
+// The line's run-state — the DAS console polls this (every ~3s) to auto-open/close a downtime
+// instance. Pass ?tag=<item id> for a specific line (multiple lines = multiple run-state tags, all
+// polled); omit to use the configured default RunStateTag. running: true=running, false=stopped,
+// null=unknown (not configured, no value yet, or a bad read — the console must NOT act on null).
+// Changed mode = running when the tag (e.g. a stroke counter) changed within RunStateThreshold sec.
+app.MapGet("/run-state", (LatestTags tags, RunStateConfig cfg, string? tag) =>
 {
-    if (string.IsNullOrWhiteSpace(cfg.Tag))
-        return Results.Ok(new { configured = false, tag = (string?)null, value = (string?)null, quality = (string?)null, running = (bool?)null, at = (DateTimeOffset?)null });
-    var r = tags.Get(cfg.Tag);
+    var t = string.IsNullOrWhiteSpace(tag) ? cfg.Tag : tag;
+    if (string.IsNullOrWhiteSpace(t))
+        return Results.Ok(new { configured = false, tag = (string?)null, value = (string?)null, quality = (string?)null, mode = cfg.Mode.ToString(), running = (bool?)null, at = (DateTimeOffset?)null });
+    var r = tags.Get(t);
+    var running = cfg.Mode == RunStateMode.Changed
+        ? RunState.IsRunningByChange(tags.ChangedAt(t), r?.Quality, DateTimeOffset.UtcNow, cfg.Threshold)
+        : RunState.IsRunning(r?.Value, r?.Quality, cfg);
     return Results.Ok(new
     {
         configured = true,
-        tag = cfg.Tag,
+        tag = t,
         value = r?.Value,
         quality = r?.Quality,
         mode = cfg.Mode.ToString(),
-        running = RunState.IsRunning(r?.Value, r?.Quality, cfg),
+        running,
         at = r?.At,
     });
 });
@@ -161,12 +178,23 @@ public sealed class ReadingPump(IScale scale, LatestReading latest, ILogger<Read
     }
 }
 
-/// <summary>Thread-safe cache of the latest value per OPC tag.</summary>
+/// <summary>Thread-safe cache of the latest value per OPC tag, plus when each tag's value last
+/// changed (for the Changed run-state mode — a stroke counter that stops climbing = a stopped line).</summary>
 public sealed class LatestTags
 {
     private readonly ConcurrentDictionary<string, TagReading> _byName = new();
-    public void Set(TagReading r) => _byName[r.Name] = r;
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _changedAt = new();
+
+    public void Set(TagReading r)
+    {
+        // Record a change on the first sight of a tag, or when its (good) value differs from the last.
+        if (!_byName.TryGetValue(r.Name, out var prev) || !string.Equals(prev.Value, r.Value, StringComparison.Ordinal))
+            _changedAt[r.Name] = r.At;
+        _byName[r.Name] = r;
+    }
+
     public TagReading? Get(string name) => _byName.TryGetValue(name, out var r) ? r : null;
+    public DateTimeOffset? ChangedAt(string name) => _changedAt.TryGetValue(name, out var t) ? t : null;
     public IReadOnlyCollection<TagReading> All() => _byName.Values.ToList();
 }
 

@@ -15,6 +15,12 @@
     <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Client" Version="1.4.372.106" />
     <!-- Cross-platform serial-port access (the WSC32 replacement). -->
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+    <!-- Typed Classic OPC DA client (Windows/COM at runtime; used only by the ClassicDa provider). -->
+    <PackageReference Include="TitaniumAS.Opc.Client" Version="1.0.2" />
+    <!-- Needed by TitaniumAS's Common.Logging dependency: its config lookup requires
+         ConfigurationManager, which isn't in the self-contained .NET 8 runtime. With it present,
+         Common.Logging finds no 'common/logging' section and falls back to a no-op logger. -->
+    <PackageReference Include="System.Configuration.ConfigurationManager" Version="8.0.0" />
   </ItemGroup>
 
 </Project>

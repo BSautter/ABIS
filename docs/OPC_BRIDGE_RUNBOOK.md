@@ -26,36 +26,46 @@ Option A is documented below as the fallback.
 Run the ABIS edge **on each OPC box** (`.170` and `.175`, one instance each). Its `ClassicDa`
 tag source reads that box's INGEAR over **local COM** — zero DCOM, no wrapper.
 
+The edge reads INGEAR with the typed **TitaniumAS.Opc.Client** (the OPC DA *custom* interface). It
+does **not** use the `OPC.Automation` wrapper (late-bound COM is unusable from .NET 8 — `dynamic`
+can't do the out-param read and reflection throws `MissingMethodException`). It needs only the OPC
+proxy/stubs, which are already registered because INGEAR serves existing clients — so on `.170`/`.175`
+there is **nothing extra to install**. **VALIDATED LIVE on `.170` (2026-07-09):** connects, reads
+`PLC5-BL84.strokecnt=496 (Good)` etc.
+
 **On each OPC box:**
-1. Install the **OPC Core Components Redistributable** (provides the `OPC.Automation` wrapper
-   the edge uses as a DA client). INGEAR + its DA server already run locally.
-2. Deploy + run the ABIS edge (console app or Windows Service — see `EDGE_SERVICE.md`).
-3. Configure it (env vars or appsettings):
+1. Copy the published edge (x86 self-contained — INGEAR is 32-bit) to the box and extract it.
+2. Run it — the bundled **`run-edge.cmd`** sets the config + binds `http://0.0.0.0:8090`:
    ```sh
    Edge__Opc__Provider=ClassicDa
    Edge__Opc__ProgId=CimQuestInc.IGOPCAB.1
-   Edge__Opc__Tags__0=line_status.spm          # the INGEAR item id(s) for this box's lines
-   Edge__Opc__RunStateTag=line_status.spm      # the run signal
-   Edge__Opc__RunStateMode=GreaterThan         # running = spm > threshold
-   Edge__Opc__RunStateThreshold=0
+   Edge__Opc__Tags__0=PLC5-BL78.strokecnt      # the always-running mains
+   Edge__Opc__Tags__1=PLC5-BL84.strokecnt
+   Edge__Opc__RunStateMode=Changed             # running = the stroke counter is still climbing
+   Edge__Opc__RunStateThreshold=10             # ...declare stopped after 10s with no change
    ```
-   *(Exact item ids come from the INGEAR config tree — e.g. `Working_Master.tdb` shows
-   `line_status` / `Device110` / `PLC5-BL*` groups. We'll confirm them live together.)*
-4. **Firewall:** allow the line PCs to reach the edge's HTTP port (default **8090**) —
-   [`tools/opc-bridge/Open-UaFirewall.ps1`](../tools/opc-bridge/Open-UaFirewall.ps1) with
-   `-Port 8090` does this (it's a generic port-allow).
-5. **Verify** with [`tools/opc-bridge/Test-RunState.ps1`](../tools/opc-bridge/Test-RunState.ps1):
-   `running` should flip RUNNING/STOPPED as the press starts/stops. Then set the **edge URL**
-   in the DAS console — the PLC chip shows 🟢/🔴 and the "⛔ LINE DOWN" banner opens on a stop.
+   *(Confirm item ids in the INGEAR tree / with `AbisEdge --probe --browse`. The mains BL78/BL84
+   have no tidy `spm`; the stroke counter `strokecnt` climbing = running.)*
+3. **Firewall:** allow the line PCs to reach the edge's HTTP port **8090** —
+   [`tools/opc-bridge/Open-UaFirewall.ps1`](../tools/opc-bridge/Open-UaFirewall.ps1) `-Port 8090`.
+4. **Verify:** `curl "http://localhost:8090/run-state?tag=PLC5-BL84.strokecnt"` → `running` flips
+   true/false as that press runs/stops. Then in the DAS console set the **edge URL** + the **PLC run
+   tag** (per line) — the PLC chip shows 🟢/🔴 and the "⛔ LINE DOWN" banner opens on a stop.
+5. Install it as a **Windows Service** for a permanent deployment (`sc create` / NSSM), same env.
 
-> **`idle`-bit variant** (instead of `spm`): `Edge__Opc__RunStateTag=line_status.idle`,
-> `Edge__Opc__RunStateMode=NotEquals`, `Edge__Opc__RunningValues__0=1`,
-> `Edge__Opc__RunningValues__1=TRUE` (running = idle is *not* set).
-
-> **Live-validation note:** the `ClassicDa` COM read can't be exercised without a live INGEAR,
-> so we validate it **on `.170` / `.175` together** — connect, confirm `/tags` shows Good
-> quality for `spm`, then watch `/run-state`. If COM apartment/threading needs tuning, we
-> iterate there.
+> **De-risk with the probe:** `AbisEdge.exe --probe <item>...` does a one-shot read (value +
+> quality); `--probe --browse [filter]` lists item ids; `--probe --watch <item>...` polls them
+> once a second so you can watch a run-signal candidate move over time.
+>
+> **Why `strokecnt`, not the legacy `autorunning` bit** (confirmed live on `.170`, 2026-07-09 via
+> `--watch PLC5-BL84.autorunning PLC5-BL84.automode PLC5-BL84.strokecnt`): while the press ran,
+> `strokecnt` climbed steadily and `autorunning` held `True`; while stopped, `strokecnt` went
+> dead-static. **But operators run in auto and *manually trigger* the press** — then `autorunning`
+> reads `False` while the press is still stroking, so keying off `autorunning` (as the legacy DA app
+> does) would false-log downtime during manual runs. `strokecnt` climbing is the one signal that's
+> right in both auto and manual, so that's the run signal. `automode`-bit variant (simpler, but
+> blind to jams-while-in-auto): `RunStateTag=PLC5-BL84.automode`, `RunStateMode=Equals`,
+> `RunningValues__0=True`.
 
 ---
 

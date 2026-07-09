@@ -14,6 +14,10 @@ public enum RunStateMode
     /// <summary>Running when the value parses as a number greater than
     /// <see cref="RunStateConfig.Threshold"/> — e.g. strokes-per-minute > 0.</summary>
     GreaterThan,
+    /// <summary>Running when the value has CHANGED within the last <see cref="RunStateConfig.Threshold"/>
+    /// seconds — for a cumulative counter like a stroke count (climbing = running, static = stopped).
+    /// This is the one stateful mode: it keys off when the polled value last changed, not the value.</summary>
+    Changed,
 }
 
 /// <summary>Configuration for interpreting one polled tag as the line's run-state: which tag
@@ -62,6 +66,18 @@ public static class RunState
     /// <summary>Equals-mode convenience (kept for callers/tests that only pass a running-value set).</summary>
     public static bool? IsRunning(string? value, string? quality, IReadOnlyCollection<string> runningValues)
         => IsRunning(value, quality, new RunStateConfig(null, runningValues as IReadOnlyList<string> ?? runningValues.ToArray()));
+
+    /// <summary>The <see cref="RunStateMode.Changed"/> verdict: running when the run-state tag's value
+    /// last changed within <paramref name="windowSeconds"/> (a stroke counter still climbing).
+    /// <paramref name="changedAt"/> = when the polled value last changed (null = never seen);
+    /// a bad-quality or missing read reads unknown (null). Default window 10s when unset.</summary>
+    public static bool? IsRunningByChange(DateTimeOffset? changedAt, string? quality, DateTimeOffset now, double windowSeconds)
+    {
+        if (changedAt is null || !string.Equals(quality, "Good", StringComparison.OrdinalIgnoreCase))
+            return null;
+        var window = TimeSpan.FromSeconds(windowSeconds <= 0 ? 10 : windowSeconds);
+        return now - changedAt.Value <= window;
+    }
 
     private static bool Matches(string v, IReadOnlyList<string> set)
         => set.Any(rv => string.Equals(rv, v, StringComparison.OrdinalIgnoreCase));

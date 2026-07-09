@@ -86,4 +86,36 @@ public class RunStateTests
         Assert.Null(RunState.IsRunning("120", "Bad", Spm()));
         Assert.Null(RunState.IsRunning("0", "Bad", Idle()));
     }
+
+    // --- Changed mode: a stroke counter climbing = running; static past the window = stopped ---
+
+    [Fact]
+    public void Changed_within_window_is_running()
+    {
+        var now = DateTimeOffset.UtcNow;
+        Assert.True(RunState.IsRunningByChange(now.AddSeconds(-3), "Good", now, 10));   // strokecnt moved 3s ago
+    }
+
+    [Fact]
+    public void No_change_past_window_is_stopped()
+    {
+        var now = DateTimeOffset.UtcNow;
+        Assert.False(RunState.IsRunningByChange(now.AddSeconds(-30), "Good", now, 10)); // static 30s → down
+    }
+
+    [Fact]
+    public void Changed_defaults_to_a_10s_window_when_unset()
+    {
+        var now = DateTimeOffset.UtcNow;
+        Assert.True(RunState.IsRunningByChange(now.AddSeconds(-8), "Good", now, 0));
+        Assert.False(RunState.IsRunningByChange(now.AddSeconds(-12), "Good", now, 0));
+    }
+
+    [Fact]
+    public void Changed_is_unknown_when_never_seen_or_bad_quality()
+    {
+        var now = DateTimeOffset.UtcNow;
+        Assert.Null(RunState.IsRunningByChange(null, "Good", now, 10));   // never observed a value
+        Assert.Null(RunState.IsRunningByChange(now, "Bad", now, 10));     // bad read → never fabricate
+    }
 }

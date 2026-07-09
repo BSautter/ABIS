@@ -67,10 +67,11 @@ COM port. The web screens (or the API) consume readings over HTTP on the LAN.
   - `GET /reading` → the latest `WeightReading` (`503` until one arrives)
   - `GET /tags` → the latest value of each configured OPC tag
   - `GET /tags/{name}` → one tag's latest value (`404` until polled)
-  - `GET /run-state` → the line run-state interpreted from the configured run-state
-    tag: `{ configured, tag, value, quality, running, at }` where `running` is
-    `true` (running) / `false` (stopped) / `null` (not configured, no value yet, or
-    a bad-quality read). The DAS console polls this to auto-open downtime.
+  - `GET /run-state[?tag=<item id>]` → the line run-state: `{ configured, tag, value,
+    quality, mode, running, at }` where `running` is `true` (running) / `false`
+    (stopped) / `null` (not configured, no value yet, or a bad read). Pass `?tag=` for a
+    specific line (multiple lines each poll their own tag); omit for the default
+    `RunStateTag`. The DAS console polls this to auto-open downtime.
   - `GET /opc/browse?node=<id>` → browse the UA address space for discovery
     (`501` on the mock provider)
   - Read-only endpoints send permissive **CORS** headers so the ABIS DAS console
@@ -85,14 +86,14 @@ COM port. The web screens (or the API) consume readings over HTTP on the LAN.
 | `Port` | e.g. `COM3` | required for `Serial` |
 | `BaudRate` / `Parity` / `DataBits` / `StopBits` | per the indicator's manual | defaults 9600/None/8/One |
 | `Setpoint` / `Unit` | mock only | the simulated weight |
-| `Edge:Opc:Provider` | `Mock` (default) / `OpcUa` / **`ClassicDa`** | which tag source. **`ClassicDa`** reads a local Classic OPC DA server (INGEAR) directly via COM — **Windows-only**, the "edge on the OPC box" path. |
-| `Edge:Opc:ProgId` | e.g. `CimQuestInc.IGOPCAB.1` (default) | **`ClassicDa`** only — the DA server's COM ProgID. Needs the OPC Core Components Redistributable on the box. |
+| `Edge:Opc:Provider` | `Mock` (default) / `OpcUa` / **`ClassicDa`** | which tag source. **`ClassicDa`** reads a local Classic OPC DA server (INGEAR) directly via the typed **TitaniumAS.Opc.Client** (custom DA interface) — **Windows-only**, the "edge on the OPC box" path (validated live on `.170`). |
+| `Edge:Opc:ProgId` | e.g. `CimQuestInc.IGOPCAB.1` (default) | **`ClassicDa`** only — the DA server's COM ProgID. Needs the OPC proxy/stubs registered (they are, since INGEAR already serves clients); the OPC.Automation wrapper is NOT used. |
 | `Edge:Opc:Endpoint` | e.g. `opc.tcp://192.168.10.170:4840` | required for `OpcUa` (the wrapper) |
-| `Edge:Opc:Tags` | array of node / item ids | the PLC tags to poll (`OpcUa`: node ids via `/opc/browse`; `ClassicDa`: INGEAR item ids, e.g. `line_status.spm`) |
-| `Edge:Opc:UpdateRateMs` | default `500` | `ClassicDa` group update rate (how often the DA server refreshes the cached values) |
-| `Edge:Opc:RunStateTag` | a node/item id, e.g. `line_status.spm` | the tag whose value = the line run-state (drives PLC auto-downtime). Auto-added to the polled set. |
-| `Edge:Opc:RunStateMode` | `Equals` (default) / `NotEquals` / `GreaterThan` | how to judge it: a running boolean/word (`Equals`), an inverted signal like an idle bit (`NotEquals`), or a numeric like strokes-per-minute (`GreaterThan`) |
-| `Edge:Opc:RunStateThreshold` | number, default `0` | `GreaterThan` cut-off (e.g. `spm > 0`) |
+| `Edge:Opc:Tags` | array of node / item ids | the PLC tags to poll (`OpcUa`: node ids via `/opc/browse`; `ClassicDa`: INGEAR item ids, e.g. `PLC5-BL84.strokecnt`). Multiple lines = list each line's run-state tag here. |
+| `Edge:Opc:UpdateRateMs` | default `500` | `ClassicDa` group update rate (unused for the synchronous device read; retained for compat) |
+| `Edge:Opc:RunStateTag` | a node/item id | the DEFAULT run-state tag when `/run-state` is called without `?tag=`. For multiple lines, pass `?tag=<item>` per line instead. |
+| `Edge:Opc:RunStateMode` | `Equals` (default) / `NotEquals` / `GreaterThan` / **`Changed`** | how to judge it: a running boolean/word (`Equals`), an inverted idle bit (`NotEquals`), a numeric like strokes/min (`GreaterThan`), or a **cumulative counter that stops climbing** (`Changed` — e.g. a stroke count; **this is the plant's signal**). |
+| `Edge:Opc:RunStateThreshold` | number, default `0` | `GreaterThan` cut-off (e.g. `spm > 0`); or, for `Changed`, the **no-change window in seconds** (default 10) before declaring stopped. |
 | `Edge:Opc:RunningValues` | array, default `RUNNING,RUN,ON,START,STARTED,1,TRUE` | Equals/NotEquals value set (case-insensitive). For `NotEquals` list the *stopped/idle* values (e.g. `1,TRUE` for an idle bit) |
 | `Edge:Opc:UseSecurity` | `false` (default) / `true` | `OpcUa` — `false` = unencrypted on the trusted LAN; `true` selects a signed/encrypted endpoint |
 | `Edge:Opc:AcceptUntrusted` | `true` (default) | `OpcUa` — auto-accept the server cert (LAN/bring-up); set `false` once certs are exchanged |

@@ -1,40 +1,38 @@
 using System.Globalization;
 using System.Runtime.Versioning;
+using TitaniumAS.Opc.Client.Common;
+using TitaniumAS.Opc.Client.Da;
 
 namespace AbisEdge.Tags;
 
 /// <summary>
 /// Reads Classic <b>OPC DA</b> items straight from a local DA server — the plant's INGEAR
-/// <c>CimQuestInc.IGOPCAB.1</c> — via the standard <b>OPC DA Automation</b> wrapper
-/// (<c>OPC.Automation</c>, from the OPC Core Components Redistributable), late-bound through COM.
+/// <c>CimQuestInc.IGOPCAB.1</c> — using the typed <b>TitaniumAS.Opc.Client</b> library (the OPC DA
+/// custom interface, not the automation wrapper). This is the chosen "PLC auto-downtime" path: run
+/// the edge <b>on the OPC box</b> and read INGEAR locally (local COM, no DCOM, no UA bridge). Select
+/// with <c>Edge:Opc:Provider=ClassicDa</c> + <c>Edge:Opc:ProgId</c>; item ids are INGEAR node paths,
+/// e.g. <c>PLC5-BL84.strokecnt</c>.
 ///
-/// <para>This is the chosen "PLC auto-downtime" path: run the edge <b>on the OPC box</b> and read
-/// INGEAR locally (local COM, no DCOM, no UA bridge). Select it with
-/// <c>Edge:Opc:Provider=ClassicDa</c> + <c>Edge:Opc:ProgId</c>. It is <b>Windows-only at runtime</b>
-/// (COM), but late binding via <c>dynamic</c> keeps the edge building cross-platform — the Linux CI
-/// build never touches COM. Requires the OPC Core Components Redistributable on the box.</para>
-///
-/// <para>Read model: connect once, add a subscribed group at <c>UpdateRate</c>, add each configured
-/// item, then each poll returns the group's latest cached <c>Value</c>/<c>Quality</c> per item (no
-/// COM out-parameters, which are painful to marshal late-bound). A bad item or a dropped connection
-/// yields <see cref="TagReading.Bad"/> and drops the session so the next poll reconnects — the
-/// <c>TagPump</c> already retries with backoff. NOT unit-testable without a live DA server; validate
-/// on the OPC box.</para>
+/// <para><b>Windows-only at runtime</b> (COM), but the reference builds cross-platform (the ClassicDa
+/// provider is only instantiated on Windows). Build the edge <b>x86</b> to match the 32-bit INGEAR
+/// server. Reads are a typed <b>synchronous device read</b> (<see cref="OpcDaDataSource.Device"/>),
+/// which forces INGEAR to poll the PLC now — no async subscription / message pump needed (a service
+/// thread has none). A bad item / dropped session yields <see cref="TagReading.Bad"/> and drops the
+/// session so the next poll reconnects (the <c>TagPump</c> retries with backoff).</para>
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class ClassicDaTagSource : ITagSource, IDisposable
 {
     private readonly string _progId;
-    private readonly int _updateRateMs;
-    private readonly object _gate = new();          // COM is synchronous + apartment-sensitive: serialize access
-    private readonly Dictionary<string, object> _items = new(StringComparer.Ordinal);
-    private dynamic? _server;
-    private dynamic? _group;
+    private readonly object _gate = new();               // COM is apartment-sensitive: serialize access
+    private readonly Dictionary<string, OpcDaItem> _items = new(StringComparer.Ordinal);
+    private OpcDaServer? _server;
+    private OpcDaGroup? _group;
 
     public ClassicDaTagSource(string progId, int updateRateMs = 500)
     {
         _progId = progId;
-        _updateRateMs = updateRateMs;
+        _ = updateRateMs;   // retained for config compatibility; synchronous reads don't use a group update rate
     }
 
     public string Name => $"classic-da:{_progId}";
@@ -60,57 +58,49 @@ public sealed class ClassicDaTagSource : ITagSource, IDisposable
         EnsureConnected();
         EnsureItems(tags);
         var now = DateTimeOffset.UtcNow;
-        var readings = new List<TagReading>(tags.Count);
-        foreach (var tag in tags)
+        var toRead = tags.Where(_items.ContainsKey).Select(t => _items[t]).ToArray();
+
+        var byId = new Dictionary<string, TagReading>(StringComparer.Ordinal);
+        if (toRead.Length > 0)
         {
-            if (!_items.TryGetValue(tag, out var handle)) { readings.Add(TagReading.Bad(tag)); continue; }
-            try
+            foreach (var v in _group!.Read(toRead, OpcDaDataSource.Device))
             {
-                dynamic item = handle;
-                object? rawValue = item.Value;                            // cached from the subscribed group
-                int quality = Convert.ToInt32((object)item.Quality, CultureInfo.InvariantCulture);
-                var q = (quality & 0xC0) switch { 0xC0 => "Good", 0x40 => "Uncertain", _ => "Bad" };
-                var value = rawValue is null ? null : Convert.ToString(rawValue, CultureInfo.InvariantCulture);
-                readings.Add(new TagReading(tag, value, q) { At = now });
+                var q = v.Quality.Master switch
+                {
+                    OpcDaQualityMaster.Good => "Good",
+                    OpcDaQualityMaster.Uncertain => "Uncertain",
+                    _ => "Bad",
+                };
+                var value = v.Value is null ? null : Convert.ToString(v.Value, CultureInfo.InvariantCulture);
+                byId[v.Item.ItemId] = new TagReading(v.Item.ItemId, value, q) { At = now };
             }
-            catch { readings.Add(TagReading.Bad(tag)); }
         }
-        return readings;
+
+        return tags.Select(t => byId.TryGetValue(t, out var r) ? r : TagReading.Bad(t)).ToList();
     }
 
     private void EnsureConnected()
     {
-        if (_server is not null && _group is not null) return;
-        var progIdType = Type.GetTypeFromProgID("OPC.Automation.1")
-            ?? throw new InvalidOperationException(
-                "OPC.Automation is not registered — install the OPC Core Components Redistributable on this box.");
-        _server = Activator.CreateInstance(progIdType)!;
-        _server.Connect(_progId);                    // connect to the local DA server (e.g. CimQuestInc.IGOPCAB.1)
-        _group = _server.OPCGroups.Add("abis-edge");
+        if (_server is { IsConnected: true } && _group is not null) return;
+        _server = new OpcDaServer(UrlBuilder.Build(_progId, "localhost"));   // opcda://localhost/<progId>
+        _server.Connect();
+        _group = _server.AddGroup("abis-edge");
         _group.IsActive = true;
-        _group.UpdateRate = _updateRateMs;
-        _group.IsSubscribed = true;                  // keep each item's .Value fresh from the device
         _items.Clear();
     }
 
     private void EnsureItems(IReadOnlyList<string> tags)
     {
-        foreach (var tag in tags)
-        {
-            if (_items.ContainsKey(tag)) continue;
-            try
-            {
-                // OPCItems.AddItem(ItemID, ClientHandle) returns the item directly — no out-parameters.
-                object item = _group!.OPCItems.AddItem(tag, _items.Count + 1);
-                _items[tag] = item;
-            }
-            catch { /* an unknown item id just reads Bad; don't fail the whole group */ }
-        }
+        var missing = tags.Where(t => !_items.ContainsKey(t)).ToArray();
+        if (missing.Length == 0) return;
+        var defs = missing.Select(t => new OpcDaItemDefinition { ItemId = t, IsActive = true }).ToArray();
+        foreach (var r in _group!.AddItems(defs))
+            if (r.Error.Succeeded) _items[r.Item.ItemId] = r.Item;   // an unknown item id is skipped → reads Bad
     }
 
     private void Reset()
     {
-        try { _server?.Disconnect(); } catch { /* best effort */ }
+        try { _server?.Dispose(); } catch { /* best effort */ }
         _items.Clear();
         _group = null;
         _server = null;
