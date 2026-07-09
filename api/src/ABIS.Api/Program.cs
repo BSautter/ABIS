@@ -195,9 +195,23 @@ app.UseStatusCodePages();
 
 app.UseCors("Default");
 
-// Serve the static order-entry demo (wwwroot/ui/) — anonymous; its data calls
-// still carry the API key.
-app.UseStaticFiles();
+// Serve the static UI (wwwroot/ui/) — anonymous; its data calls still carry the API key.
+// The app bundles (.js/.html/.css) keep stable filenames but change on every deploy, so serve them
+// with `no-cache` (revalidate before use; ETag/Last-Modified still yield cheap 304s when unchanged).
+// Without this the browser serves a stale cached bundle after a redeploy until a manual hard refresh.
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        var name = ctx.File.Name;
+        if (name.EndsWith(".js", StringComparison.OrdinalIgnoreCase)
+            || name.EndsWith(".html", StringComparison.OrdinalIgnoreCase)
+            || name.EndsWith(".css", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Context.Response.Headers.CacheControl = "no-cache";
+        }
+    },
+});
 
 app.UseAuthentication();
 app.UseAuthorization();
