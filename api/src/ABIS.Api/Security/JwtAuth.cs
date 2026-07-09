@@ -52,6 +52,19 @@ public static class AuthSetup
         // limiting + the Swagger security definition).
         var jwt = builder.Configuration.GetSection(JwtAuthOptions.SectionName).Get<JwtAuthOptions>()
                   ?? new JwtAuthOptions();
+
+        // If nothing is configured, fall back to an EPHEMERAL symmetric key so per-user sign-in
+        // (POST /auth/login) works out of the box on an internal LAN deployment — no env config
+        // required. The key lives only in this process, so tokens are invalidated on restart; set a
+        // persistent Auth:Jwt:SigningKey (32+ chars) to keep sessions across restarts. A configured
+        // OIDC Authority or explicit SigningKey always takes precedence over this fallback.
+        if (!jwt.Enabled)
+        {
+            jwt.SigningKey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48));
+            if (string.IsNullOrWhiteSpace(jwt.Issuer)) jwt.Issuer = "abis";
+            if (string.IsNullOrWhiteSpace(jwt.Audience)) jwt.Audience = "abis-ui";
+        }
+
         // Registered so POST /auth/login can issue tokens signed with the same key the bearer
         // validation trusts (symmetric-key path).
         builder.Services.AddSingleton(jwt);
