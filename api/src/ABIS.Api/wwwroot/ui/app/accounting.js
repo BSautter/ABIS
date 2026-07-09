@@ -10,13 +10,13 @@
 // Compiled by tsc to wwwroot/ui/app/accounting.js; served at /ui/accounting.html.
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { statusChip } from './status-labels.js';
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const setErr = (m) => { $('#err').textContent = m; };
 const setBusy = (b) => document.body.classList.toggle('busy', b);
 const v = (id) => $(id).value.trim();
 const wt = (n) => n == null ? '—' : `${n.toLocaleString(undefined, { maximumFractionDigits: 2 })} lb`;
-const statusLabel = (s) => (s === 3 ? 'Rejected' : s === 7 ? 'Rebanded' : String(s ?? ''));
 let current = 0; // the job currently loaded (for save / print)
 function scaffold() {
     return `
@@ -108,7 +108,7 @@ async function load() {
         <td class="num">${esc(wt(cl.netWt))}</td><td class="num">${esc(wt(cl.netWtBalance))}</td>
         <td class="num">${esc(wt(cl.processQuantity))}</td><td class="num">${esc(wt(cl.maxPriorProcessQuantity))}</td>
         <td class="num">${esc(wt(cl.processEndWt))}</td>
-        <td><span class="chip ${cl.processCoilStatus === 3 ? 'crit' : 'warn'}">${esc(statusLabel(cl.processCoilStatus))}</span></td>
+        <td>${statusChip('processCoilStatus', cl.processCoilStatus)}</td>
         <td class="num"><b>${esc(wt(cl.billedWeight))}</b></td></tr>`).join('');
         $('#coils').innerHTML = rows || '<tr><td colspan="9" class="muted">No rejected/rebanded coils for this job.</td></tr>';
         await loadSaved(job);

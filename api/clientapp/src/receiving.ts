@@ -8,6 +8,7 @@
 import { AbisClient, ReceivingBolWrite, ReceivingBolCoilWrite } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { statusChip } from './status-labels.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
@@ -150,7 +151,7 @@ async function loadCoils(): Promise<void> {
   $('#tCoils').innerHTML = (coils ?? []).length ? (coils ?? []).map((c) => `<tr>
     <td class="mono">${esc(c.coilId)}</td><td class="mono">${esc(c.coilOrgNum)}</td><td>${esc(c.alloy)}</td><td>${esc(c.temper)}</td>
     <td class="num">${esc(c.netWeight)}</td><td class="num">${esc(c.grossWeight)}</td><td class="num">${esc(c.coilGauge)}</td><td class="num">${esc(c.coilWidth)}</td>
-    <td>${chip(c.status)}</td><td><button class="btn sm ghost rmCoil" data-c="${c.coilId}" type="button">remove</button></td></tr>`).join('')
+    <td>${statusChip('coilStatus', c.status)}</td><td><button class="btn sm ghost rmCoil" data-c="${c.coilId}" type="button">remove</button></td></tr>`).join('')
     : '<tr><td colspan="10" class="muted">No coils on this BOL.</td></tr>';
   document.querySelectorAll<HTMLButtonElement>('#tCoils .rmCoil').forEach((b) =>
     b.addEventListener('click', () => void deleteCoil(Number(b.dataset.c))));

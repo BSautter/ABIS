@@ -7,6 +7,7 @@
 import { AbisClient, JobWrite, JobPatch } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { statusChip } from './status-labels.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
@@ -108,7 +109,7 @@ async function search(): Promise<void> {
     $('#jobs').innerHTML = items.length ? items.map((j) => `
       <tr class="click" data-id="${j.abJobNum}">
         <td class="mono">${esc(j.abJobNum)}</td><td class="mono">${esc(j.lineNum)}</td>
-        <td>${chip(j.jobStatus)}</td><td class="num">${esc(num(j.materialYield))}</td><td class="mono">${esc(dShow(j.dueDate))}</td>
+        <td>${statusChip('jobStatus', j.jobStatus)}</td><td class="num">${esc(num(j.materialYield))}</td><td class="mono">${esc(dShow(j.dueDate))}</td>
       </tr>`).join('') : '<tr><td colspan="5" class="muted">No matching jobs.</td></tr>';
     $('#count').textContent = `${(page.totalCount ?? 0).toLocaleString()} jobs`;
     $('#listSub').textContent = `${items.length} shown`;
@@ -147,15 +148,15 @@ async function loadChildren(id: number): Promise<void> {
   const fill = (sel: string, html: string, cols: number, empty: string) =>
     { $(sel).innerHTML = html || `<tr><td colspan="${cols}" class="muted">${empty}</td></tr>`; };
 
-  fill('#tCoils', (coils ?? []).map((x) => `<tr><td class="mono">${esc(x.coilAbcNum)}</td><td>${chip(x.processCoilStatus)}</td>
+  fill('#tCoils', (coils ?? []).map((x) => `<tr><td class="mono">${esc(x.coilAbcNum)}</td><td>${statusChip('processCoilStatus', x.processCoilStatus)}</td>
     <td class="mono">${esc(dShow(x.processDate))}</td><td class="num">${esc(num(x.processEndWt))}</td><td class="num">${esc(num(x.processQuantity))}</td>
     <td>${esc(x.coilAlloy2)}</td><td class="num">${esc(x.coilGauge)}</td><td class="num">${esc(x.coilWidth)}</td></tr>`).join(''), 8, 'No coils.');
   fill('#tSkids', (skids ?? []).map((x) => `<tr><td class="mono">${esc(x.sheetSkidNum)}</td><td>${esc(x.sheetSkidDisplayNum)}</td>
     <td class="num">${esc(num(x.sheetNetWt))}</td><td class="num">${esc(num(x.sheetTareWt))}</td><td class="num">${esc(x.skidPieces)}</td>
     <td class="mono">${esc(dShow(x.skidDate))}</td></tr>`).join(''), 6, 'No finished skids.');
   fill('#tScrap', (scrap ?? []).map((x) => `<tr><td class="mono">${esc(x.scrapSkidNum)}</td><td>${esc(x.scrapAlloy2)}</td>
-    <td>${esc(x.scrapTemper)}</td><td>${chip(x.scrapType)}</td><td class="num">${esc(num(x.scrapNetWt))}</td>
-    <td>${esc(x.scrapLocation)}</td><td>${chip(x.skidScrapStatus)}</td></tr>`).join(''), 7, 'No scrap.');
+    <td>${esc(x.scrapTemper)}</td><td>${statusChip('scrapType', x.scrapType)}</td><td class="num">${esc(num(x.scrapNetWt))}</td>
+    <td>${esc(x.scrapLocation)}</td><td>${statusChip('skidScrapStatus', x.skidScrapStatus)}</td></tr>`).join(''), 7, 'No scrap.');
   fill('#tPartials', (partials ?? []).map((x) => `<tr><td class="mono">${esc(x.sheetSkidNum)}</td><td class="num">${esc(num(x.partialSheetNetWt))}</td>
     <td class="num">${esc(x.partialSkidPieces)}</td><td>${esc(x.partialSkidLocation)}</td><td class="mono">${esc(dShow(x.partialSkidDate))}</td></tr>`).join(''), 5, 'No partials.');
   fill('#tScans', (scans ?? []).map((x) => `<tr><td class="mono">${esc(x.scanId)}</td><td class="mono">${esc(dShow(x.scanDatetime))}</td>

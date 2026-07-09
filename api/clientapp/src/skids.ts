@@ -6,6 +6,7 @@
 import { AbisClient, SheetSkidWrite, ScrapSkidWrite } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { statusChip } from './status-labels.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
@@ -97,8 +98,8 @@ async function loadScrap(): Promise<void> {
     const page = await client().listScrapSkids(1, 50, undefined, undefined);
     $('#tScrap').innerHTML = (page.items ?? []).length ? (page.items ?? []).map((x) => `<tr>
       <td class="mono">${esc(x.scrapSkidNum)}</td><td class="mono">${esc(x.scrapAbJobNum)}</td><td>${esc(x.scrapAlloy2)}</td>
-      <td>${esc(x.scrapTemper)}</td><td>${chip(x.scrapType)}</td><td class="num">${esc(num(x.scrapNetWt))}</td>
-      <td>${esc(x.scrapLocation)}</td><td>${chip(x.skidScrapStatus)}</td></tr>`).join('') : '<tr><td colspan="8" class="muted">No scrap skids.</td></tr>';
+      <td>${esc(x.scrapTemper)}</td><td>${statusChip('scrapType', x.scrapType)}</td><td class="num">${esc(num(x.scrapNetWt))}</td>
+      <td>${esc(x.scrapLocation)}</td><td>${statusChip('skidScrapStatus', x.skidScrapStatus)}</td></tr>`).join('') : '<tr><td colspan="8" class="muted">No scrap skids.</td></tr>';
     $('#cScrap').textContent = `${(page.totalCount ?? 0).toLocaleString()} total`;
   } catch (e) { setErr(`Scrap skids load failed: ${(e as Error).message}`); }
 }

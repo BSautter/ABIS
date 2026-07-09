@@ -7,6 +7,7 @@
 import { AbisClient, DimensionCheckWrite, EvalScrapWrite } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { statusChip } from './status-labels.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
@@ -104,7 +105,7 @@ async function loadCoils(): Promise<void> {
   const rows = await client().getQcCoils(job!);
   $('#tCoils').innerHTML = (rows ?? []).length ? (rows ?? []).map((c) => `<tr>
     <td class="mono">${esc(c.coilAbcNum)}</td><td class="mono">${esc(c.coilOrgNum)}</td><td>${esc(c.coilAlloy2)} ${esc(c.coilTemper)}</td>
-    <td>${chip(c.processCoilStatus)}</td><td class="num">${esc(num(c.processEndWt))}</td></tr>`).join('')
+    <td>${statusChip('processCoilStatus', c.processCoilStatus)}</td><td class="num">${esc(num(c.processEndWt))}</td></tr>`).join('')
     : '<tr><td colspan="5" class="muted">No coils on this job.</td></tr>';
 }
 

@@ -6,6 +6,7 @@
 import { AbisClient, DieWrite } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { statusChip } from './status-labels.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
@@ -79,7 +80,7 @@ async function search(): Promise<void> {
     const items = page.items ?? [];
     $('#dies').innerHTML = items.length ? items.map((d) => `
       <tr class="click" data-id="${d.dieId}">
-        <td class="mono">${esc(d.dieId)}</td><td>${esc(d.dieName)}</td><td>${chip(d.status)}</td>
+        <td class="mono">${esc(d.dieId)}</td><td>${esc(d.dieName)}</td><td>${statusChip('dieStatus', d.status)}</td>
         <td class="mono">${esc(d.toolNum)}</td><td>${esc(d.partName)}</td><td>${esc(d.location)}</td>
       </tr>`).join('') : '<tr><td colspan="6" class="muted">No matching dies.</td></tr>';
     $('#count').textContent = `${numf(page.totalCount)} dies`;

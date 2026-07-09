@@ -7,6 +7,7 @@
 import { AbisClient, LineErrorWrite } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { statusChip } from './status-labels.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
@@ -73,7 +74,7 @@ async function load(): Promise<void> {
 async function loadBoard(): Promise<void> {
   const rows = await client().getStackerBoard(line ?? undefined);
   $('#tBoard').innerHTML = (rows ?? []).length ? (rows ?? []).map((j) => `<tr>
-    <td class="mono">${esc(j.abJobNum)}</td><td class="mono">${esc(j.lineNum)}</td><td>${chip(j.jobStatus)}</td>
+    <td class="mono">${esc(j.abJobNum)}</td><td class="mono">${esc(j.lineNum)}</td><td>${statusChip('jobStatus', j.jobStatus)}</td>
     <td class="mono">${esc(j.orderAbcNum)}</td><td class="num">${esc(j.coilCount)}</td><td class="num">${esc(j.skidCount)}</td></tr>`).join('')
     : '<tr><td colspan="6" class="muted">No jobs on this line.</td></tr>';
 }

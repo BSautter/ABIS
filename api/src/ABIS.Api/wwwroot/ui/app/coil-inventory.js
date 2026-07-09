@@ -8,6 +8,7 @@
 import { AbisClient, CoilPatch } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { statusChip } from './status-labels.js';
 const $ = (sel) => document.querySelector(sel);
 const client = () => new AbisClient('', { fetch: authFetch });
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -69,9 +70,6 @@ function scaffold() {
     </div>
   </div>`;
 }
-function statusChip(s) {
-    return `<span class="chip mut">${esc(s ?? '—')}</span>`;
-}
 async function search() {
     setErr('');
     setBusy(true);
@@ -85,7 +83,7 @@ async function search() {
         $('#coils').innerHTML = items.length ? items.map((c) => `
       <tr class="click" data-id="${c.coilAbcNum}">
         <td class="mono">${esc(c.coilAbcNum)}</td><td>${esc(c.coilAlloy2)}</td><td>${esc(c.coilTemper)}</td>
-        <td>${esc(c.coilLocation)}</td><td>${statusChip(c.coilStatus)}</td><td class="num">${numf(c.netWtBalance)}</td>
+        <td>${esc(c.coilLocation)}</td><td>${statusChip('coilStatus', c.coilStatus)}</td><td class="num">${numf(c.netWtBalance)}</td>
       </tr>`).join('') : '<tr><td colspan="6" class="muted">No matching coils.</td></tr>';
         $('#coilCount').textContent = `${numf(page.totalCount)} coils`;
         $('#listSub').textContent = `${items.length} shown`;
@@ -120,7 +118,7 @@ async function loadCoil(id) {
     try {
         const [c, proc] = await Promise.all([client().getCoil(id), client().getCoilProcessing(id)]);
         const hist = (proc ?? []).map((p) => `
-      <tr><td class="mono">${esc(p.abJobNum)}</td><td>${statusChip(p.processCoilStatus)}</td>
+      <tr><td class="mono">${esc(p.abJobNum)}</td><td>${statusChip('processCoilStatus', p.processCoilStatus)}</td>
         <td class="mono">${esc(p.processDate?.toString().slice(0, 10))}</td>
         <td class="num">${numf(p.processQuantity)}</td><td class="num">${numf(p.processEndWt)}</td></tr>`).join('');
         $('#detail').innerHTML = `

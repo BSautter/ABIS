@@ -10,6 +10,7 @@
 // Compiled by tsc to wwwroot/ui/app/accounting.js; served at /ui/accounting.html.
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { statusChip } from './status-labels.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 const esc = (s: unknown): string =>
@@ -19,7 +20,6 @@ const setBusy = (b: boolean) => document.body.classList.toggle('busy', b);
 const v = (id: string) => $<HTMLInputElement>(id).value.trim();
 const wt = (n: number | undefined): string =>
   n == null ? '—' : `${n.toLocaleString(undefined, { maximumFractionDigits: 2 })} lb`;
-const statusLabel = (s: number | undefined): string => (s === 3 ? 'Rejected' : s === 7 ? 'Rebanded' : String(s ?? ''));
 
 interface InvoiceCoil {
   coilAbcNum: number; coilOrgNum?: string; lotNum?: string;
@@ -129,7 +129,7 @@ async function load(): Promise<void> {
         <td class="num">${esc(wt(cl.netWt))}</td><td class="num">${esc(wt(cl.netWtBalance))}</td>
         <td class="num">${esc(wt(cl.processQuantity))}</td><td class="num">${esc(wt(cl.maxPriorProcessQuantity))}</td>
         <td class="num">${esc(wt(cl.processEndWt))}</td>
-        <td><span class="chip ${cl.processCoilStatus === 3 ? 'crit' : 'warn'}">${esc(statusLabel(cl.processCoilStatus))}</span></td>
+        <td>${statusChip('processCoilStatus', cl.processCoilStatus)}</td>
         <td class="num"><b>${esc(wt(cl.billedWeight))}</b></td></tr>`).join('');
     $('#coils').innerHTML = rows || '<tr><td colspan="9" class="muted">No rejected/rebanded coils for this job.</td></tr>';
 

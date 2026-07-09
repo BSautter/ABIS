@@ -7,6 +7,7 @@
 import { AbisClient, SheetSkidWarehousePatch } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { statusChip } from './status-labels.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
@@ -63,7 +64,7 @@ async function search(): Promise<void> {
     $('#skids').innerHTML = items.length ? items.map((s) => `
       <tr class="click" data-id="${s.sheetSkidNum}">
         <td class="mono">${esc(s.sheetSkidNum)}</td><td class="mono">${esc(s.abJobNum)}</td><td>${esc(s.sheetSkidDisplayNum)}</td>
-        <td>${esc(s.skidLocation)}</td><td class="mono">${esc(s.skidTicketIfWhed)}</td><td>${chip(s.skidSheetStatus)}</td>
+        <td>${esc(s.skidLocation)}</td><td class="mono">${esc(s.skidTicketIfWhed)}</td><td>${statusChip('skidSheetStatus', s.skidSheetStatus)}</td>
         <td class="num">${esc(num(s.sheetNetWt))}</td><td class="num">${esc(s.skidPieces)}</td><td class="mono">${esc(dShow(s.skidDate))}</td></tr>`).join('')
       : '<tr><td colspan="9" class="muted">No sheet skids.</td></tr>';
     $('#count').textContent = `${(page.totalCount ?? 0).toLocaleString()} total`;
