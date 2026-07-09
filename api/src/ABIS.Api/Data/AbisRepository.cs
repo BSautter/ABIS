@@ -2264,12 +2264,17 @@ public sealed class AbisRepository : IAbisRepository
     public async Task<SecurityUser?> GetSecurityUserByLoginAsync(string login, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
-        return await conn.QuerySingleOrDefaultAsync<SecurityUser>(new CommandDefinition(
+        // QueryFirstOrDefault (not Single) — login_id is NOT unique on real Oracle (duplicate/
+        // case-variant rows exist, e.g. an admin login present more than once). Single throws
+        // ORA-safe but C#-side ("more than one element") -> a 500 on sign-in; take the lowest
+        // user_id deterministically instead.
+        return await conn.QueryFirstOrDefaultAsync<SecurityUser>(new CommandDefinition(
             """
             SELECT user_id AS UserId, login_id AS LoginId, user_last_name AS UserLastName, user_first_name AS UserFirstName,
                    user_middle_initial AS UserMiddleInitial, last_login_time AS LastLoginTime, last_modified_date AS LastModifiedDate,
                    user_status AS UserStatus, user_notes AS UserNotes
             FROM security_user WHERE LOWER(login_id) = LOWER(:login)
+            ORDER BY user_id
             """, new { login }, cancellationToken: ct));
     }
 
