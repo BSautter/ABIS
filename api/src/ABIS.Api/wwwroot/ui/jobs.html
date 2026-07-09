@@ -3,112 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ABIS Production Jobs</title>
+<title>ABIS — Production Jobs</title>
+<meta name="color-scheme" content="light dark" />
 <link rel="stylesheet" href="/ui/theme.css" />
 </head>
 <body>
-<header>
-  <h1>ABIS Production Jobs <span class="pill">greenfield · typed client</span></h1>
-  <nav>
-    <a href="/ui/order-entry.html">Order entry</a>
-    <a href="/ui/jobs.html">Jobs</a>
-    <a href="/ui/das-console.html">DAS console</a>
-    <a href="/ui/prod-folder.html">Prod folder</a>
-    <a href="/ui/reporting.html">Reporting</a>
-    <a href="/ui/skids.html">Skids</a>
-    <a href="/ui/warehouse.html">Warehouse</a>
-    <a href="/ui/accounting.html">Accounting</a>
-    <a href="/ui/sales.html">Sales</a>
-    <a href="/ui/quotation.html">Quotation</a>
-    <a href="/ui/coil-inventory.html">Coil inventory</a>
-    <a href="/ui/coil-ownership.html">Ownership transfer</a>
-    <a href="/ui/qa-results.html">QA results</a>
-    <a href="/ui/coil-eval.html">Coil eval</a>
-    <a href="/ui/quality.html">Recovery</a>
-    <a href="/ui/shipping.html">Shipping</a>
-    <a href="/ui/edi.html">EDI</a>
-    <a href="/ui/receiving.html">Receiving</a>
-    <a href="/ui/customers.html">Customers</a>
-    <a href="/ui/parts.html">Parts</a>
-    <a href="/ui/carriers.html">Carriers</a>
-    <a href="/ui/scan.html">Scan</a>
-    <a href="/ui/sketches.html">Sketches</a>
-    <a href="/ui/shifts.html">Shifts</a>
-    <a href="/ui/maintenance.html">Maintenance</a>
-    <a href="/ui/security.html">Security</a>
-    <a href="/ui/dies.html">Dies</a>
-    <a href="/ui/downtime.html">Downtime</a>
-    <a href="/ui/opc-log.html">OPC Log</a>
-  </nav>
-  <div class="key">
-    <label for="apiKey" style="color:#fff">X-Api-Key</label>
-    <input id="apiKey" placeholder="dev-local-key" style="width:160px" />
-  </div>
-</header>
-
-<main>
-  <section>
-    <h2>Jobs</h2>
-    <form id="searchForm" class="row">
-      <div><label>Status</label><br /><input id="fStatus" placeholder="code" type="number" style="width:90px" /></div>
-      <button type="submit">Search</button>
-      <span id="count" class="muted"></span>
-    </form>
-    <table>
-      <thead><tr><th>Job #</th><th>Line</th><th>Status</th><th>Yield</th><th>Due</th></tr></thead>
-      <tbody id="jobs"></tbody>
-    </table>
-  </section>
-
-  <section id="detail" class="disabled">
-    <h2 id="detailTitle">Job detail</h2>
-    <div class="hdr" id="hdr"></div>
-    <hr />
-    <h2>Update (status / men / finish / notes)</h2>
-    <div class="grid">
-      <div class="fld"><label>Status</label><input id="pStatus" type="number" /></div>
-      <div class="fld"><label>Men used</label><input id="pMen" type="number" /></div>
-      <div class="fld full"><label>Finished</label><input id="pFinished" type="datetime-local" /></div>
-      <div class="fld full"><label>Notes</label><textarea id="pNotes"></textarea></div>
-    </div>
-    <div class="row" style="margin-top:8px"><button id="btnPatch" type="button">Save update</button><span id="ok" class="ok"></span></div>
-  </section>
-
-  <section class="wide">
-    <h2 id="detailTabsTitle">Job contents</h2>
-    <div class="tabs">
-      <button id="tab-coils" type="button">Coils</button>
-      <button id="tab-skids" type="button">Finished skids</button>
-      <button id="tab-scrap" type="button">Scrap</button>
-      <button id="tab-partials" type="button">Partials</button>
-      <button id="tab-scans" type="button">Scans</button>
-    </div>
-    <div id="pane-coils"><table><thead><tr><th>Coil #</th><th>Status</th><th>Processed</th><th>End wt</th><th>Qty</th><th>Alloy</th><th>Gauge</th><th>Width</th></tr></thead><tbody id="tCoils"><tr><td colspan="8" class="muted">Select a job.</td></tr></tbody></table></div>
-    <div id="pane-skids"><table><thead><tr><th>Skid #</th><th>Display</th><th>Net wt</th><th>Tare wt</th><th>Pieces</th><th>Date</th></tr></thead><tbody id="tSkids"></tbody></table></div>
-    <div id="pane-scrap"><table><thead><tr><th>Scrap #</th><th>Alloy</th><th>Temper</th><th>Type</th><th>Net wt</th><th>Location</th><th>Status</th></tr></thead><tbody id="tScrap"></tbody></table></div>
-    <div id="pane-partials"><table><thead><tr><th>Skid #</th><th>Net wt</th><th>Pieces</th><th>Location</th><th>Date</th></tr></thead><tbody id="tPartials"></tbody></table></div>
-    <div id="pane-scans"><table><thead><tr><th>Scan #</th><th>When</th><th>Station</th><th>Note</th></tr></thead><tbody id="tScans"></tbody></table></div>
-  </section>
-
-  <section class="wide">
-    <h2>New job</h2>
-    <div class="grid" style="grid-template-columns:repeat(4,1fr)">
-      <div class="fld"><label>Order #</label><input id="nOrder" type="number" /></div>
-      <div class="fld"><label>Item #</label><input id="nItem" type="number" /></div>
-      <div class="fld"><label>Line #</label><input id="nLine" type="number" /></div>
-      <div class="fld"><label>Status</label><input id="nStatus" type="number" /></div>
-      <div class="fld"><label>Yield</label><input id="nYield" type="number" step="0.0001" /></div>
-      <div class="fld"><label>Men</label><input id="nMen" type="number" /></div>
-      <div class="fld"><label>Sketch id</label><input id="nSketch" type="number" /></div>
-      <div class="fld"><label>Due date</label><input id="nDue" type="date" /></div>
-      <div class="fld full"><label>Notes</label><textarea id="nNotes"></textarea></div>
-    </div>
-    <div class="row" style="margin-top:8px"><button id="btnCreate" type="button">Create job</button></div>
-  </section>
-
-  <section class="wide"><div id="err" class="err"></div></section>
-</main>
-
+<noscript style="display:block;padding:24px;font:14px system-ui">ABIS requires JavaScript.</noscript>
 <script type="module" src="/ui/app/jobs.js"></script>
 </body>
 </html>

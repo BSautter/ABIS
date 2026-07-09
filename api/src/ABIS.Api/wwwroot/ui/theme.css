@@ -183,8 +183,14 @@ button { font:inherit; cursor:pointer; border:none; background:none; color:inher
 .frow { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
 .fld { display:flex; flex-direction:column; gap:4px; }
 .fld label { font-size:11px; color:var(--ink-2); }
-.fld input, .fld select { padding:7px 9px; border:1px solid var(--line); border-radius:7px; background:var(--surface); color:var(--ink); font:inherit; }
-.fld input:focus, .fld select:focus { outline:2px solid var(--accent); outline-offset:1px; }
+.fld input, .fld select, .fld textarea { padding:7px 9px; border:1px solid var(--line); border-radius:7px; background:var(--surface); color:var(--ink); font:inherit; max-width:100%; }
+.fld textarea { min-height:60px; resize:vertical; }
+.fld input:focus, .fld select:focus, .fld textarea:focus { outline:2px solid var(--accent); outline-offset:1px; }
+.disabled { opacity:.55; pointer-events:none; }
+.tabs { display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:14px; flex-wrap:wrap; }
+.tabs button { background:transparent; border:none; border-bottom:2px solid transparent; color:var(--ink-2); padding:8px 13px; font-weight:550; font-size:13px; cursor:pointer; }
+.tabs button:hover { color:var(--ink); }
+.tabs button.active { color:var(--accent); border-bottom-color:var(--accent); }
 .btn.sm { padding:7px 13px; font-size:13px; }
 .btn.ghost { background:transparent; color:var(--ink); border:1px solid var(--line); }
 .kv { display:flex; gap:18px; flex-wrap:wrap; font-size:13px; }
