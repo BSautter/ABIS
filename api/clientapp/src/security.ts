@@ -57,6 +57,15 @@ function scaffold(): string {
               <span id="ok" class="ok-note"></span>
             </div>
           </div>
+          <header style="border-top:1px solid var(--line)"><h2>Set / reset password</h2></header>
+          <div class="body">
+            <div class="frow" style="align-items:center">
+              <div class="fld"><label>Initial password</label><input id="setPw" type="password" autocomplete="new-password" style="width:180px" /></div>
+              <button class="btn sm" id="btnSetPw" type="button">Set password</button>
+              <span id="pwOk" class="ok-note"></span>
+            </div>
+            <p class="muted" style="margin:6px 0 0;font-size:12px">Stored hashed; the user must change it on next sign-in. Requires the User Control grant.</p>
+          </div>
         </div></div>
       </div>
     </div>
@@ -142,6 +151,28 @@ async function grantUserApp(): Promise<void> {
   finally { setBusy(false); }
 }
 
+// Admin sets/resets the open user's initial password (POST /security/users/{id}/password, gated by
+// "User Control"). Called via authFetch directly — the endpoint is newer than the committed client.
+async function setPassword(): Promise<void> {
+  if (curUser == null) { setErr('Open a user first.'); return; }
+  const pw = v('#setPw');
+  if (pw.length < 8) { setErr('Password must be at least 8 characters.'); return; }
+  setErr(''); setBusy(true);
+  try {
+    const r = await authFetch(`/api/security/users/${curUser}/password`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }),
+    });
+    if (!r.ok) {
+      let m = `Set password failed (${r.status}).`;
+      try { const p = await r.json(); m = (p.detail as string) || (p.title as string) || m; } catch { /* keep default */ }
+      setErr(m); return;
+    }
+    $<HTMLInputElement>('#setPw').value = '';
+    $('#pwOk').textContent = '✓ Password set — the user must change it on next sign-in.';
+  } catch (e) { setErr(`Set password failed: ${(e as Error).message}`); }
+  finally { setBusy(false); }
+}
+
 async function loadGroups(): Promise<void> {
   try {
     const list = await client().getSecurityGroups();
@@ -175,6 +206,7 @@ function showTab(name: string): void {
   ['users', 'groups', 'apps'].forEach((t) => $(`#tab-${t}`).addEventListener('click', () => showTab(t)));
   $('#btnAddGroup').addEventListener('click', () => void addGroup());
   $('#btnGrant').addEventListener('click', () => void grantUserApp());
+  $('#btnSetPw').addEventListener('click', () => void setPassword());
   showTab('users');
   await loadUsers();
 })();

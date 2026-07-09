@@ -14,7 +14,7 @@
 // no user resolves (service account / dev API key with no "act as"), nav fails OPEN —
 // the server remains the source of truth for every write.
 import { AbisClient } from './generated/abis-client.js';
-import { initAuth, authFetch, loginWithUser, currentUserName, signOutSession } from './auth.js';
+import { initAuth, authFetch, loginWithUser, changePassword, currentUserName, signOutSession } from './auth.js';
 
 export interface ShellOptions {
   active: string;
@@ -230,6 +230,7 @@ function loginGate(): Promise<void> {
           <div><h1>ABIS</h1><div class="eyebrow" style="margin-top:2px;">Aluminum Blanking · Integrated Operations</div></div></div>
         <p class="sub">Sign in with your ABIS user.</p>
         <div class="field"><label for="lgUser">Username</label><input id="lgUser" value="jsmith" autocomplete="username" /></div>
+        <div class="field"><label for="lgPass">Password</label><input id="lgPass" type="password" autocomplete="current-password" placeholder="leave blank if none set" /></div>
         <div class="err" id="lgErr" style="margin:2px 0 8px"></div>
         <button class="btn block" id="lgGo" type="button">Sign in</button>
         <div class="note"><svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
@@ -238,15 +239,43 @@ function loginGate(): Promise<void> {
     document.body.appendChild(gate);
     const btn = gate.querySelector('#lgGo') as HTMLButtonElement;
     const errEl = gate.querySelector('#lgErr') as HTMLElement;
+    const done = () => { sessionStorage.setItem('abis_entered', '1'); gate.remove(); resolve(); };
+
+    // Second step, shown only when the server flags must-change (an admin-set initial password).
+    const forceChange = (user: string, current: string) => {
+      (gate.querySelector('.card') as HTMLElement).innerHTML = `
+        <div class="brand"><span class="avatar" style="width:38px;height:38px;border-radius:10px;font-size:15px;">AB</span>
+          <div><h1>Set a new password</h1><div class="eyebrow" style="margin-top:2px;">${esc(user)}</div></div></div>
+        <p class="sub">Your password must be changed before continuing.</p>
+        <div class="field"><label for="cpNew">New password</label><input id="cpNew" type="password" autocomplete="new-password" /></div>
+        <div class="field"><label for="cpConf">Confirm new password</label><input id="cpConf" type="password" autocomplete="new-password" /></div>
+        <div class="err" id="cpErr" style="margin:2px 0 8px"></div>
+        <button class="btn block" id="cpGo" type="button">Change password &amp; continue</button>`;
+      const cpBtn = gate.querySelector('#cpGo') as HTMLButtonElement;
+      const cpErr = gate.querySelector('#cpErr') as HTMLElement;
+      const submit = async () => {
+        const np = (gate.querySelector('#cpNew') as HTMLInputElement).value;
+        const cf = (gate.querySelector('#cpConf') as HTMLInputElement).value;
+        if (np.length < 8) { cpErr.textContent = 'Use at least 8 characters.'; return; }
+        if (np !== cf) { cpErr.textContent = 'The two passwords do not match.'; return; }
+        cpBtn.disabled = true; cpErr.textContent = ''; cpBtn.textContent = 'Saving…';
+        try { await changePassword(current, np); localStorage.removeItem('abis_act_as'); done(); }
+        catch (e) { cpErr.textContent = (e as Error).message; cpBtn.disabled = false; cpBtn.textContent = 'Change password & continue'; }
+      };
+      cpBtn.addEventListener('click', () => void submit());
+      (gate.querySelector('#cpNew') as HTMLInputElement).focus();
+    };
+
     const enter = async () => {
       const user = (gate.querySelector('#lgUser') as HTMLInputElement).value.trim();
+      const pass = (gate.querySelector('#lgPass') as HTMLInputElement).value;
       if (!user) { errEl.textContent = 'Enter your username.'; return; }
       btn.disabled = true; errEl.textContent = ''; btn.textContent = 'Signing in…';
       try {
-        await loginWithUser(user);            // validates vs security_user, stores the bearer
-        localStorage.removeItem('abis_act_as'); // the signed-in user now drives identity
-        sessionStorage.setItem('abis_entered', '1');
-        gate.remove(); resolve();
+        const res = await loginWithUser(user, pass);   // validates vs security_user + credential store
+        localStorage.removeItem('abis_act_as');        // the signed-in user now drives identity
+        if (res.mustChangePassword) { forceChange(user, pass); return; }
+        done();
       } catch (e) {
         const msg = (e as Error).message;
         if (/not configured/i.test(msg)) {
@@ -254,8 +283,7 @@ function loginGate(): Promise<void> {
           // app is still usable locally.
           if (!localStorage.getItem('abis_api_key')) localStorage.setItem('abis_api_key', 'dev-local-key');
           localStorage.setItem('abis_act_as', user);
-          sessionStorage.setItem('abis_entered', '1');
-          gate.remove(); resolve(); return;
+          done(); return;
         }
         errEl.textContent = msg;
         btn.disabled = false; btn.textContent = 'Sign in';

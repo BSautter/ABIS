@@ -256,22 +256,39 @@ export async function authFetch(url: RequestInfo, init?: RequestInit): Promise<R
 const K_SESSION = 'abis_jwt';
 const K_UNAME = 'abis_user_name';
 
-/** Sign in an ABIS user against security_user; stores the returned bearer for authFetch.
- *  Throws with the server's message on failure (unknown/inactive user, or not configured). */
-export async function loginWithUser(loginId: string): Promise<{ login: string; name: string }> {
+export interface LoginResult { login: string; name: string; mustChangePassword: boolean; passwordSet: boolean; }
+
+/** Sign in an ABIS user against security_user (with an optional password, verified against the
+ *  ABIS credential store); stores the returned bearer for authFetch. Throws with the server's
+ *  message on failure (bad credentials, unknown/inactive user, or not configured). */
+export async function loginWithUser(loginId: string, password?: string): Promise<LoginResult> {
   const r = await fetch('/auth/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ login: loginId }),
+    body: JSON.stringify({ login: loginId, password: password || null }),
   });
   if (!r.ok) {
     let msg = `Sign-in failed (${r.status}).`;
     try { const p = await r.json(); msg = (p.detail as string) || (p.title as string) || msg; } catch { /* keep default */ }
     throw new Error(msg);
   }
-  const data = (await r.json()) as { token: string; login: string; name: string };
+  const data = (await r.json()) as { token: string; login: string; name: string; mustChangePassword?: boolean; passwordSet?: boolean };
   SS.setItem(K_SESSION, data.token);
   SS.setItem(K_UNAME, data.name || data.login);
-  return { login: data.login, name: data.name || data.login };
+  return { login: data.login, name: data.name || data.login, mustChangePassword: !!data.mustChangePassword, passwordSet: !!data.passwordSet };
+}
+
+/** Change the signed-in user's own password (also used to satisfy a must-change on first sign-in).
+ *  Sends the session bearer via authFetch. Throws with the server's message on failure. */
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const r = await authFetch('/auth/change-password', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+  if (!r.ok) {
+    let msg = `Password change failed (${r.status}).`;
+    try { const p = await r.json(); msg = (p.detail as string) || (p.title as string) || msg; } catch { /* keep default */ }
+    throw new Error(msg);
+  }
 }
 
 export const currentUserName = (): string | null => SS.getItem(K_UNAME);

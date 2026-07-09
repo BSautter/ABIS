@@ -243,12 +243,13 @@ export async function authFetch(url, init) {
 // ---- per-user session sign-in (POST /auth/login → security_user) -----------
 const K_SESSION = 'abis_jwt';
 const K_UNAME = 'abis_user_name';
-/** Sign in an ABIS user against security_user; stores the returned bearer for authFetch.
- *  Throws with the server's message on failure (unknown/inactive user, or not configured). */
-export async function loginWithUser(loginId) {
+/** Sign in an ABIS user against security_user (with an optional password, verified against the
+ *  ABIS credential store); stores the returned bearer for authFetch. Throws with the server's
+ *  message on failure (bad credentials, unknown/inactive user, or not configured). */
+export async function loginWithUser(loginId, password) {
     const r = await fetch('/auth/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ login: loginId }),
+        body: JSON.stringify({ login: loginId, password: password || null }),
     });
     if (!r.ok) {
         let msg = `Sign-in failed (${r.status}).`;
@@ -262,7 +263,24 @@ export async function loginWithUser(loginId) {
     const data = (await r.json());
     SS.setItem(K_SESSION, data.token);
     SS.setItem(K_UNAME, data.name || data.login);
-    return { login: data.login, name: data.name || data.login };
+    return { login: data.login, name: data.name || data.login, mustChangePassword: !!data.mustChangePassword, passwordSet: !!data.passwordSet };
+}
+/** Change the signed-in user's own password (also used to satisfy a must-change on first sign-in).
+ *  Sends the session bearer via authFetch. Throws with the server's message on failure. */
+export async function changePassword(currentPassword, newPassword) {
+    const r = await authFetch('/auth/change-password', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    if (!r.ok) {
+        let msg = `Password change failed (${r.status}).`;
+        try {
+            const p = await r.json();
+            msg = p.detail || p.title || msg;
+        }
+        catch { /* keep default */ }
+        throw new Error(msg);
+    }
 }
 export const currentUserName = () => SS.getItem(K_UNAME);
 export const isSignedIn = () => !!SS.getItem(K_SESSION);
