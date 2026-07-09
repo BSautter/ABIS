@@ -2,7 +2,8 @@
 // w_group_managment, w_user_detail), restyled to the design system in the shared shell (#4
 // polish). This is APPLICATION AUTHORIZATION only — OIDC / per-user login handles authentication.
 // A user's effective privilege on a feature is MAX(direct grant, group grants); 0 = ReadOnly,
-// 1 = Write. Through the NSwag-generated client.
+// 1 = Write. Through the NSwag-generated client, with the newer admin writes (create/edit/delete,
+// grant-removal, group + feature management) called via authFetch — they post-date the committed client.
 //
 // Compiled by tsc to wwwroot/ui/app/security.js; served at /ui/security.html.
 import { AbisClient, GrantWrite } from './generated/abis-client.js';
@@ -19,8 +20,10 @@ const setBusy = (b: boolean) => document.body.classList.toggle('busy', b);
 const v = (id: string) => $<HTMLInputElement>(id).value.trim();
 const setV = (id: string, val: unknown) => { $<HTMLInputElement>(id).value = val == null ? '' : String(val); };
 const chip = (s: unknown): string => `<span class="chip mut">${esc(s ?? '—')}</span>`;
+const privChip = (p: unknown): string => `<span class="chip ${Number(p) >= 1 ? 'ok' : 'mut'}">${Number(p) >= 1 ? 'Write' : 'ReadOnly'}</span>`;
 
 let curUser: number | null = null;
+let curGroup: number | null = null;
 
 function scaffold(): string {
   return `
@@ -71,7 +74,8 @@ function scaffold(): string {
             </div>
           </div>
           <header style="border-top:1px solid var(--line)"><h2>Effective permissions</h2></header>
-          <div style="overflow-x:auto"><table class="tbl" style="min-width:360px"><thead><tr><th>Feature</th><th>Privilege</th><th>Source</th></tr></thead><tbody id="tPerms"><tr><td colspan="3" class="muted">—</td></tr></tbody></table></div>
+          <div style="overflow-x:auto"><table class="tbl" style="min-width:400px"><thead><tr><th>Feature</th><th>Privilege</th><th>Source</th><th></th></tr></thead><tbody id="tPerms"><tr><td colspan="4" class="muted">—</td></tr></tbody></table></div>
+          <div class="body"><p class="muted" style="margin:0;font-size:12px">Remove clears the user's <strong>direct</strong> grant; a group-derived privilege stays and is managed on the Groups tab.</p></div>
           <header style="border-top:1px solid var(--line)"><h2>Groups</h2></header>
           <div style="overflow-x:auto"><table class="tbl" style="min-width:320px"><thead><tr><th>Id</th><th>Name</th><th></th></tr></thead><tbody id="tGroups"><tr><td colspan="3" class="muted">—</td></tr></tbody></table></div>
           <div class="body">
@@ -99,19 +103,90 @@ function scaffold(): string {
       </div>
     </div>
 
-    <div id="pane-groups" class="card" style="display:none">
-      <header><h2>Groups</h2></header>
-      <div style="overflow-x:auto"><table class="tbl" style="min-width:420px"><thead><tr><th>Id</th><th>Name</th><th>Notes</th></tr></thead><tbody id="tAllGroups"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody></table></div>
+    <div id="pane-groups" style="display:none">
+      <div class="grid">
+        <div class="stack">
+          <div class="card">
+            <header><h2>Groups</h2><span class="sub">click to edit grants</span></header>
+            <div style="overflow-x:auto"><table class="tbl" style="min-width:380px"><thead><tr><th>Id</th><th>Name</th><th>Notes</th><th></th></tr></thead><tbody id="tAllGroups"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody></table></div>
+          </div>
+          <div class="card">
+            <header><h2>New group</h2></header>
+            <div class="body">
+              <div class="frow">
+                <div class="fld"><label>Name *</label><input id="ngName" style="width:160px" /></div>
+                <div class="fld" style="flex:1;min-width:160px"><label>Notes</label><input id="ngNotes" /></div>
+              </div>
+              <div class="frow" style="margin-top:10px;align-items:center"><button class="btn sm" id="btnNewGroup" type="button">Create group</button><span id="ngOk" class="ok-note"></span></div>
+            </div>
+          </div>
+        </div>
+        <div class="stack"><div class="card" id="groupDetail">
+          <header><h2 id="grpTitle">Group detail</h2><span class="sub">click a group</span></header>
+          <header style="border-top:1px solid var(--line)"><h2>Feature grants</h2></header>
+          <div style="overflow-x:auto"><table class="tbl" style="min-width:380px"><thead><tr><th>Feature</th><th>Privilege</th><th></th></tr></thead><tbody id="tGrpGrants"><tr><td colspan="3" class="muted">—</td></tr></tbody></table></div>
+          <div class="body">
+            <div class="frow" style="align-items:center">
+              <div class="fld"><label>Feature</label><select id="grpGrantAppId" style="min-width:160px"></select></div>
+              <div class="fld"><label>Privilege</label><select id="grpGrantPriv"><option value="0">Read only</option><option value="1" selected>Write</option></select></div>
+              <button class="btn sm" id="btnGrpGrant" type="button">Set grant</button>
+              <span id="grpOk" class="ok-note"></span>
+            </div>
+          </div>
+          <header style="border-top:1px solid var(--line)"><h2>Members</h2></header>
+          <div style="overflow-x:auto"><table class="tbl" style="min-width:320px"><thead><tr><th>Id</th><th>Login</th><th>Name</th></tr></thead><tbody id="tGrpMembers"><tr><td colspan="3" class="muted">—</td></tr></tbody></table></div>
+          <div class="body"><p class="muted" style="margin:0;font-size:12px">Membership is edited per-user on the Users tab.</p></div>
+        </div></div>
+      </div>
     </div>
 
-    <div id="pane-apps" class="card" style="display:none">
-      <header><h2>Protected features</h2></header>
-      <div style="overflow-x:auto"><table class="tbl" style="min-width:420px"><thead><tr><th>Id</th><th>Feature</th><th>Notes</th></tr></thead><tbody id="tApps"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody></table></div>
+    <div id="pane-apps" style="display:none">
+      <div class="grid">
+        <div class="stack"><div class="card">
+          <header><h2>Protected features</h2></header>
+          <div style="overflow-x:auto"><table class="tbl" style="min-width:420px"><thead><tr><th>Id</th><th>Feature</th><th>Notes</th><th></th></tr></thead><tbody id="tApps"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody></table></div>
+        </div></div>
+        <div class="stack"><div class="card">
+          <header><h2>New feature</h2></header>
+          <div class="body">
+            <div class="frow">
+              <div class="fld"><label>Name *</label><input id="nfName" style="width:180px" /></div>
+              <div class="fld" style="flex:1;min-width:160px"><label>Notes</label><input id="nfNotes" /></div>
+            </div>
+            <div class="frow" style="margin-top:10px;align-items:center"><button class="btn sm" id="btnNewFeature" type="button">Create feature</button><span id="nfOk" class="ok-note"></span></div>
+            <p class="muted" style="margin:8px 0 0;font-size:12px">A feature only gates a screen if the server code checks it. Deleting one removes it from every user and group grant; the <strong>User Control</strong> feature is protected.</p>
+          </div>
+        </div></div>
+      </div>
     </div>
 
     <div id="err" class="err" style="margin-top:8px"></div>
   </div>`;
 }
+
+// ---- shared HTTP helpers (endpoints newer than the committed NSwag client) ----
+
+// Read a JSON collection via authFetch; returns [] on any failure (the caller shows the error).
+async function getJson<T>(url: string): Promise<T[]> {
+  const r = await authFetch(url);
+  if (!r.ok) throw new Error(`GET ${url} → ${r.status}`);
+  return (await r.json()) as T[];
+}
+
+// Shared writer for the create/edit/remove admin calls. Returns true on success; sets #err otherwise.
+async function send(url: string, method: string, body?: unknown): Promise<boolean> {
+  const r = await authFetch(url, body === undefined
+    ? { method }
+    : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!r.ok) {
+    let m = `${method} failed (${r.status}).`;
+    try { const p = await r.json(); m = (p.detail as string) || (p.title as string) || m; } catch { /* keep default */ }
+    setErr(m); return false;
+  }
+  return true;
+}
+
+// ---- Users tab ----
 
 async function loadUsers(): Promise<void> {
   setErr('');
@@ -148,8 +223,11 @@ async function openUser(userId: number): Promise<void> {
     $('#tPerms').innerHTML = (perms ?? []).length ? (perms ?? []).map((p) => `<tr>
       <td>${esc(p.applicationName)}</td>
       <td><span class="chip ${(p.privilege ?? 0) >= 1 ? 'ok' : 'mut'}">${esc(p.privilegeLabel)}</span></td>
-      <td>${p.viaGroup ? 'via group' : 'direct'}</td></tr>`).join('')
-      : '<tr><td colspan="3" class="muted">No permissions — user has no feature grants.</td></tr>';
+      <td>${p.viaGroup ? 'via group' : 'direct'}</td>
+      <td>${p.viaGroup ? '' : `<button class="btn sm ghost rmGrant" data-a="${p.applicationId}" type="button">remove</button>`}</td></tr>`).join('')
+      : '<tr><td colspan="4" class="muted">No permissions — user has no feature grants.</td></tr>';
+    document.querySelectorAll<HTMLButtonElement>('#tPerms .rmGrant').forEach((b) =>
+      b.addEventListener('click', () => void removeUserGrant(Number(b.dataset.a))));
   } catch (e) { setErr(`Open user failed: ${(e as Error).message}`); }
   finally { setBusy(false); }
 }
@@ -182,48 +260,30 @@ async function grantUserApp(): Promise<void> {
   finally { setBusy(false); }
 }
 
+// Clear the open user's DIRECT grant on a feature (DELETE /security/users/{id}/applications/{appId}).
+async function removeUserGrant(applicationId: number): Promise<void> {
+  if (curUser == null) return;
+  setErr(''); setBusy(true);
+  try {
+    if (await send(`/api/security/users/${curUser}/applications/${applicationId}`, 'DELETE')) {
+      await openUser(curUser); setOk('✓ Grant cleared.');
+    }
+  } finally { setBusy(false); }
+}
+
 // Admin sets/resets the open user's initial password (POST /security/users/{id}/password, gated by
-// "User Control"). Called via authFetch directly — the endpoint is newer than the committed client.
+// "User Control").
 async function setPassword(): Promise<void> {
   if (curUser == null) { setErr('Open a user first.'); return; }
   const pw = v('#setPw');
   if (pw.length < 8) { setErr('Password must be at least 8 characters.'); return; }
   setErr(''); setBusy(true);
   try {
-    const r = await authFetch(`/api/security/users/${curUser}/password`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }),
-    });
-    if (!r.ok) {
-      let m = `Set password failed (${r.status}).`;
-      try { const p = await r.json(); m = (p.detail as string) || (p.title as string) || m; } catch { /* keep default */ }
-      setErr(m); return;
+    if (await send(`/api/security/users/${curUser}/password`, 'POST', { password: pw })) {
+      $<HTMLInputElement>('#setPw').value = '';
+      $('#pwOk').textContent = '✓ Password set — the user must change it on next sign-in.';
     }
-    $<HTMLInputElement>('#setPw').value = '';
-    $('#pwOk').textContent = '✓ Password set — the user must change it on next sign-in.';
-  } catch (e) { setErr(`Set password failed: ${(e as Error).message}`); }
-  finally { setBusy(false); }
-}
-
-// Shared writer for the create/edit/remove admin calls (endpoints newer than the committed client).
-async function send(url: string, method: string, body?: unknown): Promise<boolean> {
-  const r = await authFetch(url, body === undefined
-    ? { method }
-    : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (!r.ok) {
-    let m = `${method} failed (${r.status}).`;
-    try { const p = await r.json(); m = (p.detail as string) || (p.title as string) || m; } catch { /* keep default */ }
-    setErr(m); return false;
-  }
-  return true;
-}
-
-// Fill the feature-grant <select> from the protected-feature catalog (once, at startup).
-async function loadFeatureOptions(): Promise<void> {
-  try {
-    const list = await client().getSecurityApplications();
-    $('#grantAppId').innerHTML = (list ?? []).map((a) =>
-      `<option value="${esc(a.applicationId)}">${esc(a.applicationName)}</option>`).join('');
-  } catch { /* the grant control just stays empty if the catalog can't load */ }
+  } finally { setBusy(false); }
 }
 
 async function createUser(): Promise<void> {
@@ -269,28 +329,147 @@ async function removeUser(): Promise<void> {
     curUser = null;
     $('#detailTitle').textContent = 'User detail';
     ['#edLogin', '#edFirst', '#edLast', '#edStatus'].forEach((i) => setV(i, ''));
-    $('#tPerms').innerHTML = '<tr><td colspan="3" class="muted">—</td></tr>';
+    $('#tPerms').innerHTML = '<tr><td colspan="4" class="muted">—</td></tr>';
     $('#tGroups').innerHTML = '<tr><td colspan="3" class="muted">—</td></tr>';
     await loadUsers();
   } finally { setBusy(false); }
 }
 
+// ---- Groups tab ----
+
 async function loadGroups(): Promise<void> {
   try {
     const list = await client().getSecurityGroups();
     $('#tAllGroups').innerHTML = (list ?? []).length ? (list ?? []).map((g) => `<tr>
-      <td class="mono">${esc(g.userGroupId)}</td><td>${esc(g.groupName)}</td><td>${esc(g.groupNotes)}</td></tr>`).join('')
-      : '<tr><td colspan="3" class="muted">No groups.</td></tr>';
+      <td class="mono click grp" data-id="${g.userGroupId}">${esc(g.userGroupId)}</td>
+      <td class="click grp" data-id="${g.userGroupId}">${esc(g.groupName)}</td>
+      <td>${esc(g.groupNotes)}</td>
+      <td><button class="btn sm ghost delGrp" data-id="${g.userGroupId}" data-name="${esc(g.groupName)}" type="button">delete</button></td></tr>`).join('')
+      : '<tr><td colspan="4" class="muted">No groups.</td></tr>';
+    document.querySelectorAll<HTMLElement>('#tAllGroups .grp').forEach((el) =>
+      el.addEventListener('click', () => void openGroup(Number(el.dataset.id))));
+    document.querySelectorAll<HTMLButtonElement>('#tAllGroups .delGrp').forEach((b) =>
+      b.addEventListener('click', () => void deleteGroup(Number(b.dataset.id), b.dataset.name || '')));
   } catch (e) { setErr(`Groups failed: ${(e as Error).message}`); }
 }
+
+async function openGroup(groupId: number): Promise<void> {
+  setErr(''); $('#grpOk').textContent = ''; setBusy(true);
+  curGroup = groupId;
+  try {
+    const [grants, members] = await Promise.all([
+      getJson<{ applicationId: number; applicationName: string; privilege: number }>(`/api/security/groups/${groupId}/applications`),
+      getJson<{ userId: number; loginId: string; userFirstName?: string; userLastName?: string }>(`/api/security/groups/${groupId}/members`),
+    ]);
+    const g = (await client().getSecurityGroups()).find((x) => x.userGroupId === groupId);
+    $('#grpTitle').textContent = `${g?.groupName ?? 'Group'} (id ${groupId})`;
+    $('#tGrpGrants').innerHTML = grants.length ? grants.map((p) => `<tr>
+      <td>${esc(p.applicationName)}</td><td>${privChip(p.privilege)}</td>
+      <td><button class="btn sm ghost rmGrpGrant" data-a="${p.applicationId}" type="button">remove</button></td></tr>`).join('')
+      : '<tr><td colspan="3" class="muted">No grants — this group conveys no privileges.</td></tr>';
+    document.querySelectorAll<HTMLButtonElement>('#tGrpGrants .rmGrpGrant').forEach((b) =>
+      b.addEventListener('click', () => void removeGroupGrant(Number(b.dataset.a))));
+    $('#tGrpMembers').innerHTML = members.length ? members.map((m) => `<tr>
+      <td class="mono">${esc(m.userId)}</td><td class="mono">${esc(m.loginId)}</td>
+      <td>${esc(m.userFirstName)} ${esc(m.userLastName)}</td></tr>`).join('')
+      : '<tr><td colspan="3" class="muted">No members.</td></tr>';
+  } catch (e) { setErr(`Open group failed: ${(e as Error).message}`); }
+  finally { setBusy(false); }
+}
+
+async function createGroup(): Promise<void> {
+  const name = v('#ngName');
+  if (!name) { setErr('A group name is required.'); return; }
+  setErr(''); setBusy(true);
+  try {
+    const ok = await send('/api/security/groups', 'POST', { groupName: name, groupNotes: v('#ngNotes') || undefined });
+    if (!ok) return;
+    setV('#ngName', ''); setV('#ngNotes', '');
+    $('#ngOk').textContent = `✓ Created group ${name}.`;
+    await loadGroups();
+  } finally { setBusy(false); }
+}
+
+async function deleteGroup(groupId: number, name: string): Promise<void> {
+  if (!window.confirm(`Delete group ${name || groupId}? Members are unlinked and its feature grants are removed.`)) return;
+  setErr(''); setBusy(true);
+  try {
+    if (!await send(`/api/security/groups/${groupId}`, 'DELETE')) return;
+    if (curGroup === groupId) {
+      curGroup = null;
+      $('#grpTitle').textContent = 'Group detail';
+      $('#tGrpGrants').innerHTML = '<tr><td colspan="3" class="muted">—</td></tr>';
+      $('#tGrpMembers').innerHTML = '<tr><td colspan="3" class="muted">—</td></tr>';
+    }
+    await loadGroups();
+  } finally { setBusy(false); }
+}
+
+async function setGroupGrant(): Promise<void> {
+  if (curGroup == null) { setErr('Open a group first.'); return; }
+  const aid = v('#grpGrantAppId'); if (!aid) return;
+  setErr(''); setBusy(true);
+  try {
+    if (await send(`/api/security/groups/${curGroup}/applications/${aid}`, 'PUT', { privilege: Number(v('#grpGrantPriv')) || 0 })) {
+      await openGroup(curGroup); $('#grpOk').textContent = '✓ Grant set.';
+    }
+  } finally { setBusy(false); }
+}
+
+async function removeGroupGrant(applicationId: number): Promise<void> {
+  if (curGroup == null) return;
+  setErr(''); setBusy(true);
+  try {
+    if (await send(`/api/security/groups/${curGroup}/applications/${applicationId}`, 'DELETE')) {
+      await openGroup(curGroup); $('#grpOk').textContent = '✓ Grant cleared.';
+    }
+  } finally { setBusy(false); }
+}
+
+// ---- Features tab ----
 
 async function loadApps(): Promise<void> {
   try {
     const list = await client().getSecurityApplications();
     $('#tApps').innerHTML = (list ?? []).length ? (list ?? []).map((a) => `<tr>
-      <td class="mono">${esc(a.applicationId)}</td><td>${esc(a.applicationName)}</td><td>${esc(a.applicationNotes)}</td></tr>`).join('')
-      : '<tr><td colspan="3" class="muted">No features.</td></tr>';
+      <td class="mono">${esc(a.applicationId)}</td><td>${esc(a.applicationName)}</td><td>${esc(a.applicationNotes)}</td>
+      <td><button class="btn sm ghost delApp" data-id="${a.applicationId}" data-name="${esc(a.applicationName)}" type="button">delete</button></td></tr>`).join('')
+      : '<tr><td colspan="4" class="muted">No features.</td></tr>';
+    document.querySelectorAll<HTMLButtonElement>('#tApps .delApp').forEach((b) =>
+      b.addEventListener('click', () => void deleteFeature(Number(b.dataset.id), b.dataset.name || '')));
   } catch (e) { setErr(`Features failed: ${(e as Error).message}`); }
+}
+
+async function createFeature(): Promise<void> {
+  const name = v('#nfName');
+  if (!name) { setErr('A feature name is required.'); return; }
+  setErr(''); setBusy(true);
+  try {
+    const ok = await send('/api/security/applications', 'POST', { applicationName: name, applicationNotes: v('#nfNotes') || undefined });
+    if (!ok) return;
+    setV('#nfName', ''); setV('#nfNotes', '');
+    $('#nfOk').textContent = `✓ Created feature ${name}.`;
+    await Promise.all([loadApps(), loadFeatureOptions()]);
+  } finally { setBusy(false); }
+}
+
+async function deleteFeature(applicationId: number, name: string): Promise<void> {
+  if (!window.confirm(`Delete feature ${name || applicationId}? It is removed from every user and group grant.`)) return;
+  setErr(''); setBusy(true);
+  try {
+    if (!await send(`/api/security/applications/${applicationId}`, 'DELETE')) return;   // 409 for User Control surfaces via #err
+    await Promise.all([loadApps(), loadFeatureOptions()]);
+  } finally { setBusy(false); }
+}
+
+// Fill the feature-grant <select>s (user + group tabs) from the protected-feature catalog.
+async function loadFeatureOptions(): Promise<void> {
+  try {
+    const list = await client().getSecurityApplications();
+    const opts = (list ?? []).map((a) => `<option value="${esc(a.applicationId)}">${esc(a.applicationName)}</option>`).join('');
+    $('#grantAppId').innerHTML = opts;
+    $('#grpGrantAppId').innerHTML = opts;
+  } catch { /* the grant controls just stay empty if the catalog can't load */ }
 }
 
 function showTab(name: string): void {
@@ -312,6 +491,9 @@ function showTab(name: string): void {
   $('#btnNewUser').addEventListener('click', () => void createUser());
   $('#btnSaveUser').addEventListener('click', () => void saveUser());
   $('#btnDelUser').addEventListener('click', () => void removeUser());
+  $('#btnNewGroup').addEventListener('click', () => void createGroup());
+  $('#btnGrpGrant').addEventListener('click', () => void setGroupGrant());
+  $('#btnNewFeature').addEventListener('click', () => void createFeature());
   showTab('users');
   await Promise.all([loadUsers(), loadFeatureOptions()]);
 })();

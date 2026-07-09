@@ -2300,6 +2300,98 @@ public sealed class AbisRepository : IAbisRepository
         return true;
     }
 
+    // Clear a user's direct grant on a feature (leaving any group-derived privilege intact). Returns
+    // false when there was no such direct grant to remove.
+    public async Task<bool> DeleteUserApplicationGrantAsync(long userId, long applicationId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM security_user_application WHERE user_id = :uid AND application_id = :aid",
+            new { uid = userId, aid = applicationId }, cancellationToken: ct));
+        return n > 0;
+    }
+
+    // Clear a group's grant on a feature. Returns false when there was no such grant.
+    public async Task<bool> DeleteGroupApplicationGrantAsync(long groupId, long applicationId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM security_group_application WHERE user_group_id = :gid AND application_id = :aid",
+            new { gid = groupId, aid = applicationId }, cancellationToken: ct));
+        return n > 0;
+    }
+
+    // Remove a group and everything keyed to it — memberships and the group's feature grants — then
+    // the group row, in one transaction. Users keep their direct grants; only the group link is gone.
+    public async Task<bool> DeleteSecurityGroupAsync(long groupId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM security_group WHERE user_group_id = :id", new { id = groupId }, cancellationToken: ct));
+        if (exists == 0) return false;
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM security_user_group WHERE user_group_id = :id", new { id = groupId }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM security_group_application WHERE user_group_id = :id", new { id = groupId }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM security_group WHERE user_group_id = :id", new { id = groupId }, transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+        return true;
+    }
+
+    // Remove a protected feature and every grant that references it (user + group), then the feature
+    // row, in one transaction. The caller guards against deleting the security-admin feature itself.
+    public async Task<bool> DeleteSecurityApplicationAsync(long applicationId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM security_application WHERE application_id = :id", new { id = applicationId }, cancellationToken: ct));
+        if (exists == 0) return false;
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM security_user_application WHERE application_id = :id", new { id = applicationId }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM security_group_application WHERE application_id = :id", new { id = applicationId }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM security_application WHERE application_id = :id", new { id = applicationId }, transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+        return true;
+    }
+
+    // A group's own feature grants (the RBAC lever — most privilege is assigned here, not per-user).
+    // Reuses EffectivePermission for the (feature, privilege) shape; ViaGroup is not meaningful here.
+    public async Task<IReadOnlyList<EffectivePermission>> GetGroupApplicationGrantsAsync(long groupId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<EffectivePermission>(new CommandDefinition(
+            """
+            SELECT a.application_id AS ApplicationId, a.application_name AS ApplicationName,
+                   ga.group_application_privilege AS Privilege
+            FROM security_group_application ga
+            JOIN security_application a ON a.application_id = ga.application_id
+            WHERE ga.user_group_id = :gid
+            ORDER BY a.application_name
+            """, new { gid = groupId }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    // The users who belong to a group (for the group editor's membership view).
+    public async Task<IReadOnlyList<SecurityUser>> GetGroupMembersAsync(long groupId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<SecurityUser>(new CommandDefinition(
+            """
+            SELECT u.user_id AS UserId, u.login_id AS LoginId, u.user_last_name AS UserLastName,
+                   u.user_first_name AS UserFirstName, u.user_status AS UserStatus
+            FROM security_user_group ug
+            JOIN security_user u ON u.user_id = ug.user_id
+            WHERE ug.user_group_id = :gid
+            ORDER BY u.login_id
+            """, new { gid = groupId }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
     public async Task<bool> AddUserToGroupAsync(long userId, long groupId, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

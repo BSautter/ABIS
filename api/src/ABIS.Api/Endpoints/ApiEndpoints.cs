@@ -2194,6 +2194,56 @@ public static class ApiEndpoints
            .WithName("RemoveUserFromGroup").WithTags("Security")
            .WithSummary("Remove a user from a group (requires User Control).").Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status403Forbidden);
 
+        // Clear a user's DIRECT grant on a feature (they may still inherit it via a group). This is
+        // the "remove grant" the set-grant PUT can't express (that only writes 0/1). User Control gated.
+        api.MapDelete("/security/users/{userId:long}/applications/{applicationId:long}", async (long userId, long applicationId, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+                await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny ? deny
+                    : await repo.DeleteUserApplicationGrantAsync(userId, applicationId, ct) ? Results.NoContent() : Results.NotFound())
+           .WithName("DeleteUserApplicationGrant").WithTags("Security")
+           .WithSummary("Clear a user's direct grant on a feature (requires User Control).").Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status403Forbidden);
+
+        // A group's own feature grants — the primary RBAC lever (most privilege is assigned to groups).
+        api.MapGet("/security/groups/{groupId:long}/applications", async (long groupId, IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetGroupApplicationGrantsAsync(groupId, ct)))
+           .WithName("GetGroupApplicationGrants").WithTags("Security")
+           .WithSummary("A group's per-feature grants (0 = ReadOnly, 1 = Write).").Produces<IReadOnlyList<EffectivePermission>>();
+
+        // The members of a group (for the group editor).
+        api.MapGet("/security/groups/{groupId:long}/members", async (long groupId, IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetGroupMembersAsync(groupId, ct)))
+           .WithName("GetGroupMembers").WithTags("Security")
+           .WithSummary("The users who belong to a group.").Produces<IReadOnlyList<SecurityUser>>();
+
+        // Clear a group's grant on a feature. User Control gated.
+        api.MapDelete("/security/groups/{groupId:long}/applications/{applicationId:long}", async (long groupId, long applicationId, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+                await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny ? deny
+                    : await repo.DeleteGroupApplicationGrantAsync(groupId, applicationId, ct) ? Results.NoContent() : Results.NotFound())
+           .WithName("DeleteGroupApplicationGrant").WithTags("Security")
+           .WithSummary("Clear a group's grant on a feature (requires User Control).").Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status403Forbidden);
+
+        // Remove a group and its memberships + grants. User Control gated.
+        api.MapDelete("/security/groups/{groupId:long}", async (long groupId, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+                await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny ? deny
+                    : await repo.DeleteSecurityGroupAsync(groupId, ct) ? Results.NoContent() : Results.NotFound())
+           .WithName("DeleteSecurityGroup").WithTags("Security")
+           .WithSummary("Remove a security group and its memberships/grants (requires User Control).").Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status403Forbidden);
+
+        // Remove a protected feature and every grant referencing it. Blocks deleting "User Control"
+        // itself — that feature gates this very screen, so removing it would permanently lock out
+        // every OIDC admin (only a service API key could recover). User Control gated.
+        api.MapDelete("/security/applications/{applicationId:long}", async (long applicationId, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny) return deny;
+                var app = (await repo.GetSecurityApplicationsAsync(ct)).FirstOrDefault(a => a.ApplicationId == applicationId);
+                if (app is null) return Results.NotFound();
+                if (string.Equals(app.ApplicationName, "User Control", StringComparison.OrdinalIgnoreCase))
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Protected feature",
+                        detail: "The 'User Control' feature gates security administration and cannot be deleted.");
+                return await repo.DeleteSecurityApplicationAsync(applicationId, ct) ? Results.NoContent() : Results.NotFound();
+            })
+           .WithName("DeleteSecurityApplication").WithTags("Security")
+           .WithSummary("Remove a protected feature and its grants (requires User Control; the User Control feature itself is protected).").Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status403Forbidden);
+
         api.MapGet("/scrap-skids", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, string? sort = null, string? dir = null) =>
             {
