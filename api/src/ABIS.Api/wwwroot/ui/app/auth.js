@@ -219,6 +219,13 @@ export async function authFetch(url, init) {
     }
     else {
         headers.set('X-Api-Key', currentKey());
+        // Dev-only impersonation: when API-key mode is in use (no OIDC), an operator can
+        // "act as" a seeded user so the shell resolves their real grants. The server treats
+        // X-User-Login as a dev fallback only (ResolveLogin) — OIDC tokens take precedence
+        // in production, where this header is never sent.
+        const actAs = localStorage.getItem('abis_act_as');
+        if (actAs)
+            headers.set('X-User-Login', actAs);
     }
     return fetch(url, { ...init, headers });
 }

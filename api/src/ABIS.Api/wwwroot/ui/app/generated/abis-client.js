@@ -294,6 +294,757 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * List the admin scheduled-job definitions. INERT — no execution engine runs them in this phase.
+     * @return OK
+     */
+    getScheduledJobs() {
+        let url_ = this.baseUrl + "/api/admin/jobs";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetScheduledJobs(_response);
+        });
+    }
+    processGetScheduledJobs(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(ScheduledJob.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Define a scheduled job (imported or native). Storing it does NOT schedule or run anything — there is no execution engine in this phase.
+     * @return Created
+     */
+    createScheduledJob(body) {
+        let url_ = this.baseUrl + "/api/admin/jobs";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCreateScheduledJob(_response);
+        });
+    }
+    processCreateScheduledJob(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                let result201 = null;
+                let resultData201 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result201 = ScheduledJob.fromJS(resultData201);
+                return result201;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * @return OK
+     */
+    getScheduledJob(id) {
+        let url_ = this.baseUrl + "/api/admin/jobs/{id}";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetScheduledJob(_response);
+        });
+    }
+    processGetScheduledJob(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = ScheduledJob.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * @return OK
+     */
+    updateScheduledJob(id, body) {
+        let url_ = this.baseUrl + "/api/admin/jobs/{id}";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processUpdateScheduledJob(_response);
+        });
+    }
+    processUpdateScheduledJob(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = ScheduledJob.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Set a job's enabled flag on. NOTE: the flag is stored only — it does not cause execution in this phase.
+     * @return OK
+     */
+    enableScheduledJob(id) {
+        let url_ = this.baseUrl + "/api/admin/jobs/{id}/enable";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processEnableScheduledJob(_response);
+        });
+    }
+    processEnableScheduledJob(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = ScheduledJob.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * @return OK
+     */
+    disableScheduledJob(id) {
+        let url_ = this.baseUrl + "/api/admin/jobs/{id}/disable";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDisableScheduledJob(_response);
+        });
+    }
+    processDisableScheduledJob(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = ScheduledJob.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * A job's run history. Empty until a future execution engine records runs.
+     * @return OK
+     */
+    getScheduledJobRuns(id) {
+        let url_ = this.baseUrl + "/api/admin/jobs/{id}/runs";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetScheduledJobRuns(_response);
+        });
+    }
+    processGetScheduledJobRuns(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(ScheduledJobRun.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Define an EDI transaction type + version (config only — transmits nothing).
+     * @return Created
+     */
+    createEdiType(body) {
+        let url_ = this.baseUrl + "/api/admin/edi/types";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCreateEdiType(_response);
+        });
+    }
+    processCreateEdiType(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                let result201 = null;
+                let resultData201 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result201 = EdiType.fromJS(resultData201);
+                return result201;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Update an EDI type's description.
+     * @return OK
+     */
+    updateEdiType(ediTypeId, ediVersion, body) {
+        let url_ = this.baseUrl + "/api/admin/edi/types/{ediTypeId}/{ediVersion}";
+        if (ediTypeId === undefined || ediTypeId === null)
+            throw new globalThis.Error("The parameter 'ediTypeId' must be defined.");
+        url_ = url_.replace("{ediTypeId}", encodeURIComponent("" + ediTypeId));
+        if (ediVersion === undefined || ediVersion === null)
+            throw new globalThis.Error("The parameter 'ediVersion' must be defined.");
+        url_ = url_.replace("{ediVersion}", encodeURIComponent("" + ediVersion));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processUpdateEdiType(_response);
+        });
+    }
+    processUpdateEdiType(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = EdiType.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Define a trading-partner EDI route (config only). Validates the customer + referenced EDI type exist.
+     * @return Created
+     */
+    createCustomerEdiRoute(body) {
+        let url_ = this.baseUrl + "/api/admin/edi/customer-routes";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCreateCustomerEdiRoute(_response);
+        });
+    }
+    processCreateCustomerEdiRoute(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                let result201 = null;
+                let resultData201 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result201 = CustomerEdi.fromJS(resultData201);
+                return result201;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * @return OK
+     */
+    updateCustomerEdiRoute(customerId, customerEdiName, body) {
+        let url_ = this.baseUrl + "/api/admin/edi/customer-routes/{customerId}/{customerEdiName}";
+        if (customerId === undefined || customerId === null)
+            throw new globalThis.Error("The parameter 'customerId' must be defined.");
+        url_ = url_.replace("{customerId}", encodeURIComponent("" + customerId));
+        if (customerEdiName === undefined || customerEdiName === null)
+            throw new globalThis.Error("The parameter 'customerEdiName' must be defined.");
+        url_ = url_.replace("{customerEdiName}", encodeURIComponent("" + customerEdiName));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processUpdateCustomerEdiRoute(_response);
+        });
+    }
+    processUpdateCustomerEdiRoute(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = CustomerEdi.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Remove a trading-partner EDI route.
+     * @return No Content
+     */
+    deleteCustomerEdiRoute(customerId, customerEdiName) {
+        let url_ = this.baseUrl + "/api/admin/edi/customer-routes/{customerId}/{customerEdiName}";
+        if (customerId === undefined || customerId === null)
+            throw new globalThis.Error("The parameter 'customerId' must be defined.");
+        url_ = url_.replace("{customerId}", encodeURIComponent("" + customerId));
+        if (customerEdiName === undefined || customerEdiName === null)
+            throw new globalThis.Error("The parameter 'customerEdiName' must be defined.");
+        url_ = url_.replace("{customerEdiName}", encodeURIComponent("" + customerEdiName));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeleteCustomerEdiRoute(_response);
+        });
+    }
+    processDeleteCustomerEdiRoute(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Set a customer's 'create 861 at receiving' flag (Y/N). Config only — generates no EDI.
+     * @return OK
+     */
+    setCustomer861Flag(customerId, body) {
+        let url_ = this.baseUrl + "/api/admin/edi/customers/{customerId}/861-flag";
+        if (customerId === undefined || customerId === null)
+            throw new globalThis.Error("The parameter 'customerId' must be defined.");
+        url_ = url_.replace("{customerId}", encodeURIComponent("" + customerId));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processSetCustomer861Flag(_response);
+        });
+    }
+    processSetCustomer861Flag(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * List the action/audit log, newest first.
      * @param page (optional)
      * @param pageSize (optional)
@@ -347,6 +1098,61 @@ export class AbisClient {
                 let result200 = null;
                 let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
                 result200 = AuditEntryPagedResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Piece-weight calculator: blank area (by shape) × gauge × alloy density (from METAL_DENSITY, or an explicit density). Optionally returns pieces per skid for a max skid weight.
+     * @return OK
+     */
+    calculatePieceWeight(body) {
+        let url_ = this.baseUrl + "/api/calculator/piece-weight";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCalculatePieceWeight(_response);
+        });
+    }
+    processCalculatePieceWeight(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = PieceWeightResult.fromJS(resultData200);
                 return result200;
             });
         }
@@ -769,6 +1575,14 @@ export class AbisClient {
                 return result201;
             });
         }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
         else if (status === 401) {
             return response.text().then((_responseText) => {
                 return throwException("Unauthorized", status, _responseText, _headers);
@@ -947,7 +1761,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Record a coil-ownership transfer (issues a certificate; re-points coil ownership).
+     * Record a coil-ownership transfer (issues a certificate; re-points coil ownership). 409 if the new owner already owns the coil.
      * @return Created
      */
     createCoilOwnershipTransfer(body) {
@@ -997,6 +1811,11 @@ export class AbisClient {
         else if (status === 404) {
             return response.text().then((_responseText) => {
                 return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -1212,7 +2031,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Create a coil on receipt.
+     * Create a coil on receipt (rejects a duplicate org+customer+MID).
      * @return Created
      */
     createCoil(body) {
@@ -1257,6 +2076,11 @@ export class AbisClient {
         else if (status === 401) {
             return response.text().then((_responseText) => {
                 return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -1383,7 +2207,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Update a coil's status, location, or notes. Supports If-Match.
+     * Update a coil's status, location, or notes (409 if the coil is done/shipped/transferred). Supports If-Match.
      * @return OK
      */
     patchCoil(coilAbcNum, body) {
@@ -1428,6 +2252,11 @@ export class AbisClient {
         else if (status === 404) {
             return response.text().then((_responseText) => {
                 return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
             });
         }
         else if (status === 412) {
@@ -2374,6 +3203,53 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Printable coil-ownership transfer certificate (toll-processing document) as HTML.
+     * @return OK
+     */
+    transferCertificate(certificateNum) {
+        let url_ = this.baseUrl + "/api/documents/transfer-certificate/{certificateNum}";
+        if (certificateNum === undefined || certificateNum === null)
+            throw new globalThis.Error("The parameter 'certificateNum' must be defined.");
+        url_ = url_.replace("{certificateNum}", encodeURIComponent("" + certificateNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processTransferCertificate(_response);
+        });
+    }
+    processTransferCertificate(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Printable invoice for a job (weight rollups + spec block). Optional invoiceNum stamps the saved number/date.
      * @param invoiceNum (optional)
      * @return OK
@@ -2971,7 +3847,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Create a production job.
+     * Create a production job (requires the order refs it belongs to).
      * @return Created
      */
     createJob(body) {
@@ -3003,6 +3879,14 @@ export class AbisClient {
                 let resultData201 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
                 result201 = AbJob.fromJS(resultData201);
                 return result201;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
             });
         }
         else if (status === 401) {
@@ -3070,7 +3954,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Update a job's status, notes, men, or finish time. Supports If-Match.
+     * Update a job's status, notes, men, or finish time (409 if the job is done). Supports If-Match.
      * @return OK
      */
     patchJob(abJobNum, body) {
@@ -3115,6 +3999,11 @@ export class AbisClient {
         else if (status === 404) {
             return response.text().then((_responseText) => {
                 return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
             });
         }
         else if (status === 412) {
@@ -5453,7 +6342,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Replace a part-number record. Supports If-Match.
+     * Replace a part-number record (blocked with 409 if the part is applied to any order). Supports If-Match.
      * @return OK
      */
     updatePart(partNumId, body) {
@@ -5506,6 +6395,11 @@ export class AbisClient {
         else if (status === 404) {
             return response.text().then((_responseText) => {
                 return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
             });
         }
         else if (status === 412) {
@@ -5573,7 +6467,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Set a part-master's blank geometry for its shape (upsert; aligns the part's sheet_type).
+     * Set a part-master's blank geometry for its shape (upsert; aligns the part's sheet_type; 409 if the part is applied to any order).
      * @return OK
      */
     putPartShape(partNumId, body) {
@@ -5626,6 +6520,11 @@ export class AbisClient {
         else if (status === 404) {
             return response.text().then((_responseText) => {
                 return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -5790,6 +6689,11 @@ export class AbisClient {
         else if (status === 401) {
             return response.text().then((_responseText) => {
                 return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -6484,7 +7388,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Mint coil inventory for the BOL's lines (legacy w_coil_receiving save) — creates COIL rows (status 2/new, 11/on-hold if damaged) and links them. Idempotent.
+     * Mint coil inventory for the BOL's lines (legacy w_coil_receiving save) — creates COIL rows (status 2/new, 11/on-hold if damaged) and links them. Idempotent; 400 if the BOL has no coils.
      * @return OK
      */
     mintBolCoils(receivingBolId) {
@@ -6516,6 +7420,11 @@ export class AbisClient {
                 let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
                 result200 = MintResult.fromJS(resultData200);
                 return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                return throwException("Bad Request", status, _responseText, _headers);
             });
         }
         else if (status === 401) {
@@ -6588,7 +7497,235 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Per-line production summary (job count, avg yield, processed weight) over an optional date range.
+     * A job's recovery-worksheet coils: reband / reject / special-attention / special-handling flags + product type.
+     * @return OK
+     */
+    getRecoveryCoils(abJobNum) {
+        let url_ = this.baseUrl + "/api/recovery/jobs/{abJobNum}/coils";
+        if (abJobNum === undefined || abJobNum === null)
+            throw new globalThis.Error("The parameter 'abJobNum' must be defined.");
+        url_ = url_.replace("{abJobNum}", encodeURIComponent("" + abJobNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetRecoveryCoils(_response);
+        });
+    }
+    processGetRecoveryCoils(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(RecoveryJobCoil.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Set a coil's recovery-worksheet flags for a job (upsert). The coil must have been processed on the job.
+     * @return OK
+     */
+    upsertRecoveryCoil(abJobNum, coilAbcNum, body) {
+        let url_ = this.baseUrl + "/api/recovery/jobs/{abJobNum}/coils/{coilAbcNum}";
+        if (abJobNum === undefined || abJobNum === null)
+            throw new globalThis.Error("The parameter 'abJobNum' must be defined.");
+        url_ = url_.replace("{abJobNum}", encodeURIComponent("" + abJobNum));
+        if (coilAbcNum === undefined || coilAbcNum === null)
+            throw new globalThis.Error("The parameter 'coilAbcNum' must be defined.");
+        url_ = url_.replace("{coilAbcNum}", encodeURIComponent("" + coilAbcNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processUpsertRecoveryCoil(_response);
+        });
+    }
+    processUpsertRecoveryCoil(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = RecoveryJobCoil.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Daily recovery report for a job: each recovery coil's ship / scrap / rejected weights and yield. Weights come from the live f_get_coil_* functions on Oracle.
+     * @return OK
+     */
+    getRecoveryReport(abJobNum) {
+        let url_ = this.baseUrl + "/api/recovery/jobs/{abJobNum}/report";
+        if (abJobNum === undefined || abJobNum === null)
+            throw new globalThis.Error("The parameter 'abJobNum' must be defined.");
+        url_ = url_.replace("{abJobNum}", encodeURIComponent("" + abJobNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetRecoveryReport(_response);
+        });
+    }
+    processGetRecoveryReport(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(RecoveryReportRow.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * A job's recovery scrap broken down by defect type (Pareto order, heaviest first) with each defect's share of the total.
+     * @return OK
+     */
+    getRecoveryScrapByDefect(abJobNum) {
+        let url_ = this.baseUrl + "/api/recovery/jobs/{abJobNum}/scrap-by-defect";
+        if (abJobNum === undefined || abJobNum === null)
+            throw new globalThis.Error("The parameter 'abJobNum' must be defined.");
+        url_ = url_.replace("{abJobNum}", encodeURIComponent("" + abJobNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetRecoveryScrapByDefect(_response);
+        });
+    }
+    processGetRecoveryScrapByDefect(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(RecoveryScrapDefectRow.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Per-line production summary (job count, avg yield, processed weight). Defaults to the last 365 days when unbounded.
      * @param from (optional)
      * @param to (optional)
      * @return OK
@@ -6649,7 +7786,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Per-line efficiency: jobs, processed weight, avg yield, and downtime (events + minutes).
+     * Per-line efficiency: jobs, processed weight, avg yield, and downtime. Defaults to the last 365 days when unbounded.
      * @param from (optional)
      * @param to (optional)
      * @return OK
@@ -6710,7 +7847,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Production rolled up by month (YYYY-MM): jobs touched + processed weight.
+     * Production rolled up by month (YYYY-MM): jobs touched + processed weight. Defaults to the last 365 days when unbounded.
      * @param from (optional)
      * @param to (optional)
      * @return OK
@@ -6771,7 +7908,139 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Downtime events over a window (optionally one line), with computed duration minutes.
+     * Per-line, per-day processed weight from shift coils (SUM shift_coil.process_wt via SHIFT), optionally one line. Defaults to the last 365 days when unbounded.
+     * @param from (optional)
+     * @param to (optional)
+     * @param lineNum (optional)
+     * @return OK
+     */
+    getShiftProduction(from, to, lineNum) {
+        let url_ = this.baseUrl + "/api/reporting/shift-production?";
+        if (from === null)
+            throw new globalThis.Error("The parameter 'from' cannot be null.");
+        else if (from !== undefined)
+            url_ += "from=" + encodeURIComponent(from ? "" + from.toISOString() : "") + "&";
+        if (to === null)
+            throw new globalThis.Error("The parameter 'to' cannot be null.");
+        else if (to !== undefined)
+            url_ += "to=" + encodeURIComponent(to ? "" + to.toISOString() : "") + "&";
+        if (lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' cannot be null.");
+        else if (lineNum !== undefined)
+            url_ += "lineNum=" + encodeURIComponent("" + lineNum) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetShiftProduction(_response);
+        });
+    }
+    processGetShiftProduction(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(ShiftProductionRow.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Downtime minutes by cause code (SUM dt_instance_detail.duration/60 via dt_instance), optionally one line. Defaults to the last 365 days when unbounded.
+     * @param from (optional)
+     * @param to (optional)
+     * @param lineNum (optional)
+     * @return OK
+     */
+    getDowntimeByCause(from, to, lineNum) {
+        let url_ = this.baseUrl + "/api/reporting/downtime-by-cause?";
+        if (from === null)
+            throw new globalThis.Error("The parameter 'from' cannot be null.");
+        else if (from !== undefined)
+            url_ += "from=" + encodeURIComponent(from ? "" + from.toISOString() : "") + "&";
+        if (to === null)
+            throw new globalThis.Error("The parameter 'to' cannot be null.");
+        else if (to !== undefined)
+            url_ += "to=" + encodeURIComponent(to ? "" + to.toISOString() : "") + "&";
+        if (lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' cannot be null.");
+        else if (lineNum !== undefined)
+            url_ += "lineNum=" + encodeURIComponent("" + lineNum) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetDowntimeByCause(_response);
+        });
+    }
+    processGetDowntimeByCause(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(DowntimeByCauseRow.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Downtime events (optionally one line), with duration minutes. Defaults to the last 365 days when unbounded.
      * @param from (optional)
      * @param to (optional)
      * @param lineNum (optional)
@@ -6837,7 +8106,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Per-line on-time delivery (jobs finished on/before due date) over an optional window.
+     * Per-line on-time delivery (jobs finished on/before due date). Defaults to the last 365 days when unbounded.
      * @param from (optional)
      * @param to (optional)
      * @return OK
@@ -6898,7 +8167,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Per-customer shipment roll-up (total / shipped / open + last ship date).
+     * Per-customer shipment roll-up (total / shipped / open + last ship date). Defaults to the last 365 days when unbounded.
      * @param from (optional)
      * @param to (optional)
      * @return OK
@@ -7326,7 +8595,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Mechanical test results by test type: count + average YTS/UTS/elongation.
+     * Mechanical test results by test type: count + average YTS/UTS/elongation. Defaults to the last 365 days when unbounded.
      * @param from (optional)
      * @param to (optional)
      * @return OK
@@ -7474,6 +8743,159 @@ export class AbisClient {
                     result200 = null;
                 }
                 return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Production-order report (job traveler): per-job header + customer / order / order-line specs. Requires a scope filter (job, order, customer, or date).
+     * @param abJobNum (optional)
+     * @param orderAbcNum (optional)
+     * @param customerId (optional)
+     * @param from (optional)
+     * @param to (optional)
+     * @return OK
+     */
+    getProductionOrderReport(abJobNum, orderAbcNum, customerId, from, to) {
+        let url_ = this.baseUrl + "/api/reporting/production-order?";
+        if (abJobNum === null)
+            throw new globalThis.Error("The parameter 'abJobNum' cannot be null.");
+        else if (abJobNum !== undefined)
+            url_ += "abJobNum=" + encodeURIComponent("" + abJobNum) + "&";
+        if (orderAbcNum === null)
+            throw new globalThis.Error("The parameter 'orderAbcNum' cannot be null.");
+        else if (orderAbcNum !== undefined)
+            url_ += "orderAbcNum=" + encodeURIComponent("" + orderAbcNum) + "&";
+        if (customerId === null)
+            throw new globalThis.Error("The parameter 'customerId' cannot be null.");
+        else if (customerId !== undefined)
+            url_ += "customerId=" + encodeURIComponent("" + customerId) + "&";
+        if (from === null)
+            throw new globalThis.Error("The parameter 'from' cannot be null.");
+        else if (from !== undefined)
+            url_ += "from=" + encodeURIComponent(from ? "" + from.toISOString() : "") + "&";
+        if (to === null)
+            throw new globalThis.Error("The parameter 'to' cannot be null.");
+        else if (to !== undefined)
+            url_ += "to=" + encodeURIComponent(to ? "" + to.toISOString() : "") + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetProductionOrderReport(_response);
+        });
+    }
+    processGetProductionOrderReport(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(ProductionOrderReportRow.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * A customer's finished sheet-skid inventory (via job → order), with optional skid status filter. Requires customerId.
+     * @param customerId (optional)
+     * @param status (optional)
+     * @return OK
+     */
+    getCustomerSkidInventory(customerId, status) {
+        let url_ = this.baseUrl + "/api/reporting/customer-skid-inventory?";
+        if (customerId === null)
+            throw new globalThis.Error("The parameter 'customerId' cannot be null.");
+        else if (customerId !== undefined)
+            url_ += "customerId=" + encodeURIComponent("" + customerId) + "&";
+        if (status === null)
+            throw new globalThis.Error("The parameter 'status' cannot be null.");
+        else if (status !== undefined)
+            url_ += "status=" + encodeURIComponent("" + status) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetCustomerSkidInventory(_response);
+        });
+    }
+    processGetCustomerSkidInventory(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(CustomerSkidInventoryRow.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
             });
         }
         else if (status === 401) {
@@ -8127,7 +9549,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Create an application user (requires User Control).
+     * Create an application user (requires User Control; 409 on a duplicate login).
      * @return Created
      */
     createSecurityUser(body) {
@@ -8177,6 +9599,11 @@ export class AbisClient {
         else if (status === 403) {
             return response.text().then((_responseText) => {
                 return throwException("Forbidden", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -8694,6 +10121,14 @@ export class AbisClient {
                 return;
             });
         }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
         else if (status === 401) {
             return response.text().then((_responseText) => {
                 return throwException("Unauthorized", status, _responseText, _headers);
@@ -8751,6 +10186,14 @@ export class AbisClient {
         if (status === 204) {
             return response.text().then((_responseText) => {
                 return;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
             });
         }
         else if (status === 401) {
@@ -8963,7 +10406,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Create a production shift.
+     * Create a production shift (one per line + schedule type + day).
      * @return Created
      */
     createShift(body) {
@@ -9008,6 +10451,11 @@ export class AbisClient {
         else if (status === 401) {
             return response.text().then((_responseText) => {
                 return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -9774,7 +11222,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Create a finished sheet skid.
+     * Create a finished sheet skid (its job must belong to an order).
      * @return Created
      */
     createSheetSkid(body) {
@@ -10493,7 +11941,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Warehouse update of a sheet skid (location / ticket / status).
+     * Warehouse update of a sheet skid (location / ticket / status; 409 if the skid has shipped).
      * @return OK
      */
     updateSheetSkidWarehouse(sheetSkidNum, body) {
@@ -10546,6 +11994,11 @@ export class AbisClient {
         else if (status === 404) {
             return response.text().then((_responseText) => {
                 return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -11422,6 +12875,32 @@ export class Customer {
         return data;
     }
 }
+export class Customer861FlagWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.create861AtReceiving = _data["create861AtReceiving"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new Customer861FlagWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["create861AtReceiving"] = this.create861AtReceiving;
+        return data;
+    }
+}
 export class CustomerContact {
     constructor(data) {
         if (data) {
@@ -11561,6 +13040,40 @@ export class CustomerEdi {
     static fromJS(data) {
         data = typeof data === 'object' ? data : {};
         let result = new CustomerEdi();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["customerEdiName"] = this.customerEdiName;
+        data["customerId"] = this.customerId;
+        data["ediTypeId"] = this.ediTypeId;
+        data["ediVersion"] = this.ediVersion;
+        data["customerEdiDesc"] = this.customerEdiDesc;
+        return data;
+    }
+}
+export class CustomerEdiWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.customerEdiName = _data["customerEdiName"];
+            this.customerId = _data["customerId"];
+            this.ediTypeId = _data["ediTypeId"];
+            this.ediVersion = _data["ediVersion"];
+            this.customerEdiDesc = _data["customerEdiDesc"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CustomerEdiWrite();
         result.init(data);
         return result;
     }
@@ -11880,6 +13393,52 @@ export class CustomerSkidCountRow {
         return data;
     }
 }
+export class CustomerSkidInventoryRow {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.sheetSkidNum = _data["sheetSkidNum"];
+            this.abJobNum = _data["abJobNum"];
+            this.orderAbcNum = _data["orderAbcNum"];
+            this.customerShortName = _data["customerShortName"];
+            this.sheetSkidDisplayNum = _data["sheetSkidDisplayNum"];
+            this.sheetNetWt = _data["sheetNetWt"];
+            this.sheetTareWt = _data["sheetTareWt"];
+            this.skidPieces = _data["skidPieces"];
+            this.skidDate = _data["skidDate"] ? new Date(_data["skidDate"].toString()) : undefined;
+            this.skidLocation = _data["skidLocation"];
+            this.skidSheetStatus = _data["skidSheetStatus"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CustomerSkidInventoryRow();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["sheetSkidNum"] = this.sheetSkidNum;
+        data["abJobNum"] = this.abJobNum;
+        data["orderAbcNum"] = this.orderAbcNum;
+        data["customerShortName"] = this.customerShortName;
+        data["sheetSkidDisplayNum"] = this.sheetSkidDisplayNum;
+        data["sheetNetWt"] = this.sheetNetWt;
+        data["sheetTareWt"] = this.sheetTareWt;
+        data["skidPieces"] = this.skidPieces;
+        data["skidDate"] = this.skidDate ? this.skidDate.toISOString() : undefined;
+        data["skidLocation"] = this.skidLocation;
+        data["skidSheetStatus"] = this.skidSheetStatus;
+        return data;
+    }
+}
 export class CustomerType {
     constructor(data) {
         if (data) {
@@ -12187,6 +13746,36 @@ export class DimensionCheckWrite {
         data["inSpec"] = this.inSpec;
         data["checkedBy"] = this.checkedBy;
         data["note"] = this.note;
+        return data;
+    }
+}
+export class DowntimeByCauseRow {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.instanceItem = _data["instanceItem"];
+            this.occurrences = _data["occurrences"];
+            this.durationMinutes = _data["durationMinutes"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new DowntimeByCauseRow();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["instanceItem"] = this.instanceItem;
+        data["occurrences"] = this.occurrences;
+        data["durationMinutes"] = this.durationMinutes;
         return data;
     }
 }
@@ -12565,6 +14154,36 @@ export class EdiType {
     static fromJS(data) {
         data = typeof data === 'object' ? data : {};
         let result = new EdiType();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["ediTypeId"] = this.ediTypeId;
+        data["ediVersion"] = this.ediVersion;
+        data["ediTypeDescription"] = this.ediTypeDescription;
+        return data;
+    }
+}
+export class EdiTypeWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.ediTypeId = _data["ediTypeId"];
+            this.ediVersion = _data["ediVersion"];
+            this.ediTypeDescription = _data["ediTypeDescription"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new EdiTypeWrite();
         result.init(data);
         return result;
     }
@@ -14730,6 +16349,86 @@ export class PartialSkidPagedResult {
         return data;
     }
 }
+export class PieceWeightRequest {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.shapeType = _data["shapeType"];
+            this.gauge = _data["gauge"];
+            this.alloy = _data["alloy"];
+            this.density = _data["density"];
+            this.length = _data["length"];
+            this.width = _data["width"];
+            this.longLength = _data["longLength"];
+            this.shortLength = _data["shortLength"];
+            this.diameter = _data["diameter"];
+            this.maxSkidWt = _data["maxSkidWt"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new PieceWeightRequest();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["shapeType"] = this.shapeType;
+        data["gauge"] = this.gauge;
+        data["alloy"] = this.alloy;
+        data["density"] = this.density;
+        data["length"] = this.length;
+        data["width"] = this.width;
+        data["longLength"] = this.longLength;
+        data["shortLength"] = this.shortLength;
+        data["diameter"] = this.diameter;
+        data["maxSkidWt"] = this.maxSkidWt;
+        return data;
+    }
+}
+export class PieceWeightResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.shapeType = _data["shapeType"];
+            this.area = _data["area"];
+            this.gauge = _data["gauge"];
+            this.density = _data["density"];
+            this.pieceWeight = _data["pieceWeight"];
+            this.piecesPerSkid = _data["piecesPerSkid"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new PieceWeightResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["shapeType"] = this.shapeType;
+        data["area"] = this.area;
+        data["gauge"] = this.gauge;
+        data["density"] = this.density;
+        data["pieceWeight"] = this.pieceWeight;
+        data["piecesPerSkid"] = this.piecesPerSkid;
+        return data;
+    }
+}
 export class ProcessCoil {
     constructor(data) {
         if (data) {
@@ -14909,6 +16608,84 @@ export class ProductionLine {
         data["lineNum"] = this.lineNum;
         data["lineDesc"] = this.lineDesc;
         data["lineLocation"] = this.lineLocation;
+        return data;
+    }
+}
+export class ProductionOrderReportRow {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.abJobNum = _data["abJobNum"];
+            this.orderAbcNum = _data["orderAbcNum"];
+            this.orderItemNum = _data["orderItemNum"];
+            this.lineNum = _data["lineNum"];
+            this.jobStatus = _data["jobStatus"];
+            this.materialYield = _data["materialYield"];
+            this.numberOfMenUsed = _data["numberOfMenUsed"];
+            this.timeDateStarted = _data["timeDateStarted"] ? new Date(_data["timeDateStarted"].toString()) : undefined;
+            this.timeDateFinished = _data["timeDateFinished"] ? new Date(_data["timeDateFinished"].toString()) : undefined;
+            this.dueDate = _data["dueDate"] ? new Date(_data["dueDate"].toString()) : undefined;
+            this.sketchJobNote = _data["sketchJobNote"];
+            this.sketchName = _data["sketchName"];
+            this.customerShortName = _data["customerShortName"];
+            this.origCustomerPo = _data["origCustomerPo"];
+            this.enduserPo = _data["enduserPo"];
+            this.salesOrder = _data["salesOrder"];
+            this.scrapHandingType = _data["scrapHandingType"];
+            this.sheetHandlingType = _data["sheetHandlingType"];
+            this.enduserPartNum = _data["enduserPartNum"];
+            this.sheetType = _data["sheetType"];
+            this.alloy2 = _data["alloy2"];
+            this.temper = _data["temper"];
+            this.gauge = _data["gauge"];
+            this.quantity = _data["quantity"];
+            this.maxSkidWt = _data["maxSkidWt"];
+            this.theoreticalUnitWt = _data["theoreticalUnitWt"];
+            this.materialEndUse = _data["materialEndUse"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new ProductionOrderReportRow();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["abJobNum"] = this.abJobNum;
+        data["orderAbcNum"] = this.orderAbcNum;
+        data["orderItemNum"] = this.orderItemNum;
+        data["lineNum"] = this.lineNum;
+        data["jobStatus"] = this.jobStatus;
+        data["materialYield"] = this.materialYield;
+        data["numberOfMenUsed"] = this.numberOfMenUsed;
+        data["timeDateStarted"] = this.timeDateStarted ? this.timeDateStarted.toISOString() : undefined;
+        data["timeDateFinished"] = this.timeDateFinished ? this.timeDateFinished.toISOString() : undefined;
+        data["dueDate"] = this.dueDate ? this.dueDate.toISOString() : undefined;
+        data["sketchJobNote"] = this.sketchJobNote;
+        data["sketchName"] = this.sketchName;
+        data["customerShortName"] = this.customerShortName;
+        data["origCustomerPo"] = this.origCustomerPo;
+        data["enduserPo"] = this.enduserPo;
+        data["salesOrder"] = this.salesOrder;
+        data["scrapHandingType"] = this.scrapHandingType;
+        data["sheetHandlingType"] = this.sheetHandlingType;
+        data["enduserPartNum"] = this.enduserPartNum;
+        data["sheetType"] = this.sheetType;
+        data["alloy2"] = this.alloy2;
+        data["temper"] = this.temper;
+        data["gauge"] = this.gauge;
+        data["quantity"] = this.quantity;
+        data["maxSkidWt"] = this.maxSkidWt;
+        data["theoreticalUnitWt"] = this.theoreticalUnitWt;
+        data["materialEndUse"] = this.materialEndUse;
         return data;
     }
 }
@@ -15334,6 +17111,170 @@ export class RecoveryCustomer {
         data["allProducts"] = this.allProducts;
         data["autoOnly"] = this.autoOnly;
         data["commOnly"] = this.commOnly;
+        return data;
+    }
+}
+export class RecoveryJobCoil {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.abJobNum = _data["abJobNum"];
+            this.specialAttention = _data["specialAttention"];
+            this.specialHandling = _data["specialHandling"];
+            this.coilRejected = _data["coilRejected"];
+            this.coilRebanded = _data["coilRebanded"];
+            this.productTypeId = _data["productTypeId"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new RecoveryJobCoil();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["abJobNum"] = this.abJobNum;
+        data["specialAttention"] = this.specialAttention;
+        data["specialHandling"] = this.specialHandling;
+        data["coilRejected"] = this.coilRejected;
+        data["coilRebanded"] = this.coilRebanded;
+        data["productTypeId"] = this.productTypeId;
+        return data;
+    }
+}
+export class RecoveryJobCoilWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.specialAttention = _data["specialAttention"];
+            this.specialHandling = _data["specialHandling"];
+            this.coilRejected = _data["coilRejected"];
+            this.coilRebanded = _data["coilRebanded"];
+            this.productTypeId = _data["productTypeId"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new RecoveryJobCoilWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["specialAttention"] = this.specialAttention;
+        data["specialHandling"] = this.specialHandling;
+        data["coilRejected"] = this.coilRejected;
+        data["coilRebanded"] = this.coilRebanded;
+        data["productTypeId"] = this.productTypeId;
+        return data;
+    }
+}
+export class RecoveryReportRow {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.abJobNum = _data["abJobNum"];
+            this.coilOrgNum = _data["coilOrgNum"];
+            this.lotNum = _data["lotNum"];
+            this.alloy = _data["alloy"];
+            this.coilWt = _data["coilWt"];
+            this.shipWt = _data["shipWt"];
+            this.scrapWt = _data["scrapWt"];
+            this.rejectedWt = _data["rejectedWt"];
+            this.yield = _data["yield"];
+            this.coilRejected = _data["coilRejected"];
+            this.coilRebanded = _data["coilRebanded"];
+            this.specialAttention = _data["specialAttention"];
+            this.specialHandling = _data["specialHandling"];
+            this.productTypeId = _data["productTypeId"];
+            this.productType = _data["productType"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new RecoveryReportRow();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["abJobNum"] = this.abJobNum;
+        data["coilOrgNum"] = this.coilOrgNum;
+        data["lotNum"] = this.lotNum;
+        data["alloy"] = this.alloy;
+        data["coilWt"] = this.coilWt;
+        data["shipWt"] = this.shipWt;
+        data["scrapWt"] = this.scrapWt;
+        data["rejectedWt"] = this.rejectedWt;
+        data["yield"] = this.yield;
+        data["coilRejected"] = this.coilRejected;
+        data["coilRebanded"] = this.coilRebanded;
+        data["specialAttention"] = this.specialAttention;
+        data["specialHandling"] = this.specialHandling;
+        data["productTypeId"] = this.productTypeId;
+        data["productType"] = this.productType;
+        return data;
+    }
+}
+export class RecoveryScrapDefectRow {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.scrapTypeId = _data["scrapTypeId"];
+            this.scrapCode = _data["scrapCode"];
+            this.scrapDefect = _data["scrapDefect"];
+            this.netWt = _data["netWt"];
+            this.pieces = _data["pieces"];
+            this.pct = _data["pct"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new RecoveryScrapDefectRow();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["scrapTypeId"] = this.scrapTypeId;
+        data["scrapCode"] = this.scrapCode;
+        data["scrapDefect"] = this.scrapDefect;
+        data["netWt"] = this.netWt;
+        data["pieces"] = this.pieces;
+        data["pct"] = this.pct;
         return data;
     }
 }
@@ -15768,6 +17709,128 @@ export class ScanLogWrite {
         data["abJobNum"] = this.abJobNum;
         data["scanStation"] = this.scanStation;
         data["note"] = this.note;
+        return data;
+    }
+}
+export class ScheduledJob {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.scheduledJobId = _data["scheduledJobId"];
+            this.jobName = _data["jobName"];
+            this.jobDescription = _data["jobDescription"];
+            this.cronExpression = _data["cronExpression"];
+            this.targetOperation = _data["targetOperation"];
+            this.targetArgs = _data["targetArgs"];
+            this.enabled = _data["enabled"];
+            this.source = _data["source"];
+            this.createdUtc = _data["createdUtc"] ? new Date(_data["createdUtc"].toString()) : undefined;
+            this.updatedUtc = _data["updatedUtc"] ? new Date(_data["updatedUtc"].toString()) : undefined;
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new ScheduledJob();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["scheduledJobId"] = this.scheduledJobId;
+        data["jobName"] = this.jobName;
+        data["jobDescription"] = this.jobDescription;
+        data["cronExpression"] = this.cronExpression;
+        data["targetOperation"] = this.targetOperation;
+        data["targetArgs"] = this.targetArgs;
+        data["enabled"] = this.enabled;
+        data["source"] = this.source;
+        data["createdUtc"] = this.createdUtc ? this.createdUtc.toISOString() : undefined;
+        data["updatedUtc"] = this.updatedUtc ? this.updatedUtc.toISOString() : undefined;
+        return data;
+    }
+}
+export class ScheduledJobRun {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.jobRunId = _data["jobRunId"];
+            this.scheduledJobId = _data["scheduledJobId"];
+            this.startedUtc = _data["startedUtc"] ? new Date(_data["startedUtc"].toString()) : undefined;
+            this.finishedUtc = _data["finishedUtc"] ? new Date(_data["finishedUtc"].toString()) : undefined;
+            this.runStatus = _data["runStatus"];
+            this.affectedCount = _data["affectedCount"];
+            this.errorText = _data["errorText"];
+            this.correlationId = _data["correlationId"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new ScheduledJobRun();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["jobRunId"] = this.jobRunId;
+        data["scheduledJobId"] = this.scheduledJobId;
+        data["startedUtc"] = this.startedUtc ? this.startedUtc.toISOString() : undefined;
+        data["finishedUtc"] = this.finishedUtc ? this.finishedUtc.toISOString() : undefined;
+        data["runStatus"] = this.runStatus;
+        data["affectedCount"] = this.affectedCount;
+        data["errorText"] = this.errorText;
+        data["correlationId"] = this.correlationId;
+        return data;
+    }
+}
+export class ScheduledJobWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.jobName = _data["jobName"];
+            this.jobDescription = _data["jobDescription"];
+            this.cronExpression = _data["cronExpression"];
+            this.targetOperation = _data["targetOperation"];
+            this.targetArgs = _data["targetArgs"];
+            this.enabled = _data["enabled"];
+            this.source = _data["source"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new ScheduledJobWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["jobName"] = this.jobName;
+        data["jobDescription"] = this.jobDescription;
+        data["cronExpression"] = this.cronExpression;
+        data["targetOperation"] = this.targetOperation;
+        data["targetArgs"] = this.targetArgs;
+        data["enabled"] = this.enabled;
+        data["source"] = this.source;
         return data;
     }
 }
@@ -16570,6 +18633,42 @@ export class ShiftPagedResult {
         data["pageSize"] = this.pageSize;
         data["totalCount"] = this.totalCount;
         data["totalPages"] = this.totalPages;
+        return data;
+    }
+}
+export class ShiftProductionRow {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.lineNum = _data["lineNum"];
+            this.lineDesc = _data["lineDesc"];
+            this.day = _data["day"];
+            this.shiftCount = _data["shiftCount"];
+            this.coilCount = _data["coilCount"];
+            this.processedWt = _data["processedWt"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new ShiftProductionRow();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["lineNum"] = this.lineNum;
+        data["lineDesc"] = this.lineDesc;
+        data["day"] = this.day;
+        data["shiftCount"] = this.shiftCount;
+        data["coilCount"] = this.coilCount;
+        data["processedWt"] = this.processedWt;
         return data;
     }
 }
