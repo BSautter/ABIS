@@ -21,6 +21,12 @@ public sealed class JwtAuthOptions
     public string? SigningKey { get; set; }             // symmetric key (alternative to Authority)
     public bool RequireHttpsMetadata { get; set; } = true;
 
+    /// <summary>When true, a user with no password set in the ABIS credential store cannot sign in
+    /// (POST /auth/login → 401). Default false = transitional: users without a credential still sign
+    /// in passwordless (identity on the LAN) so passwords can be rolled out user-by-user; flip to
+    /// true once every active user has been enrolled. Bound from <c>Auth:Jwt:RequirePassword</c>.</summary>
+    public bool RequirePassword { get; set; }
+
     public bool Enabled => !string.IsNullOrWhiteSpace(Authority) || !string.IsNullOrWhiteSpace(SigningKey);
 }
 

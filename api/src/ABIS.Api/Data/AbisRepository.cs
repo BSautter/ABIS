@@ -2278,6 +2278,37 @@ public sealed class AbisRepository : IAbisRepository
             """, new { login }, cancellationToken: ct));
     }
 
+    public async Task<UserCredential?> GetUserCredentialAsync(string login, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.QueryFirstOrDefaultAsync<UserCredential>(new CommandDefinition(
+            """
+            SELECT login_id AS LoginId, password_hash AS PasswordHash, must_change AS MustChange
+            FROM abis_user_credential WHERE LOWER(login_id) = LOWER(:login)
+            """, new { login }, cancellationToken: ct));
+    }
+
+    // Upsert one credential per login (case-insensitive). UPDATE-then-INSERT is portable across
+    // Oracle + SQLite and safe for this low-write admin table (no MERGE/ON CONFLICT dialect split).
+    public async Task SetUserCredentialAsync(string login, string passwordHash, bool mustChange, string? updatedBy, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var now = DateTime.UtcNow;
+        var mc = mustChange ? 1 : 0;
+        var updated = await conn.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE abis_user_credential
+               SET password_hash = :hash, must_change = :mc, updated_utc = :now, updated_by = :by
+             WHERE LOWER(login_id) = LOWER(:login)
+            """, new { hash = passwordHash, mc, now, by = updatedBy, login }, cancellationToken: ct));
+        if (updated == 0)
+            await conn.ExecuteAsync(new CommandDefinition(
+                """
+                INSERT INTO abis_user_credential (login_id, password_hash, must_change, updated_utc, updated_by)
+                VALUES (:login, :hash, :mc, :now, :by)
+                """, new { login, hash = passwordHash, mc, now, by = updatedBy }, cancellationToken: ct));
+    }
+
     // The caller's effective privilege on a feature, resolved by login (case-insensitive):
     // MAX over direct + group grants. null = no such user, feature, or grant. Mirrors the
     // legacy f_security_door and is the server-side enforcement primitive.

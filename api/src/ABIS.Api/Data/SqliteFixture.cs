@@ -94,6 +94,7 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS quality_coil_eval_scrap;
             DROP TABLE IF EXISTS abis_job_run;
             DROP TABLE IF EXISTS abis_scheduled_job;
+            DROP TABLE IF EXISTS abis_user_credential;
             DROP TABLE IF EXISTS sheet_skid_detail;
             DROP TABLE IF EXISTS recovery_scrap_worksheet;
             DROP TABLE IF EXISTS quality_scrap_worksheet;
@@ -485,6 +486,14 @@ public static class SqliteFixture
                 job_run_id INTEGER PRIMARY KEY, scheduled_job_id INTEGER NOT NULL,
                 started_utc TEXT, finished_utc TEXT, run_status TEXT, affected_count INTEGER,
                 error_text TEXT, correlation_id TEXT);
+
+            -- ABIS-owned password credentials (fresh store; the legacy ERP had none — it used Oracle
+            -- DB accounts). One PBKDF2 hash per security_user login; must_change forces first-login
+            -- reset. On Oracle these are created by docs/data-model/migrations/002_user_credential.sql.
+            CREATE TABLE abis_user_credential (
+                login_id TEXT PRIMARY KEY, password_hash TEXT NOT NULL,
+                must_change INTEGER NOT NULL DEFAULT 1, updated_utc TEXT, updated_by TEXT);
+            CREATE UNIQUE INDEX ux_abis_user_cred_login ON abis_user_credential (login_id COLLATE NOCASE);
 
             -- Security / authorization (legacy security.pbl). Application-level
             -- authorization only — OIDC handles authentication. Effective privilege on a

@@ -738,10 +738,33 @@ public sealed class Customer861FlagWrite
 }
 
 /// <summary>Body for POST /auth/login — an ABIS user sign-in validated against
-/// <c>security_user</c>. Passwordless on the LAN for now (identity + grants, not a secret);
-/// a password/OIDC layer comes later.</summary>
+/// <c>security_user</c>. <see cref="Password"/> is verified against the ABIS credential store
+/// (<c>abis_user_credential</c>) when the user has one; users with no credential still sign in
+/// passwordless (identity on the LAN) until enrolled, unless <c>Auth:Jwt:RequirePassword</c> is on.</summary>
 public sealed class LoginRequest
 {
     /// <summary>The user's ABIS login id (<c>security_user.login_id</c>).</summary>
     public string? Login { get; set; }
+
+    /// <summary>The user's password. Required only if the user has a credential set (else optional
+    /// during the passwordless-transition rollout).</summary>
+    public string? Password { get; set; }
+}
+
+/// <summary>Body for POST /auth/change-password — the signed-in user rotates their own password.</summary>
+public sealed class ChangePasswordRequest
+{
+    /// <summary>The current password (verified before the change). May be the admin-set initial.</summary>
+    public string? CurrentPassword { get; set; }
+
+    /// <summary>The new password (min length enforced server-side).</summary>
+    public string? NewPassword { get; set; }
+}
+
+/// <summary>Body for POST /api/security/users/{userId}/password — an administrator sets or resets a
+/// user's initial password (stored hashed; the user is forced to change it on next sign-in).</summary>
+public sealed class SetPasswordRequest
+{
+    /// <summary>The initial/reset password to set for the target user.</summary>
+    public string? Password { get; set; }
 }

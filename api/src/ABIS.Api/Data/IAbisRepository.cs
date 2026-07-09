@@ -109,6 +109,10 @@ public interface IAbisRepository
     Task<SecurityUser?> GetSecurityUserByLoginAsync(string login, CancellationToken ct);
     Task<int?> GetEffectivePrivilegeAsync(string login, string applicationName, CancellationToken ct);
 
+    // Password credentials (ABIS-owned abis_user_credential; keyed by login_id, case-insensitive).
+    Task<UserCredential?> GetUserCredentialAsync(string login, CancellationToken ct);
+    Task SetUserCredentialAsync(string login, string passwordHash, bool mustChange, string? updatedBy, CancellationToken ct);
+
     Task<IReadOnlyList<ScrapType>> GetScrapTypesAsync(CancellationToken ct);
     Task<IReadOnlyList<ProductType>> GetProductTypesAsync(CancellationToken ct);
     Task<IReadOnlyList<RecoveryCustomer>> GetRecoveryCustomersAsync(CancellationToken ct);

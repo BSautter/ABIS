@@ -116,15 +116,60 @@ public static class ApiEndpoints
                 if (user.UserStatus == 0)
                     return Results.Problem(statusCode: StatusCodes.Status403Forbidden, title: "Inactive user",
                         detail: "This ABIS account is not active.");
+
+                // Password check against the ABIS credential store. A user WITH a credential must
+                // supply a matching password; a user WITHOUT one signs in passwordless during the
+                // rollout (unless Auth:Jwt:RequirePassword forces enrollment). A wrong/missing
+                // password on an enrolled user returns a generic 401.
+                var cred = await repo.GetUserCredentialAsync(user.LoginId ?? login, ct);
+                var mustChangePassword = false;
+                if (cred is not null)
+                {
+                    if (!PasswordHashing.Verify(body.Password ?? string.Empty, cred.PasswordHash))
+                        return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "Invalid credentials",
+                            detail: "The username or password is incorrect.");
+                    mustChangePassword = cred.MustChange != 0;
+                }
+                else if (jwt.RequirePassword)
+                {
+                    return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "Password not set",
+                        detail: "No password is set for this account. Ask an administrator to set your initial password.");
+                }
+
                 var name = $"{user.UserFirstName} {user.UserLastName}".Trim();
                 var token = IssueUserToken(jwt, user.LoginId ?? login, string.IsNullOrWhiteSpace(name) ? login : name, user.UserId);
-                return Results.Ok(new { token, login = user.LoginId ?? login, name, expiresInSeconds = 8 * 3600 });
+                return Results.Ok(new { token, login = user.LoginId ?? login, name, expiresInSeconds = 8 * 3600,
+                    mustChangePassword, passwordSet = cred is not null });
             })
            .WithTags("Meta").WithName("Login").AllowAnonymous()
-           .WithSummary("Sign in with an ABIS user login (validated against security_user); returns a bearer token that drives RBAC. Passwordless on the LAN until OIDC.")
+           .WithSummary("Sign in with an ABIS user login + optional password (verified against the credential store); returns a bearer token that drives RBAC.")
            .Produces(StatusCodes.Status200OK).ProducesValidationProblem()
            .Produces(StatusCodes.Status401Unauthorized).Produces(StatusCodes.Status403Forbidden)
            .Produces(StatusCodes.Status501NotImplemented);
+
+        // The signed-in user rotates their OWN password (also used to satisfy a must-change on first
+        // sign-in). Requires a user bearer token — a machine API-key caller has no user and is
+        // rejected. Verifies the current password when one is set, then stores the new PBKDF2 hash.
+        app.MapPost("/auth/change-password", async (ChangePasswordRequest body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var login = ResolveLogin(ctx);
+                if (string.IsNullOrWhiteSpace(login))
+                    return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "No user context",
+                        detail: "Sign in as a user to change a password.");
+                var newPw = body.NewPassword ?? string.Empty;
+                if (newPw.Length is < 8 or > 100)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["newPassword"] = ["Password must be 8–100 characters."] });
+                var cred = await repo.GetUserCredentialAsync(login, ct);
+                if (cred is not null && !PasswordHashing.Verify(body.CurrentPassword ?? string.Empty, cred.PasswordHash))
+                    return Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Wrong current password",
+                        detail: "The current password is incorrect.");
+                await repo.SetUserCredentialAsync(login, PasswordHashing.Hash(newPw), mustChange: false, updatedBy: login, ct);
+                return Results.Ok(new { changed = true });
+            })
+           .WithTags("Meta").WithName("ChangePassword").RequireAuthorization()
+           .WithSummary("Change the signed-in user's own ABIS password (sets it if none exists yet).")
+           .Produces(StatusCodes.Status200OK).ProducesValidationProblem()
+           .Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status401Unauthorized);
 
         // All /api endpoints require an authenticated caller (see ApiKey auth).
         // /health and Swagger remain anonymous. The 401 is declared once for the
@@ -1984,6 +2029,24 @@ public static class ApiEndpoints
             })
            .WithName("CreateSecurityUser").WithTags("Security")
            .WithSummary("Create an application user (requires User Control; 409 on a duplicate login).").Produces<SecurityUser>(StatusCodes.Status201Created).ProducesValidationProblem().Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status403Forbidden);
+
+        // An administrator sets/resets a user's initial password (stored as a PBKDF2 hash in the
+        // ABIS credential store; must_change=1 forces the user to change it on next sign-in).
+        // Gated by "User Control" like the other security-admin writes.
+        api.MapPost("/security/users/{userId:long}/password", async (long userId, SetPasswordRequest body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny) return deny;
+                var pw = body.Password ?? string.Empty;
+                if (pw.Length is < 8 or > 100)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["password"] = ["Password must be 8–100 characters."] });
+                var user = await repo.GetSecurityUserAsync(userId, ct);
+                if (user is null || string.IsNullOrWhiteSpace(user.LoginId)) return Results.NotFound();
+                await repo.SetUserCredentialAsync(user.LoginId, PasswordHashing.Hash(pw), mustChange: true, updatedBy: ResolveLogin(ctx), ct);
+                return Results.NoContent();
+            })
+           .WithName("SetUserPassword").WithTags("Security")
+           .WithSummary("Set/reset a user's initial password (requires User Control; the user must change it on next sign-in).")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status403Forbidden).ProducesValidationProblem();
 
         api.MapPost("/security/groups", async (SecurityGroupWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
                 await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny ? deny

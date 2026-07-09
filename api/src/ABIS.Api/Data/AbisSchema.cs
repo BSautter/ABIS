@@ -53,7 +53,21 @@ public static class AbisSchema
           CONSTRAINT fk_abis_job_run_job FOREIGN KEY (scheduled_job_id)
             REFERENCES abis_scheduled_job (scheduled_job_id))
         """,
-        "CREATE INDEX ix_abis_job_run_job ON abis_job_run (scheduled_job_id)"
+        "CREATE INDEX ix_abis_job_run_job ON abis_job_run (scheduled_job_id)",
+        // ABIS-owned password credentials (docs/data-model/migrations/002_user_credential.sql).
+        // The legacy ERP had NO app password (it authenticated via Oracle DB accounts), so the modern
+        // username/password login gets a fresh, ABIS-owned store: one PBKDF2 hash per security_user
+        // login. must_change=1 forces a change on first sign-in after an admin sets an initial password.
+        """
+        CREATE TABLE abis_user_credential (
+          login_id       VARCHAR2(64)   NOT NULL,
+          password_hash  VARCHAR2(200)  NOT NULL,
+          must_change    NUMBER(1)      DEFAULT 1 NOT NULL,
+          updated_utc    DATE,
+          updated_by     VARCHAR2(64),
+          CONSTRAINT pk_abis_user_credential PRIMARY KEY (login_id))
+        """,
+        "CREATE UNIQUE INDEX ux_abis_user_cred_login ON abis_user_credential (UPPER(login_id))"
     ];
 
     public static async Task EnsureOwnedTablesAsync(IDbConnectionFactory factory, ILogger logger, CancellationToken ct = default)

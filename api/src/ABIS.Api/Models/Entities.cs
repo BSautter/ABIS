@@ -1076,6 +1076,17 @@ public sealed class SecurityUser
     public string? UserNotes { get; set; }
 }
 
+/// <summary>A user's password credential (ABIS-owned table <c>abis_user_credential</c>, keyed by
+/// <c>login_id</c>). <c>PasswordHash</c> is a self-describing PBKDF2 string (never the plaintext);
+/// <c>MustChange</c> = 1 forces a password change on next sign-in. No password lives on
+/// <see cref="SecurityUser"/> — the legacy ERP had none (it used Oracle DB accounts).</summary>
+public sealed class UserCredential
+{
+    public string LoginId { get; set; } = "";
+    public string PasswordHash { get; set; } = "";
+    public int MustChange { get; set; }
+}
+
 /// <summary>A security group / role (table <c>security_group</c>).</summary>
 public sealed class SecurityGroup
 {
