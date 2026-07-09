@@ -67,8 +67,14 @@ COM port. The web screens (or the API) consume readings over HTTP on the LAN.
   - `GET /reading` → the latest `WeightReading` (`503` until one arrives)
   - `GET /tags` → the latest value of each configured OPC tag
   - `GET /tags/{name}` → one tag's latest value (`404` until polled)
+  - `GET /run-state` → the line run-state interpreted from the configured run-state
+    tag: `{ configured, tag, value, quality, running, at }` where `running` is
+    `true` (running) / `false` (stopped) / `null` (not configured, no value yet, or
+    a bad-quality read). The DAS console polls this to auto-open downtime.
   - `GET /opc/browse?node=<id>` → browse the UA address space for discovery
     (`501` on the mock provider)
+  - Read-only endpoints send permissive **CORS** headers so the ABIS DAS console
+    (a different origin) can poll `/reading` + `/run-state` from the browser.
 - **Resilience** — background pumps reconnect with backoff if a device drops.
 
 ## Configuration (`Edge:Scale:*`, env or appsettings)
@@ -82,6 +88,8 @@ COM port. The web screens (or the API) consume readings over HTTP on the LAN.
 | `Edge:Opc:Provider` | `Mock` (default) / `OpcUa` | which tag source |
 | `Edge:Opc:Endpoint` | e.g. `opc.tcp://192.168.10.170:4840` | required for `OpcUa` (the wrapper) |
 | `Edge:Opc:Tags` | array of node ids | the PLC tags to poll (use `/opc/browse` to find them) |
+| `Edge:Opc:RunStateTag` | a node id, e.g. `ns=2;s=Line1.Running` | the tag whose value = the line run-state (drives PLC auto-downtime). Auto-added to the polled set. |
+| `Edge:Opc:RunningValues` | array, default `RUNNING,RUN,ON,START,STARTED,1,TRUE` | the raw values (case-insensitive) that count as "running"; anything else = stopped |
 | `Edge:Opc:UseSecurity` | `false` (default) / `true` | `false` = start unencrypted on the trusted LAN; `true` selects a signed/encrypted endpoint |
 | `Edge:Opc:AcceptUntrusted` | `true` (default) | auto-accept the server cert (LAN/bring-up); set `false` once certs are exchanged |
 | `Edge:Opc:Username` / `Password` | optional | for a wrapper that requires user auth (default: anonymous) |
@@ -159,3 +167,35 @@ the PLCs + existing DA clients are **untouched** (additive).
    with `?node=<id>`), and put the ones you want in `Edge__Opc__Tags`.
 7. Tighten security: set `Edge__Opc__UseSecurity=true` + `Edge__Opc__AcceptUntrusted=false`
    once the edge client cert is trusted by the wrapper (and vice-versa).
+
+## PLC auto-downtime (DAS console) {#plc-auto-downtime}
+
+The DAS operator console turns the PLC line run-state into an **auto-opened downtime
+instance** — the operator only assigns the reason, matching the legacy "downtime
+triggers off PLC running" behaviour.
+
+**Flow:** the console polls the edge `GET /run-state` (every 3 s, using the same edge
+URL as the scale). On a **running → stopped** transition it POSTs a new downtime
+instance for the loaded job/line and shows a red **"⛔ LINE DOWN"** banner with a live
+timer + a reason dropdown. On **stopped → running** it freezes the duration and prompts
+for a reason; picking one posts the `dt_cause` segment (reason + measured seconds) and
+clears the banner. It **never acts on an unknown (`null`) reading** — a bad/missing read
+neither opens nor closes downtime, so OPC hiccups can't fabricate downtime.
+
+**Site setup (what's still needed to go live):**
+
+8. **Identify the run-state tag.** Find the PLC signal that means "line running" — a
+   machine-run boolean, a `Status` word, or `spindle speed > 0`. Use `/opc/browse` to
+   get its node id. Set `Edge__Opc__RunStateTag=<node id>`.
+9. **Set the "running" values** if the tag isn't a standard boolean/`RUNNING` — e.g. a
+   status word that reads `AUTO` when running: `Edge__Opc__RunningValues__0=AUTO`.
+   (A numeric "1 = running" or a `True`/`RUNNING` string already works by default.)
+10. **Verify:** `curl http://localhost:<edgeport>/run-state` should flip
+    `running` true/false as the line starts/stops. Then, in the DAS console, set the
+    **edge URL** — the PLC indicator in the scale bar shows 🟢 running / 🔴 stopped and
+    the banner opens on a stop.
+
+> Until `RunStateTag` is set (or on the Mock provider), `/run-state` returns
+> `configured:false` and the DAS console just shows "PLC: run-state not configured" —
+> everything else (manual downtime, weigh, tags) is unaffected. The `MockTagSource`
+> simulates a `…Status` tag (RUNNING, DOWN every 10th read) for testing without hardware.

@@ -33,6 +33,16 @@ let runCoil: number | null = null;   // the coil the operator is currently runni
 let lastSkid: number | null = null;  // most recently saved sheet skid (the tag the print button prints)
 let lastScrap: number | null = null; // most recently saved scrap skid
 
+// PLC auto-downtime (edge /run-state). When the line stops we auto-open a downtime instance and the
+// operator assigns the reason; when it resumes the duration is finalized against the chosen reason.
+let causeOpts = '<option value="">— reason —</option>';   // cached cause list for both the tab + banner
+let lineRunning: boolean | null = null;   // last observed run-state
+let dtInstance: number | null = null;     // the open auto-downtime instance (null = line up / nothing pending)
+let dtStart: Date | null = null;          // when the line went down
+let dtEnded: Date | null = null;          // when it resumed (duration frozen, awaiting a reason)
+let runPollTimer: number | null = null;   // /run-state poll interval
+let dtTickTimer: number | null = null;    // 1s banner-timer tick
+
 function scaffold(): string {
   const tab = (id: string, label: string) => `<button id="tab-${id}" type="button">${label}</button>`;
   return `
@@ -58,7 +68,9 @@ function scaffold(): string {
           <input id="edgeUrl" placeholder="http://edge-host:8090 (optional)" style="width:230px" />
           <button class="btn sm ghost" id="btnPull" type="button" style="color:#fff;border-color:var(--rail-line)">Pull weight →</button>
           <span class="dop-note" style="color:var(--rail-ink-2)">fills the skid net weight</span>
+          <span id="runInd" class="dop-note" style="color:var(--rail-ink-2);margin-left:auto" title="Line run-state from the edge PLC feed">PLC: —</span>
         </div>
+        <div id="dtBanner" style="display:none;background:#7f1d1d;color:#fff;border-radius:10px;padding:14px 18px;margin-bottom:12px"></div>
 
         <div class="card"><header><h2>Coil being run</h2><span class="sub" id="runCoilSub">tap a coil to select</span></header>
           <div class="body"><div class="dop-coils" id="tCoils"><span class="muted">Loading…</span></div></div>
@@ -134,6 +146,7 @@ async function loadJob(): Promise<void> {
     $('#workarea').classList.remove('disabled');
     await Promise.all([loadCoils(), loadSkids(), loadScrap()]);
     $('#tDt').innerHTML = '<tr><td colspan="4" class="muted">No downtime logged this session.</td></tr>';
+    clearAutoDowntime(); lineRunning = null; startRunStatePoll();   // watch this job's line for PLC stops
   } catch (e) { setErr(`Load job failed: ${(e as Error).message}`); }
   finally { setBusy(false); }
 }
@@ -267,9 +280,121 @@ async function saveScrap(): Promise<void> {
 async function loadCauses(): Promise<void> {
   try {
     const causes = await client().listDowntimeCauses();
-    $('#dtCause').innerHTML = '<option value="">— reason —</option>' +
+    causeOpts = '<option value="">— reason —</option>' +
       (causes ?? []).map((c) => `<option value="${esc(c.id)}">${esc(c.causeName)}</option>`).join('');
+    $('#dtCause').innerHTML = causeOpts;
   } catch { /* the dropdown just stays with the placeholder */ }
+}
+
+// ---- PLC auto-downtime (edge /run-state → auto-open a downtime instance) ----
+
+const setRunInd = (m: string) => { $('#runInd').textContent = `PLC: ${m}`; };
+const fmtDur = (ms: number): string => {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+};
+
+// Poll the edge line run-state while a job is loaded and an edge URL is set. Stop→open downtime,
+// resume→finalize. Never acts on an unknown (null) reading — only on a real running↔stopped flip.
+function startRunStatePoll(): void {
+  stopRunStatePoll();
+  const edge = v('#edgeUrl');
+  if (!edge || job == null) { setRunInd('—'); return; }
+  const base = edge.replace(/\/$/, '');
+  runPollTimer = window.setInterval(() => void pollRunState(base), 3000);
+  void pollRunState(base);
+}
+function stopRunStatePoll(): void {
+  if (runPollTimer != null) { clearInterval(runPollTimer); runPollTimer = null; }
+}
+
+async function pollRunState(base: string): Promise<void> {
+  let s: { configured?: boolean; running?: boolean | null };
+  try {
+    const r = await fetch(`${base}/run-state`, { cache: 'no-store' });
+    if (!r.ok) { setRunInd('edge error'); return; }
+    s = await r.json();
+  } catch { setRunInd('edge unreachable'); return; }
+  if (!s.configured) { setRunInd('run-state not configured'); return; }
+  if (s.running == null) { setRunInd('unknown'); return; }
+  void onRunState(s.running);
+}
+
+async function onRunState(running: boolean): Promise<void> {
+  const prev = lineRunning;
+  lineRunning = running;
+  setRunInd(running ? '🟢 running' : '🔴 stopped');
+  if (prev === running) { if (dtInstance != null) renderDtBanner(); return; }
+  if (!running && dtInstance == null) {
+    await openAutoDowntime();                 // running/unknown → stopped
+  } else if (running && dtInstance != null && dtEnded == null) {
+    dtEnded = new Date();                      // stopped → running: freeze duration, await a reason
+    renderDtBanner();
+    if (v('#dtbCause')) await logAutoDowntime();   // auto-log if the operator pre-picked a reason
+  }
+}
+
+async function openAutoDowntime(): Promise<void> {
+  if (job == null) return;
+  try {
+    const inst = await client().createDowntimeInstance(new DowntimeInstanceWrite({
+      abJobNum: job, lineNum: lineNum ?? undefined, startingTime: new Date(), note: 'PLC auto-detected line stop',
+    }));
+    dtInstance = inst.instanceNum ?? null; dtStart = new Date(); dtEnded = null;
+    renderDtBanner();
+    if (dtTickTimer == null) dtTickTimer = window.setInterval(renderDtBanner, 1000);
+  } catch (e) { setErr(`Auto-downtime open failed: ${(e as Error).message}`); }
+}
+
+function renderDtBanner(): void {
+  const b = $('#dtBanner');
+  if (dtInstance == null || dtStart == null) { b.style.display = 'none'; b.innerHTML = ''; return; }
+  const dur = (dtEnded ?? new Date()).getTime() - dtStart.getTime();
+  const head = dtEnded
+    ? `▶ Line resumed — was down <b>${fmtDur(dur)}</b>. Pick a reason to log it.`
+    : `⛔ LINE DOWN <b>${fmtDur(dur)}</b> — auto-downtime #${dtInstance} open. Reason?`;
+  // Preserve a reason already chosen across re-renders (the 1s tick re-renders the banner).
+  const chosen = document.querySelector<HTMLSelectElement>('#dtbCause')?.value ?? '';
+  const note = document.querySelector<HTMLInputElement>('#dtbNote')?.value ?? '';
+  b.style.display = '';
+  b.innerHTML = `
+    <div style="font-size:16px;margin-bottom:8px">${head}</div>
+    <div class="frow" style="align-items:center">
+      <select id="dtbCause" class="big" style="min-width:180px">${causeOpts}</select>
+      <input id="dtbNote" class="big" maxlength="255" placeholder="note (optional)" style="min-width:180px" value="${esc(note)}" />
+      <button class="btn" id="dtbLog" type="button">Log reason</button>
+    </div>`;
+  const sel = $<HTMLSelectElement>('#dtbCause'); if (chosen) sel.value = chosen;
+  $('#dtbLog').addEventListener('click', () => void logAutoDowntime());
+}
+
+// Finalize the open auto-downtime: post the reason segment with the measured duration, then clear.
+async function logAutoDowntime(): Promise<void> {
+  if (dtInstance == null || dtStart == null) return;
+  const causeId = v('#dtbCause');
+  if (!causeId) { setErr('Pick a downtime reason to log the stop.'); return; }
+  const end = dtEnded ?? new Date();
+  const secs = Math.max(1, Math.round((end.getTime() - dtStart.getTime()) / 1000));
+  try {
+    const r = await authFetch(`/api/downtime/${dtInstance}/segments`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ causeId: Number(causeId), durationSeconds: secs, note: v('#dtbNote') || 'PLC auto-detected' }),
+    });
+    if (!r.ok) { setErr(`Log auto-downtime failed (${r.status}).`); return; }
+    const seg = await r.json() as { causeName?: string };
+    const reason = seg.causeName || $<HTMLSelectElement>('#dtbCause').selectedOptions[0]?.textContent || causeId;
+    const first = $('#tDt').querySelector('.muted'); if (first) $('#tDt').innerHTML = '';
+    $('#tDt').insertAdjacentHTML('afterbegin',
+      `<tr><td class="mono">${esc(new Date().toLocaleTimeString())}</td><td>${esc(reason)} <span class="chip info">PLC</span></td><td class="num">${esc((secs / 60).toFixed(1))}</td><td>${esc(v('#dtbNote'))}</td></tr>`);
+    setOk(`✓ Logged auto-downtime #${dtInstance} (${fmtDur(secs * 1000)}).`);
+    clearAutoDowntime();
+  } catch (e) { setErr(`Log auto-downtime failed: ${(e as Error).message}`); }
+}
+
+function clearAutoDowntime(): void {
+  dtInstance = null; dtStart = null; dtEnded = null;
+  if (dtTickTimer != null) { clearInterval(dtTickTimer); dtTickTimer = null; }
+  renderDtBanner();
 }
 
 // Log downtime = create the instance, then add a dt_cause segment (reason + duration).
@@ -313,6 +438,7 @@ function showTab(name: string): void {
   $<HTMLFormElement>('#jobForm').addEventListener('submit', (e) => { e.preventDefault(); void loadJob(); });
   ['skids', 'scrap', 'downtime'].forEach((t) => $(`#tab-${t}`).addEventListener('click', () => showTab(t)));
   $('#btnPull').addEventListener('click', () => void pullWeight());
+  $('#edgeUrl').addEventListener('change', () => startRunStatePoll());   // (re)start PLC run-state watch
   $('#btnSkid').addEventListener('click', () => void saveSkid());
   $('#btnTag').addEventListener('click', () => void printTag());
   $('#btnScrap').addEventListener('click', () => void saveScrap());

@@ -33,6 +33,13 @@ var opcCfg = builder.Configuration.GetSection("Edge:Opc");
 var opcProvider = opcCfg.GetValue("Provider", "Mock")!;
 var opcTags = opcCfg.GetSection("Tags").Get<string[]>() ?? Array.Empty<string>();
 
+// Line run-state: one tag whose value means running/stopped (drives the DAS PLC auto-downtime).
+// Ensure it's in the polled set so /run-state has a fresh value even if it wasn't listed in Tags.
+var runStateTag = opcCfg.GetValue<string?>("RunStateTag", null);
+var runningValues = opcCfg.GetSection("RunningValues").Get<string[]>() ?? RunStateConfig.DefaultRunningValues;
+if (!string.IsNullOrWhiteSpace(runStateTag) && !opcTags.Contains(runStateTag))
+    opcTags = opcTags.Append(runStateTag).ToArray();
+
 builder.Services.AddSingleton<ITagSource>(sp => opcProvider.ToLowerInvariant() switch
 {
     "opcua" => new OpcUaTagSource(
@@ -48,10 +55,17 @@ builder.Services.AddSingleton<ITagSource>(sp => opcProvider.ToLowerInvariant() s
     _ => new MockTagSource(),
 });
 builder.Services.AddSingleton(new TagSet(opcTags));
+builder.Services.AddSingleton(new RunStateConfig(runStateTag, runningValues));
 builder.Services.AddSingleton<LatestTags>();
 builder.Services.AddHostedService<TagPump>();
 
+// The ABIS DAS console (a different origin) polls /reading + /run-state from the browser, so the
+// edge's read-only device endpoints must allow cross-origin GETs. This service exposes only
+// read-only hardware values on a trusted plant LAN, so an open policy is acceptable.
+builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
+
 var app = builder.Build();
+app.UseCors();
 
 // Serve the DAS readout (wwwroot/index.html) at the root — the shop-floor live
 // display of the scale + OPC tags, replacing the legacy `da`/DAS screen. Same
@@ -71,6 +85,25 @@ app.MapGet("/reading", (LatestReading latest) =>
 app.MapGet("/tags", (LatestTags tags) => Results.Ok(tags.All()));
 app.MapGet("/tags/{name}", (string name, LatestTags tags) =>
     tags.Get(name) is { } t ? Results.Ok(t) : Results.NotFound(new { tag = name, status = "no-value-yet" }));
+
+// The line's run-state, interpreted from the configured run-state tag — the DAS console polls this
+// to auto-open/close a downtime instance. running: true=running, false=stopped, null=unknown
+// (not configured, no value yet, or a bad-quality read — the console must NOT act on null).
+app.MapGet("/run-state", (LatestTags tags, RunStateConfig cfg) =>
+{
+    if (string.IsNullOrWhiteSpace(cfg.Tag))
+        return Results.Ok(new { configured = false, tag = (string?)null, value = (string?)null, quality = (string?)null, running = (bool?)null, at = (DateTimeOffset?)null });
+    var r = tags.Get(cfg.Tag);
+    return Results.Ok(new
+    {
+        configured = true,
+        tag = cfg.Tag,
+        value = r?.Value,
+        quality = r?.Quality,
+        running = RunState.IsRunning(r?.Value, r?.Quality, cfg.RunningValues),
+        at = r?.At,
+    });
+});
 
 // Discovery: browse the UA server's address space to find node ids (the wrapper's
 // view of the INGEAR tags). Pass ?node=<id> to descend; omit for the Objects root.
