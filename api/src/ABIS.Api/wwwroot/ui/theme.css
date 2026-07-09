@@ -304,3 +304,50 @@ tbody tr.click { cursor:pointer; } tbody tr.click:hover { background:var(--surfa
 .scan-msg.err { color:var(--crit); } .scan-msg.ok { color:var(--ok); }
 .scan-note { font-size:11.5px; color:var(--ink-3); line-height:1.45; text-align:center; padding:2px 4px 0; }
 .scan-busy { cursor:progress; } .scan-busy .scan-btn { opacity:.6; pointer-events:none; }
+
+/* ============================================================================
+   DAS kiosk board — a standalone, always-dark, glanceable shop-floor status
+   board (auto-refreshing, big targets, minimal chrome). Deep rail palette in
+   BOTH themes; vivid hardcoded status lights for legibility across the floor. (#4c)
+   ============================================================================ */
+.das { --das-bg:#080d15; --das-tile:#111b28; --das-tile-2:#0c1522; --das-line:#1e2c3e; --das-ink:#e8eef7; --das-ink-2:#8ea0bb; --das-ink-3:#5c6e88;
+  --run:#33d685; --idle:#e7b53d; --stop:#f2506b; --offline:#59708f;
+  min-height:100dvh; background:var(--das-bg); color:var(--das-ink); font-variant-numeric:tabular-nums; }
+.das-top { position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:14px; padding:14px 22px; background:linear-gradient(180deg,#0c1420,#0a111b); border-bottom:1px solid var(--das-line); }
+.das-top .logo { width:34px; height:34px; border-radius:8px; display:grid; place-items:center; font-family:var(--font-mono); font-weight:700; font-size:13px; background:linear-gradient(135deg,#127a99,#2ba6c9); color:#04121a; }
+.das-top h1 { font-size:18px; font-weight:650; }
+.das-top h1 small { display:block; font-family:var(--font-mono); font-size:9.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--das-ink-3); font-weight:500; }
+.das-top .sp { flex:1; }
+.das-top .clock { font-family:var(--font-mono); font-size:22px; font-weight:600; letter-spacing:.04em; }
+.das-top .updated { font-family:var(--font-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--das-ink-3); text-align:right; }
+.das-refresh { height:3px; background:var(--accent); transform-origin:left; animation:dasbar 15s linear infinite; }
+@keyframes dasbar { from{ transform:scaleX(0) } to{ transform:scaleX(1) } }
+@media (prefers-reduced-motion: reduce){ .das-refresh{ animation:none; opacity:.4; } }
+.das-strip { display:flex; gap:26px; flex-wrap:wrap; padding:14px 22px; border-bottom:1px solid var(--das-line); background:var(--das-tile-2); }
+.das-kpi { display:flex; flex-direction:column; gap:1px; }
+.das-kpi .n { font-family:var(--font-mono); font-size:26px; font-weight:650; line-height:1; }
+.das-kpi .l { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--das-ink-3); }
+.das-kpi .n.run { color:var(--run); } .das-kpi .n.stop { color:var(--stop); }
+.das-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px,1fr)); gap:16px; padding:20px 22px; }
+.das-tile { position:relative; background:var(--das-tile); border:1px solid var(--das-line); border-radius:16px; padding:18px; overflow:hidden; }
+.das-tile::before { content:""; position:absolute; left:0; top:0; bottom:0; width:5px; background:var(--offline); }
+.das-tile.run::before { background:var(--run); } .das-tile.idle::before { background:var(--idle); } .das-tile.stop::before { background:var(--stop); }
+.das-tile .thead { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+.das-tile .lineno { font-size:15px; font-weight:650; letter-spacing:.02em; }
+.das-tile .lineno small { color:var(--das-ink-3); font-weight:500; }
+.das-dot { display:inline-flex; align-items:center; gap:8px; font-family:var(--font-mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; font-weight:600; }
+.das-dot i { width:13px; height:13px; border-radius:50%; background:var(--offline); box-shadow:0 0 0 4px color-mix(in srgb, var(--offline) 22%, transparent); }
+.das-dot.run { color:var(--run); } .das-dot.run i { background:var(--run); box-shadow:0 0 0 4px color-mix(in srgb, var(--run) 26%, transparent); animation:daspulse 1.8s ease-in-out infinite; }
+.das-dot.idle { color:var(--idle); } .das-dot.idle i { background:var(--idle); box-shadow:0 0 0 4px color-mix(in srgb, var(--idle) 24%, transparent); }
+.das-dot.stop { color:var(--stop); } .das-dot.stop i { background:var(--stop); box-shadow:0 0 0 4px color-mix(in srgb, var(--stop) 26%, transparent); animation:daspulse 1s ease-in-out infinite; }
+@keyframes daspulse { 50%{ opacity:.45; } }
+@media (prefers-reduced-motion: reduce){ .das-dot i{ animation:none !important; } }
+.das-job { font-family:var(--font-mono); font-size:26px; font-weight:650; line-height:1.05; margin-bottom:3px; }
+.das-job small { font-size:12px; color:var(--das-ink-2); font-family:var(--font-sans); }
+.das-sub { font-size:12.5px; color:var(--das-ink-2); margin-bottom:14px; }
+.das-metrics { display:flex; gap:22px; }
+.das-metrics .m .mn { font-family:var(--font-mono); font-size:22px; font-weight:650; }
+.das-metrics .m .ml { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--das-ink-3); }
+.das-fault { margin-top:14px; padding:9px 11px; border-radius:9px; background:color-mix(in srgb, var(--stop) 14%, transparent); border:1px solid color-mix(in srgb, var(--stop) 34%, transparent); color:#ffd7de; font-size:12px; display:flex; gap:8px; align-items:flex-start; }
+.das-empty { grid-column:1/-1; text-align:center; color:var(--das-ink-3); padding:60px 0; font-size:14px; }
+.das .chip { border:1px solid var(--das-line); }
