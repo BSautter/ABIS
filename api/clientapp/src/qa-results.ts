@@ -1,53 +1,59 @@
-// ABIS QA Results — third greenfield (Path C) module, replacing the legacy qa
-// window. A typed read/reporting SPA on the Phase-2 API: mechanical test results
-// (posted + in-progress working set) with test-type / position / date-range
-// filters. Read-only; every call goes through the compiler-checked client.
+// ABIS QA Results — mechanical test results (legacy qa window), restyled to the design system in
+// the shared shell (#4 polish). Posted + in-progress working set with test-type / position /
+// date-range filters. Read-only. Typed calls via the NSwag client.
 //
-// Compiled by `tsc` to wwwroot/ui/app/qa-results.js; served at /ui/qa-results.html.
+// Compiled by tsc to wwwroot/ui/app/qa-results.js; served at /ui/qa-results.html.
 import { AbisClient } from './generated/abis-client.js';
-
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
 
-const $ = <T extends HTMLElement = HTMLElement>(sel: string): T =>
-  document.querySelector(sel) as T;
-
-// Auth — a Bearer token (OIDC) or the X-Api-Key field — is attached by ./auth.
-function client(): AbisClient {
-  return new AbisClient('', { fetch: authFetch });
-}
-
+const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
+const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
 const esc = (s: unknown): string =>
-  String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
+  String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
 const dec = (v: number | undefined): string => (v == null ? '' : v.toFixed(2));
 const setErr = (m: string) => { $('#err').textContent = m; };
 const setBusy = (b: boolean) => document.body.classList.toggle('busy', b);
 const val = (id: string) => $<HTMLInputElement>(id).value.trim();
 const dateOrUndef = (id: string): Date | undefined => (val(id) ? new Date(val(id)) : undefined);
 
-// Common row shape — the posted and in-progress models name the columns slightly
-// differently, so each source maps into this before rendering.
 interface Row {
   createdDate?: Date; testType?: number; position?: string;
   yts?: number; uts?: number; elong?: number; n?: number; r?: number; thickness?: number; width?: number;
 }
 
+function scaffold(): string {
+  return `
+  <div class="page">
+    <div class="page-head"><div><div class="eyebrow">Quality · Mechanical tests</div><h1>QA results</h1></div><div class="shift-tag" id="count">—</div></div>
+    <div class="card" style="margin-bottom:16px"><div class="body">
+      <form id="filterForm" class="frow">
+        <div class="fld"><label>Test type</label><input id="fType" inputmode="numeric" style="width:100px" placeholder="any" /></div>
+        <div class="fld"><label>Position</label><input id="fPosition" style="width:100px" placeholder="any" /></div>
+        <div class="fld"><label>From</label><input id="fFrom" type="date" /></div>
+        <div class="fld"><label>To</label><input id="fTo" type="date" /></div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink)"><input type="checkbox" id="fInProgress" style="width:auto" /> In-progress</label>
+        <button class="btn sm" type="submit">Load</button>
+      </form>
+      <div id="err" class="err" style="margin-top:8px"></div>
+    </div></div>
+    <div class="card">
+      <header><h2>Results</h2><span class="sub">YTS / UTS / elong / n / r / thickness / width</span></header>
+      <div style="overflow-x:auto"><table class="tbl" style="min-width:720px">
+        <thead><tr><th>Date</th><th>Type</th><th>Pos</th><th class="num">YTS</th><th class="num">UTS</th><th class="num">Elong</th><th class="num">n</th><th class="num">r</th><th class="num">Thick</th><th class="num">Width</th></tr></thead>
+        <tbody id="results"><tr><td colspan="10" class="muted">Loading…</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>`;
+}
+
 function render(rows: Row[], total: number | undefined): void {
-  const body = rows.map((t) => `
-    <tr>
-      <td>${esc(t.createdDate?.toISOString().slice(0, 10))}</td>
-      <td>${esc(t.testType)}</td>
-      <td>${esc(t.position)}</td>
-      <td class="num">${dec(t.yts)}</td>
-      <td class="num">${dec(t.uts)}</td>
-      <td class="num">${dec(t.elong)}</td>
-      <td class="num">${dec(t.n)}</td>
-      <td class="num">${dec(t.r)}</td>
-      <td class="num">${dec(t.thickness)}</td>
-      <td class="num">${dec(t.width)}</td>
-    </tr>`).join('');
-  $('#results').innerHTML = body || '<tr><td colspan="10" class="muted">No matching results.</td></tr>';
-  $('#count').textContent = `${(total ?? 0).toLocaleString()} total`;
+  $('#results').innerHTML = rows.length ? rows.map((t) => `
+    <tr><td class="mono">${esc(t.createdDate?.toISOString().slice(0, 10))}</td><td class="mono">${esc(t.testType)}</td><td>${esc(t.position)}</td>
+      <td class="num">${dec(t.yts)}</td><td class="num">${dec(t.uts)}</td><td class="num">${dec(t.elong)}</td>
+      <td class="num">${dec(t.n)}</td><td class="num">${dec(t.r)}</td><td class="num">${dec(t.thickness)}</td><td class="num">${dec(t.width)}</td></tr>`).join('')
+    : '<tr><td colspan="10" class="muted">No matching results.</td></tr>';
+  $('#count').textContent = `${(total ?? 0).toLocaleString()} results`;
 }
 
 async function load(): Promise<void> {
@@ -75,10 +81,10 @@ async function load(): Promise<void> {
   finally { setBusy(false); }
 }
 
-function init(): void {
+(async () => {
+  const main = await initShell({ active: 'qa-results' });
+  main.innerHTML = scaffold();
   $<HTMLFormElement>('#filterForm').addEventListener('submit', (e) => { e.preventDefault(); void load(); });
   $('#fInProgress').addEventListener('change', () => void load());
-  void load();
-}
-
-void initShell({ active: 'qa-results', adopt: true }).then(init);
+  await load();
+})();

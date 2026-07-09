@@ -3,66 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ABIS QA Results</title>
+<title>ABIS — QA Results</title>
+<meta name="color-scheme" content="light dark" />
 <link rel="stylesheet" href="/ui/theme.css" />
 </head>
 <body>
-<header>
-  <h1>ABIS QA Results <span class="pill">greenfield · typed client</span></h1>
-  <nav>
-    <a href="/ui/order-entry.html">Order entry</a>
-    <a href="/ui/jobs.html">Jobs</a>
-    <a href="/ui/das-console.html">DAS console</a>
-    <a href="/ui/reporting.html">Reporting</a>
-    <a href="/ui/skids.html">Skids</a>
-    <a href="/ui/warehouse.html">Warehouse</a>
-    <a href="/ui/accounting.html">Accounting</a>
-    <a href="/ui/quotation.html">Quotation</a>
-    <a href="/ui/coil-inventory.html">Coil inventory</a>
-    <a href="/ui/qa-results.html">QA results</a>
-    <a href="/ui/coil-eval.html">Coil eval</a>
-    <a href="/ui/quality.html">Recovery</a>
-    <a href="/ui/shipping.html">Shipping</a>
-    <a href="/ui/edi.html">EDI</a>
-    <a href="/ui/receiving.html">Receiving</a>
-    <a href="/ui/customers.html">Customers</a>
-    <a href="/ui/parts.html">Parts</a>
-    <a href="/ui/carriers.html">Carriers</a>
-    <a href="/ui/scan.html">Scan</a>
-    <a href="/ui/sketches.html">Sketches</a>
-    <a href="/ui/shifts.html">Shifts</a>
-  </nav>
-  <div class="key">
-    <label for="apiKey" style="color:#fff">X-Api-Key</label>
-    <input id="apiKey" placeholder="dev-local-key" style="width:160px" />
-  </div>
-</header>
-
-<main>
-  <section>
-    <h2>Mechanical test results</h2>
-    <form id="filterForm" class="row">
-      <div><label>Test type</label><br /><input id="fType" placeholder="#" style="width:70px" /></div>
-      <div><label>Position</label><br /><input id="fPosition" placeholder="e.g. T/M/B" style="width:90px" /></div>
-      <div><label>From</label><br /><input id="fFrom" type="date" /></div>
-      <div><label>To</label><br /><input id="fTo" type="date" /></div>
-      <button type="submit">Filter</button>
-      <label class="chk"><input id="fInProgress" type="checkbox" /> In-progress (working set)</label>
-      <span id="count" class="muted"></span>
-    </form>
-    <table>
-      <thead><tr>
-        <th>Date</th><th>Type</th><th>Pos</th>
-        <th class="num">YTS</th><th class="num">UTS</th><th class="num">Elong</th>
-        <th class="num">n</th><th class="num">r</th><th class="num">Thick</th><th class="num">Width</th>
-      </tr></thead>
-      <tbody id="results"></tbody>
-    </table>
-  </section>
-
-  <section><div id="err" class="err"></div></section>
-</main>
-
+<noscript style="display:block;padding:24px;font:14px system-ui">ABIS requires JavaScript.</noscript>
 <script type="module" src="/ui/app/qa-results.js"></script>
 </body>
 </html>
