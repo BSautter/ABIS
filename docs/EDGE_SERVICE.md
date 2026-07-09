@@ -148,6 +148,27 @@ on the OPC box exposes the DA address space as UA; this service connects to that
 The wrapper talks to INGEAR over **local COM** (no network DCOM to configure), and
 the PLCs + existing DA clients are **untouched** (additive).
 
+> **⚠️ The one decision that makes or breaks this: install the wrapper _on the OPC
+> box itself_** (`.170` and `.175` — one per box), **not** on a separate machine. DA
+> is COM-based: same machine → **local COM, which just works**; different machine →
+> **cross-machine DCOM** (launch/activation ACLs, RPC ports, firewall) — the classic
+> multi-day OPC headache. Co-locating avoids all of it. Run it as a **Windows Service**
+> (`sc create` / NSSM) so it survives reboots.
+
+**Which wrapper to install (pick one; the steps below are the same for any):**
+
+| Product | Cost | Notes |
+|---|---|---|
+| **Softing dataFEED OPC Suite** | paid — **Softing is already on-site** | DA→UA gateway mode; path of least resistance if the license is already here. |
+| **OPC Foundation UA Wrapper** | **free** | The UA-.NETStandard COM-interop wrapper from opcfoundation.org. No license cost; more manual (config + cert trust). |
+| **Kepware KEPServerEX** + *OPC DA Client* driver | paid | Industry standard, very reliable, UA server built in. |
+| **Matrikon / Unified Automation UaGateway** | paid | Purpose-built DA↔UA gateways, simplest wizards. |
+
+Recommended: **Softing first** (already licensed here), else the **free OPC Foundation
+wrapper**. *Native-UA alternative:* if you'd rather not wrap INGEAR, **Rockwell
+FactoryTalk Linx Gateway** exposes the Allen-Bradley tags as OPC UA directly (skips
+INGEAR+DA) — a bigger change, so prefer it only if you're already moving off INGEAR.
+
 **On the OPC server (controls team, maintenance window):**
 
 1. **Install a Classic-DA→UA wrapper.** Free option: the **OPC Foundation UA
