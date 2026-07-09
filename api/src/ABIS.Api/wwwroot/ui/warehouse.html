@@ -3,72 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ABIS Warehouse</title>
+<title>ABIS — Warehouse</title>
+<meta name="color-scheme" content="light dark" />
 <link rel="stylesheet" href="/ui/theme.css" />
 </head>
 <body>
-<header>
-  <h1>ABIS Warehouse <span class="pill">greenfield · typed client</span></h1>
-  <nav>
-    <a href="/ui/order-entry.html">Order entry</a>
-    <a href="/ui/jobs.html">Jobs</a>
-    <a href="/ui/das-console.html">DAS console</a>
-    <a href="/ui/reporting.html">Reporting</a>
-    <a href="/ui/skids.html">Skids</a>
-    <a href="/ui/warehouse.html">Warehouse</a>
-    <a href="/ui/accounting.html">Accounting</a>
-    <a href="/ui/quotation.html">Quotation</a>
-    <a href="/ui/coil-inventory.html">Coil inventory</a>
-    <a href="/ui/qa-results.html">QA results</a>
-    <a href="/ui/quality.html">Recovery</a>
-    <a href="/ui/shipping.html">Shipping</a>
-    <a href="/ui/edi.html">EDI</a>
-    <a href="/ui/receiving.html">Receiving</a>
-    <a href="/ui/customers.html">Customers</a>
-    <a href="/ui/parts.html">Parts</a>
-    <a href="/ui/carriers.html">Carriers</a>
-    <a href="/ui/scan.html">Scan</a>
-    <a href="/ui/sketches.html">Sketches</a>
-    <a href="/ui/shifts.html">Shifts</a>
-    <a href="/ui/maintenance.html">Maintenance</a>
-    <a href="/ui/dies.html">Dies</a>
-    <a href="/ui/downtime.html">Downtime</a>
-    <a href="/ui/opc-log.html">OPC Log</a>
-  </nav>
-  <div class="key">
-    <label for="apiKey" style="color:#fff">X-Api-Key</label>
-    <input id="apiKey" placeholder="dev-local-key" style="width:160px" />
-  </div>
-</header>
-
-<main>
-  <section>
-    <h2>Finished sheet skids in the warehouse</h2>
-    <div class="row">
-      <button id="btnRefresh" type="button" class="sec">Refresh</button>
-      <span id="count" class="muted"></span>
-    </div>
-    <table>
-      <thead><tr><th>Skid #</th><th>Job</th><th>Display</th><th>Location</th><th>Ticket</th><th>Status</th><th>Net wt</th><th>Pcs</th><th>Date</th></tr></thead>
-      <tbody id="skids"></tbody>
-    </table>
-  </section>
-
-  <section id="detail" class="disabled">
-    <h2 id="formTitle">Warehouse update</h2>
-    <div class="muted" id="summary" style="margin-bottom:8px"></div>
-    <div class="grid">
-      <div class="fld full"><label>Location</label><input id="wLocation" maxlength="18" placeholder="e.g. WH-A-01" /></div>
-      <div class="fld"><label>Warehouse ticket</label><input id="wTicket" maxlength="32" /></div>
-      <div class="fld"><label>Status</label><input id="wStatus" type="number" placeholder="code" /></div>
-    </div>
-    <div class="row" style="margin-top:10px"><button id="btnSave" type="button">Save warehouse update</button></div>
-    <div id="ok" class="ok"></div>
-  </section>
-
-  <section class="wide"><div id="err" class="err"></div></section>
-</main>
-
+<noscript style="display:block;padding:24px;font:14px system-ui">ABIS requires JavaScript.</noscript>
 <script type="module" src="/ui/app/warehouse.js"></script>
 </body>
 </html>

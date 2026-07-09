@@ -3,51 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ABIS Production Folder</title>
+<title>ABIS — Production Folder</title>
+<meta name="color-scheme" content="light dark" />
 <link rel="stylesheet" href="/ui/theme.css" />
 </head>
 <body>
-<header>
-  <h1>ABIS Production Folder <span class="pill">w_production_folder · typed client</span></h1>
-  <nav>
-    <a href="/ui/jobs.html">Jobs</a>
-    <a href="/ui/das-console.html">DAS console</a>
-    <a href="/ui/prod-folder.html">Prod folder</a>
-    <a href="/ui/coil-eval.html">Coil eval</a>
-    <a href="/ui/reporting.html">Reporting</a>
-  </nav>
-  <div class="key">
-    <label for="apiKey" style="color:#fff">X-Api-Key</label>
-    <input id="apiKey" placeholder="dev-local-key" style="width:160px" />
-  </div>
-</header>
-
-<main>
-  <section>
-    <h2>Open a job folder</h2>
-    <form id="jobForm" class="row">
-      <div><label>Job #</label><br /><input id="fJob" type="number" style="width:140px" /></div>
-      <button type="submit">Open folder</button>
-    </form>
-  </section>
-
-  <section id="workarea" class="disabled">
-    <h2>Folder summary</h2>
-    <table class="hdr"><tbody id="hdr"></tbody></table>
-
-    <h2 style="margin-top:14px">E-folder notes</h2>
-    <table><thead><tr><th>Time</th><th>By</th><th>Note</th></tr></thead><tbody id="tNotes"></tbody></table>
-    <div class="entry">
-      <div><label>User id</label><input id="nUser" type="number" style="width:100px" /></div>
-      <div style="flex:1; min-width:240px"><label>Note</label><input id="nNotes" maxlength="2048" style="width:100%" /></div>
-      <button id="btnNote" type="button">Add note</button>
-    </div>
-    <div id="ok" class="ok"></div>
-  </section>
-
-  <section><div id="err" class="err"></div></section>
-</main>
-
+<noscript style="display:block;padding:24px;font:14px system-ui">ABIS requires JavaScript.</noscript>
 <script type="module" src="/ui/app/prod-folder.js"></script>
 </body>
 </html>

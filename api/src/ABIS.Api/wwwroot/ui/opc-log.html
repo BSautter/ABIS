@@ -3,52 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ABIS OPC Log</title>
+<title>ABIS — OPC Log</title>
+<meta name="color-scheme" content="light dark" />
 <link rel="stylesheet" href="/ui/theme.css" />
 </head>
 <body>
-<header>
-  <h1>ABIS OPC Log <span class="pill">greenfield · typed client</span></h1>
-  <nav>
-    <a href="/ui/order-entry.html">Order entry</a>
-    <a href="/ui/jobs.html">Jobs</a>
-    <a href="/ui/das-console.html">DAS console</a>
-    <a href="/ui/reporting.html">Reporting</a>
-    <a href="/ui/opc-log.html">OPC Log</a>
-    <a href="/ui/downtime.html">Downtime</a>
-    <a href="/ui/maintenance.html">Maintenance</a>
-    <a href="/ui/coil-inventory.html">Coil inventory</a>
-    <a href="/ui/shipping.html">Shipping</a>
-  </nav>
-  <div class="key">
-    <label for="apiKey" style="color:#fff">X-Api-Key</label>
-    <input id="apiKey" placeholder="dev-local-key" style="width:160px" />
-  </div>
-</header>
-
-<main>
-  <section>
-    <h2>OPC log sessions</h2>
-    <table><thead><tr><th>Id</th><th>Title</th><th>Created</th></tr></thead><tbody id="logs"></tbody></table>
-  </section>
-
-  <section>
-    <h2 id="detailTitle">OPC readings <span class="muted" style="text-transform:none;letter-spacing:0">(click a session)</span></h2>
-    <table>
-      <thead><tr><th>Host</th><th>Device</th><th>Item</th><th>Value</th><th>Quality</th><th>Time</th><th>Description</th></tr></thead>
-      <tbody id="details"></tbody>
-    </table>
-  </section>
-
-  <section class="wide">
-    <h2>OPC item catalog</h2>
-    <div class="note">These are the real OPC <strong>item names</strong> seen in the logs, addressed as <span class="mono">remote_host → device → item</span>. They are exactly what the edge service's <span class="mono">Edge:Opc:Tags</span> will reference (mapped to UA node ids by the DA→UA wrapper).</div>
-    <ul class="items" id="items"></ul>
-  </section>
-
-  <section class="wide"><div id="err" class="err"></div></section>
-</main>
-
+<noscript style="display:block;padding:24px;font:14px system-ui">ABIS requires JavaScript.</noscript>
 <script type="module" src="/ui/app/opc-log.js"></script>
 </body>
 </html>

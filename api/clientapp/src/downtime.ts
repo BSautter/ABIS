@@ -1,24 +1,16 @@
-// ABIS Downtime — greenfield (Path C) module replacing the legacy downtime
-// window. A typed SPA on the Phase-2 API: downtime-instance search (by job /
-// shift) and a full load → edit → save form (create or replace). Through the
-// NSwag-generated, compiler-checked client.
+// ABIS Downtime — the legacy downtime window, restyled to the design system in the shared shell
+// (#4 polish). Downtime-instance search (by job / shift) and a full load → edit → save form
+// (create or replace). Through the NSwag-generated, compiler-checked client.
 //
-// Compiled by `tsc` to wwwroot/ui/app/downtime.js; served at /ui/downtime.html.
+// Compiled by tsc to wwwroot/ui/app/downtime.js; served at /ui/downtime.html.
 import { AbisClient, DowntimeInstanceWrite } from './generated/abis-client.js';
-
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
 
-const $ = <T extends HTMLElement = HTMLElement>(sel: string): T =>
-  document.querySelector(sel) as T;
-
-// Auth — a Bearer token (OIDC) or the X-Api-Key field — is attached by ./auth.
-function client(): AbisClient {
-  return new AbisClient('', { fetch: authFetch });
-}
-
+const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
+const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
 const esc = (s: unknown): string =>
-  String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
+  String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
 const setErr = (m: string) => { $('#err').textContent = m; };
 const setOk = (m: string) => { $('#ok').textContent = m; };
 const setBusy = (b: boolean) => document.body.classList.toggle('busy', b);
@@ -28,24 +20,65 @@ const dtLocal = (d: Date | undefined): string => (d == null ? '' : d.toISOString
 
 let editingId: number | null = null;
 
+function scaffold(): string {
+  return `
+  <div class="page">
+    <div class="page-head"><div><div class="eyebrow">Production · Downtime</div><h1>Downtime</h1></div><div class="shift-tag" id="count">—</div></div>
+    <div class="card" style="margin-bottom:16px"><div class="body">
+      <form id="searchForm" class="frow">
+        <div class="fld"><label>Job #</label><input id="fJob" inputmode="numeric" placeholder="ab job" style="width:110px" /></div>
+        <div class="fld"><label>Shift #</label><input id="fShift" inputmode="numeric" placeholder="shift" style="width:90px" /></div>
+        <button class="btn sm" type="submit">Search</button>
+      </form>
+      <div id="err" class="err" style="margin-top:8px"></div>
+    </div></div>
+    <div class="grid">
+      <div class="stack"><div class="card">
+        <header><h2>Downtime instances</h2></header>
+        <div style="overflow-x:auto"><table class="tbl" style="min-width:460px">
+          <thead><tr><th>#</th><th>Job</th><th>Line</th><th>Start</th><th>Note</th></tr></thead>
+          <tbody id="instances"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+        </table></div>
+      </div></div>
+      <div class="stack"><div class="card">
+        <header><h2 id="formTitle">New downtime instance</h2></header>
+        <div class="body">
+          <div class="frow">
+            <div class="fld"><label>Job #</label><input id="dJob" inputmode="numeric" style="width:100px" /></div>
+            <div class="fld"><label>Line #</label><input id="dLine" inputmode="numeric" style="width:90px" /></div>
+            <div class="fld"><label>Shift #</label><input id="dShift" inputmode="numeric" style="width:90px" /></div>
+          </div>
+          <div class="frow" style="margin-top:8px">
+            <div class="fld"><label>Start</label><input id="dStart" type="datetime-local" /></div>
+            <div class="fld"><label>End</label><input id="dEnd" type="datetime-local" /></div>
+          </div>
+          <div class="frow" style="margin-top:8px"><div class="fld" style="flex:1;min-width:200px"><label>Note</label><input id="dNote" /></div></div>
+          <div class="frow" style="margin-top:10px;align-items:center">
+            <button class="btn sm" id="btnSave" type="button">Save</button>
+            <button class="btn sm ghost" id="btnNew" type="button">New</button>
+            <span id="ok" class="ok-note"></span>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </div>`;
+}
+
 async function search(): Promise<void> {
   setErr(''); setBusy(true);
   const job = v('#fJob') ? Number(v('#fJob')) : undefined;
   const shift = v('#fShift') ? Number(v('#fShift')) : undefined;
   try {
     const page = await client().listDowntime(1, 50, job, shift, undefined, undefined);
-    const rows = (page.items ?? []).map((d) => `
+    const items = page.items ?? [];
+    $('#instances').innerHTML = items.length ? items.map((d) => `
       <tr class="click" data-id="${d.instanceNum}">
-        <td>${esc(d.instanceNum)}</td>
-        <td>${esc(d.abJobNum)}</td>
-        <td>${esc(d.lineNum)}</td>
-        <td>${esc(d.startingTime?.toString().slice(0, 16).replace('T', ' '))}</td>
-        <td>${esc(d.note)}</td>
-      </tr>`).join('');
-    $('#instances').innerHTML = rows || '<tr><td colspan="5" class="muted">No matching downtime.</td></tr>';
+        <td class="mono">${esc(d.instanceNum)}</td><td class="mono">${esc(d.abJobNum)}</td><td class="mono">${esc(d.lineNum)}</td>
+        <td class="mono">${esc(d.startingTime?.toString().slice(0, 16).replace('T', ' '))}</td><td>${esc(d.note)}</td>
+      </tr>`).join('') : '<tr><td colspan="5" class="muted">No matching downtime.</td></tr>';
     $('#count').textContent = `${(page.totalCount ?? 0).toLocaleString()} total`;
     document.querySelectorAll<HTMLTableRowElement>('#instances tr.click').forEach((tr) =>
-      tr.addEventListener('click', () => loadInstance(Number(tr.dataset.id))));
+      tr.addEventListener('click', () => void loadInstance(Number(tr.dataset.id))));
   } catch (e) { setErr(`Search failed: ${(e as Error).message}`); }
   finally { setBusy(false); }
 }
@@ -96,12 +129,12 @@ async function save(): Promise<void> {
   finally { setBusy(false); }
 }
 
-function init(): void {
+(async () => {
+  const main = await initShell({ active: 'downtime' });
+  main.innerHTML = scaffold();
   $<HTMLFormElement>('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); void search(); });
   $('#btnNew').addEventListener('click', newInstance);
-  $('#btnSave').addEventListener('click', save);
+  $('#btnSave').addEventListener('click', () => void save());
   newInstance();
-  void search();
-}
-
-void initShell({ active: 'downtime', adopt: true }).then(init);
+  await search();
+})();

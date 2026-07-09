@@ -3,59 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ABIS Stacker Board</title>
+<title>ABIS — Stacker Board</title>
+<meta name="color-scheme" content="light dark" />
 <link rel="stylesheet" href="/ui/theme.css" />
 </head>
 <body>
-<header>
-  <h1>ABIS Stacker Board <span class="pill">w_110_stacker · typed client</span></h1>
-  <nav>
-    <a href="/ui/das-console.html">DAS console</a>
-    <a href="/ui/stacker.html">Stacker board</a>
-    <a href="/ui/jobs.html">Jobs</a>
-    <a href="/ui/downtime.html">Downtime</a>
-    <a href="/ui/reporting.html">Reporting</a>
-  </nav>
-  <div class="key">
-    <label for="apiKey" style="color:#fff">X-Api-Key</label>
-    <input id="apiKey" placeholder="dev-local-key" style="width:160px" />
-  </div>
-</header>
-
-<main>
-  <section>
-    <h2>Line board</h2>
-    <form id="lineForm" class="row">
-      <div><label>Line # (blank = all)</label><br /><input id="fLine" type="number" style="width:140px" /></div>
-      <button type="submit">Refresh</button>
-    </form>
-    <table>
-      <thead><tr><th>Job</th><th>Line</th><th>Status</th><th>Order</th><th>Coils</th><th>Skids</th></tr></thead>
-      <tbody id="tBoard"></tbody>
-    </table>
-  </section>
-
-  <section>
-    <h2>Line / stacker error log</h2>
-    <table>
-      <thead><tr><th>Time</th><th>Type</th><th>Line</th><th>Job</th><th>Title</th><th>Comment</th><th>User</th></tr></thead>
-      <tbody id="tErrors"></tbody>
-    </table>
-    <div class="entry">
-      <div><label>Type id *</label><input id="eType" type="number" /></div>
-      <div><label>User *</label><input id="eUser" maxlength="12" /></div>
-      <div><label>Line</label><input id="eLine" type="number" /></div>
-      <div><label>Job</label><input id="eJob" type="number" /></div>
-      <div><label>Title</label><input id="eTitle" maxlength="50" /></div>
-      <div style="flex:1; min-width:160px"><label>Comment</label><input id="eComment" maxlength="255" style="width:100%" /></div>
-      <button id="btnErr" type="button">Log error</button>
-    </div>
-    <div id="ok" class="ok"></div>
-  </section>
-
-  <section><div id="err" class="err"></div></section>
-</main>
-
+<noscript style="display:block;padding:24px;font:14px system-ui">ABIS requires JavaScript.</noscript>
 <script type="module" src="/ui/app/stacker.js"></script>
 </body>
 </html>

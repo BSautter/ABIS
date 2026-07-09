@@ -196,7 +196,9 @@ button { font:inherit; cursor:pointer; border:none; background:none; color:inher
 .kv { display:flex; gap:18px; flex-wrap:wrap; font-size:13px; }
 .kv span b { display:block; color:var(--ink-3); font-family:var(--font-mono); font-size:9.5px; text-transform:uppercase; letter-spacing:.08em; font-weight:500; margin-bottom:1px; }
 td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
-tbody tr.click { cursor:pointer; }
+tbody tr.click { cursor:pointer; } tbody tr.click:hover { background:var(--surface-2); }
+.items { list-style:none; margin:8px 0 0; padding:0; display:flex; flex-wrap:wrap; gap:6px; }
+.items li { background:var(--surface-2); border:1px solid var(--line); border-radius:5px; padding:3px 9px; font-size:12px; color:var(--ink-2); }
 .ok-note { color:var(--ok); font-size:12.5px; margin-bottom:8px; }
 .busy { cursor:progress; } .busy button { opacity:.6; pointer-events:none; }
 
