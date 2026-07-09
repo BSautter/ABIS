@@ -35,8 +35,12 @@ var opcTags = opcCfg.GetSection("Tags").Get<string[]>() ?? Array.Empty<string>()
 
 // Line run-state: one tag whose value means running/stopped (drives the DAS PLC auto-downtime).
 // Ensure it's in the polled set so /run-state has a fresh value even if it wasn't listed in Tags.
+// Mode: Equals (a "running" boolean/word), NotEquals (an inverted signal like an idle bit), or
+// GreaterThan (a numeric signal like strokes-per-minute > RunStateThreshold).
 var runStateTag = opcCfg.GetValue<string?>("RunStateTag", null);
 var runningValues = opcCfg.GetSection("RunningValues").Get<string[]>() ?? RunStateConfig.DefaultRunningValues;
+Enum.TryParse<RunStateMode>(opcCfg.GetValue("RunStateMode", "Equals"), ignoreCase: true, out var runStateMode);
+var runStateThreshold = opcCfg.GetValue("RunStateThreshold", 0.0);
 if (!string.IsNullOrWhiteSpace(runStateTag) && !opcTags.Contains(runStateTag))
     opcTags = opcTags.Append(runStateTag).ToArray();
 
@@ -52,10 +56,17 @@ builder.Services.AddSingleton<ITagSource>(sp => opcProvider.ToLowerInvariant() s
             Password = opcCfg.GetValue<string?>("Password", null),
         },
         sp.GetRequiredService<ILogger<OpcUaTagSource>>()),
+    // Classic OPC DA read (INGEAR) via the OPC DA Automation wrapper — Windows-only (COM). This is
+    // the "edge runs on the OPC box, reads DA locally" path; no UA bridge.
+    "classicda" or "classic-da" => OperatingSystem.IsWindows()
+        ? new ClassicDaTagSource(
+            opcCfg.GetValue<string>("ProgId") ?? "CimQuestInc.IGOPCAB.1",
+            opcCfg.GetValue("UpdateRateMs", 500))
+        : throw new PlatformNotSupportedException("Edge:Opc:Provider=ClassicDa requires Windows (COM) — run it on the OPC box."),
     _ => new MockTagSource(),
 });
 builder.Services.AddSingleton(new TagSet(opcTags));
-builder.Services.AddSingleton(new RunStateConfig(runStateTag, runningValues));
+builder.Services.AddSingleton(new RunStateConfig(runStateTag, runningValues, runStateMode, runStateThreshold));
 builder.Services.AddSingleton<LatestTags>();
 builder.Services.AddHostedService<TagPump>();
 
@@ -100,7 +111,8 @@ app.MapGet("/run-state", (LatestTags tags, RunStateConfig cfg) =>
         tag = cfg.Tag,
         value = r?.Value,
         quality = r?.Quality,
-        running = RunState.IsRunning(r?.Value, r?.Quality, cfg.RunningValues),
+        mode = cfg.Mode.ToString(),
+        running = RunState.IsRunning(r?.Value, r?.Quality, cfg),
         at = r?.At,
     });
 });

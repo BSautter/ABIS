@@ -41,4 +41,49 @@ public class RunStateTests
     [Fact]
     public void Custom_running_values_are_honoured()
         => Assert.True(RunState.IsRunning("AUTO", "Good", new[] { "AUTO" }));
+
+    // --- GreaterThan mode: strokes-per-minute > 0 (the plant's `spm` run signal) ---
+
+    private static RunStateConfig Spm(double threshold = 0)
+        => new("ns=spm", Running, RunStateMode.GreaterThan, threshold);
+
+    [Theory]
+    [InlineData("1", true)]
+    [InlineData("120", true)]
+    [InlineData("0", false)]     // press not stroking = stopped
+    [InlineData("-3", false)]
+    [InlineData("12.5", true)]
+    public void Spm_greater_than_zero_is_running(string value, bool running)
+        => Assert.Equal(running, RunState.IsRunning(value, "Good", Spm()));
+
+    [Fact]
+    public void Spm_threshold_is_honoured()
+    {
+        Assert.False(RunState.IsRunning("5", "Good", Spm(threshold: 10)));   // below the floor
+        Assert.True(RunState.IsRunning("15", "Good", Spm(threshold: 10)));
+    }
+
+    [Fact]
+    public void Non_numeric_under_a_numeric_rule_is_unknown()
+        => Assert.Null(RunState.IsRunning("RUNNING", "Good", Spm()));         // never fabricate a state
+
+    // --- NotEquals mode: an inverted signal like the `idle` bit (running = NOT idle) ---
+
+    private static RunStateConfig Idle()
+        => new("ns=idle", new[] { "1", "TRUE" }, RunStateMode.NotEquals);   // 1/TRUE = idle = stopped
+
+    [Theory]
+    [InlineData("0", true)]       // idle=false  → running
+    [InlineData("FALSE", true)]
+    [InlineData("1", false)]      // idle=true   → stopped
+    [InlineData("TRUE", false)]
+    public void Idle_bit_inverts(string value, bool running)
+        => Assert.Equal(running, RunState.IsRunning(value, "Good", Idle()));
+
+    [Fact]
+    public void Bad_read_is_unknown_in_every_mode()
+    {
+        Assert.Null(RunState.IsRunning("120", "Bad", Spm()));
+        Assert.Null(RunState.IsRunning("0", "Bad", Idle()));
+    }
 }

@@ -1,23 +1,70 @@
-# OPC DA → UA Bridge — Setup Runbook
+# OPC → ABIS Edge — PLC Auto-Downtime Setup Runbook
 
-Stand up the bridge that lets the ABIS edge (an **OPC UA client**) read the plant's
-**Classic OPC DA** servers, so **PLC auto-downtime** works. Companion to
-[`EDGE_SERVICE.md`](EDGE_SERVICE.md) (the edge/`/run-state` side, which ABIS owns).
+Get the ABIS edge reading the plant's **Classic OPC DA** servers so **PLC auto-downtime**
+works. Companion to [`EDGE_SERVICE.md`](EDGE_SERVICE.md) (the edge/`/run-state` side).
 
 - **OPC DA servers:** `192.168.10.170`, `192.168.9.175` — **INGEAR OPC Server for
-  Allen-Bradley**, ProgID **`CimQuestInc.IGOPCAB.1`** (Classic DA, COM-based).
-- **The bridge** is a **UA COM Server Wrapper**: a DA/COM *client* inside, a UA *server*
-  outside. It re-publishes INGEAR's tags at `opc.tcp://<opc-host>:4840`. The PLCs and
-  existing DA clients are **untouched** — it's additive.
+  Allen-Bradley** v4.0, ProgID **`CimQuestInc.IGOPCAB.1`** (Classic DA, COM — **no OPC UA**).
+- **Run signal (confirmed):** the `spm` tag (strokes/min, `N7:0`) → **running = `spm > 0`**
+  (fallback: the `idle` bit, `B3:1/10`), per line under the INGEAR `line_status` group.
 
-> Who does what: **your controls/IT team** installs the wrapper on the OPC box in a
-> maintenance window (it changes system settings on production OT — it needs a human
-> with change control). **ABIS/Claude** owns the edge-side config + verification once
-> the wrapper is reachable on the LAN, and can co-pilot every wrapper step live.
+There are **two ways** to bridge Classic DA to the edge:
+
+| | **Option B — edge reads DA directly** ✅ *chosen* | Option A — UA wrapper |
+|---|---|---|
+| What | Run the ABIS edge **on the OPC box**; its `ClassicDa` provider reads INGEAR over local COM. | Install a DA→UA wrapper on the OPC box; the edge connects to it over UA. |
+| New software | **None** — just the ABIS edge + the OPC Core Components Redistributable. | A wrapper product (free OPC Foundation / UaGateway / Softing dataFEED). |
+| Trade-off | Edge is Windows + COM-bound (fine — the OPC box is Windows). | Another product to install/license/maintain. |
+
+**We chose Option B** (2026-07-09): edge on each OPC box, no separate bridge product.
+Option A is documented below as the fallback.
 
 ---
 
-## ⚠️ Two things that decide the whole job
+## Option B — edge reads INGEAR DA directly (the chosen path)
+
+Run the ABIS edge **on each OPC box** (`.170` and `.175`, one instance each). Its `ClassicDa`
+tag source reads that box's INGEAR over **local COM** — zero DCOM, no wrapper.
+
+**On each OPC box:**
+1. Install the **OPC Core Components Redistributable** (provides the `OPC.Automation` wrapper
+   the edge uses as a DA client). INGEAR + its DA server already run locally.
+2. Deploy + run the ABIS edge (console app or Windows Service — see `EDGE_SERVICE.md`).
+3. Configure it (env vars or appsettings):
+   ```sh
+   Edge__Opc__Provider=ClassicDa
+   Edge__Opc__ProgId=CimQuestInc.IGOPCAB.1
+   Edge__Opc__Tags__0=line_status.spm          # the INGEAR item id(s) for this box's lines
+   Edge__Opc__RunStateTag=line_status.spm      # the run signal
+   Edge__Opc__RunStateMode=GreaterThan         # running = spm > threshold
+   Edge__Opc__RunStateThreshold=0
+   ```
+   *(Exact item ids come from the INGEAR config tree — e.g. `Working_Master.tdb` shows
+   `line_status` / `Device110` / `PLC5-BL*` groups. We'll confirm them live together.)*
+4. **Firewall:** allow the line PCs to reach the edge's HTTP port (default **8090**) —
+   [`tools/opc-bridge/Open-UaFirewall.ps1`](../tools/opc-bridge/Open-UaFirewall.ps1) with
+   `-Port 8090` does this (it's a generic port-allow).
+5. **Verify** with [`tools/opc-bridge/Test-RunState.ps1`](../tools/opc-bridge/Test-RunState.ps1):
+   `running` should flip RUNNING/STOPPED as the press starts/stops. Then set the **edge URL**
+   in the DAS console — the PLC chip shows 🟢/🔴 and the "⛔ LINE DOWN" banner opens on a stop.
+
+> **`idle`-bit variant** (instead of `spm`): `Edge__Opc__RunStateTag=line_status.idle`,
+> `Edge__Opc__RunStateMode=NotEquals`, `Edge__Opc__RunningValues__0=1`,
+> `Edge__Opc__RunningValues__1=TRUE` (running = idle is *not* set).
+
+> **Live-validation note:** the `ClassicDa` COM read can't be exercised without a live INGEAR,
+> so we validate it **on `.170` / `.175` together** — connect, confirm `/tags` shows Good
+> quality for `spm`, then watch `/run-state`. If COM apartment/threading needs tuning, we
+> iterate there.
+
+---
+
+## Option A — UA wrapper (fallback)
+
+*Use this only if you'd rather not run the edge on the OPC box.* It puts a DA→UA wrapper on the
+OPC box and keeps the edge as a pure UA client (`Edge:Opc:Provider=OpcUa`).
+
+## ⚠️ Two things that decide the wrapper job
 
 1. **Install the wrapper ON the OPC box itself** (`.170` and `.175`, one each) — never
    on a separate machine. DA is COM: same box → **local COM (just works)**; different
