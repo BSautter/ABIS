@@ -3,92 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ABIS Sales</title>
+<title>ABIS — Sales</title>
+<meta name="color-scheme" content="light dark" />
 <link rel="stylesheet" href="/ui/theme.css" />
 </head>
 <body>
-<header>
-  <h1>ABIS Sales <span class="pill">greenfield · typed client</span></h1>
-  <nav>
-    <a href="/ui/order-entry.html">Order entry</a>
-    <a href="/ui/jobs.html">Jobs</a>
-    <a href="/ui/sales.html">Sales</a>
-    <a href="/ui/quotation.html">Quotation</a>
-    <a href="/ui/customers.html">Customers</a>
-    <a href="/ui/accounting.html">Accounting</a>
-    <a href="/ui/reporting.html">Reporting</a>
-  </nav>
-  <div class="key">
-    <label for="apiKey" style="color:#fff">X-Api-Key</label>
-    <input id="apiKey" placeholder="dev-local-key" style="width:160px" />
-  </div>
-</header>
-
-<main>
-  <section>
-    <div class="tabs">
-      <button id="tab-quotes" type="button">Quotes</button>
-      <button id="tab-contacts" type="button">Contacts</button>
-    </div>
-
-    <div id="pane-quotes">
-      <div class="grid2">
-        <div>
-          <h2>Pending quotes</h2>
-          <form id="searchForm" class="row">
-            <div><label>Search (customer / end-use / alloy)</label><br /><input id="fSearch" style="width:240px" /></div>
-            <button type="submit">Search</button>
-          </form>
-          <table>
-            <thead><tr><th>Quote</th><th>Customer</th><th>Contact</th><th>End use</th><th>Alloy</th><th>Lb</th><th>Created</th><th>Win %</th></tr></thead>
-            <tbody id="tQuotes"></tbody>
-          </table>
-        </div>
-
-        <div id="detail" class="disabled">
-          <h2 id="detailTitle">Quote detail <span class="muted" style="text-transform:none;letter-spacing:0">(click a quote)</span></h2>
-          <table class="hdr"><tbody id="qHdr"></tbody></table>
-
-          <h3>Follow-ups</h3>
-          <table><thead><tr><th>Date</th><th>Status</th><th>Note</th><th>User</th></tr></thead><tbody id="tEvents"></tbody></table>
-          <div class="entry">
-            <div><label>Date</label><input id="evDate" type="date" /></div>
-            <div><label>Status</label><input id="evStatus" maxlength="16" placeholder="OPEN" style="width:90px" /></div>
-            <div style="flex:1; min-width:160px"><label>Note</label><input id="evNotes" maxlength="1024" style="width:100%" /></div>
-            <div><label>User</label><input id="evUser" maxlength="32" style="width:90px" /></div>
-            <button id="btnEvent" type="button">Log follow-up</button>
-          </div>
-
-          <h3>Win probability</h3>
-          <table><thead><tr><th>Review date</th><th>Probability</th><th>Note</th></tr></thead><tbody id="tProb"></tbody></table>
-          <div class="entry">
-            <div><label>Review date</label><input id="prDate" type="date" /></div>
-            <div><label>Probability %</label><input id="prPct" type="number" min="0" max="100" style="width:110px" /></div>
-            <div style="flex:1; min-width:160px"><label>Note</label><input id="prNote" maxlength="1024" style="width:100%" /></div>
-            <button id="btnProb" type="button">Record review</button>
-          </div>
-
-          <div id="ok" class="ok"></div>
-        </div>
-      </div>
-    </div>
-
-    <div id="pane-contacts">
-      <h2>Sales contacts</h2>
-      <form id="contactForm" class="row">
-        <div><label>Customer id (blank = all)</label><br /><input id="fContactCust" type="number" style="width:160px" /></div>
-        <button type="submit">Load</button>
-      </form>
-      <table>
-        <thead><tr><th>Name</th><th>Department</th><th>Customer</th><th>City</th><th>Phone</th><th>Email</th></tr></thead>
-        <tbody id="tContacts"></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section><div id="err" class="err"></div></section>
-</main>
-
+<noscript style="display:block;padding:24px;font:14px system-ui">ABIS requires JavaScript.</noscript>
 <script type="module" src="/ui/app/sales.js"></script>
 </body>
 </html>

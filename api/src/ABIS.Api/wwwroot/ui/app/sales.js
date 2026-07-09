@@ -1,20 +1,17 @@
-// ABIS Sales — greenfield (Path C) module for the legacy sales screens (w_sales_main,
-// w_new_quote, w_edit_quote, w_sales_quote_review). A typed SPA on the Phase-2 API: the
-// pending-quote list with each quote's latest win probability, a quote detail panel
-// (header + scheduled follow-ups + probability history), and the sales contact address
-// book. The active CRM writes — logging a follow-up event and recording a win-probability
-// review — post through the generated client (the legacy quote-review workflow).
+// ABIS Sales — the legacy sales screens (w_sales_main, w_new_quote, w_edit_quote,
+// w_sales_quote_review), restyled to the design system in the shared shell (#4 polish). The
+// pending-quote list with each quote's latest win probability, a quote detail panel (header +
+// scheduled follow-ups + probability history), and the sales contact address book. The active
+// CRM writes — logging a follow-up and recording a win-probability review — post through the
+// generated client (the legacy quote-review workflow).
 //
-// Compiled by `tsc` to wwwroot/ui/app/sales.js; served at /ui/sales.html.
+// Compiled by tsc to wwwroot/ui/app/sales.js; served at /ui/sales.html.
 import { AbisClient, SalesReminderWrite, SalesProbabilityWrite, } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
 const $ = (sel) => document.querySelector(sel);
-// Auth — a Bearer token (OIDC) or the X-Api-Key field — is attached by ./auth.
-function client() {
-    return new AbisClient('', { fetch: authFetch });
-}
-const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const client = () => new AbisClient('', { fetch: authFetch });
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const setErr = (m) => { $('#err').textContent = m; };
 const setOk = (m) => { $('#ok').textContent = m; };
 const setBusy = (b) => document.body.classList.toggle('busy', b);
@@ -23,30 +20,82 @@ const setV = (id, val) => { $(id).value = val == null ? '' : String(val); };
 const num = (n) => (n == null ? '' : n.toLocaleString());
 const dShow = (d) => (d == null ? '' : d.toLocaleDateString());
 const prob = (p) => (p == null ? '—' : `${p}%`);
+const probClass = (p) => (p == null ? 'mut' : p >= 50 ? 'ok' : p >= 25 ? 'warn' : 'crit');
 // The quote currently open in the detail panel (its composite key).
 let cur = null;
+function scaffold() {
+    return `
+  <div class="page">
+    <div class="page-head"><div><div class="eyebrow">Commercial · Sales</div><h1>Sales</h1></div></div>
+    <div class="tabs"><button id="tab-quotes" type="button">Quotes</button><button id="tab-contacts" type="button">Contacts</button></div>
+
+    <div id="pane-quotes">
+      <div class="grid">
+        <div class="stack"><div class="card">
+          <header><h2>Pending quotes</h2></header>
+          <div class="body"><form id="searchForm" class="frow"><div class="fld" style="flex:1;min-width:200px"><label>Search (customer / end-use / alloy)</label><input id="fSearch" /></div><button class="btn sm" type="submit">Search</button></form></div>
+          <div style="overflow-x:auto"><table class="tbl" style="min-width:640px">
+            <thead><tr><th>Quote</th><th>Customer</th><th>Contact</th><th>End use</th><th>Alloy</th><th class="num">Lb</th><th>Created</th><th>Win %</th></tr></thead>
+            <tbody id="tQuotes"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
+          </table></div>
+        </div></div>
+        <div class="stack"><div class="card" id="detail">
+          <header><h2 id="detailTitle">Quote detail</h2><span class="sub">click a quote</span></header>
+          <div class="body"><div style="overflow-x:auto"><table class="tbl" style="min-width:320px"><tbody id="qHdr"></tbody></table></div></div>
+          <header style="border-top:1px solid var(--line)"><h2>Follow-ups</h2></header>
+          <div style="overflow-x:auto"><table class="tbl" style="min-width:420px"><thead><tr><th>Date</th><th>Status</th><th>Note</th><th>User</th></tr></thead><tbody id="tEvents"><tr><td colspan="4" class="muted">—</td></tr></tbody></table></div>
+          <div class="body">
+            <div class="frow">
+              <div class="fld"><label>Date</label><input id="evDate" type="date" /></div>
+              <div class="fld"><label>Status</label><input id="evStatus" maxlength="16" placeholder="OPEN" style="width:90px" /></div>
+              <div class="fld" style="flex:1;min-width:160px"><label>Note</label><input id="evNotes" maxlength="1024" /></div>
+              <div class="fld"><label>User</label><input id="evUser" maxlength="32" style="width:90px" /></div>
+            </div>
+            <div class="frow" style="margin-top:10px"><button class="btn sm" id="btnEvent" type="button">Log follow-up</button></div>
+          </div>
+          <header style="border-top:1px solid var(--line)"><h2>Win probability</h2></header>
+          <div style="overflow-x:auto"><table class="tbl" style="min-width:420px"><thead><tr><th>Review date</th><th>Probability</th><th>Note</th></tr></thead><tbody id="tProb"><tr><td colspan="3" class="muted">—</td></tr></tbody></table></div>
+          <div class="body">
+            <div class="frow">
+              <div class="fld"><label>Review date</label><input id="prDate" type="date" /></div>
+              <div class="fld"><label>Probability %</label><input id="prPct" type="number" min="0" max="100" style="width:110px" /></div>
+              <div class="fld" style="flex:1;min-width:160px"><label>Note</label><input id="prNote" maxlength="1024" /></div>
+            </div>
+            <div class="frow" style="margin-top:10px;align-items:center"><button class="btn sm" id="btnProb" type="button">Record review</button><span id="ok" class="ok-note"></span></div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+    <div id="pane-contacts" class="card" style="display:none">
+      <header><h2>Sales contacts</h2></header>
+      <div class="body"><form id="contactForm" class="frow"><div class="fld"><label>Customer id (blank = all)</label><input id="fContactCust" inputmode="numeric" style="width:160px" /></div><button class="btn sm" type="submit">Load</button></form></div>
+      <div style="overflow-x:auto"><table class="tbl" style="min-width:640px">
+        <thead><tr><th>Name</th><th>Department</th><th>Customer</th><th>City</th><th>Phone</th><th>Email</th></tr></thead>
+        <tbody id="tContacts"><tr><td colspan="6" class="muted">—</td></tr></tbody>
+      </table></div>
+    </div>
+
+    <div id="err" class="err" style="margin-top:8px"></div>
+  </div>`;
+}
 async function loadQuotes() {
     setErr('');
     setBusy(true);
     try {
         const list = await client().getSalesQuotes(v('#fSearch') || undefined);
-        $('#tQuotes').innerHTML = (list ?? []).map((q) => `
+        $('#tQuotes').innerHTML = (list ?? []).length ? (list ?? []).map((q) => `
       <tr class="click" data-q="${q.quoteId}" data-r="${q.quoteRevisionId}">
-        <td>${esc(q.quoteId)}-${esc(q.quoteRevisionId)}</td>
+        <td class="mono">${esc(q.quoteId)}-${esc(q.quoteRevisionId)}</td>
         <td>${esc(q.customerShortName)}</td>
         <td>${esc(q.contactFirstName)} ${esc(q.contactLastName)}</td>
         <td>${esc(q.endUse)}</td>
         <td>${esc(q.alloy)} ${esc(q.temper)}</td>
-        <td>${esc(num(q.totalLbProcessed))}</td>
-        <td>${esc(dShow(q.createdDate))}</td>
-        <td><span class="prob" data-p="${q.latestProbability ?? ''}">${esc(prob(q.latestProbability))}</span></td></tr>`).join('')
-            || '<tr><td colspan="8" class="muted">No quotes.</td></tr>';
+        <td class="num">${esc(num(q.totalLbProcessed))}</td>
+        <td class="mono">${esc(dShow(q.createdDate))}</td>
+        <td><span class="chip ${probClass(q.latestProbability)}">${esc(prob(q.latestProbability))}</span></td></tr>`).join('')
+            : '<tr><td colspan="8" class="muted">No quotes.</td></tr>';
         document.querySelectorAll('#tQuotes tr.click').forEach((tr) => tr.addEventListener('click', () => void openQuote(Number(tr.dataset.q), Number(tr.dataset.r))));
-        document.querySelectorAll('#tQuotes .prob').forEach((el) => {
-            const p = el.dataset.p ? Number(el.dataset.p) : null;
-            if (p != null)
-                el.style.color = p >= 50 ? '#1a7f37' : p >= 25 ? '#9a6700' : '#cf222e';
-        });
     }
     catch (e) {
         setErr(`Quotes failed: ${e.message}`);
@@ -85,7 +134,6 @@ async function openQuote(quoteId, revisionId) {
             loadEvents(), loadProbability(),
         ]);
         $('#detailTitle').textContent = `Quote ${quoteId}-${revisionId}`;
-        $('#detail').classList.remove('disabled');
         renderHeader(q);
     }
     catch (e) {
@@ -99,19 +147,19 @@ async function loadEvents() {
     if (!cur)
         return;
     const list = await client().getSalesReminders(cur.quoteId, cur.revisionId);
-    $('#tEvents').innerHTML = (list ?? []).map((r) => `<tr>
-    <td>${esc(dShow(r.eventDate))}</td><td>${esc(r.eventStatus)}</td>
+    $('#tEvents').innerHTML = (list ?? []).length ? (list ?? []).map((r) => `<tr>
+    <td class="mono">${esc(dShow(r.eventDate))}</td><td>${esc(r.eventStatus)}</td>
     <td>${esc(r.eventNotes)}</td><td>${esc(r.userId)}</td></tr>`).join('')
-        || '<tr><td colspan="4" class="muted">No follow-ups.</td></tr>';
+        : '<tr><td colspan="4" class="muted">No follow-ups.</td></tr>';
 }
 async function loadProbability() {
     if (!cur)
         return;
     const list = await client().getSalesProbability(cur.quoteId, cur.revisionId);
-    $('#tProb').innerHTML = (list ?? []).map((p) => `<tr>
-    <td>${esc(dShow(p.reviewDate))}</td><td>${esc(prob(p.salesProbabilityPercent))}</td>
+    $('#tProb').innerHTML = (list ?? []).length ? (list ?? []).map((p) => `<tr>
+    <td class="mono">${esc(dShow(p.reviewDate))}</td><td><span class="chip ${probClass(p.salesProbabilityPercent)}">${esc(prob(p.salesProbabilityPercent))}</span></td>
     <td>${esc(p.probabilityNote)}</td></tr>`).join('')
-        || '<tr><td colspan="3" class="muted">No reviews yet.</td></tr>';
+        : '<tr><td colspan="3" class="muted">No reviews yet.</td></tr>';
 }
 async function addEvent() {
     if (!cur) {
@@ -169,11 +217,11 @@ async function loadContacts() {
     try {
         const id = v('#fContactCust');
         const list = await client().getSalesContacts(id ? Number(id) : undefined);
-        $('#tContacts').innerHTML = (list ?? []).map((c) => `<tr>
+        $('#tContacts').innerHTML = (list ?? []).length ? (list ?? []).map((c) => `<tr>
       <td>${esc(c.firstName)} ${esc(c.lastName)}</td><td>${esc(c.department)}</td>
-      <td>${esc(c.customerId)}</td><td>${esc(c.city)}, ${esc(c.state)}</td>
-      <td>${esc(c.phone1)}</td><td>${esc(c.email1)}</td></tr>`).join('')
-            || '<tr><td colspan="6" class="muted">No contacts.</td></tr>';
+      <td class="mono">${esc(c.customerId)}</td><td>${esc(c.city)}, ${esc(c.state)}</td>
+      <td class="mono">${esc(c.phone1)}</td><td>${esc(c.email1)}</td></tr>`).join('')
+            : '<tr><td colspan="6" class="muted">No contacts.</td></tr>';
     }
     catch (e) {
         setErr(`Contacts failed: ${e.message}`);
@@ -187,14 +235,14 @@ function showTab(name) {
     if (name === 'contacts')
         void loadContacts();
 }
-async function init() {
+(async () => {
+    const main = await initShell({ active: 'sales' });
+    main.innerHTML = scaffold();
     ['quotes', 'contacts'].forEach((t) => $(`#tab-${t}`).addEventListener('click', () => showTab(t)));
     $('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); void loadQuotes(); });
     $('#contactForm').addEventListener('submit', (e) => { e.preventDefault(); void loadContacts(); });
-    $('#btnEvent').addEventListener('click', addEvent);
-    $('#btnProb').addEventListener('click', addProbability);
+    $('#btnEvent').addEventListener('click', () => void addEvent());
+    $('#btnProb').addEventListener('click', () => void addProbability());
     showTab('quotes');
-    await initShell({ active: 'sales', adopt: true });
     await loadQuotes();
-}
-void init();
+})();
