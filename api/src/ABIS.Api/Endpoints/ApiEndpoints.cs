@@ -1,3 +1,6 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 using Abis.Api.Data;
 using Abis.Api.Documents;
 using Abis.Api.Middleware;
@@ -7,6 +10,7 @@ using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
 using JsonOptions = Microsoft.AspNetCore.Http.Json.JsonOptions;
 
 namespace Abis.Api.Endpoints;
@@ -91,6 +95,36 @@ public static class ApiEndpoints
                 : (object)new { oidc = false }))
            .WithTags("Meta").WithName("AuthConfig")
            .WithSummary("Browser OIDC client config (or { oidc:false } to use the API-key field).");
+
+        // Anonymous per-user sign-in: validates the login against security_user and issues a
+        // bearer token the SPA sends on subsequent calls (so ResolveLogin resolves the real user +
+        // their grants). Passwordless on the LAN for now — identity, not a secret — until a password
+        // layer or OIDC lands. Requires Auth:Jwt:SigningKey configured (the token is signed with the
+        // same symmetric key the bearer validation trusts).
+        app.MapPost("/auth/login", async (LoginRequest body, JwtAuthOptions jwt, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (string.IsNullOrWhiteSpace(jwt.SigningKey))
+                    return Results.Problem(statusCode: StatusCodes.Status501NotImplemented, title: "Sign-in not configured",
+                        detail: "Set Auth:Jwt:SigningKey (and Issuer/Audience) on the server to enable user login.");
+                var login = body.Login?.Trim();
+                if (string.IsNullOrWhiteSpace(login))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["login"] = ["A username is required."] });
+                var user = await repo.GetSecurityUserByLoginAsync(login, ct);
+                if (user is null)
+                    return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "Unknown user",
+                        detail: $"'{login}' is not in the ABIS user directory.");
+                if (user.UserStatus == 0)
+                    return Results.Problem(statusCode: StatusCodes.Status403Forbidden, title: "Inactive user",
+                        detail: "This ABIS account is not active.");
+                var name = $"{user.UserFirstName} {user.UserLastName}".Trim();
+                var token = IssueUserToken(jwt, user.LoginId ?? login, string.IsNullOrWhiteSpace(name) ? login : name, user.UserId);
+                return Results.Ok(new { token, login = user.LoginId ?? login, name, expiresInSeconds = 8 * 3600 });
+            })
+           .WithTags("Meta").WithName("Login").AllowAnonymous()
+           .WithSummary("Sign in with an ABIS user login (validated against security_user); returns a bearer token that drives RBAC. Passwordless on the LAN until OIDC.")
+           .Produces(StatusCodes.Status200OK).ProducesValidationProblem()
+           .Produces(StatusCodes.Status401Unauthorized).Produces(StatusCodes.Status403Forbidden)
+           .Produces(StatusCodes.Status501NotImplemented);
 
         // All /api endpoints require an authenticated caller (see ApiKey auth).
         // /health and Swagger remain anonymous. The 401 is declared once for the
@@ -2287,6 +2321,26 @@ public static class ApiEndpoints
         if (!string.IsNullOrWhiteSpace(claim)) return claim;
         var hdr = ctx.Request.Headers["X-User-Login"].ToString();
         return string.IsNullOrWhiteSpace(hdr) ? null : hdr;
+    }
+
+    // Sign a short-lived bearer for a resolved ABIS user, using the same symmetric key the
+    // JWT bearer validation trusts. preferred_username = login_id so ResolveLogin picks it up.
+    private static string IssueUserToken(JwtAuthOptions jwt, string login, string name, long userId)
+    {
+        var creds = new SigningCredentials(
+            new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.SigningKey!)), SecurityAlgorithms.HmacSha256);
+        var now = DateTime.UtcNow;
+        var token = new JwtSecurityToken(
+            issuer: string.IsNullOrWhiteSpace(jwt.Issuer) ? null : jwt.Issuer,
+            audience: string.IsNullOrWhiteSpace(jwt.Audience) ? null : jwt.Audience,
+            claims:
+            [
+                new Claim("preferred_username", login),
+                new Claim("name", name),
+                new Claim(JwtRegisteredClaimNames.Sub, userId.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+            ],
+            notBefore: now, expires: now.AddHours(8), signingCredentials: creds);
+        return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
     // Per-feature gate: returns null when allowed, or a 403 result when the resolved user

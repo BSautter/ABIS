@@ -1,8 +1,11 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.IdentityModel.Tokens;
@@ -67,6 +70,30 @@ public sealed class JwtAuthTests : IClassFixture<JwtAuthTests.JwtFactory>
     {
         var resp = await _factory.CreateClient().GetAsync("/api/jobs?pageSize=1");
         Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task User_login_issues_a_token_that_resolves_grants()
+    {
+        var client = _factory.CreateClient();
+        // sign in as a seeded ABIS user (validated against security_user; passwordless on the LAN)
+        var login = await client.PostAsJsonAsync("/auth/login", new { login = "jsmith" });
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        var token = (await login.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(token));
+
+        // the issued token authenticates AND resolves jsmith's real grants (RBAC source)
+        var req = new HttpRequestMessage(HttpMethod.Get, "/api/security/me/permissions");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var perms = await client.SendAsync(req);
+        Assert.Equal(HttpStatusCode.OK, perms.StatusCode);
+        var apps = (await perms.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray()
+            .Select(p => p.GetProperty("applicationName").GetString()).ToList();
+        Assert.Contains("Order Entry", apps);   // jsmith's direct grant
+
+        // unknown user -> 401 (no token issued)
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.PostAsJsonAsync("/auth/login", new { login = "nobody-here" })).StatusCode);
     }
 
     public sealed class JwtFactory : WebApplicationFactory<Program>

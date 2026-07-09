@@ -14,7 +14,7 @@
 // no user resolves (service account / dev API key with no "act as"), nav fails OPEN —
 // the server remains the source of truth for every write.
 import { AbisClient } from './generated/abis-client.js';
-import { initAuth, authFetch } from './auth.js';
+import { initAuth, authFetch, loginWithUser, currentUserName, signOutSession } from './auth.js';
 // Icons are inline SVG path/shape markup (stroked via currentColor in theme.css).
 const I = {
     dash: '<rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>',
@@ -146,7 +146,8 @@ function topHtml() {
 }
 // ---- RBAC nav gating ----
 async function gateNav() {
-    let identity = { name: 'Service account', role: 'API key' };
+    const who = currentUserName() || localStorage.getItem('abis_act_as');
+    let identity = who ? { name: who, role: 'signed in' } : { name: 'Service account', role: 'API key' };
     try {
         const perms = await client().getMyPermissions();
         if (perms && perms.length) {
@@ -155,8 +156,7 @@ async function gateNav() {
                 const feat = (a.dataset.feature ?? '').toLowerCase();
                 a.hidden = !allowed.has(feat);
             });
-            const acting = localStorage.getItem('abis_act_as');
-            identity = { name: acting || 'Signed in', role: `${perms.length} feature grant${perms.length === 1 ? '' : 's'}` };
+            identity = { name: who || 'Signed in', role: `${perms.length} feature grant${perms.length === 1 ? '' : 's'}` };
         }
         // else: no user resolved → fail open (leave every item visible).
     }
@@ -184,22 +184,27 @@ function wireUserMenu() {
     pop.className = 'pop';
     pop.id = 'shPop';
     pop.hidden = true;
-    const acts = ACT_AS.map((a) => `<button type="button" data-login="${esc(a.login)}"><span>${esc(a.name)}</span><small>${esc(a.role)}</small></button>`).join('');
-    pop.innerHTML = `<div class="h">View as (dev impersonation)</div>${acts}<div class="rule"></div><button type="button" id="shSignout"><span>Sign out</span><small>→</small></button>`;
+    const acts = ACT_AS.filter((a) => a.login).map((a) => `<button type="button" data-login="${esc(a.login)}"><span>${esc(a.name)}</span><small>${esc(a.login)}</small></button>`).join('');
+    pop.innerHTML = `<div class="h">Switch user</div>${acts}<div class="rule"></div><button type="button" id="shSignout"><span>Sign out</span><small>→</small></button>`;
     document.querySelector('.abis-app').appendChild(pop);
     const place = () => { const r = chip.getBoundingClientRect(); pop.style.top = `${r.bottom + 6}px`; pop.style.right = `${window.innerWidth - r.right}px`; };
     chip.addEventListener('click', (e) => { e.stopPropagation(); place(); pop.hidden = !pop.hidden; });
     document.addEventListener('click', () => { pop.hidden = true; });
     pop.addEventListener('click', (e) => e.stopPropagation());
-    pop.querySelectorAll('button[data-login]').forEach((b) => b.addEventListener('click', () => {
+    pop.querySelectorAll('button[data-login]').forEach((b) => b.addEventListener('click', async () => {
         const l = b.dataset.login ?? '';
-        if (l)
-            localStorage.setItem('abis_act_as', l);
-        else
+        // Sign in as the picked user (passwordless on the LAN); fall back to dev impersonation.
+        try {
+            await loginWithUser(l);
             localStorage.removeItem('abis_act_as');
+        }
+        catch {
+            localStorage.setItem('abis_act_as', l);
+        }
         location.reload();
     }));
     pop.querySelector('#shSignout').addEventListener('click', () => {
+        signOutSession();
         localStorage.removeItem('abis_act_as');
         sessionStorage.removeItem('abis_entered');
         location.reload();
@@ -218,30 +223,53 @@ function loginGate() {
       <div class="card">
         <div class="brand"><span class="avatar" style="width:38px;height:38px;border-radius:10px;font-size:15px;">AB</span>
           <div><h1>ABIS</h1><div class="eyebrow" style="margin-top:2px;">Aluminum Blanking · Integrated Operations</div></div></div>
-        <p class="sub">Sign in to the operations console.</p>
+        <p class="sub">Sign in with your ABIS user.</p>
         <div class="field"><label for="lgUser">Username</label><input id="lgUser" value="jsmith" autocomplete="username" /></div>
-        <div class="field"><label for="lgKey">API key</label><input id="lgKey" type="password" value="dev-local-key" autocomplete="current-password" /></div>
-        <button class="btn block" id="lgGo" type="button">Enter ABIS</button>
+        <div class="err" id="lgErr" style="margin:2px 0 8px"></div>
+        <button class="btn block" id="lgGo" type="button">Sign in</button>
         <div class="note"><svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
           <span>Access is shaped by your role — you'll see only the modules your grants allow. The server stays the source of truth.</span></div>
       </div>`;
         document.body.appendChild(gate);
-        const enter = () => {
-            const key = gate.querySelector('#lgKey').value.trim();
+        const btn = gate.querySelector('#lgGo');
+        const errEl = gate.querySelector('#lgErr');
+        const enter = async () => {
             const user = gate.querySelector('#lgUser').value.trim();
-            if (key)
-                localStorage.setItem('abis_api_key', key);
-            if (user)
-                localStorage.setItem('abis_act_as', user);
-            else
-                localStorage.removeItem('abis_act_as');
-            sessionStorage.setItem('abis_entered', '1');
-            gate.remove();
-            resolve();
+            if (!user) {
+                errEl.textContent = 'Enter your username.';
+                return;
+            }
+            btn.disabled = true;
+            errEl.textContent = '';
+            btn.textContent = 'Signing in…';
+            try {
+                await loginWithUser(user); // validates vs security_user, stores the bearer
+                localStorage.removeItem('abis_act_as'); // the signed-in user now drives identity
+                sessionStorage.setItem('abis_entered', '1');
+                gate.remove();
+                resolve();
+            }
+            catch (e) {
+                const msg = e.message;
+                if (/not configured/i.test(msg)) {
+                    // No server-side sign-in yet — fall back to the dev API key + impersonation so the
+                    // app is still usable locally.
+                    if (!localStorage.getItem('abis_api_key'))
+                        localStorage.setItem('abis_api_key', 'dev-local-key');
+                    localStorage.setItem('abis_act_as', user);
+                    sessionStorage.setItem('abis_entered', '1');
+                    gate.remove();
+                    resolve();
+                    return;
+                }
+                errEl.textContent = msg;
+                btn.disabled = false;
+                btn.textContent = 'Sign in';
+            }
         };
-        gate.querySelector('#lgGo').addEventListener('click', enter);
+        btn.addEventListener('click', () => void enter());
         gate.addEventListener('keydown', (e) => { if (e.key === 'Enter')
-            enter(); });
+            void enter(); });
         gate.querySelector('#lgUser').focus();
     });
 }

@@ -3988,6 +3988,49 @@
         }
       }
     },
+    "/auth/login": {
+      "post": {
+        "tags": [
+          "Meta"
+        ],
+        "summary": "Sign in with an ABIS user login (validated against security_user); returns a bearer token that drives RBAC. Passwordless on the LAN until OIDC.",
+        "operationId": "Login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "501": {
+            "description": "Not Implemented"
+          }
+        }
+      }
+    },
     "/api/opc-log/logs": {
       "get": {
         "tags": [
@@ -12447,6 +12490,16 @@
             "nullable": true
           },
           "message": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LoginRequest": {
+        "type": "object",
+        "properties": {
+          "login": {
             "type": "string",
             "nullable": true
           }

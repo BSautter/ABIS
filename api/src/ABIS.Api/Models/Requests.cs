@@ -736,3 +736,12 @@ public sealed class Customer861FlagWrite
 {
     public string? Create861AtReceiving { get; set; }
 }
+
+/// <summary>Body for POST /auth/login — an ABIS user sign-in validated against
+/// <c>security_user</c>. Passwordless on the LAN for now (identity + grants, not a secret);
+/// a password/OIDC layer comes later.</summary>
+public sealed class LoginRequest
+{
+    /// <summary>The user's ABIS login id (<c>security_user.login_id</c>).</summary>
+    public string? Login { get; set; }
+}

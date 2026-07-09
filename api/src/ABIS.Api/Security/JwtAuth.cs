@@ -52,6 +52,9 @@ public static class AuthSetup
         // limiting + the Swagger security definition).
         var jwt = builder.Configuration.GetSection(JwtAuthOptions.SectionName).Get<JwtAuthOptions>()
                   ?? new JwtAuthOptions();
+        // Registered so POST /auth/login can issue tokens signed with the same key the bearer
+        // validation trusts (symmetric-key path).
+        builder.Services.AddSingleton(jwt);
 
         var auth = builder.Services
             .AddAuthentication(ApiKeyAuthenticationHandler.SchemeName)
