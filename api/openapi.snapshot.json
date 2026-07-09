@@ -8937,6 +8937,44 @@
         }
       }
     },
+    "/api/shipments/{packingList}/close": {
+      "post": {
+        "tags": [
+          "Shipments"
+        ],
+        "summary": "Close out a shipment / BOL — mark it shipped and stamp the sent + actual dates.",
+        "operationId": "CloseShipment",
+        "parameters": [
+          {
+            "name": "packingList",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Shipment"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/sketches": {
       "get": {
         "tags": [
@@ -10100,7 +10138,7 @@
         "tags": [
           "Trucks"
         ],
-        "summary": "Gate check-out — stamp departure + set status Departed.",
+        "summary": "Gate check-out — stamp departure + set status Signed-out; an outbound truck also closes its linked BOL.",
         "operationId": "CheckOutTruck",
         "parameters": [
           {

@@ -113,6 +113,18 @@ const truckStatus: Domain = {
   9: { label: 'Cancelled', tone: 'crit' },
 };
 
+// shipment.shipment_status — the plant's dispatch legend. The live value set is {0,2,3,4}; 0 is
+// CONFIRMED = Shipped/closed (the legacy EDI 856 ASN generator fires on shipment_status = 0, it is
+// ~99.5% of rows / the terminal state, and every other ABIS domain uses 0 for the terminal value).
+// 2/3/4 labels are BEST-GUESS pending the plant's confirmation (they only tint the chip; the close
+// action keys off 0 = ClosedShipmentStatus). Mirror any legend correction in AbisRepository.cs.
+const shipmentStatus: Domain = {
+  0: { label: 'Shipped', tone: 'ok' },
+  2: { label: 'Staged', tone: 'info' },
+  3: { label: 'Open', tone: 'mut' },
+  4: { label: 'On hold', tone: 'warn' },
+};
+
 // process_coil.process_coil_status shares the coil_status code space (accounting.js:19 confirms
 // 3=Rejected/7=Rebanded; w_invoice.srw:250/274). receiving coil lines are stamped 2=New / 11=QA
 // on hold (receiving.ts mint), also the coil_status space — so both reuse the coilStatus map.
@@ -126,6 +138,7 @@ export const STATUS_MAPS: Record<string, Domain> = {
   scrapType,
   dieStatus,
   truckStatus,
+  shipmentStatus,
 };
 
 function lookup(domain: string, code: unknown): Entry | undefined {

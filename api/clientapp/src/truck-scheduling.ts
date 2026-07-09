@@ -151,10 +151,16 @@ function wireRowActions(): void {
 }
 
 async function rowAction(act: string, id: number): Promise<void> {
-  setErr(''); setBusy(true);
+  setErr(''); setOk(''); setBusy(true);
   try {
     const r = await api(`/api/truck-appointments/${id}/${act}`, 'POST');
     if (!r.ok) { setErr(`Action failed (${r.status}).`); return; }
+    // Signing out an outbound truck closes its linked shipment/BOL server-side — surface it.
+    if (act === 'check-out') {
+      const a = await r.json().catch(() => null) as { direction?: string; refType?: string; refId?: string } | null;
+      if (a?.direction === 'OUTBOUND' && a.refType === 'SHIPMENT' && a.refId)
+        setOk(`✓ Signed out — linked BOL / packing list ${a.refId} closed.`);
+    }
     await load();
   } catch (e) { setErr(`Action failed: ${(e as Error).message}`); }
   finally { setBusy(false); }

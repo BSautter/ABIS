@@ -668,6 +668,14 @@ public static class ApiEndpoints
            .WithSummary("Update a shipment's dispatch status (status, vehicle status, sent/actual times, notes). Supports If-Match.")
            .Produces<Shipment>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status412PreconditionFailed);
 
+        // Guided close-out: mark a shipment / BOL shipped (sets the closed status + stamps sent+actual
+        // dates) in one action, instead of hand-editing the raw status number on the dispatch form.
+        api.MapPost("/shipments/{packingList:long}/close", async (long packingList, IAbisRepository repo, CancellationToken ct) =>
+                await repo.CloseShipmentAsync(packingList, ct) is { } s ? Results.Ok(s) : Results.NotFound())
+           .WithName("CloseShipment").WithTags("Shipments")
+           .WithSummary("Close out a shipment / BOL — mark it shipped and stamp the sent + actual dates.")
+           .Produces<Shipment>().Produces(StatusCodes.Status404NotFound);
+
         // ---- Receiving BOLs --------------------------------------------
         api.MapGet("/receiving-bols", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, long? customerId = null, int? status = null, string? sort = null, string? dir = null) =>
@@ -1173,9 +1181,20 @@ public static class ApiEndpoints
            .WithSummary("Gate check-in — stamp arrival + set status Checked-in.").Produces<TruckAppointment>().Produces(StatusCodes.Status404NotFound);
 
         api.MapPost("/truck-appointments/{id:long}/check-out", async (long id, IAbisRepository repo, CancellationToken ct) =>
-                await repo.CheckOutTruckAsync(id, ct) is { } a ? Results.Ok(a) : Results.NotFound())
+            {
+                var a = await repo.CheckOutTruckAsync(id, ct);
+                if (a is null) return Results.NotFound();
+                // Truck→BOL link: an OUTBOUND truck leaving the gate closes its linked shipment/BOL
+                // (the appointment carries an optional SHIPMENT ref = the packing-list number).
+                // Best-effort — a missing/unlinked shipment is a no-op, never fails the check-out.
+                if (string.Equals(a.Direction, "OUTBOUND", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(a.RefType, "SHIPMENT", StringComparison.OrdinalIgnoreCase)
+                    && long.TryParse(a.RefId, out var packingList))
+                    await repo.CloseShipmentAsync(packingList, ct);
+                return Results.Ok(a);
+            })
            .WithName("CheckOutTruck").WithTags("Trucks")
-           .WithSummary("Gate check-out — stamp departure + set status Departed.").Produces<TruckAppointment>().Produces(StatusCodes.Status404NotFound);
+           .WithSummary("Gate check-out — stamp departure + set status Signed-out; an outbound truck also closes its linked BOL.").Produces<TruckAppointment>().Produces(StatusCodes.Status404NotFound);
 
         api.MapPatch("/truck-appointments/{id:long}/status", async (long id, TruckStatusPatch body, IAbisRepository repo, CancellationToken ct) =>
             {

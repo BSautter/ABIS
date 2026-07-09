@@ -202,6 +202,7 @@ public interface IAbisRepository
     Task<Shipment> CreateShipmentAsync(ShipmentWrite body, CancellationToken ct);
     Task<Shipment?> UpdateShipmentAsync(long packingList, ShipmentWrite body, CancellationToken ct);
     Task<Shipment?> PatchShipmentAsync(long packingList, ShipmentStatusPatch patch, CancellationToken ct);
+    Task<Shipment?> CloseShipmentAsync(long packingList, CancellationToken ct);
     Task<PagedResult<ReceivingBol>> GetReceivingBolsAsync(int page, int pageSize, long? customerId, int? status, string? orderBy, CancellationToken ct);
     Task<ReceivingBol?> GetReceivingBolAsync(long receivingBolId, CancellationToken ct);
     Task<ReceivingBol> CreateReceivingBolAsync(ReceivingBolWrite body, CancellationToken ct);

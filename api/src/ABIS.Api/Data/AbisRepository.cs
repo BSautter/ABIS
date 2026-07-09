@@ -3072,6 +3072,34 @@ public sealed class AbisRepository : IAbisRepository
         return n == 0 ? null : await GetShipmentAsync(packingList, ct);
     }
 
+    // The shipment_status value that means "shipped / closed". The plant's real shipment_status set
+    // is {0,2,3,4} (queried live); 0 is confirmed = Shipped/closed — the legacy EDI 856 ASN generator
+    // fires on shipment_status = 0, it is ~99.5% of historical rows (the terminal state), and every
+    // other ABIS status domain uses 0 for the terminal "done/gone/shipped" value. Change this one
+    // constant (and the status-labels.ts shipmentStatus map) if the plant corrects the legend.
+    public const int ClosedShipmentStatus = 0;
+
+    // Close out a shipment / BOL: mark it shipped (ClosedShipmentStatus) and stamp the sent + actual
+    // date-times. Idempotent — re-closing keeps the first-close timestamps (COALESCE), only the
+    // status is forced. Returns null when the packing list does not exist.
+    public async Task<Shipment?> CloseShipmentAsync(long packingList, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var p = new DynamicParameters();
+        p.Add("status", ClosedShipmentStatus, DbType.Int32);
+        p.Add("now", DateTime.UtcNow, DbType.DateTime);
+        p.Add("id", packingList);
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE shipment SET
+                shipment_status = :status,
+                date_sent = COALESCE(date_sent, :now),
+                shipment_actualed_date_time = COALESCE(shipment_actualed_date_time, :now)
+            WHERE packing_list = :id
+            """, p, cancellationToken: ct));
+        return n == 0 ? null : await GetShipmentAsync(packingList, ct);
+    }
+
     public async Task<Shipment?> PatchShipmentAsync(long packingList, ShipmentStatusPatch patch, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

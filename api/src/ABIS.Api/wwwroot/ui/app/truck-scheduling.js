@@ -141,12 +141,19 @@ function wireRowActions() {
 }
 async function rowAction(act, id) {
     setErr('');
+    setOk('');
     setBusy(true);
     try {
         const r = await api(`/api/truck-appointments/${id}/${act}`, 'POST');
         if (!r.ok) {
             setErr(`Action failed (${r.status}).`);
             return;
+        }
+        // Signing out an outbound truck closes its linked shipment/BOL server-side — surface it.
+        if (act === 'check-out') {
+            const a = await r.json().catch(() => null);
+            if (a?.direction === 'OUTBOUND' && a.refType === 'SHIPMENT' && a.refId)
+                setOk(`✓ Signed out — linked BOL / packing list ${a.refId} closed.`);
         }
         await load();
     }
