@@ -116,11 +116,15 @@ when a concrete capture workflow is wired up, to avoid fabricating one.
 
 ## Deployment
 
-Runs **on the shop-floor PC** as a console app or a Windows Service (`sc create`
-/ NSSM), bound to the LAN so the web stack can reach it. It is **not**
-containerized — it needs direct COM-port access, which serial-passthrough to
-containers makes brittle. Keep it on a current .NET 8 runtime; no Oracle access
-needed (it talks only to devices + the API).
+Runs **on the shop-floor / OPC PC** as a console app or a **Windows Service**,
+bound to the LAN so the web stack can reach it. The host calls `UseWindowsService()`,
+so a plain `sc create` runs it as a proper service (no NSSM); as a service it reads
+`appsettings.json` beside the exe (the content root is pinned to the exe folder for
+that case). The OPC-box service install is in the
+[OPC bridge runbook](OPC_BRIDGE_RUNBOOK.md#option-b--edge-reads-ingear-da-directly-the-chosen-path).
+It is **not** containerized — it needs direct COM-port / OPC-COM access, which
+passthrough to containers makes brittle. Keep it on a current .NET 8 runtime; no
+Oracle access needed (it talks only to devices + the API).
 
 ## Testing
 

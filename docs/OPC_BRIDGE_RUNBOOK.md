@@ -35,23 +35,61 @@ there is **nothing extra to install**. **VALIDATED LIVE on `.170` (2026-07-09):*
 
 **On each OPC box:**
 1. Copy the published edge (x86 self-contained — INGEAR is 32-bit) to the box and extract it.
-2. Run it — the bundled **`run-edge.cmd`** sets the config + binds `http://0.0.0.0:8090`:
+2. **Bring it up interactively first** — the bundled [`run-edge.cmd`](../tools/opc-bridge/run-edge.cmd)
+   sets the config (env vars) + binds `http://0.0.0.0:8090`:
    ```sh
    Edge__Opc__Provider=ClassicDa
    Edge__Opc__ProgId=CimQuestInc.IGOPCAB.1
-   Edge__Opc__Tags__0=PLC5-BL78.strokecnt      # the always-running mains
-   Edge__Opc__Tags__1=PLC5-BL84.strokecnt
+   Edge__Opc__Tags__0=PLC5-BL110.strokecnt     # the three line devices (same on .170 and .175)
+   Edge__Opc__Tags__1=PLC5-BL78.strokecnt
+   Edge__Opc__Tags__2=PLC5-BL84.strokecnt
    Edge__Opc__RunStateMode=Changed             # running = the stroke counter is still climbing
    Edge__Opc__RunStateThreshold=10             # ...declare stopped after 10s with no change
    ```
-   *(Confirm item ids in the INGEAR tree / with `AbisEdge --probe --browse`. The mains BL78/BL84
-   have no tidy `spm`; the stroke counter `strokecnt` climbing = running.)*
+   *(Both OPC boxes expose the same three devices — confirm with `AbisEdge --probe --browse strokecnt`.
+   The mains have no tidy `spm`; the stroke counter `strokecnt` climbing = running. `run-edge.cmd`
+   is the console/bring-up path — for production, install as a Windows Service in step 5.)*
 3. **Firewall:** allow the line PCs to reach the edge's HTTP port **8090** —
    [`tools/opc-bridge/Open-UaFirewall.ps1`](../tools/opc-bridge/Open-UaFirewall.ps1) `-Port 8090`.
 4. **Verify:** `curl "http://localhost:8090/run-state?tag=PLC5-BL84.strokecnt"` → `running` flips
    true/false as that press runs/stops. Then in the DAS console set the **edge URL** + the **PLC run
    tag** (per line) — the PLC chip shows 🟢/🔴 and the "⛔ LINE DOWN" banner opens on a stop.
-5. Install it as a **Windows Service** for a permanent deployment (`sc create` / NSSM), same env.
+5. **Install as a Windows Service** (permanent, survives reboots — this is what should actually run
+   in production). The edge calls `UseWindowsService()` and, when the SCM starts it, reads an
+   `appsettings.json` **beside the exe**, so a plain `sc create` works — no NSSM or other tooling.
+   As Administrator on the box:
+
+   **a. Config file** — create `C:\abis-edge\edge\appsettings.json` (identical on `.170` and `.175`;
+   env vars aren't used by the service, this file is):
+   ```json
+   {
+     "Kestrel": { "Endpoints": { "Http": { "Url": "http://0.0.0.0:8090" } } },
+     "Edge": {
+       "Opc": {
+         "Provider": "ClassicDa",
+         "ProgId": "CimQuestInc.IGOPCAB.1",
+         "Tags": [
+           "PLC5-BL110.strokecnt",
+           "PLC5-BL78.strokecnt",
+           "PLC5-BL84.strokecnt"
+         ],
+         "RunStateMode": "Changed",
+         "RunStateThreshold": 10
+       }
+     }
+   }
+   ```
+   **b. Create + start the service** (mind the required space after each `binPath=` / `start=`):
+   ```bat
+   sc create AbisEdge binPath= "C:\abis-edge\edge\AbisEdge.exe" start= auto
+   sc description AbisEdge "ABIS Edge - INGEAR OPC DA line run-state for PLC auto-downtime"
+   sc failure AbisEdge reset= 60 actions= restart/5000/restart/5000/restart/5000
+   sc start AbisEdge
+   ```
+   **c. Verify** it came up (as the service, not a console): `curl "http://localhost:8090/health"`
+   then the `/run-state?tag=...` check from step 4. Manage it with `sc query AbisEdge` /
+   `sc stop AbisEdge` / `sc start AbisEdge`; after any `appsettings.json` edit, restart the service.
+   Uninstall with `sc delete AbisEdge` (stop it first).
 
 > **De-risk with the probe:** `AbisEdge.exe --probe <item>...` does a one-shot read (value +
 > quality); `--probe --browse [filter]` lists item ids; `--probe --watch <item>...` polls them

@@ -21,6 +21,10 @@
          ConfigurationManager, which isn't in the self-contained .NET 8 runtime. With it present,
          Common.Logging finds no 'common/logging' section and falls back to a no-op logger. -->
     <PackageReference Include="System.Configuration.ConfigurationManager" Version="8.0.0" />
+    <!-- Lets the edge run as a Windows Service (`sc create`) on the OPC box for a permanent,
+         reboot-surviving deployment. No-op off Windows / when not started by the SCM, so the
+         Linux .deb and dev runs are unaffected. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
   </ItemGroup>
 
 </Project>

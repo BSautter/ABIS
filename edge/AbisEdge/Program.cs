@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.IO.Ports;
 using AbisEdge.Scales;
 using AbisEdge.Tags;
+using Microsoft.Extensions.Hosting.WindowsServices;
 
 // ABIS Edge — a small shop-floor service that reads weigh scales/gauges over
 // serial AND line equipment over OPC, and exposes the latest values over HTTP,
@@ -19,7 +20,15 @@ if (args.Length > 0 && string.Equals(args[0], "--probe", StringComparison.Ordina
     return;
 }
 
-var builder = WebApplication.CreateBuilder(args);
+// A Windows Service starts in C:\Windows\System32, and WebApplication.CreateBuilder loads
+// appsettings.json (the OPC-box config) relative to the content root *before* UseWindowsService()
+// could re-point it — so when hosted as a service, pin the content root to the exe's folder up front.
+// Off Windows / when not run by the SCM (dev, the Linux .deb) this is null = the default content root.
+var contentRoot = WindowsServiceHelpers.IsWindowsService() ? AppContext.BaseDirectory : null;
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = args, ContentRootPath = contentRoot });
+// Register with the Windows Service Control Manager when the SCM launches us (no-op otherwise), so
+// `sc create` runs the edge as a proper service that responds to start/stop and restarts on reboot.
+builder.Host.UseWindowsService();
 
 // --- Configure the device from Edge:Scale:* (env or appsettings) ---------------
 var scaleCfg = builder.Configuration.GetSection("Edge:Scale");
