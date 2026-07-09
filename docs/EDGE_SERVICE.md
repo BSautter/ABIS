@@ -142,6 +142,11 @@ needed (it talks only to devices + the API).
 
 ## Standing up the UA/DA wrapper (INGEAR) {#standing-up-the-uadawrapper-ingear}
 
+> **Doing the install?** Follow the step-by-step [OPC bridge runbook](OPC_BRIDGE_RUNBOOK.md)
+> — it has the product choice, the co-location/DCOM warning, firewall + service scripts
+> (`tools/opc-bridge/`), and troubleshooting. The section below is the summary.
+
+
 This site's OPC servers (`192.168.10.170`, `192.168.9.175`) run **INGEAR OPC Server
 for Allen-Bradley** — Classic **OPC DA**, no native UA endpoint. A small **wrapper**
 on the OPC box exposes the DA address space as UA; this service connects to that.
