@@ -1,57 +1,114 @@
-// ABIS Customers — greenfield (Path C) master-data module. A typed SPA on the
-// Phase-2 API: customer search + load → edit → save (create/replace), plus the
-// selected customer's contacts (list + add/edit). Customers are referenced by the
-// order-entry and receiving modules, so this is the maintenance screen behind them.
-// Through the NSwag-generated, compiler-checked client.
+// ABIS Customers — master-data (legacy customer window), restyled to the design system in the
+// shared shell (#4 polish). Customer search + edit/create, plus the selected customer's contacts
+// (list + add/edit). Typed calls via the NSwag client.
 //
-// Compiled by `tsc` to wwwroot/ui/app/customers.js; served at /ui/customers.html.
+// Compiled by tsc to wwwroot/ui/app/customers.js; served at /ui/customers.html.
 import { AbisClient, CustomerWrite, CustomerContactWrite, CustomerContact } from './generated/abis-client.js';
-
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
 
-const $ = <T extends HTMLElement = HTMLElement>(sel: string): T =>
-  document.querySelector(sel) as T;
-
-// Auth — a Bearer token (OIDC) or the X-Api-Key field — is attached by ./auth.
-function client(): AbisClient {
-  return new AbisClient('', { fetch: authFetch });
-}
-
+const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
+const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
 const esc = (s: unknown): string =>
-  String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
+  String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
 const setErr = (m: string) => { $('#err').textContent = m; };
 const setOk = (m: string) => { $('#ok').textContent = m; };
 const setBusy = (b: boolean) => document.body.classList.toggle('busy', b);
 const v = (id: string) => $<HTMLInputElement>(id).value.trim();
 const setV = (id: string, value: unknown) => { $<HTMLInputElement>(id).value = value == null ? '' : String(value); };
 
-let editingCustomerId: number | null = null; // null = creating a new customer
-let editingContactId: number | null = null;  // null = adding a new contact
+let editingCustomerId: number | null = null;
+let editingContactId: number | null = null;
 const contactsById = new Map<number, CustomerContact>();
 
-// ---- Customer list ---------------------------------------------------------
+function scaffold(): string {
+  return `
+  <div class="page">
+    <div class="page-head">
+      <div><div class="eyebrow">Commercial · Master data</div><h1>Customers</h1></div>
+      <div class="shift-tag" id="count">—</div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px"><div class="body">
+      <form id="searchForm" class="frow">
+        <div class="fld"><label>Name contains</label><input id="fName" style="width:200px" placeholder="ACME…" /></div>
+        <button class="btn sm" type="submit">Search</button>
+      </form>
+      <div id="err" class="err" style="margin-top:8px"></div>
+    </div></div>
+
+    <div class="grid">
+      <div class="stack"><div class="card">
+        <header><h2>Customers</h2><span class="sub" id="listSub"></span></header>
+        <div style="overflow-x:auto"><table class="tbl" style="min-width:480px">
+          <thead><tr><th>Id</th><th>Name</th><th>Short</th><th>Location</th></tr></thead>
+          <tbody id="customers"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+        </table></div>
+      </div></div>
+      <div class="stack">
+        <div class="card">
+          <header><h2 id="formTitle">New customer</h2></header>
+          <div class="body">
+            <div class="frow">
+              <div class="fld" style="flex:1;min-width:180px"><label>Name</label><input id="cName" /></div>
+              <div class="fld"><label>Short</label><input id="cShort" style="width:120px" /></div>
+              <div class="fld"><label>City</label><input id="cCity" style="width:130px" /></div>
+              <div class="fld"><label>State</label><input id="cState" style="width:80px" /></div>
+              <div class="fld"><label>Zip</label><input id="cZip" style="width:90px" /></div>
+            </div>
+            <div class="frow" style="margin-top:10px;align-items:center">
+              <button class="btn sm" id="btnSave" type="button">Save</button>
+              <button class="btn sm ghost" id="btnNew" type="button">New</button>
+              <span id="ok" class="ok-note"></span>
+            </div>
+          </div>
+        </div>
+        <div class="card" id="contactPanel">
+          <header><h2 id="contactFormTitle">New contact</h2><span class="sub" id="contactHint"></span></header>
+          <div class="body">
+            <div style="overflow-x:auto"><table class="tbl" style="min-width:420px">
+              <thead><tr><th>Name</th><th>Dept</th><th>Phone</th><th>Email</th></tr></thead>
+              <tbody id="contacts"></tbody>
+            </table></div>
+            <div class="frow" style="margin-top:12px">
+              <div class="fld"><label>Last</label><input id="kLast" style="width:120px" /></div>
+              <div class="fld"><label>First</label><input id="kFirst" style="width:120px" /></div>
+              <div class="fld"><label>Department</label><input id="kDept" style="width:120px" /></div>
+              <div class="fld"><label>Phone</label><input id="kPhone" style="width:130px" /></div>
+              <div class="fld"><label>Email</label><input id="kEmail" style="width:170px" /></div>
+              <div class="fld"><label>City</label><input id="kCity" style="width:110px" /></div>
+              <div class="fld"><label>State</label><input id="kState" style="width:70px" /></div>
+            </div>
+            <div class="frow" style="margin-top:10px">
+              <button class="btn sm" id="btnContactSave" type="button">Save contact</button>
+              <button class="btn sm ghost" id="btnContactNew" type="button">New contact</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
 async function search(): Promise<void> {
   setErr(''); setBusy(true);
   const name = v('#fName') || undefined;
   try {
     const page = await client().listCustomers(1, 50, name, undefined, undefined);
-    const rows = (page.items ?? []).map((c) => `
+    const items = page.items ?? [];
+    $('#customers').innerHTML = items.length ? items.map((c) => `
       <tr class="click" data-id="${c.customerId}">
-        <td>${esc(c.customerId)}</td>
-        <td>${esc(c.customerName)}</td>
-        <td>${esc(c.customerShortName)}</td>
+        <td class="mono">${esc(c.customerId)}</td><td>${esc(c.customerName)}</td><td>${esc(c.customerShortName)}</td>
         <td>${esc([c.customerCity, c.customerState].filter(Boolean).join(', '))}</td>
-      </tr>`).join('');
-    $('#customers').innerHTML = rows || '<tr><td colspan="4" class="muted">No matching customers.</td></tr>';
-    $('#count').textContent = `${(page.totalCount ?? 0).toLocaleString()} total`;
+      </tr>`).join('') : '<tr><td colspan="4" class="muted">No matching customers.</td></tr>';
+    $('#count').textContent = `${(page.totalCount ?? 0).toLocaleString()} customers`;
+    $('#listSub').textContent = `${items.length} shown`;
     document.querySelectorAll<HTMLTableRowElement>('#customers tr.click').forEach((tr) =>
-      tr.addEventListener('click', () => loadCustomer(Number(tr.dataset.id))));
+      tr.addEventListener('click', () => void loadCustomer(Number(tr.dataset.id))));
   } catch (e) { setErr(`Search failed: ${(e as Error).message}`); }
   finally { setBusy(false); }
 }
 
-// ---- Customer form ---------------------------------------------------------
 async function loadCustomer(id: number): Promise<void> {
   setErr(''); setOk(''); setBusy(true);
   try {
@@ -72,7 +129,7 @@ function newCustomer(): void {
   ['#cName', '#cShort', '#cCity', '#cState', '#cZip'].forEach((id) => setV(id, ''));
   $('#contacts').innerHTML = '';
   contactsById.clear();
-  setContactsEnabled(false); // need a saved customer (an id) before adding contacts
+  setContactsEnabled(false);
   newContact();
   setOk(''); setErr('');
 }
@@ -102,20 +159,16 @@ async function saveCustomer(): Promise<void> {
   finally { setBusy(false); }
 }
 
-// ---- Contacts (sub-entity of the selected customer) ------------------------
 async function loadContacts(customerId: number): Promise<void> {
   contactsById.clear();
   try {
     const contacts = await client().getCustomerContacts(customerId);
     (contacts ?? []).forEach((k) => { if (k.contactId != null) contactsById.set(k.contactId, k); });
-    const rows = (contacts ?? []).map((k) => `
+    $('#contacts').innerHTML = (contacts ?? []).length ? (contacts ?? []).map((k) => `
       <tr class="click" data-id="${k.contactId}">
-        <td>${esc([k.firstName, k.lastName].filter(Boolean).join(' '))}</td>
-        <td>${esc(k.department)}</td>
-        <td>${esc(k.phone1)}</td>
-        <td>${esc(k.email1)}</td>
-      </tr>`).join('');
-    $('#contacts').innerHTML = rows || '<tr><td colspan="4" class="muted">No contacts yet.</td></tr>';
+        <td>${esc([k.firstName, k.lastName].filter(Boolean).join(' '))}</td><td>${esc(k.department)}</td>
+        <td class="mono">${esc(k.phone1)}</td><td>${esc(k.email1)}</td>
+      </tr>`).join('') : '<tr><td colspan="4" class="muted">No contacts yet.</td></tr>';
     document.querySelectorAll<HTMLTableRowElement>('#contacts tr.click').forEach((tr) =>
       tr.addEventListener('click', () => editContact(Number(tr.dataset.id))));
   } catch (e) { setErr(`Contacts load failed: ${(e as Error).message}`); }
@@ -145,36 +198,26 @@ async function saveContact(): Promise<void> {
   if (editingCustomerId == null) { setErr('Save the customer before adding contacts.'); return; }
   setErr(''); setOk(''); setBusy(true);
   const body = new CustomerContactWrite({
-    lastName: v('#kLast') || undefined,
-    firstName: v('#kFirst') || undefined,
-    department: v('#kDept') || undefined,
-    phone1: v('#kPhone') || undefined,
-    email1: v('#kEmail') || undefined,
-    city: v('#kCity') || undefined,
-    state: v('#kState') || undefined,
+    lastName: v('#kLast') || undefined, firstName: v('#kFirst') || undefined, department: v('#kDept') || undefined,
+    phone1: v('#kPhone') || undefined, email1: v('#kEmail') || undefined, city: v('#kCity') || undefined, state: v('#kState') || undefined,
   });
   try {
-    if (editingContactId == null) {
-      await client().createCustomerContact(editingCustomerId, body);
-      setOk('✓ Added contact.');
-    } else {
-      await client().updateCustomerContact(editingContactId, body);
-      setOk(`✓ Saved contact #${editingContactId}.`);
-    }
+    if (editingContactId == null) { await client().createCustomerContact(editingCustomerId, body); setOk('✓ Added contact.'); }
+    else { await client().updateCustomerContact(editingContactId, body); setOk(`✓ Saved contact #${editingContactId}.`); }
     await loadContacts(editingCustomerId);
     newContact();
   } catch (e) { setErr(`Contact save failed: ${(e as Error).message}`); }
   finally { setBusy(false); }
 }
 
-async function init(): Promise<void> {
+(async () => {
+  const main = await initShell({ active: 'customers' });
+  main.innerHTML = scaffold();
   $<HTMLFormElement>('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); void search(); });
   $('#btnNew').addEventListener('click', newCustomer);
-  $('#btnSave').addEventListener('click', saveCustomer);
-  $('#btnContactSave').addEventListener('click', saveContact);
+  $('#btnSave').addEventListener('click', () => void saveCustomer());
+  $('#btnContactSave').addEventListener('click', () => void saveContact());
   $('#btnContactNew').addEventListener('click', newContact);
   newCustomer();
   await search();
-}
-
-void initShell({ active: 'customers', adopt: true }).then(init);
+})();
