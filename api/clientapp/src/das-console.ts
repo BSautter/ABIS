@@ -4,9 +4,11 @@
 // record scrap, and log downtime WITH a reason (a dt_cause segment). Statuses decode via the shared
 // status-labels lookup.
 //
-// Known gaps flagged in-UI: skid barcode-tag printing needs a thermal ZPL/CPCL endpoint (only the
-// HTML coil label exists today); PLC-triggered auto-downtime is an edge/OPC concern (the edge
-// service that feeds the scale weight will own line run-state).
+// Tag printing: the DAS runs on a shop-floor PC with the label printer mapped, so a tag prints
+// straight to that PC's mapped/default printer via the browser — we fetch the server-rendered HTML
+// skid/scrap tag (the /documents/* endpoints, Code 39 barcode + @media print) and print it. No
+// server-side raw-socket/ZPL path is needed. Remaining gap flagged in-UI: PLC-triggered
+// auto-downtime is an edge/OPC concern (the edge service that feeds the scale weight owns run-state).
 //
 // Compiled by tsc to wwwroot/ui/app/das-console.js; served at /ui/das-console.html.
 import { AbisClient, SheetSkidWrite, ScrapSkidWrite, DowntimeInstanceWrite } from './generated/abis-client.js';
@@ -28,6 +30,8 @@ const dShow = (d: Date | undefined): string => (d == null ? '' : d.toLocaleStrin
 let job: number | null = null;
 let lineNum: number | null = null;
 let runCoil: number | null = null;   // the coil the operator is currently running
+let lastSkid: number | null = null;  // most recently saved sheet skid (the tag the print button prints)
+let lastScrap: number | null = null; // most recently saved scrap skid
 
 function scaffold(): string {
   const tab = (id: string, label: string) => `<button id="tab-${id}" type="button">${label}</button>`;
@@ -63,7 +67,7 @@ function scaffold(): string {
         <div class="dop-tabs">${tab('skids', 'Weigh skid')}${tab('scrap', 'Scrap')}${tab('downtime', 'Downtime')}</div>
 
         <div id="pane-skids" class="card">
-          <header><h2>Finished sheet skids</h2></header>
+          <header><h2>Finished sheet skids</h2><span class="sub">tap a row to reprint its tag</span></header>
           <div style="overflow-x:auto"><table class="tbl" style="min-width:520px"><thead><tr><th>Skid</th><th>Display</th><th class="num">Net wt</th><th class="num">Tare</th><th class="num">Pieces</th><th>Date</th></tr></thead><tbody id="tSkids"><tr><td colspan="6" class="muted">—</td></tr></tbody></table></div>
           <div class="body">
             <div class="frow">
@@ -74,15 +78,15 @@ function scaffold(): string {
             </div>
             <div class="frow" style="margin-top:10px;align-items:center">
               <button class="btn" id="btnSkid" type="button">Weigh &amp; save skid</button>
-              <button class="btn sm ghost" id="btnTag" type="button">Print skid tag</button>
+              <button class="btn sm ghost" id="btnTag" type="button">🖨 Print skid tag</button>
               <span id="ok" class="ok-note"></span>
             </div>
-            <p class="dop-note" id="tagNote"></p>
+            <p class="dop-note" id="tagNote">Prints to this PC's mapped/default printer.</p>
           </div>
         </div>
 
         <div id="pane-scrap" class="card" style="display:none">
-          <header><h2>Scrap</h2></header>
+          <header><h2>Scrap</h2><span class="sub">tap a row to reprint its tag</span></header>
           <div style="overflow-x:auto"><table class="tbl" style="min-width:480px"><thead><tr><th>Scrap</th><th>Alloy</th><th>Type</th><th class="num">Net wt</th><th>Location</th></tr></thead><tbody id="tScrap"><tr><td colspan="5" class="muted">—</td></tr></tbody></table></div>
           <div class="body">
             <div class="frow">
@@ -92,7 +96,11 @@ function scaffold(): string {
               <div class="fld"><label>Net wt</label><input id="scNet" class="big" type="number" step="0.01" style="width:110px" /></div>
               <div class="fld"><label>Location</label><input id="scLoc" class="big" maxlength="18" style="width:110px" /></div>
             </div>
-            <div class="frow" style="margin-top:10px"><button class="btn" id="btnScrap" type="button">Save scrap</button></div>
+            <div class="frow" style="margin-top:10px;align-items:center">
+              <button class="btn" id="btnScrap" type="button">Save scrap</button>
+              <button class="btn sm ghost" id="btnScrapTag" type="button">🖨 Print scrap tag</button>
+              <span id="scrapOk" class="ok-note"></span>
+            </div>
           </div>
         </div>
 
@@ -151,18 +159,22 @@ function selectCoil(coil: number, el: HTMLButtonElement): void {
 
 async function loadSkids(): Promise<void> {
   const rows = await client().getJobSkids(job!);
-  $('#tSkids').innerHTML = (rows ?? []).length ? (rows ?? []).map((s) => `<tr>
+  $('#tSkids').innerHTML = (rows ?? []).length ? (rows ?? []).map((s) => `<tr class="click" data-skid="${s.sheetSkidNum}">
     <td class="mono">${esc(s.sheetSkidNum)}</td><td>${esc(s.sheetSkidDisplayNum)}</td><td class="num">${esc(num(s.sheetNetWt))}</td>
     <td class="num">${esc(num(s.sheetTareWt))}</td><td class="num">${esc(s.skidPieces)}</td><td class="mono">${esc(dShow(s.skidDate))}</td></tr>`).join('')
     : '<tr><td colspan="6" class="muted">No skids yet.</td></tr>';
+  document.querySelectorAll<HTMLTableRowElement>('#tSkids tr.click').forEach((tr) =>
+    tr.addEventListener('click', () => void printDocument(`/api/documents/sheet-skid/${tr.dataset.skid}`, `skid #${tr.dataset.skid}`, '#tagNote')));
 }
 
 async function loadScrap(): Promise<void> {
   const rows = await client().getJobScrap(job!);
-  $('#tScrap').innerHTML = (rows ?? []).length ? (rows ?? []).map((s) => `<tr>
+  $('#tScrap').innerHTML = (rows ?? []).length ? (rows ?? []).map((s) => `<tr class="click" data-scrap="${s.scrapSkidNum}">
     <td class="mono">${esc(s.scrapSkidNum)}</td><td>${esc(s.scrapAlloy2)}</td><td>${statusChip('scrapType', s.scrapType)}</td>
     <td class="num">${esc(num(s.scrapNetWt))}</td><td>${esc(s.scrapLocation)}</td></tr>`).join('')
     : '<tr><td colspan="5" class="muted">No scrap yet.</td></tr>';
+  document.querySelectorAll<HTMLTableRowElement>('#tScrap tr.click').forEach((tr) =>
+    tr.addEventListener('click', () => void printDocument(`/api/documents/scrap-skid/${tr.dataset.scrap}`, `scrap #${tr.dataset.scrap}`, '#scrapOk')));
 }
 
 // Pull the current weight from the shop-floor edge service (/reading), if its URL is set.
@@ -189,6 +201,7 @@ async function saveSkid(): Promise<void> {
       sheetTareWt: v('#skTare') ? Number(v('#skTare')) : undefined,
       skidPieces: v('#skPieces') ? Number(v('#skPieces')) : undefined,
     }));
+    lastSkid = created.sheetSkidNum ?? null;
     setOk(`✓ Saved sheet skid #${created.sheetSkidNum}.`);
     ['#skDisplay', '#skNet', '#skTare', '#skPieces'].forEach((i) => setV(i, ''));
     await loadSkids();
@@ -196,10 +209,39 @@ async function saveSkid(): Promise<void> {
   finally { setBusy(false); }
 }
 
-function printTag(): void {
-  // Skid barcode tags need thermal ZPL/CPCL to the label printer — there's no skid-label document
-  // endpoint yet (only the HTML coil label). Surface the gap rather than print the wrong thing.
-  $('#tagNote').textContent = 'Skid barcode-tag (ZPL) printing to the thermal printer is coming — no skid-label endpoint yet.';
+// Print the last-saved skid's tag (the just-weighed skid). Rows in the table reprint any skid.
+async function printTag(): Promise<void> {
+  if (lastSkid == null) { $('#tagNote').textContent = 'Save a skid first, or tap a row to reprint its tag.'; return; }
+  await printDocument(`/api/documents/sheet-skid/${lastSkid}`, `skid #${lastSkid}`, '#tagNote');
+}
+
+async function printScrapTag(): Promise<void> {
+  if (lastScrap == null) { $('#scrapOk').textContent = 'Save a scrap skid first, or tap a row to reprint.'; return; }
+  await printDocument(`/api/documents/scrap-skid/${lastScrap}`, `scrap #${lastScrap}`, '#scrapOk');
+}
+
+// Fetch the server-rendered HTML tag (auth-protected) and print it to this PC's mapped/default
+// printer via a hidden iframe. Works with whatever label printer the shop-floor PC has mapped — no
+// server-side printer plumbing. noteSel is where the ✓/✗ status shows.
+async function printDocument(url: string, label: string, noteSel: string): Promise<void> {
+  const note = (m: string) => { $(noteSel).textContent = m; };
+  try {
+    const r = await authFetch(url);
+    if (!r.ok) throw new Error(`document ${r.status}`);
+    const html = await r.text();
+    const frame = document.createElement('iframe');
+    frame.setAttribute('aria-hidden', 'true');
+    frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+    frame.srcdoc = html;
+    frame.onload = () => {
+      const w = frame.contentWindow;
+      if (w) { w.focus(); w.print(); }
+      // Remove after the print dialog has had time to open (keep the frame alive through print()).
+      window.setTimeout(() => frame.remove(), 15000);
+    };
+    document.body.appendChild(frame);
+    note(`🖨 Sent ${label} tag to the printer.`);
+  } catch (e) { note(`Print failed: ${(e as Error).message}`); }
 }
 
 async function saveScrap(): Promise<void> {
@@ -214,6 +256,7 @@ async function saveScrap(): Promise<void> {
       scrapNetWt: v('#scNet') ? Number(v('#scNet')) : undefined,
       scrapLocation: v('#scLoc') || undefined,
     }));
+    lastScrap = created.scrapSkidNum ?? null;
     setOk(`✓ Saved scrap skid #${created.scrapSkidNum}.`);
     ['#scAlloy', '#scTemper', '#scType', '#scNet', '#scLoc'].forEach((i) => setV(i, ''));
     await loadScrap();
@@ -271,8 +314,9 @@ function showTab(name: string): void {
   ['skids', 'scrap', 'downtime'].forEach((t) => $(`#tab-${t}`).addEventListener('click', () => showTab(t)));
   $('#btnPull').addEventListener('click', () => void pullWeight());
   $('#btnSkid').addEventListener('click', () => void saveSkid());
-  $('#btnTag').addEventListener('click', printTag);
+  $('#btnTag').addEventListener('click', () => void printTag());
   $('#btnScrap').addEventListener('click', () => void saveScrap());
+  $('#btnScrapTag').addEventListener('click', () => void printScrapTag());
   $('#btnDt').addEventListener('click', () => void saveDowntime());
   showTab('skids');
   await loadCauses();
