@@ -87,6 +87,15 @@ const dieStatus = {
     1: { label: 'Active', tone: 'ok' },
     2: { label: 'Gone', tone: 'mut' },
 };
+// abis_truck_appointment.truck_status — new ABIS-owned scheduling subsystem (no legacy source).
+const truckStatus = {
+    0: { label: 'Scheduled', tone: 'mut' },
+    1: { label: 'Checked in', tone: 'info' },
+    2: { label: 'At dock', tone: 'warn' },
+    3: { label: 'Departed', tone: 'ok' },
+    8: { label: 'No-show', tone: 'crit' },
+    9: { label: 'Cancelled', tone: 'crit' },
+};
 // process_coil.process_coil_status shares the coil_status code space (accounting.js:19 confirms
 // 3=Rejected/7=Rebanded; w_invoice.srw:250/274). receiving coil lines are stamped 2=New / 11=QA
 // on hold (receiving.ts mint), also the coil_status space — so both reuse the coilStatus map.
@@ -99,6 +108,7 @@ export const STATUS_MAPS = {
     skidScrapStatus,
     scrapType,
     dieStatus,
+    truckStatus,
 };
 function lookup(domain, code) {
     if (code == null || code === '')

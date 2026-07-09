@@ -1089,6 +1089,36 @@ public sealed class SecurityUser
     public string? UserNotes { get; set; }
 }
 
+/// <summary>A truck appointment (ABIS-owned table <c>abis_truck_appointment</c>) — schedule an
+/// inbound/outbound truck into a dock + time window, gate check-in/check-out onsite, and track its
+/// status. Replaces the plant's Excel truck schedule. <c>CarrierId</c> is a loose reference to the
+/// legacy CARRIER master; <c>RefType</c>/<c>RefId</c> optionally link to a SHIPMENT (packing list)
+/// or RECEIVING (BOL id). <c>TruckStatus</c>: 0 Scheduled, 1 Checked-in, 2 At dock, 3 Departed,
+/// 8 No-show, 9 Cancelled.</summary>
+public sealed class TruckAppointment
+{
+    public long AppointmentId { get; set; }
+    public string? Direction { get; set; }
+    public long? CarrierId { get; set; }
+    public string? CarrierName { get; set; }
+    public string? Dock { get; set; }
+    public DateTime? ScheduledStart { get; set; }
+    public DateTime? ScheduledEnd { get; set; }
+    public string? RefType { get; set; }
+    public string? RefId { get; set; }
+    public string? DriverName { get; set; }
+    public string? TractorNum { get; set; }
+    public string? TrailerNum { get; set; }
+    public string? SealNum { get; set; }
+    public int TruckStatus { get; set; }
+    public DateTime? CheckinTime { get; set; }
+    public DateTime? CheckoutTime { get; set; }
+    public string? Notes { get; set; }
+    public DateTime? CreatedUtc { get; set; }
+    public DateTime? UpdatedUtc { get; set; }
+    public string? CreatedBy { get; set; }
+}
+
 /// <summary>A user's password credential (ABIS-owned table <c>abis_user_credential</c>, keyed by
 /// <c>login_id</c>). <c>PasswordHash</c> is a self-describing PBKDF2 string (never the plaintext);
 /// <c>MustChange</c> = 1 forces a password change on next sign-in. No password lives on

@@ -250,6 +250,15 @@ public interface IAbisRepository
     Task<DowntimeInstance?> UpdateDowntimeInstanceAsync(long instanceNum, DowntimeInstanceWrite body, CancellationToken ct);
     Task<IReadOnlyList<DowntimeSegment>> GetDowntimeSegmentsAsync(long instanceNum, CancellationToken ct);
     Task<DowntimeSegment?> AddDowntimeSegmentAsync(long instanceNum, DowntimeSegmentWrite body, CancellationToken ct);
+
+    // Truck appointments (ABIS-owned abis_truck_appointment).
+    Task<PagedResult<TruckAppointment>> GetTruckAppointmentsAsync(int page, int pageSize, string? direction, int? status, DateTime? from, DateTime? to, CancellationToken ct);
+    Task<TruckAppointment?> GetTruckAppointmentAsync(long id, CancellationToken ct);
+    Task<TruckAppointment> CreateTruckAppointmentAsync(TruckAppointmentWrite body, string? createdBy, CancellationToken ct);
+    Task<TruckAppointment?> UpdateTruckAppointmentAsync(long id, TruckAppointmentWrite body, CancellationToken ct);
+    Task<TruckAppointment?> CheckInTruckAsync(long id, CancellationToken ct);
+    Task<TruckAppointment?> CheckOutTruckAsync(long id, CancellationToken ct);
+    Task<TruckAppointment?> SetTruckStatusAsync(long id, int status, CancellationToken ct);
     Task<PagedResult<Sketch>> GetSketchesAsync(int page, int pageSize, int? status, string? orderBy, CancellationToken ct);
     Task<Sketch?> GetSketchAsync(long sketchId, CancellationToken ct);
     Task<Sketch> CreateSketchAsync(SketchWrite body, CancellationToken ct);

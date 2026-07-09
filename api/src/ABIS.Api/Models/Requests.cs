@@ -577,6 +577,34 @@ public sealed class DowntimeSegmentWrite
     public string? Note { get; set; }
 }
 
+/// <summary>Create/replace a truck appointment (<c>abis_truck_appointment</c>). Status and the gate
+/// check-in/check-out stamps are set by the dedicated action endpoints, not here.</summary>
+public sealed class TruckAppointmentWrite
+{
+    /// <summary>INBOUND or OUTBOUND.</summary>
+    public string? Direction { get; set; }
+    public long? CarrierId { get; set; }
+    public string? CarrierName { get; set; }
+    public string? Dock { get; set; }
+    public DateTime? ScheduledStart { get; set; }
+    public DateTime? ScheduledEnd { get; set; }
+    /// <summary>Optional link: SHIPMENT (packing list) or RECEIVING (BOL id).</summary>
+    public string? RefType { get; set; }
+    public string? RefId { get; set; }
+    public string? DriverName { get; set; }
+    public string? TractorNum { get; set; }
+    public string? TrailerNum { get; set; }
+    public string? SealNum { get; set; }
+    public string? Notes { get; set; }
+}
+
+/// <summary>Set a truck appointment's status (0 Scheduled, 1 Checked-in, 2 At dock, 3 Departed,
+/// 8 No-show, 9 Cancelled).</summary>
+public sealed class TruckStatusPatch
+{
+    public int? Status { get; set; }
+}
+
 /// <summary>Create a security group / role (table <c>security_group</c>).</summary>
 public sealed class SecurityGroupWrite
 {

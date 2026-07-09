@@ -1137,6 +1137,56 @@ public static class ApiEndpoints
            .WithSummary("Add a cause-segment (reason + duration) to a downtime instance.")
            .Produces<DowntimeSegment>(StatusCodes.Status201Created).Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
 
+        // ---- Truck appointments (ABIS-owned; replaces the plant's Excel truck schedule) --------
+        api.MapGet("/truck-appointments", async (IAbisRepository repo, CancellationToken ct,
+                int page = 1, int pageSize = 50, string? direction = null, int? status = null, DateTime? from = null, DateTime? to = null) =>
+                Results.Ok(await repo.GetTruckAppointmentsAsync(page, pageSize, direction, status, from, to, ct)))
+           .WithName("ListTruckAppointments").WithTags("Trucks")
+           .WithSummary("List truck appointments (paged; filter by direction / status / scheduled-date range).")
+           .Produces<PagedResult<TruckAppointment>>();
+
+        api.MapGet("/truck-appointments/{id:long}", async (long id, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetTruckAppointmentAsync(id, ct) is { } a ? Results.Ok(a) : Results.NotFound())
+           .WithName("GetTruckAppointment").WithTags("Trucks")
+           .WithSummary("Get one truck appointment.").Produces<TruckAppointment>().Produces(StatusCodes.Status404NotFound);
+
+        api.MapPost("/truck-appointments", async (TruckAppointmentWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (ValidateTruck(body) is { } problems) return Results.ValidationProblem(problems);
+                var created = await repo.CreateTruckAppointmentAsync(body, ResolveLogin(ctx), ct);
+                return Results.Created($"/api/truck-appointments/{created.AppointmentId}", created);
+            })
+           .WithName("CreateTruckAppointment").WithTags("Trucks")
+           .WithSummary("Schedule a truck appointment.").Produces<TruckAppointment>(StatusCodes.Status201Created).ProducesValidationProblem();
+
+        api.MapPut("/truck-appointments/{id:long}", async (long id, TruckAppointmentWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (ValidateTruck(body) is { } problems) return Results.ValidationProblem(problems);
+                return await repo.UpdateTruckAppointmentAsync(id, body, ct) is { } a ? Results.Ok(a) : Results.NotFound();
+            })
+           .WithName("UpdateTruckAppointment").WithTags("Trucks")
+           .WithSummary("Edit a truck appointment.").Produces<TruckAppointment>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
+        api.MapPost("/truck-appointments/{id:long}/check-in", async (long id, IAbisRepository repo, CancellationToken ct) =>
+                await repo.CheckInTruckAsync(id, ct) is { } a ? Results.Ok(a) : Results.NotFound())
+           .WithName("CheckInTruck").WithTags("Trucks")
+           .WithSummary("Gate check-in — stamp arrival + set status Checked-in.").Produces<TruckAppointment>().Produces(StatusCodes.Status404NotFound);
+
+        api.MapPost("/truck-appointments/{id:long}/check-out", async (long id, IAbisRepository repo, CancellationToken ct) =>
+                await repo.CheckOutTruckAsync(id, ct) is { } a ? Results.Ok(a) : Results.NotFound())
+           .WithName("CheckOutTruck").WithTags("Trucks")
+           .WithSummary("Gate check-out — stamp departure + set status Departed.").Produces<TruckAppointment>().Produces(StatusCodes.Status404NotFound);
+
+        api.MapPatch("/truck-appointments/{id:long}/status", async (long id, TruckStatusPatch body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (body.Status is not (0 or 1 or 2 or 3 or 8 or 9))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["status"] = ["status must be 0/1/2/3/8/9."] });
+                return await repo.SetTruckStatusAsync(id, body.Status.Value, ct) is { } a ? Results.Ok(a) : Results.NotFound();
+            })
+           .WithName("SetTruckStatus").WithTags("Trucks")
+           .WithSummary("Set a truck appointment's status (2 At dock, 8 No-show, 9 Cancelled, …).")
+           .Produces<TruckAppointment>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
         // ---- Sketches --------------------------------------------------
         api.MapGet("/sketches", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, int? status = null, string? sort = null, string? dir = null) =>
@@ -2482,6 +2532,16 @@ public static class ApiEndpoints
         if (!string.IsNullOrWhiteSpace(body.CronExpression) && !IsPlausibleCron(body.CronExpression!))
             e["cronExpression"] = ["cronExpression must be a 5- or 6-field cron expression."];
         Max(e, "targetOperation", body.TargetOperation, 100);
+        return e.Count == 0 ? null : e;
+    }
+
+    private static Dictionary<string, string[]>? ValidateTruck(TruckAppointmentWrite body)
+    {
+        var e = new Dictionary<string, string[]>();
+        var dir = body.Direction?.Trim().ToUpperInvariant();
+        if (dir is not ("INBOUND" or "OUTBOUND")) e["direction"] = ["direction must be INBOUND or OUTBOUND."];
+        if (body.ScheduledStart is { } s && body.ScheduledEnd is { } en && en < s)
+            e["scheduledEnd"] = ["scheduledEnd cannot be before scheduledStart."];
         return e.Count == 0 ? null : e;
     }
 

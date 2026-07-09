@@ -3803,6 +3803,101 @@ public sealed class AbisRepository : IAbisRepository
         return (await GetDowntimeSegmentsAsync(instanceNum, ct)).FirstOrDefault(s => s.Id == id);
     }
 
+    // ---- Truck appointments (ABIS-owned abis_truck_appointment) --------------------------------
+    private const string TruckCols = """
+        appointment_id AS AppointmentId, direction AS Direction, carrier_id AS CarrierId, carrier_name AS CarrierName,
+        dock AS Dock, scheduled_start AS ScheduledStart, scheduled_end AS ScheduledEnd, ref_type AS RefType, ref_id AS RefId,
+        driver_name AS DriverName, tractor_num AS TractorNum, trailer_num AS TrailerNum, seal_num AS SealNum,
+        truck_status AS TruckStatus, checkin_time AS CheckinTime, checkout_time AS CheckoutTime, notes AS Notes,
+        created_utc AS CreatedUtc, updated_utc AS UpdatedUtc, created_by AS CreatedBy
+        """;
+
+    public Task<PagedResult<TruckAppointment>> GetTruckAppointmentsAsync(int page, int pageSize, string? direction, int? status, DateTime? from, DateTime? to, CancellationToken ct)
+    {
+        var p = new DynamicParameters();
+        var conditions = new List<string>();
+        if (direction is not null) { conditions.Add("UPPER(direction) = UPPER(:direction)"); p.Add("direction", direction); }
+        if (status is not null) { conditions.Add("truck_status = :status"); p.Add("status", status); }
+        if (from is not null) { conditions.Add("scheduled_start >= :from"); p.Add("from", from); }
+        if (to is not null) { conditions.Add("scheduled_start < :to"); p.Add("to", to); }
+        var where = conditions.Count > 0 ? string.Join(" AND ", conditions) : null;
+        return PageAsync<TruckAppointment>(TruckCols, "abis_truck_appointment", "scheduled_start", where, p, page, pageSize, ct);
+    }
+
+    public async Task<TruckAppointment?> GetTruckAppointmentAsync(long id, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.QuerySingleOrDefaultAsync<TruckAppointment>(new CommandDefinition(
+            $"SELECT {TruckCols} FROM abis_truck_appointment WHERE appointment_id = :id", new { id }, cancellationToken: ct));
+    }
+
+    public async Task<TruckAppointment> CreateTruckAppointmentAsync(TruckAppointmentWrite body, string? createdBy, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var id = await NextIdAsync(conn, tx, "abis_truck_appointment", "appointment_id", ct);
+        var now = DateTime.UtcNow;
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO abis_truck_appointment (appointment_id, direction, carrier_id, carrier_name, dock,
+                scheduled_start, scheduled_end, ref_type, ref_id, driver_name, tractor_num, trailer_num, seal_num,
+                truck_status, notes, created_utc, updated_utc, created_by)
+            VALUES (:id, :direction, :carrierId, :carrierName, :dock, :start, :end, :refType, :refId,
+                :driver, :tractor, :trailer, :seal, 0, :notes, :now, :now, :by)
+            """,
+            new { id, direction = body.Direction, carrierId = body.CarrierId, carrierName = body.CarrierName, dock = body.Dock,
+                  start = body.ScheduledStart, end = body.ScheduledEnd, refType = body.RefType, refId = body.RefId,
+                  driver = body.DriverName, tractor = body.TractorNum, trailer = body.TrailerNum, seal = body.SealNum,
+                  notes = body.Notes, now, by = createdBy },
+            transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+        return (await GetTruckAppointmentAsync(id, ct))!;
+    }
+
+    public async Task<TruckAppointment?> UpdateTruckAppointmentAsync(long id, TruckAppointmentWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE abis_truck_appointment SET direction=:direction, carrier_id=:carrierId, carrier_name=:carrierName, dock=:dock,
+                scheduled_start=:start, scheduled_end=:end, ref_type=:refType, ref_id=:refId, driver_name=:driver,
+                tractor_num=:tractor, trailer_num=:trailer, seal_num=:seal, notes=:notes, updated_utc=:now
+            WHERE appointment_id=:id
+            """,
+            new { id, direction = body.Direction, carrierId = body.CarrierId, carrierName = body.CarrierName, dock = body.Dock,
+                  start = body.ScheduledStart, end = body.ScheduledEnd, refType = body.RefType, refId = body.RefId,
+                  driver = body.DriverName, tractor = body.TractorNum, trailer = body.TrailerNum, seal = body.SealNum,
+                  notes = body.Notes, now = DateTime.UtcNow },
+            cancellationToken: ct));
+        return n == 0 ? null : await GetTruckAppointmentAsync(id, ct);
+    }
+
+    // Gate check-in: stamp arrival + advance to Checked-in (status 1).
+    public Task<TruckAppointment?> CheckInTruckAsync(long id, CancellationToken ct) =>
+        StampTruckAsync(id, "checkin_time=:now, truck_status=1", ct);
+
+    // Gate check-out: stamp departure + advance to Departed (status 3).
+    public Task<TruckAppointment?> CheckOutTruckAsync(long id, CancellationToken ct) =>
+        StampTruckAsync(id, "checkout_time=:now, truck_status=3", ct);
+
+    private async Task<TruckAppointment?> StampTruckAsync(long id, string setClause, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            $"UPDATE abis_truck_appointment SET {setClause}, updated_utc=:now WHERE appointment_id=:id",
+            new { id, now = DateTime.UtcNow }, cancellationToken: ct));
+        return n == 0 ? null : await GetTruckAppointmentAsync(id, ct);
+    }
+
+    public async Task<TruckAppointment?> SetTruckStatusAsync(long id, int status, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE abis_truck_appointment SET truck_status=:status, updated_utc=:now WHERE appointment_id=:id",
+            new { id, status, now = DateTime.UtcNow }, cancellationToken: ct));
+        return n == 0 ? null : await GetTruckAppointmentAsync(id, ct);
+    }
+
     public async Task<IReadOnlyList<CustomerContact>> GetCustomerContactsAsync(long customerId, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

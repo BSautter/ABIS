@@ -95,6 +95,7 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS abis_job_run;
             DROP TABLE IF EXISTS abis_scheduled_job;
             DROP TABLE IF EXISTS abis_user_credential;
+            DROP TABLE IF EXISTS abis_truck_appointment;
             DROP TABLE IF EXISTS sheet_skid_detail;
             DROP TABLE IF EXISTS recovery_scrap_worksheet;
             DROP TABLE IF EXISTS quality_scrap_worksheet;
@@ -494,6 +495,18 @@ public static class SqliteFixture
                 login_id TEXT PRIMARY KEY, password_hash TEXT NOT NULL,
                 must_change INTEGER NOT NULL DEFAULT 1, updated_utc TEXT, updated_by TEXT);
             CREATE UNIQUE INDEX ux_abis_user_cred_login ON abis_user_credential (login_id COLLATE NOCASE);
+
+            -- ABIS-owned truck-appointment scheduling (replaces the plant's Excel truck schedule).
+            -- One row per appointment: dock/window + carrier/truck/driver + optional shipment/receiving
+            -- link + truck_status + gate check-in/out stamps. Oracle DDL in migrations/003.
+            CREATE TABLE abis_truck_appointment (
+                appointment_id INTEGER PRIMARY KEY, direction TEXT NOT NULL, carrier_id INTEGER, carrier_name TEXT,
+                dock TEXT, scheduled_start TEXT, scheduled_end TEXT, ref_type TEXT, ref_id TEXT,
+                driver_name TEXT, tractor_num TEXT, trailer_num TEXT, seal_num TEXT,
+                truck_status INTEGER NOT NULL DEFAULT 0, checkin_time TEXT, checkout_time TEXT,
+                notes TEXT, created_utc TEXT, updated_utc TEXT, created_by TEXT);
+            CREATE INDEX ix_abis_truck_appt_start ON abis_truck_appointment (scheduled_start);
+            CREATE INDEX ix_abis_truck_appt_status ON abis_truck_appointment (truck_status);
 
             -- Security / authorization (legacy security.pbl). Application-level
             -- authorization only — OIDC handles authentication. Effective privilege on a
@@ -1291,6 +1304,26 @@ public static class SqliteFixture
             {
                 new { RunId = 1L, JobId = 1L, Started = (DateTime?)d.AddHours(1), Finished = (DateTime?)d.AddHours(1).AddMinutes(2),
                       Status = "ok", Affected = (int?)12, Error = (string?)null, Corr = "seed-run-1" }
+            });
+
+        // ---- Truck appointments (replaces the plant's Excel truck schedule) ----
+        conn.Execute("""
+            INSERT INTO abis_truck_appointment (appointment_id, direction, carrier_id, carrier_name, dock,
+                scheduled_start, scheduled_end, ref_type, ref_id, driver_name, tractor_num, trailer_num, seal_num,
+                truck_status, checkin_time, checkout_time, notes, created_utc, updated_utc, created_by)
+            VALUES (:Id, :Direction, :CarrierId, :CarrierName, :Dock, :Start, :End, :RefType, :RefId,
+                :Driver, :Tractor, :Trailer, :Seal, :Status, :CheckIn, :CheckOut, :Notes, :Created, :Updated, :By)
+            """,
+            new[]
+            {
+                new { Id = 1L, Direction = "OUTBOUND", CarrierId = (long?)7001L, CarrierName = "Acme Freight", Dock = "D-1",
+                      Start = (DateTime?)d.AddHours(8), End = (DateTime?)d.AddHours(9), RefType = "SHIPMENT", RefId = "6001",
+                      Driver = "R. Diaz", Tractor = "TR-114", Trailer = "TL-9902", Seal = "SEAL-4471", Status = 0,
+                      CheckIn = (DateTime?)null, CheckOut = (DateTime?)null, Notes = "Finished skids for cust 4001", Created = (DateTime?)d, Updated = (DateTime?)d, By = "jsmith" },
+                new { Id = 2L, Direction = "INBOUND", CarrierId = (long?)7002L, CarrierName = "Northline Carriers", Dock = "D-2",
+                      Start = (DateTime?)d.AddHours(6), End = (DateTime?)d.AddHours(7), RefType = "RECEIVING", RefId = "5501",
+                      Driver = "M. Cole", Tractor = "TR-088", Trailer = "TL-3310", Seal = (string?)null, Status = 1,
+                      CheckIn = (DateTime?)d.AddHours(6).AddMinutes(5), CheckOut = (DateTime?)null, Notes = "Inbound coils on BOL-IN-001", Created = (DateTime?)d, Updated = (DateTime?)d, By = "jsmith" }
             });
 
         // ---- Coil evaluation / QC ----

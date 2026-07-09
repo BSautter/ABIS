@@ -67,7 +67,38 @@ public static class AbisSchema
           updated_by     VARCHAR2(64),
           CONSTRAINT pk_abis_user_credential PRIMARY KEY (login_id))
         """,
-        "CREATE UNIQUE INDEX ux_abis_user_cred_login ON abis_user_credential (UPPER(login_id))"
+        "CREATE UNIQUE INDEX ux_abis_user_cred_login ON abis_user_credential (UPPER(login_id))",
+        // ABIS-owned truck-appointment scheduling (docs/data-model/migrations/003_truck_appointment.sql).
+        // The plant currently runs the truck schedule in an Excel sheet — this replaces it. One row per
+        // appointment: the scheduled dock/window, carrier + truck/driver details, an optional link to a
+        // shipment or receiving BOL, the truck_status, and the gate check-in/check-out stamps. carrier_id
+        // is a loose reference (no FK to the legacy carrier table — this is ABIS-owned).
+        """
+        CREATE TABLE abis_truck_appointment (
+          appointment_id   NUMBER(12)     NOT NULL,
+          direction        VARCHAR2(10)   NOT NULL,
+          carrier_id       NUMBER(10),
+          carrier_name     VARCHAR2(120),
+          dock             VARCHAR2(30),
+          scheduled_start  DATE,
+          scheduled_end    DATE,
+          ref_type         VARCHAR2(12),
+          ref_id           VARCHAR2(40),
+          driver_name      VARCHAR2(80),
+          tractor_num      VARCHAR2(30),
+          trailer_num      VARCHAR2(30),
+          seal_num         VARCHAR2(40),
+          truck_status     NUMBER(2)      DEFAULT 0 NOT NULL,
+          checkin_time     DATE,
+          checkout_time    DATE,
+          notes            VARCHAR2(1000),
+          created_utc      DATE,
+          updated_utc      DATE,
+          created_by       VARCHAR2(64),
+          CONSTRAINT pk_abis_truck_appointment PRIMARY KEY (appointment_id))
+        """,
+        "CREATE INDEX ix_abis_truck_appt_start ON abis_truck_appointment (scheduled_start)",
+        "CREATE INDEX ix_abis_truck_appt_status ON abis_truck_appointment (truck_status)"
     ];
 
     public static async Task EnsureOwnedTablesAsync(IDbConnectionFactory factory, ILogger logger, CancellationToken ct = default)

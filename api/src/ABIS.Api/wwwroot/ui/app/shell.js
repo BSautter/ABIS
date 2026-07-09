@@ -82,6 +82,7 @@ const NAV = [
             { id: 'shipping', label: 'Shipping', href: '/ui/shipping.html', feature: 'Warehouse', icon: I.ship },
             { id: 'receiving', label: 'Receiving', href: '/ui/receiving.html', feature: 'Shipment(Receiving)', icon: I.recv },
             { id: 'carriers', label: 'Carriers', href: '/ui/carriers.html', icon: I.truck2 },
+            { id: 'trucks', label: 'Truck scheduling', href: '/ui/truck-scheduling.html', icon: I.truck2 },
             { id: 'coil-ownership', label: 'Coil ownership', href: '/ui/coil-ownership.html', feature: 'Inventory(Coil)', icon: I.swap },
         ] },
     { group: 'Finance', items: [
