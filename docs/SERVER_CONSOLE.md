@@ -45,9 +45,9 @@ Admin__ServerConsole__HostCronCommand__5=cronview@192.168.1.9
 ```
 > **Host topology (2026-07-10):** the plant is consolidating the old DB boxes —
 > **db01 = 192.168.1.9 (production)** and **db02 = 192.168.1.11 (dev production)** — onto the
-> new box **192.168.3.230** (a dev box comes later). The legacy EDI/scheduled crons currently
+> new box **192.168.1.230 (oeldb01)** (a dev box comes later). The legacy EDI/scheduled crons currently
 > run on **db01 (192.168.1.9)**, so that's the read-only cron-view target today; repoint
-> `HostCronCommand` at **192.168.3.230** after the cutover. **.9 and .11 stay strictly read-only.**
+> `HostCronCommand` at **192.168.1.230 (oeldb01)** after the cutover. **.9 and .11 stay strictly read-only.**
 
 ## Setup (run on codi-ABIS, as root)
 
@@ -76,7 +76,7 @@ buttons now work; `sudo -n` guarantees nothing outside those two commands can ru
 
 ### 4) Enable the DB-host cron view (read-only, after security review)
 On the **DB host that runs the EDI crons** — currently **db01 (192.168.1.9, production; strictly
-READ-ONLY)**, moving to **192.168.3.230** after the cutover — lock an SSH key to `crontab -l` so
+READ-ONLY)**, moving to **192.168.1.230 (oeldb01)** after the cutover — lock an SSH key to `crontab -l` so
 the console can only *read* cron, never edit it:
 ```sh
 # ~cronview/.ssh/authorized_keys on the DB host — the forced command wins over any requested one

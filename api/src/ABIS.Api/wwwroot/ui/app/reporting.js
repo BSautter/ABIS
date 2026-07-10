@@ -18,6 +18,8 @@ const setErr = (m) => { $('#err').textContent = m; };
 const setBusy = (b) => document.body.classList.toggle('busy', b);
 const dv = (id) => { const s = $(id).value.trim(); return s ? new Date(s) : undefined; };
 const num = (n, dp = 0) => (n == null ? '' : Number(n).toLocaleString(undefined, { maximumFractionDigits: dp }));
+// A stored yield RATIO (0–1) rendered for a "%" column: 0.9 → "90", 1 → "100". Null stays blank.
+const pct = (n, dp = 1) => (n == null ? '' : num(Number(n) * 100, dp));
 const dt = (d) => (d == null ? '' : new Date(d).toLocaleString());
 const REPORTS = {
     summary: {
@@ -26,7 +28,7 @@ const REPORTS = {
         cols: [
             { h: 'Line', f: (r) => esc(r.lineNum) }, { h: 'Description', f: (r) => esc(r.lineDesc) },
             { h: 'Jobs', num: true, f: (r) => num(r.jobCount), raw: (r) => r.jobCount },
-            { h: 'Avg yield %', num: true, f: (r) => num(r.avgYield, 1), raw: (r) => r.avgYield },
+            { h: 'Avg yield %', num: true, f: (r) => pct(r.avgYield), raw: (r) => r.avgYield == null ? null : Number(r.avgYield) * 100 },
             { h: 'Processed wt', num: true, f: (r) => num(r.processedWt), raw: (r) => r.processedWt },
         ],
     },
@@ -37,7 +39,7 @@ const REPORTS = {
             { h: 'Line', f: (r) => esc(r.lineNum) }, { h: 'Description', f: (r) => esc(r.lineDesc) },
             { h: 'Jobs', num: true, f: (r) => num(r.jobCount), raw: (r) => r.jobCount },
             { h: 'Processed wt', num: true, f: (r) => num(r.processedWt), raw: (r) => r.processedWt },
-            { h: 'Avg yield %', num: true, f: (r) => num(r.avgYield, 1), raw: (r) => r.avgYield },
+            { h: 'Avg yield %', num: true, f: (r) => pct(r.avgYield), raw: (r) => r.avgYield == null ? null : Number(r.avgYield) * 100 },
             { h: 'DT events', num: true, f: (r) => num(r.downtimeEvents), raw: (r) => r.downtimeEvents },
             { h: 'DT minutes', num: true, f: (r) => num(r.downtimeMinutes, 1), raw: (r) => r.downtimeMinutes },
         ],
