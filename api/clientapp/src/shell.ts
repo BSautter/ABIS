@@ -15,6 +15,7 @@
 // the server remains the source of truth for every write.
 import { AbisClient } from './generated/abis-client.js';
 import { initAuth, authFetch, loginWithUser, changePassword, currentUserName, isSignedIn, signOutSession } from './auth.js';
+import { observeTables } from './table-tools.js';
 
 export interface ShellOptions {
   active: string;
@@ -410,6 +411,7 @@ export async function initShell(opts: ShellOptions): Promise<HTMLElement> {
 
   wireUserMenu();
   wireNotifications();
+  observeTables(main);   // sortable headers + a filter box on every data table the page renders
   const id = await gateNav();
   (top.querySelector('#shName') as HTMLElement).textContent = id.name;
   (top.querySelector('#shRole') as HTMLElement).textContent = id.role;

@@ -15,6 +15,7 @@
 // the server remains the source of truth for every write.
 import { AbisClient } from './generated/abis-client.js';
 import { initAuth, authFetch, loginWithUser, changePassword, currentUserName, isSignedIn, signOutSession } from './auth.js';
+import { observeTables } from './table-tools.js';
 // Icons are inline SVG path/shape markup (stroked via currentColor in theme.css).
 const I = {
     dash: '<rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>',
@@ -444,6 +445,7 @@ export async function initShell(opts) {
     });
     wireUserMenu();
     wireNotifications();
+    observeTables(main); // sortable headers + a filter box on every data table the page renders
     const id = await gateNav();
     top.querySelector('#shName').textContent = id.name;
     top.querySelector('#shRole').textContent = id.role;
