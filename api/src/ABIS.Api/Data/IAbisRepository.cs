@@ -11,6 +11,7 @@ public interface IAbisRepository
     /// <summary>Readiness probe: opens a connection and runs a trivial query so
     /// callers can distinguish "process alive" from "database reachable".</summary>
     Task<bool> PingAsync(CancellationToken ct);
+    Task<DateTime?> GetLatestEdiActivityAsync(CancellationToken ct);
 
     // ---- Jobs -----------------------------------------------------------
     Task<PagedResult<AbJob>> GetJobsAsync(int page, int pageSize, int? status, string? orderBy, CancellationToken ct);

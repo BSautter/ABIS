@@ -4197,6 +4197,20 @@
         }
       }
     },
+    "/health/report-stall": {
+      "get": {
+        "tags": [
+          "Meta"
+        ],
+        "summary": "Report-not-triggered check — whether outbound EDI looks stalled during business hours (config-gated).",
+        "operationId": "ReportStall",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/auth/config": {
       "get": {
         "tags": [

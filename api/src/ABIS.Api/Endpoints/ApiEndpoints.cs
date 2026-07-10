@@ -86,6 +86,19 @@ public static class ApiEndpoints
            .Produces(StatusCodes.Status200OK)
            .Produces(StatusCodes.Status503ServiceUnavailable);
 
+        // Report-not-triggered signal: is the outbound-EDI pipeline stalled? The notification bell polls
+        // this. OFF by default (Notifications:EdiStall) — inert until the plant's cadence/thresholds are
+        // set; only alarms inside the business window so a quiet evening/weekend never cries wolf.
+        app.MapGet("/health/report-stall", async (IAbisRepository repo, Abis.Api.Health.ReportStallOptions opts, CancellationToken ct) =>
+            {
+                DateTime? last = null;
+                if (opts.Enabled) { try { last = await repo.GetLatestEdiActivityAsync(ct); } catch { /* DB down = the DB alert covers it */ } }
+                return Results.Ok(Abis.Api.Health.ReportStall.Evaluate(last, DateTime.Now, opts));
+            })
+           .WithTags("Meta").WithName("ReportStall")
+           .WithSummary("Report-not-triggered check — whether outbound EDI looks stalled during business hours (config-gated).")
+           .Produces(StatusCodes.Status200OK);
+
         // Anonymous: tells the browser SPA whether to run an OIDC login flow and,
         // if so, which provider/client/scope to use (Authorization Code + PKCE).
         // When OIDC isn't configured, returns { oidc: false } and the SPA uses the

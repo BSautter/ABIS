@@ -73,6 +73,11 @@ var serverConsoleOptions = builder.Configuration.GetSection(Abis.Api.Admin.Serve
 builder.Services.AddSingleton(serverConsoleOptions);
 builder.Services.AddSingleton<Abis.Api.Admin.IProcessRunner, Abis.Api.Admin.ProcessRunner>();
 builder.Services.AddSingleton<Abis.Api.Admin.ServerConsoleService>();
+
+// Report-not-triggered alert (outbound-EDI stall). OFF by default; thresholds tune it at deploy.
+var reportStallOptions = builder.Configuration.GetSection(Abis.Api.Health.ReportStallOptions.SectionName)
+                             .Get<Abis.Api.Health.ReportStallOptions>() ?? new Abis.Api.Health.ReportStallOptions();
+builder.Services.AddSingleton(reportStallOptions);
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;

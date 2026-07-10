@@ -322,6 +322,15 @@ public sealed class AbisRepository : IAbisRepository
         return await conn.ExecuteScalarAsync<long>(new CommandDefinition(_factory.PingQuery, cancellationToken: ct)) == 1;
     }
 
+    public async Task<DateTime?> GetLatestEdiActivityAsync(CancellationToken ct)
+    {
+        // The newest outbound-EDI send; when this stops advancing during business hours the pipeline is
+        // likely stalled (report-not-triggered alert). MAX over an empty table is NULL → no activity.
+        await using var conn = await OpenAsync(ct);
+        return await conn.ExecuteScalarAsync<DateTime?>(new CommandDefinition(
+            "SELECT MAX(transaction_time) FROM outbound_edi_transaction", cancellationToken: ct));
+    }
+
     private async Task<PagedResult<T>> PageAsync<T>(
         string columns, string from, string orderBy, string? where,
         object pageArgs, int page, int pageSize, CancellationToken ct)

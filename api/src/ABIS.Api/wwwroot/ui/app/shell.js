@@ -254,6 +254,16 @@ async function fetchNotifications() {
         }
     }
     catch { /* non-fatal — a probe failure just doesn't add the alert */ }
+    // Report-not-triggered: is the outbound-EDI pipeline stalled? Server-side + config-gated (off unless
+    // the plant's cadence is set), and only during business hours — so it stays quiet unless it's real.
+    try {
+        const rs = await (await fetch('/health/report-stall', { cache: 'no-store' })).json();
+        if (rs.stalled) {
+            const when = rs.lastActivity ? new Date(rs.lastActivity).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'unknown';
+            items.push({ label: `EDI processing may be stalled (last sent ${when})`, tone: 'warn', href: '/ui/edi.html' });
+        }
+    }
+    catch { /* non-fatal */ }
     try {
         const hold = await client().getOnHoldCoils();
         if (hold?.length)
