@@ -157,6 +157,7 @@ async function loadJob() {
         await Promise.all([loadCoils(), loadSkids(), loadScrap()]);
         $('#tDt').innerHTML = '<tr><td colspan="4" class="muted">No downtime logged this session.</td></tr>';
         clearAutoDowntime();
+        restoreOpenDowntime(id); // re-show a downtime left open on this station (survives close/logout/reopen)
         lineRunning = null;
         pieceCurrent = null;
         pieceBaseline = null; // fresh stacker baseline for the new job's first skid
@@ -450,9 +451,17 @@ async function onRunState(running, via = '') {
     }
     else if (running && dtInstance != null && dtEnded == null) {
         dtEnded = new Date(); // stopped → running: freeze duration, await a reason
+        persistOpenDowntime();
         renderDtBanner();
         if (v('#dtbCause'))
             await logAutoDowntime(); // auto-log if the operator pre-picked a reason
+    }
+    else if (!running && dtInstance != null && dtEnded != null) {
+        // Went down AGAIN before a reason was logged for the previous stop → keep it one open downtime and
+        // resume counting (rather than losing the new down period). The operator reasons the whole episode.
+        dtEnded = null;
+        persistOpenDowntime();
+        renderDtBanner();
     }
 }
 async function openAutoDowntime() {
@@ -465,6 +474,7 @@ async function openAutoDowntime() {
         dtInstance = inst.instanceNum ?? null;
         dtStart = new Date();
         dtEnded = null;
+        persistOpenDowntime();
         renderDtBanner();
         if (dtTickTimer == null)
             dtTickTimer = window.setInterval(renderDtBanner, 1000);
@@ -527,6 +537,7 @@ async function logAutoDowntime() {
             $('#tDt').innerHTML = '';
         $('#tDt').insertAdjacentHTML('afterbegin', `<tr><td class="mono">${esc(new Date().toLocaleTimeString())}</td><td>${esc(reason)} <span class="chip info">PLC</span></td><td class="num">${esc((secs / 60).toFixed(1))}</td><td>${esc(v('#dtbNote'))}</td></tr>`);
         setOk(`✓ Logged auto-downtime #${dtInstance} (${fmtDur(secs * 1000)}).`);
+        forgetOpenDowntime();
         clearAutoDowntime();
     }
     catch (e) {
@@ -542,6 +553,40 @@ function clearAutoDowntime() {
         dtTickTimer = null;
     }
     renderDtBanner();
+}
+// ---- persist an OPEN auto-downtime across a window close / logout / reopen (per DAS station) ----
+// The banner + run-state watch live only in memory, so without this an operator who closes the window
+// mid-downtime loses the banner (can't assign the reason) and — if the line is still down — the fresh
+// page would open a DUPLICATE instance. We stash the open instance in this browser's localStorage keyed
+// by job; on reload loadJob restores the banner + timer (instead of reopening), and the poll keeps
+// monitoring so a resume-then-stop while they were away stays tracked. Removed once a reason is logged.
+const dtKey = (j) => `abis_dt_open_${j}`;
+function persistOpenDowntime() {
+    if (job == null || dtInstance == null || dtStart == null)
+        return;
+    localStorage.setItem(dtKey(job), JSON.stringify({
+        instance: dtInstance, start: dtStart.toISOString(), ended: dtEnded ? dtEnded.toISOString() : null,
+    }));
+}
+function forgetOpenDowntime() { if (job != null)
+    localStorage.removeItem(dtKey(job)); }
+// Re-show a still-open downtime when its job is (re)loaded, so the operator can still assign a reason.
+function restoreOpenDowntime(j) {
+    const raw = localStorage.getItem(dtKey(j));
+    if (!raw)
+        return;
+    try {
+        const s = JSON.parse(raw);
+        dtInstance = s.instance;
+        dtStart = new Date(s.start);
+        dtEnded = s.ended ? new Date(s.ended) : null;
+        renderDtBanner();
+        if (dtTickTimer == null)
+            dtTickTimer = window.setInterval(renderDtBanner, 1000);
+    }
+    catch {
+        localStorage.removeItem(dtKey(j));
+    }
 }
 // Log downtime = create the instance, then add a dt_cause segment (reason + duration).
 async function saveDowntime() {
