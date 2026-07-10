@@ -85,6 +85,7 @@ public static class AbisSchema
           ref_type         VARCHAR2(12),
           ref_id           VARCHAR2(40),
           driver_name      VARCHAR2(80),
+          driver_phone     VARCHAR2(30),
           tractor_num      VARCHAR2(30),
           trailer_num      VARCHAR2(30),
           seal_num         VARCHAR2(40),
@@ -101,6 +102,8 @@ public static class AbisSchema
         // Additive column for tables provisioned before `quantity` existed (idempotent: ORA-01430
         // "column being added already exists" is swallowed alongside ORA-00955).
         "ALTER TABLE abis_truck_appointment ADD (quantity NUMBER(8))",
+        // Additive driver phone for the self-sign-in kiosk (idempotent, same swallow as above).
+        "ALTER TABLE abis_truck_appointment ADD (driver_phone VARCHAR2(30))",
         "CREATE INDEX ix_abis_truck_appt_start ON abis_truck_appointment (scheduled_start)",
         "CREATE INDEX ix_abis_truck_appt_status ON abis_truck_appointment (truck_status)"
     ];

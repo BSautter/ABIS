@@ -263,9 +263,10 @@ public interface IAbisRepository
     Task<TruckAppointment?> GetTruckAppointmentAsync(long id, CancellationToken ct);
     Task<TruckAppointment> CreateTruckAppointmentAsync(TruckAppointmentWrite body, string? createdBy, CancellationToken ct);
     Task<TruckAppointment?> UpdateTruckAppointmentAsync(long id, TruckAppointmentWrite body, CancellationToken ct);
-    Task<TruckAppointment?> CheckInTruckAsync(long id, CancellationToken ct);
+    Task<TruckAppointment?> CheckInTruckAsync(long id, string? driverName, string? driverPhone, CancellationToken ct);
     Task<TruckAppointment?> CheckOutTruckAsync(long id, CancellationToken ct);
     Task<TruckAppointment?> SetTruckStatusAsync(long id, int status, CancellationToken ct);
+    Task<IReadOnlyList<TruckAppointment>> LookupTruckAppointmentsAsync(string reference, CancellationToken ct);
     Task<PagedResult<Sketch>> GetSketchesAsync(int page, int pageSize, int? status, string? orderBy, CancellationToken ct);
     Task<Sketch?> GetSketchAsync(long sketchId, CancellationToken ct);
     Task<Sketch> CreateSketchAsync(SketchWrite body, CancellationToken ct);

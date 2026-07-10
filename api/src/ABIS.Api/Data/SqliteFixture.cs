@@ -502,7 +502,7 @@ public static class SqliteFixture
             CREATE TABLE abis_truck_appointment (
                 appointment_id INTEGER PRIMARY KEY, direction TEXT NOT NULL, carrier_id INTEGER, carrier_name TEXT,
                 dock TEXT, scheduled_start TEXT, scheduled_end TEXT, ref_type TEXT, ref_id TEXT,
-                driver_name TEXT, tractor_num TEXT, trailer_num TEXT, seal_num TEXT, quantity INTEGER,
+                driver_name TEXT, driver_phone TEXT, tractor_num TEXT, trailer_num TEXT, seal_num TEXT, quantity INTEGER,
                 truck_status INTEGER NOT NULL DEFAULT 0, checkin_time TEXT, checkout_time TEXT,
                 notes TEXT, created_utc TEXT, updated_utc TEXT, created_by TEXT);
             CREATE INDEX ix_abis_truck_appt_start ON abis_truck_appointment (scheduled_start);

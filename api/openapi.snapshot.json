@@ -10095,12 +10095,49 @@
         }
       }
     },
+    "/api/truck-appointments/lookup": {
+      "get": {
+        "tags": [
+          "Trucks"
+        ],
+        "summary": "Look up truck appointments by BOL / ref number or appointment id (driver kiosk).",
+        "operationId": "LookupTruckAppointments",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TruckAppointment"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/truck-appointments/{id}/check-in": {
       "post": {
         "tags": [
           "Trucks"
         ],
-        "summary": "Gate check-in — stamp arrival + set status Checked-in.",
+        "summary": "Gate/kiosk check-in — stamp arrival + set status 'Parked out back'; an optional body captures the driver name/phone (kiosk sign-in).",
         "operationId": "CheckInTruck",
         "parameters": [
           {
@@ -10113,6 +10150,15 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TruckCheckInBody"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -10138,7 +10184,7 @@
         "tags": [
           "Trucks"
         ],
-        "summary": "Gate check-out — stamp departure + set status Signed-out; an outbound truck also closes its linked BOL.",
+        "summary": "Gate check-out — stamp departure + set status Signed-out; an outbound truck also closes its linked BOL. 409 if it never checked in.",
         "operationId": "CheckOutTruck",
         "parameters": [
           {
@@ -10164,6 +10210,9 @@
           },
           "404": {
             "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
           },
           "401": {
             "description": "Unauthorized"
@@ -18232,6 +18281,10 @@
             "type": "string",
             "nullable": true
           },
+          "driverPhone": {
+            "type": "string",
+            "nullable": true
+          },
           "tractorNum": {
             "type": "string",
             "nullable": true
@@ -18362,6 +18415,10 @@
             "type": "string",
             "nullable": true
           },
+          "driverPhone": {
+            "type": "string",
+            "nullable": true
+          },
           "tractorNum": {
             "type": "string",
             "nullable": true
@@ -18380,6 +18437,20 @@
             "nullable": true
           },
           "notes": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TruckCheckInBody": {
+        "type": "object",
+        "properties": {
+          "driverName": {
+            "type": "string",
+            "nullable": true
+          },
+          "driverPhone": {
             "type": "string",
             "nullable": true
           }

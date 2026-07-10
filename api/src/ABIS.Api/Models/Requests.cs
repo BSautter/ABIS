@@ -592,12 +592,23 @@ public sealed class TruckAppointmentWrite
     public string? RefType { get; set; }
     public string? RefId { get; set; }
     public string? DriverName { get; set; }
+    /// <summary>Driver contact phone (for pull-in notification).</summary>
+    public string? DriverPhone { get; set; }
     public string? TractorNum { get; set; }
     public string? TrailerNum { get; set; }
     public string? SealNum { get; set; }
     /// <summary># coils (inbound) / # skids (outbound).</summary>
     public int? Quantity { get; set; }
     public string? Notes { get; set; }
+}
+
+/// <summary>Optional body for a truck check-in — lets the self-sign-in kiosk capture/confirm the
+/// driver's name + phone as they arrive. Both optional; a bodyless check-in (the office gate) just
+/// stamps arrival.</summary>
+public sealed class TruckCheckInBody
+{
+    public string? DriverName { get; set; }
+    public string? DriverPhone { get; set; }
 }
 
 /// <summary>Set a truck appointment's status (the Excel "location status" legend): 0 Pending arrival,

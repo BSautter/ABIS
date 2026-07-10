@@ -1107,6 +1107,8 @@ public sealed class TruckAppointment
     public string? RefType { get; set; }
     public string? RefId { get; set; }
     public string? DriverName { get; set; }
+    /// <summary>Driver contact phone (captured at kiosk sign-in; used to notify when cleared to pull in).</summary>
+    public string? DriverPhone { get; set; }
     public string? TractorNum { get; set; }
     public string? TrailerNum { get; set; }
     public string? SealNum { get; set; }

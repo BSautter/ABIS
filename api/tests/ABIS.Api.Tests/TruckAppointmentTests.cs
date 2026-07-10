@@ -99,4 +99,57 @@ public sealed class TruckAppointmentTests
         using var f = new Factory();
         Assert.Equal(HttpStatusCode.NotFound, (await Client(f).PostAsync("/api/truck-appointments/99999999/check-in", null)).StatusCode);
     }
+
+    [Fact]
+    public async Task Kiosk_check_in_captures_driver_name_and_phone()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+        var id = (await (await c.PostAsJsonAsync("/api/truck-appointments", new
+        {
+            direction = "INBOUND", carrierName = "Kiosk Lines", refType = "RECEIVING", refId = "BOL-77",
+            scheduledStart = "2026-03-01T09:00:00Z", scheduledEnd = "2026-03-01T10:00:00Z",
+        })).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("appointmentId").GetInt64();
+
+        // Kiosk check-in with a driver-supplied name + phone.
+        var checkedIn = await (await c.PostAsJsonAsync($"/api/truck-appointments/{id}/check-in",
+            new { driverName = "Codi M.", driverPhone = "555-0142" })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(2, checkedIn.GetProperty("truckStatus").GetInt32());
+        Assert.Equal("Codi M.", checkedIn.GetProperty("driverName").GetString());
+        Assert.Equal("555-0142", checkedIn.GetProperty("driverPhone").GetString());
+    }
+
+    [Fact]
+    public async Task Lookup_finds_an_appointment_by_bol_or_id()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+        var id = (await (await c.PostAsJsonAsync("/api/truck-appointments", new
+        {
+            direction = "OUTBOUND", carrierName = "Ref Lookup Co", refType = "SHIPMENT", refId = "PL-90210",
+            scheduledStart = "2026-03-02T09:00:00Z", scheduledEnd = "2026-03-02T10:00:00Z",
+        })).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("appointmentId").GetInt64();
+
+        var byBol = await c.GetFromJsonAsync<JsonElement>("/api/truck-appointments/lookup?q=PL-90210");
+        Assert.Contains(byBol.EnumerateArray(), a => a.GetProperty("appointmentId").GetInt64() == id);
+        var byId = await c.GetFromJsonAsync<JsonElement>($"/api/truck-appointments/lookup?q={id}");
+        Assert.Contains(byId.EnumerateArray(), a => a.GetProperty("appointmentId").GetInt64() == id);
+        var none = await c.GetFromJsonAsync<JsonElement>("/api/truck-appointments/lookup?q=NOPE-404");
+        Assert.Empty(none.EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Check_out_before_check_in_is_rejected()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+        var id = (await (await c.PostAsJsonAsync("/api/truck-appointments", new
+        {
+            direction = "OUTBOUND", carrierName = "No Show Freight", refType = "SHIPMENT", refId = "6002",
+            scheduledStart = "2026-03-03T09:00:00Z", scheduledEnd = "2026-03-03T10:00:00Z",
+        })).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("appointmentId").GetInt64();
+
+        // Never checked in → check-out is a 409 (kiosk guard).
+        Assert.Equal(HttpStatusCode.Conflict, (await c.PostAsync($"/api/truck-appointments/{id}/check-out", null)).StatusCode);
+    }
 }

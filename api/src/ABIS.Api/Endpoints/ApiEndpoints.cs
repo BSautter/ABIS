@@ -1199,6 +1199,15 @@ public static class ApiEndpoints
            .WithName("GetTruckAppointment").WithTags("Trucks")
            .WithSummary("Get one truck appointment.").Produces<TruckAppointment>().Produces(StatusCodes.Status404NotFound);
 
+        // Driver self-sign-in kiosk: find an appointment by BOL / ref number or appointment id (so a
+        // driver locates their own without listing the board). The :long constraint above keeps this
+        // distinct from GET /{id}.
+        api.MapGet("/truck-appointments/lookup", async (string q, IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.LookupTruckAppointmentsAsync(q ?? string.Empty, ct)))
+           .WithName("LookupTruckAppointments").WithTags("Trucks")
+           .WithSummary("Look up truck appointments by BOL / ref number or appointment id (driver kiosk).")
+           .Produces<IReadOnlyList<TruckAppointment>>();
+
         api.MapPost("/truck-appointments", async (TruckAppointmentWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
             {
                 if (ValidateTruck(body) is { } problems) return Results.ValidationProblem(problems);
@@ -1216,13 +1225,20 @@ public static class ApiEndpoints
            .WithName("UpdateTruckAppointment").WithTags("Trucks")
            .WithSummary("Edit a truck appointment.").Produces<TruckAppointment>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
 
-        api.MapPost("/truck-appointments/{id:long}/check-in", async (long id, IAbisRepository repo, CancellationToken ct) =>
-                await repo.CheckInTruckAsync(id, ct) is { } a ? Results.Ok(a) : Results.NotFound())
+        api.MapPost("/truck-appointments/{id:long}/check-in", async (long id, TruckCheckInBody? body, IAbisRepository repo, CancellationToken ct) =>
+                await repo.CheckInTruckAsync(id, body?.DriverName, body?.DriverPhone, ct) is { } a ? Results.Ok(a) : Results.NotFound())
            .WithName("CheckInTruck").WithTags("Trucks")
-           .WithSummary("Gate check-in — stamp arrival + set status Checked-in.").Produces<TruckAppointment>().Produces(StatusCodes.Status404NotFound);
+           .WithSummary("Gate/kiosk check-in — stamp arrival + set status 'Parked out back'; an optional body captures the driver name/phone (kiosk sign-in).").Produces<TruckAppointment>().Produces(StatusCodes.Status404NotFound);
 
         api.MapPost("/truck-appointments/{id:long}/check-out", async (long id, IAbisRepository repo, CancellationToken ct) =>
             {
+                // Guard: a truck can't sign out before it has signed in (protects the unattended kiosk
+                // from checking out a never-arrived appointment).
+                var existing = await repo.GetTruckAppointmentAsync(id, ct);
+                if (existing is null) return Results.NotFound();
+                if (existing.CheckinTime is null)
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Not checked in",
+                        detail: "This truck hasn't checked in yet, so it can't check out.");
                 var a = await repo.CheckOutTruckAsync(id, ct);
                 if (a is null) return Results.NotFound();
                 // Truck→BOL link: an OUTBOUND truck leaving the gate closes its linked shipment/BOL
@@ -1235,7 +1251,7 @@ public static class ApiEndpoints
                 return Results.Ok(a);
             })
            .WithName("CheckOutTruck").WithTags("Trucks")
-           .WithSummary("Gate check-out — stamp departure + set status Signed-out; an outbound truck also closes its linked BOL.").Produces<TruckAppointment>().Produces(StatusCodes.Status404NotFound);
+           .WithSummary("Gate check-out — stamp departure + set status Signed-out; an outbound truck also closes its linked BOL. 409 if it never checked in.").Produces<TruckAppointment>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
 
         api.MapPatch("/truck-appointments/{id:long}/status", async (long id, TruckStatusPatch body, IAbisRepository repo, CancellationToken ct) =>
             {
