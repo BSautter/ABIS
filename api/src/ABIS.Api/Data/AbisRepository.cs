@@ -314,6 +314,28 @@ public sealed class AbisRepository : IAbisRepository
         return conn;
     }
 
+    // A few legacy feature areas read tables that aren't present in every deployment's schema: the
+    // OPC-log capture tables (opc_log / opc_log_details / opc_action_log — superseded by the edge
+    // service) and the sales-quote subsystem (sales_quote / sales_probability / sales_reminder — never
+    // provisioned in any database; a pending product decision). When the table is absent, the READ
+    // should yield an empty result so the page renders cleanly instead of surfacing a 500. This
+    // translates ONLY "table or view does not exist" (ORA-00942 on Oracle; "no such table" on SQLite);
+    // any other error propagates unchanged. Applied to the known-optional reads only — never to writes.
+    private static bool IsMissingTableError(Exception ex)
+    {
+        for (Exception? e = ex; e is not null; e = e.InnerException)
+            if (e.Message.Contains("ORA-00942", StringComparison.OrdinalIgnoreCase)
+                || e.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
+    }
+
+    private static async Task<T> EmptyIfTableMissingAsync<T>(Func<Task<T>> read, T fallback)
+    {
+        try { return await read(); }
+        catch (Exception ex) when (IsMissingTableError(ex)) { return fallback; }
+    }
+
     public async Task<bool> PingAsync(CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
@@ -1808,37 +1830,40 @@ public sealed class AbisRepository : IAbisRepository
         return rows.AsList();
     }
 
-    public async Task<IReadOnlyList<OpcLog>> GetOpcLogsAsync(CancellationToken ct)
-    {
-        await using var conn = await OpenAsync(ct);
-        var rows = await conn.QueryAsync<OpcLog>(new CommandDefinition(
-            "SELECT opc_log_id AS OpcLogId, title AS Title, created_date AS CreatedDate FROM opc_log ORDER BY opc_log_id DESC",
-            cancellationToken: ct));
-        return rows.AsList();
-    }
+    public Task<IReadOnlyList<OpcLog>> GetOpcLogsAsync(CancellationToken ct) =>
+        EmptyIfTableMissingAsync<IReadOnlyList<OpcLog>>(async () =>
+        {
+            await using var conn = await OpenAsync(ct);
+            var rows = await conn.QueryAsync<OpcLog>(new CommandDefinition(
+                "SELECT opc_log_id AS OpcLogId, title AS Title, created_date AS CreatedDate FROM opc_log ORDER BY opc_log_id DESC",
+                cancellationToken: ct));
+            return rows.AsList();
+        }, []);
 
-    public async Task<IReadOnlyList<OpcLogDetail>> GetOpcLogDetailsAsync(long opcLogId, CancellationToken ct)
-    {
-        await using var conn = await OpenAsync(ct);
-        var rows = await conn.QueryAsync<OpcLogDetail>(new CommandDefinition(
-            """
-            SELECT opc_log_id AS OpcLogId, item_name AS ItemName, device_name AS DeviceName,
-                   remote_host AS RemoteHost, value AS Value, quality AS Quality,
-                   time_stamp AS TimeStamp, description AS Description
-            FROM opc_log_details WHERE opc_log_id = :id ORDER BY item_name
-            """, new { id = opcLogId }, cancellationToken: ct));
-        return rows.AsList();
-    }
+    public Task<IReadOnlyList<OpcLogDetail>> GetOpcLogDetailsAsync(long opcLogId, CancellationToken ct) =>
+        EmptyIfTableMissingAsync<IReadOnlyList<OpcLogDetail>>(async () =>
+        {
+            await using var conn = await OpenAsync(ct);
+            var rows = await conn.QueryAsync<OpcLogDetail>(new CommandDefinition(
+                """
+                SELECT opc_log_id AS OpcLogId, item_name AS ItemName, device_name AS DeviceName,
+                       remote_host AS RemoteHost, value AS Value, quality AS Quality,
+                       time_stamp AS TimeStamp, description AS Description
+                FROM opc_log_details WHERE opc_log_id = :id ORDER BY item_name
+                """, new { id = opcLogId }, cancellationToken: ct));
+            return rows.AsList();
+        }, []);
 
-    public async Task<IReadOnlyList<string>> GetOpcItemsAsync(CancellationToken ct)
-    {
-        await using var conn = await OpenAsync(ct);
-        // The distinct OPC items seen — the real tag catalog (informs the edge Edge:Opc:Tags).
-        var rows = await conn.QueryAsync<string>(new CommandDefinition(
-            "SELECT DISTINCT item_name FROM opc_log_details WHERE item_name IS NOT NULL ORDER BY item_name",
-            cancellationToken: ct));
-        return rows.AsList();
-    }
+    public Task<IReadOnlyList<string>> GetOpcItemsAsync(CancellationToken ct) =>
+        EmptyIfTableMissingAsync<IReadOnlyList<string>>(async () =>
+        {
+            await using var conn = await OpenAsync(ct);
+            // The distinct OPC items seen — the real tag catalog (informs the edge Edge:Opc:Tags).
+            var rows = await conn.QueryAsync<string>(new CommandDefinition(
+                "SELECT DISTINCT item_name FROM opc_log_details WHERE item_name IS NOT NULL ORDER BY item_name",
+                cancellationToken: ct));
+            return rows.AsList();
+        }, []);
 
     // ---- Sales / quotes (legacy w_sales_main, w_new_quote, w_edit_quote) ----
 
@@ -1846,7 +1871,8 @@ public sealed class AbisRepository : IAbisRepository
     // its customer and contact, with the most-recent win probability. The latest probability
     // is a correlated scalar subquery keyed on the max review_date (portable to Oracle and
     // SQLite — no LIMIT/ROWNUM); MAX wraps the value so it stays single-valued on a date tie.
-    public async Task<IReadOnlyList<SalesQuoteListRow>> GetSalesQuotesAsync(string? search, CancellationToken ct)
+    public Task<IReadOnlyList<SalesQuoteListRow>> GetSalesQuotesAsync(string? search, CancellationToken ct) =>
+        EmptyIfTableMissingAsync<IReadOnlyList<SalesQuoteListRow>>(async () =>
     {
         await using var conn = await OpenAsync(ct);
         var like = string.IsNullOrWhiteSpace(search) ? null : $"%{search.Trim()}%";
@@ -1871,9 +1897,10 @@ public sealed class AbisRepository : IAbisRepository
             ORDER BY q.created_date DESC, q.quote_id, q.quote_revision_id
             """, new { pat = like }, cancellationToken: ct));
         return rows.AsList();
-    }
+    }, []);
 
-    public async Task<SalesQuote?> GetSalesQuoteAsync(long quoteId, long revisionId, CancellationToken ct)
+    public Task<SalesQuote?> GetSalesQuoteAsync(long quoteId, long revisionId, CancellationToken ct) =>
+        EmptyIfTableMissingAsync<SalesQuote?>(async () =>
     {
         await using var conn = await OpenAsync(ct);
         return await conn.QuerySingleOrDefaultAsync<SalesQuote>(new CommandDefinition(
@@ -1893,7 +1920,7 @@ public sealed class AbisRepository : IAbisRepository
             LEFT JOIN customer_contact cc ON cc.contact_id = q.contact_id
             WHERE q.quote_id = :quote AND q.quote_revision_id = :rev
             """, new { quote = quoteId, rev = revisionId }, cancellationToken: ct));
-    }
+    }, null);
 
     public async Task<IReadOnlyList<SalesContact>> GetSalesContactsAsync(long? customerId, CancellationToken ct)
     {
@@ -1909,7 +1936,8 @@ public sealed class AbisRepository : IAbisRepository
         return rows.AsList();
     }
 
-    public async Task<IReadOnlyList<SalesReminder>> GetSalesRemindersAsync(long quoteId, long revisionId, CancellationToken ct)
+    public Task<IReadOnlyList<SalesReminder>> GetSalesRemindersAsync(long quoteId, long revisionId, CancellationToken ct) =>
+        EmptyIfTableMissingAsync<IReadOnlyList<SalesReminder>>(async () =>
     {
         await using var conn = await OpenAsync(ct);
         var rows = await conn.QueryAsync<SalesReminder>(new CommandDefinition(
@@ -1921,7 +1949,7 @@ public sealed class AbisRepository : IAbisRepository
             ORDER BY event_date
             """, new { quote = quoteId, rev = revisionId }, cancellationToken: ct));
         return rows.AsList();
-    }
+    }, []);
 
     public async Task<SalesReminder> CreateSalesReminderAsync(long quoteId, long revisionId, SalesReminderWrite body, CancellationToken ct)
     {
@@ -1943,7 +1971,8 @@ public sealed class AbisRepository : IAbisRepository
         return (await GetSalesRemindersAsync(quoteId, revisionId, ct)).First(r => r.EventId == id);
     }
 
-    public async Task<IReadOnlyList<SalesProbability>> GetSalesProbabilityAsync(long quoteId, long revisionId, CancellationToken ct)
+    public Task<IReadOnlyList<SalesProbability>> GetSalesProbabilityAsync(long quoteId, long revisionId, CancellationToken ct) =>
+        EmptyIfTableMissingAsync<IReadOnlyList<SalesProbability>>(async () =>
     {
         await using var conn = await OpenAsync(ct);
         var rows = await conn.QueryAsync<SalesProbability>(new CommandDefinition(
@@ -1955,7 +1984,7 @@ public sealed class AbisRepository : IAbisRepository
             ORDER BY review_date
             """, new { quote = quoteId, rev = revisionId }, cancellationToken: ct));
         return rows.AsList();
-    }
+    }, []);
 
     public async Task<SalesProbability> CreateSalesProbabilityAsync(long quoteId, long revisionId, SalesProbabilityWrite body, CancellationToken ct)
     {
