@@ -1,4 +1,5 @@
 using Abis.Api.Data;
+using Microsoft.Extensions.Configuration;
 using Xunit;
 
 namespace Abis.Api.Tests;
@@ -68,6 +69,31 @@ public sealed class DatabaseTests
             factory.NextIdQuery("maint_log", "maint_log_id"));
         // Other tables on the same factory still use a sequence.
         Assert.Equal("SELECT coil_abc_num_seq.NEXTVAL FROM dual", factory.NextIdQuery("coil", "coil_abc_num"));
+    }
+
+    [Fact]
+    public void Oracle_abis_owned_table_uses_maxplus1_not_a_missing_sequence()
+    {
+        // AbisSchema provisions the abis_* tables but creates NO sequence. abis_truck_appointment
+        // assigns its id via NextIdAsync, so without MaxIdTables it would emit appointment_id_seq.NEXTVAL
+        // and 500 on Oracle (ORA-02289 — the sequence does not exist).
+        var factory = Factory("Oracle", o => o.MaxIdTables.Add("abis_truck_appointment"));
+        Assert.Equal("SELECT COALESCE(MAX(appointment_id), 0) + 1 FROM abis_truck_appointment",
+            factory.NextIdQuery("abis_truck_appointment", "appointment_id"));
+    }
+
+    [Fact]
+    public void Shipped_config_marks_sequence_less_owned_tables_as_maxid()
+    {
+        // Regression guard on the actual bug: the shipped appsettings must list every AbisSchema-owned
+        // table that assigns its id via NextIdAsync (no sequence is ever created for them). Load the
+        // real appsettings.json (copied next to the API assembly) and bind Database.
+        var dir = Path.GetDirectoryName(typeof(Program).Assembly.Location)!;
+        var opts = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(dir, "appsettings.json"), optional: false)
+            .Build()
+            .GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>()!;
+        Assert.Contains("abis_truck_appointment", opts.MaxIdTables);
     }
 
     [Fact]
