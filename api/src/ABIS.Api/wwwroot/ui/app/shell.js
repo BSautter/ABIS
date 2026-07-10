@@ -63,7 +63,6 @@ const NAV = [
             { id: 'warehouse', label: 'Warehouse', href: '/ui/warehouse.html', feature: 'Warehouse', icon: I.wh },
             { id: 'prod-folder', label: 'Production folder', href: '/ui/prod-folder.html', feature: 'Production Control', icon: I.folder },
             { id: 'downtime', label: 'Downtime', href: '/ui/downtime.html', feature: 'Downtime report', icon: I.clock2 },
-            { id: 'opc-log', label: 'OPC log', href: '/ui/opc-log.html', icon: I.chart },
         ] },
     { group: 'Quality', items: [
             { id: 'coil-eval', label: 'Coil evaluation', href: '/ui/coil-eval.html', feature: 'Quality Control', icon: I.qc },
