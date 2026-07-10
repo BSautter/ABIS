@@ -29,6 +29,23 @@ async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
   finally { clearTimeout(t); }
 }
 
+export interface EdgeHostHealth { url: string; host: string; up: boolean; }
+
+/**
+ * Probe each edge host's /health (the shop-floor line/PLC feed). Used by the shell's notification bell
+ * to alert when the floor feed is unreachable. A host that errors, times out, or answers non-OK = down.
+ * Mixed-content note: an http edge host can't be probed from an https page — the caller filters those
+ * out first so a browser block isn't mistaken for a down line.
+ */
+export async function probeEdgeHosts(bases: string[]): Promise<EdgeHostHealth[]> {
+  return Promise.all(bases.map(async (url) => {
+    let host = url;
+    try { host = new URL(url).host; } catch { /* keep the raw url as the label */ }
+    try { const r = await fetchWithTimeout(`${url}/health`, 2000); return { url, host, up: r.ok }; }
+    catch { return { url, host, up: false }; }
+  }));
+}
+
 /**
  * Read one tag's run-state across the edge hosts (primary first). The first host that responds wins;
  * a host that's unreachable, times out, or returns non-OK is skipped so we fail over to the next.

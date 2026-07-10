@@ -16,6 +16,7 @@
 import { AbisClient } from './generated/abis-client.js';
 import { initAuth, authFetch, loginWithUser, changePassword, currentUserName, isSignedIn, signOutSession } from './auth.js';
 import { observeTables } from './table-tools.js';
+import { DEFAULT_EDGE_URLS, parseEdgeUrls, probeEdgeHosts } from './edge.js';
 
 export interface ShellOptions {
   active: string;
@@ -241,6 +242,24 @@ async function fetchNotifications(): Promise<Notif[]> {
   try { dbUp = (await fetch('/health/ready', { cache: 'no-store' })).ok; } catch { dbUp = false; }
   if (!dbUp) { items.push({ label: 'Database unreachable', tone: 'danger' }); return items; }
 
+  // Shop-floor line/PLC feed reachability — the dashboard + DAS read run-state/scale from the edge
+  // hosts (.170 primary, .175 fallback). A stopped feed means no live floor data or auto-downtime, so
+  // surface it. Probed from the browser (same LAN path the dashboard already uses); an http edge can't
+  // be reached from an https page, so skip those to avoid a mixed-content block reading as "down".
+  try {
+    const bases = parseEdgeUrls(localStorage.getItem('abis_edge_url') ?? DEFAULT_EDGE_URLS)
+      .filter((u) => !(location.protocol === 'https:' && u.startsWith('http:')));
+    if (bases.length) {
+      const hosts = await probeEdgeHosts(bases);
+      const down = hosts.filter((h) => !h.up);
+      if (down.length === hosts.length) {
+        items.push({ label: 'Production line feed unreachable', tone: 'danger', href: '/ui/index.html' });
+      } else if (down.length) {
+        items.push({ label: `Line feed host down (${down.map((h) => h.host).join(', ')})`, tone: 'warn', href: '/ui/index.html' });
+      }
+    }
+  } catch { /* non-fatal — a probe failure just doesn't add the alert */ }
+
   try {
     const hold = await client().getOnHoldCoils();
     if (hold?.length) items.push({ label: `${hold.length} coil${hold.length === 1 ? '' : 's'} on hold`, href: '/ui/coil-inventory.html' });
@@ -265,7 +284,7 @@ function wireNotifications(): void {
   const place = () => { const r = btn.getBoundingClientRect(); pop.style.top = `${r.bottom + 6}px`; pop.style.right = `${window.innerWidth - r.right}px`; };
   const render = (items: Notif[]) => {
     if (dot) dot.style.display = items.length ? '' : 'none';
-    const style = (i: Notif) => `display:block;padding:9px 12px;${i.tone === 'danger' ? 'color:#e5484d;font-weight:600' : 'color:inherit'}`;
+    const style = (i: Notif) => `display:block;padding:9px 12px;${i.tone === 'danger' ? 'color:#e5484d;font-weight:600' : i.tone === 'warn' ? 'color:#d97706;font-weight:600' : 'color:inherit'}`;
     body.innerHTML = items.length
       ? items.map((i) => i.href
           ? `<a href="${esc(i.href)}" style="${style(i)};text-decoration:none">${esc(i.label)}</a>`
