@@ -118,11 +118,10 @@ const truckStatus = {
     6: { label: 'Signed out / gone', tone: 'ok' },
     9: { label: 'Cancelled', tone: 'crit' },
 };
-// shipment.shipment_status — the plant's dispatch legend. The live value set is {0,2,3,4}; 0 is
-// CONFIRMED = Shipped/closed (the legacy EDI 856 ASN generator fires on shipment_status = 0, it is
-// ~99.5% of rows / the terminal state, and every other ABIS domain uses 0 for the terminal value).
-// 2/3/4 labels are BEST-GUESS pending the plant's confirmation (they only tint the chip; the close
-// action keys off 0 = ClosedShipmentStatus). Mirror any legend correction in AbisRepository.cs.
+// shipment.shipment_status — the plant's dispatch legend (live value set {0,2,3,4}), CONFIRMED by the
+// user 2026-07-10. 0 = Shipped/closed (the legacy EDI 856 ASN generator fires on shipment_status = 0,
+// f_edi_alcan_gm_856.srf:294; the guided close action keys off 0 = ClosedShipmentStatus). Mirror any
+// legend change here + in AbisRepository.cs.
 const shipmentStatus = {
     0: { label: 'Shipped', tone: 'ok' },
     2: { label: 'Staged', tone: 'info' },
