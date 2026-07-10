@@ -146,6 +146,19 @@ export const STATUS_MAPS = {
     truckStatus,
     shipmentStatus,
 };
+/**
+ * Display name for a production line. The plant's lines are all "BL"-prefixed on the floor —
+ * BL78, BL84, BL108, BL110 (confirmed by the OPC tags `PLC5-BL84…` and the `bl78/bl84/bl108/bl110`
+ * operator logins) — so a bare `line_num` reads far more clearly as its floor name. A purely numeric
+ * value gets the `BL` prefix; anything already carrying a non-digit (or blank) is passed through
+ * untouched, so a future non-BL designation isn't mangled.
+ */
+export function lineLabel(lineNum) {
+    if (lineNum == null || lineNum === '')
+        return '—';
+    const s = String(lineNum).trim();
+    return /^\d+$/.test(s) ? `BL${s}` : s;
+}
 function lookup(domain, code) {
     if (code == null || code === '')
         return undefined;

@@ -7,7 +7,7 @@
 import { AbisClient, LineErrorWrite } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
-import { statusChip } from './status-labels.js';
+import { statusChip, lineLabel } from './status-labels.js';
 const $ = (sel) => document.querySelector(sel);
 const client = () => new AbisClient('', { fetch: authFetch });
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -74,14 +74,14 @@ async function load() {
 async function loadBoard() {
     const rows = await client().getStackerBoard(line ?? undefined);
     $('#tBoard').innerHTML = (rows ?? []).length ? (rows ?? []).map((j) => `<tr>
-    <td class="mono">${esc(j.abJobNum)}</td><td class="mono">${esc(j.lineNum)}</td><td>${statusChip('jobStatus', j.jobStatus)}</td>
+    <td class="mono">${esc(j.abJobNum)}</td><td class="mono">${esc(lineLabel(j.lineNum))}</td><td>${statusChip('jobStatus', j.jobStatus)}</td>
     <td class="mono">${esc(j.orderAbcNum)}</td><td class="num">${esc(j.coilCount)}</td><td class="num">${esc(j.skidCount)}</td></tr>`).join('')
         : '<tr><td colspan="6" class="muted">No jobs on this line.</td></tr>';
 }
 async function loadErrors() {
     const rows = await client().getLineErrors(line ?? undefined, undefined, undefined);
     $('#tErrors').innerHTML = (rows ?? []).length ? (rows ?? []).map((e) => `<tr>
-    <td class="mono">${esc(dt(e.evtTime))}</td><td>${chip(e.errorType)}</td><td class="mono">${esc(e.lineId)}</td>
+    <td class="mono">${esc(dt(e.evtTime))}</td><td>${chip(e.errorType)}</td><td class="mono">${esc(lineLabel(e.lineId))}</td>
     <td class="mono">${esc(e.abJobNum)}</td><td>${esc(e.title)}</td><td>${esc(e.errorComment)}</td><td>${esc(e.errorUser)}</td></tr>`).join('')
         : '<tr><td colspan="7" class="muted">No errors logged.</td></tr>';
 }

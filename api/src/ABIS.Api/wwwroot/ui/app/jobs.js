@@ -7,7 +7,7 @@
 import { AbisClient, JobWrite, JobPatch } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
-import { statusChip } from './status-labels.js';
+import { statusChip, lineLabel } from './status-labels.js';
 const $ = (sel) => document.querySelector(sel);
 const client = () => new AbisClient('', { fetch: authFetch });
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -103,7 +103,7 @@ async function search() {
         const items = page.items ?? [];
         $('#jobs').innerHTML = items.length ? items.map((j) => `
       <tr class="click" data-id="${j.abJobNum}">
-        <td class="mono">${esc(j.abJobNum)}</td><td class="mono">${esc(j.lineNum)}</td>
+        <td class="mono">${esc(j.abJobNum)}</td><td class="mono">${esc(lineLabel(j.lineNum))}</td>
         <td>${statusChip('jobStatus', j.jobStatus)}</td><td class="num">${esc(num(j.materialYield))}</td><td class="mono">${esc(dShow(j.dueDate))}</td>
       </tr>`).join('') : '<tr><td colspan="5" class="muted">No matching jobs.</td></tr>';
         $('#count').textContent = `${(page.totalCount ?? 0).toLocaleString()} jobs`;
@@ -127,7 +127,7 @@ async function loadJob(id) {
         $('#detail').classList.remove('disabled');
         $('#detailTitle').textContent = `Job #${id}`;
         $('#hdr').innerHTML = [
-            ['Order', `${esc(j.orderAbcNum)} / ${esc(j.orderItemNum)}`], ['Line', esc(j.lineNum)],
+            ['Order', `${esc(j.orderAbcNum)} / ${esc(j.orderItemNum)}`], ['Line', esc(lineLabel(j.lineNum))],
             ['Yield', esc(num(j.materialYield))], ['Sketch', esc(j.sketchId)],
             ['Created', esc(dShow(j.createDate))], ['Due', esc(dShow(j.dueDate))],
             ['Started', esc(dShow(j.timeDateStarted))], ['Finished', esc(dShow(j.timeDateFinished))],

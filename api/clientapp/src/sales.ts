@@ -11,6 +11,7 @@ import {
 } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { lineLabel } from './status-labels.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
@@ -114,7 +115,7 @@ function renderHeader(q: SalesQuote): void {
     ['End use', q.endUse], ['Part shape', q.partShape], ['Material', q.material],
     ['Alloy / temper', `${q.alloy ?? ''} ${q.temper ?? ''}`],
     ['Gauge × width × length', `${num(q.gauge)} × ${num(q.width)} × ${num(q.length)}`],
-    ['Line / speed', `${q.lineNum ?? '—'} @ ${num(q.lineSpeed)}`],
+    ['Line / speed', `${lineLabel(q.lineNum)} @ ${num(q.lineSpeed)}`],
     ['Coils / skids', `${q.numOfCoil ?? '—'} / ${q.numOfSkid ?? '—'}`],
     ['Total lb processed', num(q.totalLbProcessed)],
     ['Rev / hr', num(q.totalRevPerHr)],

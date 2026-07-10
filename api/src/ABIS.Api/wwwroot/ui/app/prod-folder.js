@@ -6,6 +6,7 @@
 import { AbisClient, JobFolderNoteWrite } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { lineLabel } from './status-labels.js';
 const $ = (sel) => document.querySelector(sel);
 const client = () => new AbisClient('', { fetch: authFetch });
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -63,7 +64,7 @@ async function loadFolder() {
         job = id;
         $('#workarea').classList.remove('disabled');
         $('#hdr').innerHTML = `
-      <span><b>Job</b>${esc(f.abJobNum)} · line ${esc(f.lineNum)} · status ${esc(f.jobStatus)}</span>
+      <span><b>Job</b>${esc(f.abJobNum)} · ${esc(lineLabel(f.lineNum))} · status ${esc(f.jobStatus)}</span>
       <span><b>Order / PO</b>${esc(f.orderAbcNum)} · ${esc(f.origCustomerPo)}</span>
       <span><b>Customer</b>${esc(f.customerShortName)}</span>
       <span><b>Contents</b>${esc(f.coilCount)} coil(s) · ${esc(f.skidCount)} skid(s) · ${esc(f.noteCount)} note(s)</span>`;

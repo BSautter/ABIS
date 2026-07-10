@@ -6,6 +6,7 @@
 import { AbisClient, DowntimeInstanceWrite } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { lineLabel } from './status-labels.js';
 const $ = (sel) => document.querySelector(sel);
 const client = () => new AbisClient('', { fetch: authFetch });
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -69,7 +70,7 @@ async function search() {
         const items = page.items ?? [];
         $('#instances').innerHTML = items.length ? items.map((d) => `
       <tr class="click" data-id="${d.instanceNum}">
-        <td class="mono">${esc(d.instanceNum)}</td><td class="mono">${esc(d.abJobNum)}</td><td class="mono">${esc(d.lineNum)}</td>
+        <td class="mono">${esc(d.instanceNum)}</td><td class="mono">${esc(d.abJobNum)}</td><td class="mono">${esc(lineLabel(d.lineNum))}</td>
         <td class="mono">${esc(d.startingTime?.toString().slice(0, 16).replace('T', ' '))}</td><td>${esc(d.note)}</td>
       </tr>`).join('') : '<tr><td colspan="5" class="muted">No matching downtime.</td></tr>';
         $('#count').textContent = `${(page.totalCount ?? 0).toLocaleString()} total`;

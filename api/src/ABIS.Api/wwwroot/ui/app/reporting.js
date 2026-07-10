@@ -8,7 +8,7 @@
 import { AbisClient } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
-import { statusChip, statusText } from './status-labels.js';
+import { statusChip, statusText, lineLabel } from './status-labels.js';
 const $ = (sel) => document.querySelector(sel);
 function client() {
     return new AbisClient('', { fetch: authFetch });
@@ -26,7 +26,7 @@ const REPORTS = {
         note: 'Per-line roll-up over line ⋈ ab_job ⋈ process_coil (legacy daily_prod).',
         load: (f, t) => client().getProductionSummary(f, t),
         cols: [
-            { h: 'Line', f: (r) => esc(r.lineNum) }, { h: 'Description', f: (r) => esc(r.lineDesc) },
+            { h: 'Line', f: (r) => esc(lineLabel(r.lineNum)) }, { h: 'Description', f: (r) => esc(r.lineDesc) },
             { h: 'Jobs', num: true, f: (r) => num(r.jobCount), raw: (r) => r.jobCount },
             { h: 'Avg yield %', num: true, f: (r) => pct(r.avgYield), raw: (r) => r.avgYield == null ? null : Number(r.avgYield) * 100 },
             { h: 'Processed wt', num: true, f: (r) => num(r.processedWt), raw: (r) => r.processedWt },
@@ -36,7 +36,7 @@ const REPORTS = {
         note: 'Per-line jobs, processed weight, avg yield, and downtime (events + minutes).',
         load: (f, t) => client().getLineEfficiency(f, t),
         cols: [
-            { h: 'Line', f: (r) => esc(r.lineNum) }, { h: 'Description', f: (r) => esc(r.lineDesc) },
+            { h: 'Line', f: (r) => esc(lineLabel(r.lineNum)) }, { h: 'Description', f: (r) => esc(r.lineDesc) },
             { h: 'Jobs', num: true, f: (r) => num(r.jobCount), raw: (r) => r.jobCount },
             { h: 'Processed wt', num: true, f: (r) => num(r.processedWt), raw: (r) => r.processedWt },
             { h: 'Avg yield %', num: true, f: (r) => pct(r.avgYield), raw: (r) => r.avgYield == null ? null : Number(r.avgYield) * 100 },
@@ -57,7 +57,7 @@ const REPORTS = {
         note: 'Individual downtime events with computed duration (minutes).',
         load: (f, t) => client().getProductionDowntime(f, t, undefined),
         cols: [
-            { h: 'Line', f: (r) => esc(r.lineNum) }, { h: 'Desc', f: (r) => esc(r.lineDesc) },
+            { h: 'Line', f: (r) => esc(lineLabel(r.lineNum)) }, { h: 'Desc', f: (r) => esc(r.lineDesc) },
             { h: 'Job', f: (r) => esc(r.abJobNum) }, { h: 'Start', f: (r) => esc(dt(r.startingTime)) },
             { h: 'End', f: (r) => esc(dt(r.endingTime)) },
             { h: 'Minutes', num: true, f: (r) => num(r.durationMinutes, 1), raw: (r) => r.durationMinutes },
@@ -68,7 +68,7 @@ const REPORTS = {
         note: 'Per-line on-time delivery: jobs finished on/before due date.',
         load: (f, t) => client().getOnTimeDelivery(f, t),
         cols: [
-            { h: 'Line', f: (r) => esc(r.lineNum) }, { h: 'Description', f: (r) => esc(r.lineDesc) },
+            { h: 'Line', f: (r) => esc(lineLabel(r.lineNum)) }, { h: 'Description', f: (r) => esc(r.lineDesc) },
             { h: 'Finished', num: true, f: (r) => num(r.finishedJobs), raw: (r) => r.finishedJobs },
             { h: 'On time', num: true, f: (r) => num(r.onTime), raw: (r) => r.onTime },
             { h: 'Late', num: true, f: (r) => num(r.late), raw: (r) => r.late },

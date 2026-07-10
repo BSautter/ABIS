@@ -13,7 +13,7 @@
 // Compiled by tsc to wwwroot/ui/app/das-console.js; served at /ui/das-console.html.
 import { AbisClient, SheetSkidWrite, ScrapSkidWrite, DowntimeInstanceWrite } from './generated/abis-client.js';
 import { initAuth, authFetch } from './auth.js';
-import { statusChip } from './status-labels.js';
+import { statusChip, lineLabel } from './status-labels.js';
 import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount } from './edge.js';
 const $ = (sel) => document.querySelector(sel);
 const client = () => new AbisClient('', { fetch: authFetch });
@@ -152,7 +152,7 @@ async function loadJob() {
         job = id;
         lineNum = j.lineNum ?? null;
         runCoil = null;
-        $('#jobHdr').innerHTML = `Job ${id} · line ${esc(j.lineNum ?? '—')} · ${statusChip('jobStatus', j.jobStatus)} · order ${esc(j.orderAbcNum ?? '')}/${esc(j.orderItemNum ?? '')}`;
+        $('#jobHdr').innerHTML = `Job ${id} · ${esc(lineLabel(j.lineNum))} · ${statusChip('jobStatus', j.jobStatus)} · order ${esc(j.orderAbcNum ?? '')}/${esc(j.orderItemNum ?? '')}`;
         $('#workarea').classList.remove('disabled');
         await Promise.all([loadCoils(), loadSkids(), loadScrap()]);
         $('#tDt').innerHTML = '<tr><td colspan="4" class="muted">No downtime logged this session.</td></tr>';

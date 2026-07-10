@@ -11,7 +11,7 @@
 // Compiled by tsc to wwwroot/ui/app/das-board.js; served at /ui/das-board.html.
 import { AbisClient } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
-import { statusChip } from './status-labels.js';
+import { statusChip, lineLabel } from './status-labels.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
@@ -88,7 +88,7 @@ function tile(l: Line): string {
   return `
   <div class="das-tile ${l.state}">
     <div class="thead">
-      <span class="lineno">Line <small>#</small>${esc(l.line)}</span>
+      <span class="lineno">${esc(lineLabel(l.line))}</span>
       <span class="das-dot ${l.state}"><i></i>${STATE_LABEL[l.state]}</span>
     </div>
     <div class="das-job">${a.abJobNum != null ? '#' + esc(a.abJobNum) : '—'} ${statusChip('jobStatus', a.jobStatus)}</div>
