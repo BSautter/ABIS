@@ -56,6 +56,10 @@ Admin__ServerConsole__HostCronCommand__5=cronview@192.168.1.9
 `Server Admin` isn't in any default group (like `User Control`). In *User security*, grant it
 to your admin user (or an Admin group) — otherwise the nav item hides and the API 403s.
 
+> If you just refreshed the non-prod DB from prod, the `Server Admin` feature and your grant were
+> overwritten along with the rest of `SECURITY_*`. Restore your whole admin login in one shot with
+> [`tools/bootstrap-admin.sh`](ADMIN_BOOTSTRAP.md) (`sudo ./bootstrap-admin.sh <loginId>`).
+
 ### 2) Enable status + logs (read-only, no sudo)
 ```sh
 # abis.env
