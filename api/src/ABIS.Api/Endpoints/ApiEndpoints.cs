@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Abis.Api.Admin;
 using Abis.Api.Data;
 using Abis.Api.Documents;
 using Abis.Api.Middleware;
@@ -1842,6 +1843,60 @@ public static class ApiEndpoints
            .WithName("SetCustomer861Flag").WithTags("Admin")
            .WithSummary("Set a customer's 'create 861 at receiving' flag (Y/N). Config only — generates no EDI.")
            .Produces(StatusCodes.Status200OK).ProducesValidationProblem().Produces(StatusCodes.Status404NotFound);
+
+        // #7 server/service console — view + safe restarts only (docs/SERVER_CONSOLE.md). Gated on the
+        // "Server Admin" feature AND Admin:ServerConsole:Enabled (503 when disabled); the mutating restart
+        // additionally needs AllowRestart + the sudoers allowlist. Units are validated against a fixed
+        // allowlist so nothing user-supplied reaches systemctl.
+        const string ConsoleFeature = "Server Admin";
+        IResult ConsoleDisabled() => Results.Json(new { status = "server console disabled", hint = "set Admin:ServerConsole:Enabled=true" }, statusCode: StatusCodes.Status503ServiceUnavailable);
+
+        api.MapGet("/admin/console/services", async (HttpContext ctx, IAbisRepository repo, ServerConsoleService console, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, ConsoleFeature, 0, ct) is { } deny) return deny;
+                if (!console.Enabled) return ConsoleDisabled();
+                return Results.Ok(new { restartAllowed = console.RestartAllowed, services = await console.GetServicesAsync(ct) });
+            })
+           .WithName("GetServerServices").WithTags("Admin")
+           .WithSummary("Server console: status of the allowlisted systemd units (abis, nginx). Read-only.")
+           .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status403Forbidden).Produces(StatusCodes.Status503ServiceUnavailable);
+
+        api.MapGet("/admin/console/services/{unit}/logs", async (string unit, int? tail, HttpContext ctx, IAbisRepository repo, ServerConsoleService console, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, ConsoleFeature, 0, ct) is { } deny) return deny;
+                if (!console.Enabled) return ConsoleDisabled();
+                if (!console.IsAllowedUnit(unit)) return Results.NotFound(new { unit, status = "unit not in the allowlist" });
+                var r = await console.GetLogsAsync(unit, tail ?? 200, ct);
+                return Results.Ok(new { unit, ok = r.Ok, text = r.Ok ? r.Stdout : r.Stderr });
+            })
+           .WithName("GetServerServiceLogs").WithTags("Admin")
+           .WithSummary("Server console: tail an allowlisted unit's journal (read-only). ?tail=N (clamped).")
+           .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status403Forbidden).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status503ServiceUnavailable);
+
+        api.MapPost("/admin/console/services/{unit}/restart", async (string unit, HttpContext ctx, IAbisRepository repo, ServerConsoleService console, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, ConsoleFeature, 1, ct) is { } deny) return deny;
+                if (!console.Enabled) return ConsoleDisabled();
+                if (!console.IsAllowedUnit(unit)) return Results.NotFound(new { unit, status = "unit not in the allowlist" });
+                var r = await console.RestartAsync(unit, ct);
+                return r.Ok ? Results.Ok(r) : Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Restart failed", detail: r.Detail);
+            })
+           .WithName("RestartServerService").WithTags("Admin")
+           .WithSummary("Server console: restart an allowlisted unit (mutating — needs AllowRestart + the sudoers allowlist). 409 if not permitted / failed.")
+           .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status403Forbidden).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status503ServiceUnavailable);
+
+        api.MapGet("/admin/console/host/cron", async (HttpContext ctx, IAbisRepository repo, ServerConsoleService console, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, ConsoleFeature, 0, ct) is { } deny) return deny;
+                if (!console.Enabled) return ConsoleDisabled();
+                var r = await console.GetHostCronAsync(ct);
+                return r.Available
+                    ? Results.Ok(new { available = true, text = r.Text })
+                    : Results.Json(new { available = false, error = r.Error }, statusCode: StatusCodes.Status503ServiceUnavailable);
+            })
+           .WithName("GetHostCron").WithTags("Admin")
+           .WithSummary("Server console: read-only view of the DB-host crontab (via a command-locked channel). 503 until configured.")
+           .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status403Forbidden).Produces(StatusCodes.Status503ServiceUnavailable);
 
         api.MapGet("/reporting/downtime", async (DateTime? from, DateTime? to, IAbisRepository repo, CancellationToken ct, long? lineNum = null) =>
             {

@@ -65,6 +65,14 @@ builder.Services.AddSingleton(oidcClientOptions);
 var rateLimitOptions = builder.Configuration.GetSection(RateLimitOptions.SectionName).Get<RateLimitOptions>()
                        ?? new RateLimitOptions();
 builder.Services.AddSingleton(rateLimitOptions);
+
+// #7 server/service console (docs/SERVER_CONSOLE.md). OFF by default — inert until Admin:ServerConsole
+// is enabled and (for restart / host-cron) the operator installs the sudoers allowlist / SSH channel.
+var serverConsoleOptions = builder.Configuration.GetSection(Abis.Api.Admin.ServerConsoleOptions.SectionName)
+                               .Get<Abis.Api.Admin.ServerConsoleOptions>() ?? new Abis.Api.Admin.ServerConsoleOptions();
+builder.Services.AddSingleton(serverConsoleOptions);
+builder.Services.AddSingleton<Abis.Api.Admin.IProcessRunner, Abis.Api.Admin.ProcessRunner>();
+builder.Services.AddSingleton<Abis.Api.Admin.ServerConsoleService>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;

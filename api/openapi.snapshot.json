@@ -810,6 +810,135 @@
         }
       }
     },
+    "/api/admin/console/services": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Server console: status of the allowlisted systemd units (abis, nginx). Read-only.",
+        "operationId": "GetServerServices",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/admin/console/services/{unit}/logs": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Server console: tail an allowlisted unit's journal (read-only). ?tail=N (clamped).",
+        "operationId": "GetServerServiceLogs",
+        "parameters": [
+          {
+            "name": "unit",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tail",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/admin/console/services/{unit}/restart": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Server console: restart an allowlisted unit (mutating — needs AllowRestart + the sudoers allowlist). 409 if not permitted / failed.",
+        "operationId": "RestartServerService",
+        "parameters": [
+          {
+            "name": "unit",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/admin/console/host/cron": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Server console: read-only view of the DB-host crontab (via a command-locked channel). 503 until configured.",
+        "operationId": "GetHostCron",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/audit-log": {
       "get": {
         "tags": [

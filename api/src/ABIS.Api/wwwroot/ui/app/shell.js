@@ -97,6 +97,7 @@ const NAV = [
             { id: 'edi', label: 'EDI operations', href: '/ui/edi.html', feature: 'EDI', icon: I.edi },
             { id: 'security', label: 'User security', href: '/ui/security.html', feature: 'User Control', icon: I.users },
             { id: 'admin', label: 'Admin & scheduler', href: '/ui/admin.html', feature: 'Scheduler Admin', icon: I.admin },
+            { id: 'server-console', label: 'Server console', href: '/ui/server-console.html', feature: 'Server Admin', icon: I.gear },
         ] },
 ];
 // Dev impersonation targets (seeded users) — visible only in API-key mode.
