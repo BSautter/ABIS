@@ -4087,7 +4087,7 @@
         "tags": [
           "Meta"
         ],
-        "summary": "Sign in with an ABIS user login + optional password (verified against the credential store); returns a bearer token that drives RBAC.",
+        "summary": "Sign in with an ABIS user login + password (verified against Active Directory when Auth:Ldap is enabled, else the local credential store); returns a bearer token that drives RBAC.",
         "operationId": "Login",
         "requestBody": {
           "content": {
