@@ -12,7 +12,8 @@ public sealed class LdapOptions
     public const string SectionName = "Auth:Ldap";
 
     public bool Enabled { get; set; }
-    public string? Host { get; set; }                    // domain controller, e.g. dc01.abc.local
+    public string? Host { get; set; }                    // a single domain controller (convenience)
+    public string[]? Hosts { get; set; }                 // one or more DCs, tried in order (primary first) for failover
     public int Port { get; set; }                        // 0 = default (636 LDAPS, else 389)
     public bool UseSsl { get; set; } = true;             // LDAPS — recommended; the password is sent to the DC
     /// <summary>Accept any DC server certificate (for an internal self-signed/private-CA DC on a
@@ -25,9 +26,16 @@ public sealed class LdapOptions
 
     public int EffectivePort => Port > 0 ? Port : (UseSsl ? 636 : 389);
 
+    /// <summary>The domain controllers to try, primary first: <see cref="Hosts"/> if given, else the
+    /// single <see cref="Host"/>.</summary>
+    public IReadOnlyList<string> EffectiveHosts =>
+        Hosts is { Length: > 0 }
+            ? Hosts.Where(h => !string.IsNullOrWhiteSpace(h)).Select(h => h.Trim()).ToArray()
+            : (!string.IsNullOrWhiteSpace(Host) ? new[] { Host.Trim() } : Array.Empty<string>());
+
     /// <summary>Enabled AND the essentials are present — a half-filled section must not silently take
     /// over sign-in and then reject everyone.</summary>
-    public bool IsUsable => Enabled && !string.IsNullOrWhiteSpace(Host) && !string.IsNullOrWhiteSpace(UserBindFormat);
+    public bool IsUsable => Enabled && EffectiveHosts.Count > 0 && !string.IsNullOrWhiteSpace(UserBindFormat);
 }
 
 /// <summary>Validates a username/password against Active Directory. Abstracted so
@@ -59,31 +67,37 @@ public sealed class LdapAuthenticator(LdapOptions opt, ILogger<LdapAuthenticator
         // Novell's client is synchronous/blocking; run it off the request thread and honour cancellation.
         return Task.Run(() =>
         {
-            try
+            // Try each DC in order (primary first). A reachable DC that REJECTS the password is
+            // authoritative (stop — the other DC would reject it too); a DC we can't reach is skipped
+            // so we fail over to the next.
+            foreach (var host in opt.EffectiveHosts)
             {
-                var options = new LdapConnectionOptions();
-                if (opt.UseSsl) options.UseSsl();
-                if (opt.AcceptAnyCertificate) options.ConfigureRemoteCertificateValidationCallback((_, _, _, _) => true);
+                try
+                {
+                    var options = new LdapConnectionOptions();
+                    if (opt.UseSsl) options.UseSsl();
+                    if (opt.AcceptAnyCertificate) options.ConfigureRemoteCertificateValidationCallback((_, _, _, _) => true);
 
-                using var conn = new LdapConnection(options) { ConnectionTimeout = opt.TimeoutSeconds * 1000 };
-                conn.Connect(opt.Host, opt.EffectivePort);
-                conn.Bind(bindDn, password);          // throws LdapException(49 InvalidCredentials) on a bad password
-                var ok = conn.Bound;
-                conn.Disconnect();
-                return ok;
+                    using var conn = new LdapConnection(options) { ConnectionTimeout = opt.TimeoutSeconds * 1000 };
+                    conn.Connect(host, opt.EffectivePort);
+                    conn.Bind(bindDn, password);
+                    var ok = conn.Bound;
+                    conn.Disconnect();
+                    return ok;
+                }
+                catch (LdapException ex) when (ex.ResultCode == LdapException.InvalidCredentials)
+                {
+                    // Wrong password from a reachable DC — definitive; don't try the other DC.
+                    log.LogDebug("LDAP bind rejected for {BindDn} on {Host}: invalid credentials", bindDn, host);
+                    return false;
+                }
+                catch (Exception ex)
+                {
+                    // This DC is unreachable / TLS / other — try the next one (failover).
+                    log.LogWarning(ex, "LDAP error on {Host}:{Port}; trying next DC if any", host, opt.EffectivePort);
+                }
             }
-            catch (LdapException ex)
-            {
-                // A rejected credential is the normal failure path — keep it quiet (no username/password logged).
-                log.LogDebug("LDAP bind rejected for {BindDn}: result {Result}", bindDn, ex.ResultCode);
-                return false;
-            }
-            catch (Exception ex)
-            {
-                // Connect/TLS/config problem — surface it (still fail closed).
-                log.LogWarning(ex, "LDAP connect/bind error to {Host}:{Port}", opt.Host, opt.EffectivePort);
-                return false;
-            }
+            return false;   // no DC could authenticate (all unreachable, or misconfigured)
         }, ct);
     }
 }

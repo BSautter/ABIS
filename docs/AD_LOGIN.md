@@ -21,10 +21,10 @@ usernames differ from the ABIS logins, we need a mapping step — tell me and I'
 "Auth": {
   "Ldap": {
     "Enabled": true,
-    "Host": "dc01.abc.local",        // a domain controller (or a DNS name that resolves to one)
+    "Hosts": [ "192.168.1.22", "192.168.1.23" ],  // DCs tried in order (primary first) — failover
     "UseSsl": true,                    // LDAPS on 636 — recommended (the password travels to the DC)
     "Port": 0,                         // 0 = default (636 if UseSsl else 389)
-    "UserBindFormat": "{0}@abc.local", // UPN form, OR NetBIOS: "ABC\\{0}"   ({0} = the username)
+    "UserBindFormat": "ALBL\\{0}",     // NetBIOS DOMAIN\user  ({0} = the username; \\ escapes in JSON)
     "AcceptAnyCertificate": false      // set true only for an internal self-signed/private-CA DC on a trusted LAN
   },
   "Jwt": {
@@ -32,8 +32,19 @@ usernames differ from the ABIS logins, we need a mapping step — tell me and I'
   }
 }
 ```
-As env vars (double-underscore): `Auth__Ldap__Enabled=true`, `Auth__Ldap__Host=dc01.abc.local`,
-`Auth__Ldap__UserBindFormat={0}@abc.local`, etc.
+As env vars (double-underscore + array indices): `Auth__Ldap__Enabled=true`,
+`Auth__Ldap__Hosts__0=192.168.1.22`, `Auth__Ldap__Hosts__1=192.168.1.23`,
+`Auth__Ldap__UserBindFormat=ALBL\{0}`, `Auth__Ldap__UseSsl=true`.
+
+**Failover:** the DCs are tried in order. A DC that's unreachable is skipped (→ next DC); a reachable
+DC that *rejects* the password is authoritative (no point trying the other). A single `Host` still
+works if you prefer (`Hosts` wins when both are set).
+
+## Break-glass local admin
+When AD is on, if a bind is rejected **or every DC is unreachable**, sign-in falls back to a **local
+password** — but **only** for an account that has an admin-set credential (never passwordless; the
+blank-password guard stays). So set a local password on one admin account (Security admin → set
+password) and that admin can still get in if AD/the DCs are down. Everyone else is AD-only.
 
 ### Notes
 - **`UserBindFormat`** — most AD accepts the UPN `{0}@abc.local`. If your UPN suffix differs from the

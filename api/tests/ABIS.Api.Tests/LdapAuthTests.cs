@@ -39,6 +39,8 @@ public sealed class LdapAuthTests
             builder.UseSetting("Database:Provider", "Sqlite");
             builder.UseSetting("Database:ConnectionString", $"Data Source={_dbPath}");
             builder.UseSetting("Database:Seed", "true");
+            builder.UseSetting("ApiKeys:Enabled", "true");
+            builder.UseSetting("ApiKeys:Keys:0", "test-key");
             builder.ConfigureTestServices(s => s.AddSingleton(ldap));   // swap the real DC bind for the fake
         }
         protected override void Dispose(bool disposing)
@@ -55,6 +57,22 @@ public sealed class LdapAuthTests
             ? await resp.Content.ReadFromJsonAsync<JsonElement>()
             : default;
         return (resp.StatusCode, body);
+    }
+
+    private static HttpClient Admin(WebApplicationFactory<Program> f)
+    {
+        var c = f.CreateClient();
+        c.DefaultRequestHeaders.Add("X-Api-Key", "test-key");
+        return c;
+    }
+
+    private static async Task<long> JsmithIdAsync(HttpClient admin)
+    {
+        var users = await admin.GetFromJsonAsync<JsonElement>("/api/security/users");
+        foreach (var u in users.EnumerateArray())
+            if (string.Equals(u.GetProperty("loginId").GetString(), "jsmith", StringComparison.OrdinalIgnoreCase))
+                return u.GetProperty("userId").GetInt64();
+        throw new Xunit.Sdk.XunitException("seed user 'jsmith' not found");
     }
 
     [Fact]
@@ -107,5 +125,30 @@ public sealed class LdapAuthTests
         // ...but with no security_user row there's no identity/RBAC, so it's rejected before the bind.
         Assert.Equal(HttpStatusCode.Unauthorized, (await Login(f.CreateClient(), "nobody", "whatever")).status);
         Assert.Equal(0, ldap.Calls);
+    }
+
+    [Fact]
+    public async Task Break_glass_local_password_works_when_ad_rejects()
+    {
+        var ldap = new FakeLdap((_, _) => false);   // AD says no (rejected, or every DC unreachable)
+        using var f = new Factory(ldap);
+        var id = await JsmithIdAsync(Admin(f));
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await Admin(f).PostAsJsonAsync($"/api/security/users/{id}/password", new { password = "Break-Glass-9" })).StatusCode);
+
+        // AD rejects, but jsmith has an admin-set local password → break-glass lets them in.
+        Assert.Equal(HttpStatusCode.OK, (await Login(f.CreateClient(), "jsmith", "Break-Glass-9")).status);
+        // A wrong local password still fails; an empty one never binds (covered above).
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Login(f.CreateClient(), "jsmith", "nope")).status);
+    }
+
+    [Fact]
+    public void EffectiveHosts_prefers_the_list_then_the_single_host()
+    {
+        Assert.Equal(new[] { "dc1", "dc2" }, new LdapOptions { Hosts = ["dc1", " dc2 ", ""] }.EffectiveHosts);
+        Assert.Equal(new[] { "dc1" }, new LdapOptions { Host = " dc1 " }.EffectiveHosts);
+        Assert.Empty(new LdapOptions().EffectiveHosts);
+        Assert.False(new LdapOptions { Enabled = true, UserBindFormat = "{0}" }.IsUsable);                    // no host
+        Assert.True(new LdapOptions { Enabled = true, Hosts = ["dc1"], UserBindFormat = "{0}" }.IsUsable);
     }
 }

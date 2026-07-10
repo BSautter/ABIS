@@ -124,14 +124,27 @@ public static class ApiEndpoints
                 bool passwordSet;
                 if (ldap.Enabled)
                 {
-                    // AD-backed: verify the password by binding to the domain controller. An empty
-                    // password is rejected up front (an LDAP simple-bind with an empty password is an
-                    // "unauthenticated bind" that succeeds) — this closes the blank-password sign-in.
-                    // AD owns the password lifecycle, so there's no ABIS must-change here.
-                    if (string.IsNullOrEmpty(body.Password) || !await ldap.ValidateAsync(login, body.Password, ct))
+                    // AD-backed. Reject an empty password before any bind (an LDAP simple-bind with an
+                    // empty password is an "unauthenticated bind" that succeeds) — closes the blank-password
+                    // sign-in. Bind to a DC; if AD rejects OR every DC is unreachable, fall back to a
+                    // BREAK-GLASS local password — but ONLY for an account with an admin-set credential
+                    // (never passwordless), so a local admin can still get in when AD/the DC is down.
+                    if (string.IsNullOrEmpty(body.Password))
                         return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "Invalid credentials",
                             detail: "The username or password is incorrect.");
-                    passwordSet = true;
+                    if (await ldap.ValidateAsync(login, body.Password, ct))
+                    {
+                        passwordSet = true;                          // authenticated against AD
+                    }
+                    else
+                    {
+                        var cred = await repo.GetUserCredentialAsync(user.LoginId ?? login, ct);
+                        if (cred is null || !PasswordHashing.Verify(body.Password, cred.PasswordHash))
+                            return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "Invalid credentials",
+                                detail: "The username or password is incorrect.");
+                        mustChangePassword = cred.MustChange != 0;   // break-glass local sign-in (AD unavailable)
+                        passwordSet = true;
+                    }
                 }
                 else
                 {
