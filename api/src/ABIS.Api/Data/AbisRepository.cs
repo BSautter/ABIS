@@ -1455,11 +1455,11 @@ public sealed class AbisRepository : IAbisRepository
             """
             INSERT INTO abis_scheduled_job (scheduled_job_id, job_name, job_description, cron_expression,
                 target_operation, target_args, enabled, source, created_utc, updated_utc)
-            VALUES (:id, :name, :desc, :cron, :op, :args, :enabled, :source, :created, :updated)
+            VALUES (:id, :name, :descr, :cron, :op, :args, :enabled, :source, :created, :updated)
             """,
             new
             {
-                id, name = body.JobName?.Trim(), desc = body.JobDescription, cron = body.CronExpression?.Trim(),
+                id, name = body.JobName?.Trim(), descr = body.JobDescription, cron = body.CronExpression?.Trim(),
                 op = body.TargetOperation, args = body.TargetArgs, enabled = (body.Enabled ?? false) ? 1 : 0,
                 source = body.Source ?? "native", created = now, updated = now
             },
@@ -1473,13 +1473,13 @@ public sealed class AbisRepository : IAbisRepository
         await using var conn = await OpenAsync(ct);
         var rows = await conn.ExecuteAsync(new CommandDefinition(
             """
-            UPDATE abis_scheduled_job SET job_name = :name, job_description = :desc, cron_expression = :cron,
+            UPDATE abis_scheduled_job SET job_name = :name, job_description = :descr, cron_expression = :cron,
                 target_operation = :op, target_args = :args, enabled = :enabled, source = :source, updated_utc = :updated
             WHERE scheduled_job_id = :id
             """,
             new
             {
-                id = scheduledJobId, name = body.JobName?.Trim(), desc = body.JobDescription, cron = body.CronExpression?.Trim(),
+                id = scheduledJobId, name = body.JobName?.Trim(), descr = body.JobDescription, cron = body.CronExpression?.Trim(),
                 op = body.TargetOperation, args = body.TargetArgs, enabled = (body.Enabled ?? false) ? 1 : 0,
                 source = body.Source ?? "native", updated = DateTime.UtcNow
             }, cancellationToken: ct));
@@ -1922,12 +1922,12 @@ public sealed class AbisRepository : IAbisRepository
         await conn.ExecuteAsync(new CommandDefinition(
             """
             INSERT INTO sales_reminder (event_id, quote_id, quote_revision_id, event_date, event_notes, event_status, user_id)
-            VALUES (:id, :quote, :rev, :date, :notes, :status, :user)
+            VALUES (:id, :quote, :rev, :dval, :notes, :status, :usr)
             """,
             new
             {
-                id, quote = quoteId, rev = revisionId, date = body.EventDate ?? DateTime.UtcNow,
-                notes = body.EventNotes, status = body.EventStatus ?? "OPEN", user = body.UserId
+                id, quote = quoteId, rev = revisionId, dval = body.EventDate ?? DateTime.UtcNow,
+                notes = body.EventNotes, status = body.EventStatus ?? "OPEN", usr = body.UserId
             },
             transaction: tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
@@ -1956,11 +1956,11 @@ public sealed class AbisRepository : IAbisRepository
         await conn.ExecuteAsync(new CommandDefinition(
             """
             INSERT INTO sales_probability (probability_id, quote_id, quote_revision_id, review_date, sales_probability, probability_note)
-            VALUES (:id, :quote, :rev, :date, :pct, :note)
+            VALUES (:id, :quote, :rev, :dval, :pct, :note)
             """,
             new
             {
-                id, quote = quoteId, rev = revisionId, date = body.ReviewDate ?? DateTime.UtcNow,
+                id, quote = quoteId, rev = revisionId, dval = body.ReviewDate ?? DateTime.UtcNow,
                 pct = body.SalesProbabilityPercent, note = body.ProbabilityNote
             },
             transaction: tx, cancellationToken: ct));
@@ -2445,15 +2445,15 @@ public sealed class AbisRepository : IAbisRepository
         var updated = await conn.ExecuteAsync(new CommandDefinition(
             """
             UPDATE abis_user_credential
-               SET password_hash = :hash, must_change = :mc, updated_utc = :now, updated_by = :by
+               SET password_hash = :hash, must_change = :mc, updated_utc = :now, updated_by = :updby
              WHERE LOWER(login_id) = LOWER(:login)
-            """, new { hash = passwordHash, mc, now, by = updatedBy, login }, cancellationToken: ct));
+            """, new { hash = passwordHash, mc, now, updby = updatedBy, login }, cancellationToken: ct));
         if (updated == 0)
             await conn.ExecuteAsync(new CommandDefinition(
                 """
                 INSERT INTO abis_user_credential (login_id, password_hash, must_change, updated_utc, updated_by)
-                VALUES (:login, :hash, :mc, :now, :by)
-                """, new { login, hash = passwordHash, mc, now, by = updatedBy }, cancellationToken: ct));
+                VALUES (:login, :hash, :mc, :now, :updby)
+                """, new { login, hash = passwordHash, mc, now, updby = updatedBy }, cancellationToken: ct));
     }
 
     // The caller's effective privilege on a feature, resolved by login (case-insensitive):
@@ -3218,8 +3218,8 @@ public sealed class AbisRepository : IAbisRepository
         await using var conn = await OpenAsync(ct);
         var ver = body.EdiVersion!.Trim();
         await conn.ExecuteAsync(new CommandDefinition(
-            "INSERT INTO edi_type (edi_type_id, edi_version, edi_type_description) VALUES (:id, :ver, :desc)",
-            new { id = body.EdiTypeId, ver, desc = body.EdiTypeDescription }, cancellationToken: ct));
+            "INSERT INTO edi_type (edi_type_id, edi_version, edi_type_description) VALUES (:id, :ver, :descr)",
+            new { id = body.EdiTypeId, ver, descr = body.EdiTypeDescription }, cancellationToken: ct));
         return (await GetEdiTypeAsync(body.EdiTypeId, ver, ct))!;
     }
 
@@ -3227,8 +3227,8 @@ public sealed class AbisRepository : IAbisRepository
     {
         await using var conn = await OpenAsync(ct);
         var rows = await conn.ExecuteAsync(new CommandDefinition(
-            "UPDATE edi_type SET edi_type_description = :desc WHERE edi_type_id = :id AND edi_version = :ver",
-            new { id = ediTypeId, ver = ediVersion, desc = description }, cancellationToken: ct));
+            "UPDATE edi_type SET edi_type_description = :descr WHERE edi_type_id = :id AND edi_version = :ver",
+            new { id = ediTypeId, ver = ediVersion, descr = description }, cancellationToken: ct));
         return rows == 0 ? null : await GetEdiTypeAsync(ediTypeId, ediVersion, ct);
     }
 
@@ -3247,9 +3247,9 @@ public sealed class AbisRepository : IAbisRepository
         await conn.ExecuteAsync(new CommandDefinition(
             """
             INSERT INTO customer_edi (customer_edi_name, customer_id, edi_type_id, edi_version, customer_edi_desc)
-            VALUES (:name, :cust, :type, :ver, :desc)
+            VALUES (:name, :cust, :type, :ver, :descr)
             """,
-            new { name, cust = body.CustomerId, type = body.EdiTypeId, ver = body.EdiVersion?.Trim(), desc = body.CustomerEdiDesc },
+            new { name, cust = body.CustomerId, type = body.EdiTypeId, ver = body.EdiVersion?.Trim(), descr = body.CustomerEdiDesc },
             cancellationToken: ct));
         return (await GetCustomerEdiOneAsync(name, body.CustomerId, ct))!;
     }
@@ -3259,10 +3259,10 @@ public sealed class AbisRepository : IAbisRepository
         await using var conn = await OpenAsync(ct);
         var rows = await conn.ExecuteAsync(new CommandDefinition(
             """
-            UPDATE customer_edi SET edi_type_id = :type, edi_version = :ver, customer_edi_desc = :desc
+            UPDATE customer_edi SET edi_type_id = :type, edi_version = :ver, customer_edi_desc = :descr
             WHERE customer_edi_name = :name AND customer_id = :cust
             """,
-            new { name = customerEdiName, cust = customerId, type = body.EdiTypeId, ver = body.EdiVersion?.Trim(), desc = body.CustomerEdiDesc },
+            new { name = customerEdiName, cust = customerId, type = body.EdiTypeId, ver = body.EdiVersion?.Trim(), descr = body.CustomerEdiDesc },
             cancellationToken: ct));
         return rows == 0 ? null : await GetCustomerEdiOneAsync(customerEdiName, customerId, ct);
     }
@@ -3474,13 +3474,13 @@ public sealed class AbisRepository : IAbisRepository
             """
             INSERT INTO sheet_skid_dimension_check (dimension_check_num, sheet_skid_num, pc_number, gauge, width,
                 length_oper, length_drive, square, head_dimension, all_cut_edge, in_spec, checked_by, note)
-            VALUES (:id, :skid, :pc, :gauge, :width, :lo, :ld, :sq, :head, :ace, :inspec, :by, :note)
+            VALUES (:id, :skid, :pc, :gauge, :width, :lo, :ld, :sq, :head, :ace, :inspec, :updby, :note)
             """,
             new
             {
                 id, skid = sheetSkidNum, pc = body.PcNumber, gauge = body.Gauge, width = body.Width,
                 lo = body.LengthOper, ld = body.LengthDrive, sq = body.Square, head = body.HeadDimension,
-                ace = body.AllCutEdge, inspec = body.InSpec ?? 1, by = body.CheckedBy, note = body.Note
+                ace = body.AllCutEdge, inspec = body.InSpec ?? 1, updby = body.CheckedBy, note = body.Note
             },
             transaction: tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
@@ -3623,11 +3623,11 @@ public sealed class AbisRepository : IAbisRepository
         await conn.ExecuteAsync(new CommandDefinition(
             """
             INSERT INTO error_evt (error_evt_id, evt_time, error_type_id, error_user, error_comment, line_id, coil_abc_num, ab_job_num, title, message)
-            VALUES (:id, :ts, :type, :usr, :comment, :line, :coil, :job, :title, :msg)
+            VALUES (:id, :ts, :type, :usr, :cmt, :line, :coil, :job, :title, :msg)
             """,
             new
             {
-                id, ts = (DateTime?)DateTime.UtcNow, type = body.ErrorTypeId, usr = body.ErrorUser, comment = body.ErrorComment,
+                id, ts = (DateTime?)DateTime.UtcNow, type = body.ErrorTypeId, usr = body.ErrorUser, cmt = body.ErrorComment,
                 line = body.LineId, coil = body.CoilAbcNum, job = body.AbJobNum, title = body.Title, msg = body.Message
             },
             transaction: tx, cancellationToken: ct));
@@ -3962,13 +3962,13 @@ public sealed class AbisRepository : IAbisRepository
             INSERT INTO abis_truck_appointment (appointment_id, direction, carrier_id, carrier_name, dock,
                 scheduled_start, scheduled_end, ref_type, ref_id, driver_name, tractor_num, trailer_num, seal_num,
                 quantity, truck_status, notes, created_utc, updated_utc, created_by)
-            VALUES (:id, :direction, :carrierId, :carrierName, :dock, :start, :end, :refType, :refId,
-                :driver, :tractor, :trailer, :seal, :quantity, 0, :notes, :now, :now, :by)
+            VALUES (:id, :direction, :carrierId, :carrierName, :dock, :startv, :endv, :refType, :refId,
+                :driver, :tractor, :trailer, :seal, :quantity, 0, :notes, :now, :now, :updby)
             """,
             new { id, direction = body.Direction, carrierId = body.CarrierId, carrierName = body.CarrierName, dock = body.Dock,
-                  start = body.ScheduledStart, end = body.ScheduledEnd, refType = body.RefType, refId = body.RefId,
+                  startv = body.ScheduledStart, endv = body.ScheduledEnd, refType = body.RefType, refId = body.RefId,
                   driver = body.DriverName, tractor = body.TractorNum, trailer = body.TrailerNum, seal = body.SealNum,
-                  quantity = body.Quantity, notes = body.Notes, now, by = createdBy },
+                  quantity = body.Quantity, notes = body.Notes, now, updby = createdBy },
             transaction: tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
         return (await GetTruckAppointmentAsync(id, ct))!;
@@ -3980,12 +3980,12 @@ public sealed class AbisRepository : IAbisRepository
         var n = await conn.ExecuteAsync(new CommandDefinition(
             """
             UPDATE abis_truck_appointment SET direction=:direction, carrier_id=:carrierId, carrier_name=:carrierName, dock=:dock,
-                scheduled_start=:start, scheduled_end=:end, ref_type=:refType, ref_id=:refId, driver_name=:driver,
+                scheduled_start=:startv, scheduled_end=:endv, ref_type=:refType, ref_id=:refId, driver_name=:driver,
                 tractor_num=:tractor, trailer_num=:trailer, seal_num=:seal, quantity=:quantity, notes=:notes, updated_utc=:now
             WHERE appointment_id=:id
             """,
             new { id, direction = body.Direction, carrierId = body.CarrierId, carrierName = body.CarrierName, dock = body.Dock,
-                  start = body.ScheduledStart, end = body.ScheduledEnd, refType = body.RefType, refId = body.RefId,
+                  startv = body.ScheduledStart, endv = body.ScheduledEnd, refType = body.RefType, refId = body.RefId,
                   driver = body.DriverName, tractor = body.TractorNum, trailer = body.TrailerNum, seal = body.SealNum,
                   quantity = body.Quantity, notes = body.Notes, now = DateTime.UtcNow },
             cancellationToken: ct));
