@@ -216,12 +216,22 @@ function wireUserMenu() {
         location.reload();
     });
 }
-// ---- notifications popover ----
-// No dedicated notifications backend yet, so surface a couple of real operational signals the API
-// already exposes (coils on hold, EDI awaiting a functional ack). Fetched on demand (on open) + once
-// non-blocking on load to drive the unread dot — no cost added to the page's critical path.
 async function fetchNotifications() {
     const items = [];
+    // Database reachability first — a hard alert, and every other signal here depends on it, so if it's
+    // down we surface just that (the workload checks would only error). /health/ready is anonymous and
+    // returns 503 when Oracle is unreachable.
+    let dbUp = true;
+    try {
+        dbUp = (await fetch('/health/ready', { cache: 'no-store' })).ok;
+    }
+    catch {
+        dbUp = false;
+    }
+    if (!dbUp) {
+        items.push({ label: 'Database unreachable', tone: 'danger' });
+        return items;
+    }
     try {
         const hold = await client().getOnHoldCoils();
         if (hold?.length)
@@ -253,8 +263,11 @@ function wireNotifications() {
     const render = (items) => {
         if (dot)
             dot.style.display = items.length ? '' : 'none';
+        const style = (i) => `display:block;padding:9px 12px;${i.tone === 'danger' ? 'color:#e5484d;font-weight:600' : 'color:inherit'}`;
         body.innerHTML = items.length
-            ? items.map((i) => `<a href="${esc(i.href)}" style="display:block;padding:9px 12px;color:inherit;text-decoration:none">${esc(i.label)}</a>`).join('')
+            ? items.map((i) => i.href
+                ? `<a href="${esc(i.href)}" style="${style(i)};text-decoration:none">${esc(i.label)}</a>`
+                : `<div style="${style(i)}">${esc(i.label)}</div>`).join('')
             : `<small class="muted" style="display:block;padding:9px 12px">You're all caught up.</small>`;
     };
     btn.addEventListener('click', async (e) => {

@@ -225,11 +225,21 @@ function wireUserMenu(): void {
 }
 
 // ---- notifications popover ----
-// No dedicated notifications backend yet, so surface a couple of real operational signals the API
-// already exposes (coils on hold, EDI awaiting a functional ack). Fetched on demand (on open) + once
-// non-blocking on load to drive the unread dot — no cost added to the page's critical path.
-async function fetchNotifications(): Promise<{ label: string; href: string }[]> {
-  const items: { label: string; href: string }[] = [];
+// No dedicated notifications backend yet, so surface real operational signals the API already
+// exposes: a database-down health alert, then a couple of workload signals (coils on hold, EDI
+// awaiting a functional ack). Fetched on demand (on open) + once non-blocking on load to drive the
+// unread dot — no cost on the page's critical path. `tone: 'danger'` = a hard/health alert.
+type Notif = { label: string; href?: string; tone?: 'danger' | 'warn' };
+
+async function fetchNotifications(): Promise<Notif[]> {
+  const items: Notif[] = [];
+  // Database reachability first — a hard alert, and every other signal here depends on it, so if it's
+  // down we surface just that (the workload checks would only error). /health/ready is anonymous and
+  // returns 503 when Oracle is unreachable.
+  let dbUp = true;
+  try { dbUp = (await fetch('/health/ready', { cache: 'no-store' })).ok; } catch { dbUp = false; }
+  if (!dbUp) { items.push({ label: 'Database unreachable', tone: 'danger' }); return items; }
+
   try {
     const hold = await client().getOnHoldCoils();
     if (hold?.length) items.push({ label: `${hold.length} coil${hold.length === 1 ? '' : 's'} on hold`, href: '/ui/coil-inventory.html' });
@@ -252,10 +262,13 @@ function wireNotifications(): void {
   document.querySelector('.abis-app')!.appendChild(pop);
   const body = pop.querySelector('#shNotifBody') as HTMLElement;
   const place = () => { const r = btn.getBoundingClientRect(); pop.style.top = `${r.bottom + 6}px`; pop.style.right = `${window.innerWidth - r.right}px`; };
-  const render = (items: { label: string; href: string }[]) => {
+  const render = (items: Notif[]) => {
     if (dot) dot.style.display = items.length ? '' : 'none';
+    const style = (i: Notif) => `display:block;padding:9px 12px;${i.tone === 'danger' ? 'color:#e5484d;font-weight:600' : 'color:inherit'}`;
     body.innerHTML = items.length
-      ? items.map((i) => `<a href="${esc(i.href)}" style="display:block;padding:9px 12px;color:inherit;text-decoration:none">${esc(i.label)}</a>`).join('')
+      ? items.map((i) => i.href
+          ? `<a href="${esc(i.href)}" style="${style(i)};text-decoration:none">${esc(i.label)}</a>`
+          : `<div style="${style(i)}">${esc(i.label)}</div>`).join('')
       : `<small class="muted" style="display:block;padding:9px 12px">You're all caught up.</small>`;
   };
   btn.addEventListener('click', async (e) => {
