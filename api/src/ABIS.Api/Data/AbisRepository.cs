@@ -2276,12 +2276,12 @@ public sealed class AbisRepository : IAbisRepository
         if (!await ExistsAsync(conn, "security_user", "user_id", userId, ct) ||
             !await ExistsAsync(conn, "security_application", "application_id", applicationId, ct)) return false;
         var n = await conn.ExecuteAsync(new CommandDefinition(
-            "UPDATE security_user_application SET user_application_privilege = :priv WHERE user_id = :uid AND application_id = :aid",
-            new { priv = privilege, uid = userId, aid = applicationId }, cancellationToken: ct));
+            "UPDATE security_user_application SET user_application_privilege = :priv WHERE user_id = :usrid AND application_id = :aid",
+            new { priv = privilege, usrid = userId, aid = applicationId }, cancellationToken: ct));
         if (n == 0)
             await conn.ExecuteAsync(new CommandDefinition(
-                "INSERT INTO security_user_application (user_id, application_id, user_application_privilege) VALUES (:uid, :aid, :priv)",
-                new { uid = userId, aid = applicationId, priv = privilege }, cancellationToken: ct));
+                "INSERT INTO security_user_application (user_id, application_id, user_application_privilege) VALUES (:usrid, :aid, :priv)",
+                new { usrid = userId, aid = applicationId, priv = privilege }, cancellationToken: ct));
         return true;
     }
 
@@ -2306,8 +2306,8 @@ public sealed class AbisRepository : IAbisRepository
     {
         await using var conn = await OpenAsync(ct);
         var n = await conn.ExecuteAsync(new CommandDefinition(
-            "DELETE FROM security_user_application WHERE user_id = :uid AND application_id = :aid",
-            new { uid = userId, aid = applicationId }, cancellationToken: ct));
+            "DELETE FROM security_user_application WHERE user_id = :usrid AND application_id = :aid",
+            new { usrid = userId, aid = applicationId }, cancellationToken: ct));
         return n > 0;
     }
 
@@ -2399,12 +2399,12 @@ public sealed class AbisRepository : IAbisRepository
             !await ExistsAsync(conn, "security_group", "user_group_id", groupId, ct)) return false;
         // Idempotent: only insert if the membership is absent.
         var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
-            "SELECT COUNT(*) FROM security_user_group WHERE user_id = :uid AND user_group_id = :gid",
-            new { uid = userId, gid = groupId }, cancellationToken: ct));
+            "SELECT COUNT(*) FROM security_user_group WHERE user_id = :usrid AND user_group_id = :gid",
+            new { usrid = userId, gid = groupId }, cancellationToken: ct));
         if (exists == 0)
             await conn.ExecuteAsync(new CommandDefinition(
-                "INSERT INTO security_user_group (user_id, user_group_id) VALUES (:uid, :gid)",
-                new { uid = userId, gid = groupId }, cancellationToken: ct));
+                "INSERT INTO security_user_group (user_id, user_group_id) VALUES (:usrid, :gid)",
+                new { usrid = userId, gid = groupId }, cancellationToken: ct));
         return true;
     }
 
@@ -2468,12 +2468,12 @@ public sealed class AbisRepository : IAbisRepository
             FROM security_user u
             JOIN security_application a ON LOWER(a.application_name) = LOWER(:feature)
             JOIN (
-                SELECT ua.user_id AS uid, ua.application_id AS aid, ua.user_application_privilege AS priv
+                SELECT ua.user_id AS usr_id, ua.application_id AS aid, ua.user_application_privilege AS priv
                 FROM security_user_application ua
                 UNION ALL
-                SELECT ug.user_id AS uid, ga.application_id AS aid, ga.group_application_privilege AS priv
+                SELECT ug.user_id AS usr_id, ga.application_id AS aid, ga.group_application_privilege AS priv
                 FROM security_group_application ga JOIN security_user_group ug ON ug.user_group_id = ga.user_group_id
-            ) g ON g.uid = u.user_id AND g.aid = a.application_id
+            ) g ON g.usr_id = u.user_id AND g.aid = a.application_id
             WHERE LOWER(u.login_id) = LOWER(:login)
             """, new { login, feature = applicationName }, cancellationToken: ct));
     }
@@ -2482,8 +2482,8 @@ public sealed class AbisRepository : IAbisRepository
     {
         await using var conn = await OpenAsync(ct);
         var n = await conn.ExecuteAsync(new CommandDefinition(
-            "DELETE FROM security_user_group WHERE user_id = :uid AND user_group_id = :gid",
-            new { uid = userId, gid = groupId }, cancellationToken: ct));
+            "DELETE FROM security_user_group WHERE user_id = :usrid AND user_group_id = :gid",
+            new { usrid = userId, gid = groupId }, cancellationToken: ct));
         return n > 0;
     }
 
@@ -3566,8 +3566,8 @@ public sealed class AbisRepository : IAbisRepository
         await using var conn = await OpenAsync(ct);
         var ts = DateTime.UtcNow;
         await conn.ExecuteAsync(new CommandDefinition(
-            "INSERT INTO job_efolder_notes (ab_job_num, user_id, timestamp, notes) VALUES (:job, :uid, :ts, :notes)",
-            new { job = abJobNum, uid = userId, ts = ts.ToString("yyyy-MM-dd HH:mm:ss"), notes }, cancellationToken: ct));
+            "INSERT INTO job_efolder_notes (ab_job_num, user_id, timestamp, notes) VALUES (:job, :usrid, :ts, :notes)",
+            new { job = abJobNum, usrid = userId, ts = ts.ToString("yyyy-MM-dd HH:mm:ss"), notes }, cancellationToken: ct));
         return (await GetJobFolderNotesAsync(abJobNum, ct)).Last(n => n.UserId == userId);
     }
 
