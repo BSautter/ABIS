@@ -31,6 +31,218 @@ async function api(path, method = 'GET', body) {
         ? { method }
         : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 }
+// ── CSV bulk import (populate the board from the plant's Excel truck sheet) ───────────────────────
+// Carrier name → id, filled by loadCarriers(), so an imported carrier name links to a real carrier row.
+const carriersByName = new Map();
+// The header row of the downloadable template. Import is tolerant: headers match case-insensitively and
+// ignoring punctuation/spaces, via the aliases below, in any column order. Only Direction is required.
+const IMPORT_COLUMNS = ['Direction', 'Carrier', 'Dock', 'Window start', 'Window end', 'Driver',
+    'Driver phone', 'Tractor', 'Trailer', 'Seal', 'Qty', 'Ref', 'Status', 'Notes'];
+const FIELD_ALIASES = {
+    direction: ['direction', 'dir', 'inout', 'type'],
+    carrier: ['carrier', 'carriername', 'truckingcompany', 'truckcompany', 'company', 'trucker'],
+    dock: ['dock', 'door'],
+    start: ['windowstart', 'start', 'scheduledstart', 'apptstart', 'appointment', 'appt', 'datetime', 'date', 'time', 'scheduled'],
+    end: ['windowend', 'end', 'scheduledend', 'apptend'],
+    driver: ['driver', 'drivername'],
+    phone: ['driverphone', 'phone', 'contact', 'cell'],
+    tractor: ['tractor', 'tractornum', 'truck', 'trucknum', 'power', 'powerunit'],
+    trailer: ['trailer', 'trailernum'],
+    seal: ['seal', 'sealnum'],
+    qty: ['qty', 'quantity', 'coils', 'skids', 'coilsskids', 'numcoils', 'numskids', 'pieces', 'count'],
+    ref: ['ref', 'refid', 'reference', 'shipment', 'shipmentnum', 'bol', 'bolnum', 'pl', 'packinglist'],
+    status: ['status', 'locationstatus', 'location'],
+    notes: ['notes', 'note', 'comment', 'comments', 'remarks'],
+};
+const normHdr = (h) => h.toLowerCase().replace(/[^a-z0-9]/g, '');
+// Minimal RFC-4180 CSV parser: quoted fields (embedded commas / "" / newlines), CRLF or LF, leading BOM.
+function parseCsv(text) {
+    const s = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
+    const rows = [];
+    let row = [], cell = '', q = false;
+    for (let i = 0; i < s.length; i++) {
+        const c = s[i];
+        if (q) {
+            if (c === '"') {
+                if (s[i + 1] === '"') {
+                    cell += '"';
+                    i++;
+                }
+                else
+                    q = false;
+            }
+            else
+                cell += c;
+        }
+        else if (c === '"')
+            q = true;
+        else if (c === ',') {
+            row.push(cell);
+            cell = '';
+        }
+        else if (c === '\n') {
+            row.push(cell);
+            rows.push(row);
+            row = [];
+            cell = '';
+        }
+        else if (c !== '\r')
+            cell += c;
+    }
+    if (cell !== '' || row.length) {
+        row.push(cell);
+        rows.push(row);
+    }
+    return rows.filter((r) => r.some((x) => x.trim() !== ''));
+}
+const dirOf = (raw) => {
+    const t = raw.trim().toLowerCase();
+    if (t === '')
+        return null;
+    if (t.startsWith('in') || t === 'i' || t === '↓' || t.startsWith('rec'))
+        return 'INBOUND';
+    if (t.startsWith('out') || t === 'o' || t === '↑' || t.startsWith('ship'))
+        return 'OUTBOUND';
+    return null;
+};
+const statusOf = (raw) => {
+    const t = raw.trim();
+    if (t === '')
+        return null;
+    if (/^\d+$/.test(t)) {
+        const n = Number(t);
+        return TRUCK_STATUSES.some(([c]) => c === n) ? n : null;
+    }
+    const hit = TRUCK_STATUSES.find(([, l]) => l.toLowerCase() === t.toLowerCase());
+    return hit ? hit[0] : null;
+};
+const intOf = (raw) => {
+    const t = raw.replace(/[^0-9-]/g, '');
+    return t === '' ? null : Number(t);
+};
+// '' → null (absent); a parseable date → ISO; present-but-unparseable → undefined (soft warning).
+const dateOf = (raw) => {
+    const t = raw.trim();
+    if (t === '')
+        return null;
+    const d = new Date(t);
+    return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+};
+async function importCsv(file) {
+    setErr('');
+    setOk('');
+    $('#impLog').innerHTML = '';
+    let rows;
+    try {
+        rows = parseCsv(await file.text());
+    }
+    catch (e) {
+        setErr(`Could not read CSV: ${e.message}`);
+        return;
+    }
+    if (rows.length < 2) {
+        setErr('CSV needs a header row and at least one data row.');
+        return;
+    }
+    const header = rows[0].map(normHdr);
+    const colOf = {};
+    for (const [field, aliases] of Object.entries(FIELD_ALIASES)) {
+        const idx = header.findIndex((h) => aliases.includes(h));
+        if (idx >= 0)
+            colOf[field] = idx;
+    }
+    if (colOf.direction === undefined) {
+        setErr('CSV needs a "Direction" column (INBOUND/OUTBOUND). Download the template for the expected headers.');
+        return;
+    }
+    const data = rows.slice(1, 1001); // cap a runaway paste
+    const cell = (r, f) => (colOf[f] === undefined ? '' : (r[colOf[f]] ?? '')).trim();
+    let ok = 0;
+    const problems = [];
+    setBusy(true);
+    try {
+        for (let i = 0; i < data.length; i++) {
+            const r = data[i];
+            const line = i + 2; // 1-based line number incl. header
+            const direction = dirOf(cell(r, 'direction'));
+            if (!direction) {
+                problems.push(`Row ${line}: missing/invalid Direction — skipped.`);
+                continue;
+            }
+            const start = dateOf(cell(r, 'start'));
+            const end = dateOf(cell(r, 'end'));
+            const warn = [];
+            if (start === undefined)
+                warn.push('unreadable start date (left blank)');
+            if (end === undefined)
+                warn.push('unreadable end date (left blank)');
+            const carrierRaw = cell(r, 'carrier');
+            const refId = cell(r, 'ref') || null;
+            const body = {
+                direction,
+                carrierId: carrierRaw ? carriersByName.get(carrierRaw.toLowerCase()) ?? null : null,
+                carrierName: carrierRaw || null,
+                dock: cell(r, 'dock') || null,
+                scheduledStart: start ?? null, scheduledEnd: end ?? null,
+                refType: refId ? (direction === 'INBOUND' ? 'RECEIVING' : 'SHIPMENT') : null,
+                refId,
+                driverName: cell(r, 'driver') || null, driverPhone: cell(r, 'phone') || null,
+                tractorNum: cell(r, 'tractor') || null, trailerNum: cell(r, 'trailer') || null,
+                sealNum: cell(r, 'seal') || null,
+                quantity: intOf(cell(r, 'qty')),
+                notes: cell(r, 'notes') || null,
+            };
+            try {
+                const resp = await api('/api/truck-appointments', 'POST', body);
+                if (!resp.ok) {
+                    let m = `HTTP ${resp.status}`;
+                    try {
+                        const p = await resp.json();
+                        m = p.detail || p.title || m;
+                    }
+                    catch { /* keep */ }
+                    problems.push(`Row ${line}: ${m}`);
+                    continue;
+                }
+                const created = await resp.json();
+                // Apply an initial location status if the sheet carried one (create defaults to Pending arrival).
+                const st = statusOf(cell(r, 'status'));
+                if (st != null && st !== 0)
+                    await api(`/api/truck-appointments/${created.appointmentId}/status`, 'PATCH', { status: st });
+                ok++;
+                if (warn.length)
+                    problems.push(`Row ${line}: imported #${created.appointmentId} with warnings — ${warn.join('; ')}.`);
+            }
+            catch (e) {
+                problems.push(`Row ${line}: ${e.message}`);
+            }
+        }
+    }
+    finally {
+        setBusy(false);
+    }
+    setOk(`Imported ${ok} of ${data.length} row(s).`);
+    $('#impLog').innerHTML =
+        `<div class="kv"><span>Imported</span><b>${ok} / ${data.length}</b></div>` +
+            (problems.length
+                ? `<ul class="items" style="margin-top:6px">${problems.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>`
+                : '<p class="muted" style="margin:6px 0 0">No problems.</p>');
+    await load();
+}
+function downloadTemplate() {
+    const example = ['OUTBOUND', 'ABC Trucking', 'D3', '2026-07-15 13:00', '2026-07-15 14:00', 'Jane Doe',
+        '555-123-4567', 'T-100', 'TR-200', 'S-9', '18', 'PL123456', 'Pending arrival', 'example row'];
+    const q = (c) => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c);
+    const csv = IMPORT_COLUMNS.join(',') + '\n' + example.map(q).join(',') + '\n';
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'truck-appointments-template.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
 function scaffold() {
     return `
   <div class="page">
@@ -80,12 +292,28 @@ function scaffold() {
         </div>
       </div></div>
     </div>
+
+    <div class="card" style="margin-top:16px">
+      <header><h2>Bulk import from Excel / CSV</h2><span class="sub">populate the board from your truck sheet</span></header>
+      <div class="body">
+        <p class="muted" style="margin-top:0">Export your truck schedule as <strong>CSV</strong> and load it here. Columns are matched by name (case-insensitive); <span class="mono">Direction</span> (INBOUND/OUTBOUND) is required, the rest are optional. <a href="#" id="dlTemplate">Download a template</a>.</p>
+        <div class="frow" style="align-items:flex-end">
+          <div class="fld" style="flex:1;min-width:220px"><label>CSV file</label><input id="impFile" type="file" accept=".csv,text/csv" /></div>
+          <button class="btn sm" id="btnImport" type="button">Import</button>
+        </div>
+        <div id="impLog" style="margin-top:10px"></div>
+      </div>
+    </div>
   </div>`;
 }
 async function loadCarriers() {
     try {
         const r = await api('/api/carriers?page=1&pageSize=500');
         const j = await r.json();
+        carriersByName.clear();
+        for (const c of j.items ?? [])
+            if (c.carrierId != null && c.carrierFullName)
+                carriersByName.set(c.carrierFullName.trim().toLowerCase(), c.carrierId);
         $('#nCarrier').innerHTML = '<option value="">— carrier —</option>' +
             (j.items ?? []).map((c) => `<option value="${esc(c.carrierId)}">${esc(c.carrierFullName)}</option>`).join('');
     }
@@ -230,5 +458,14 @@ async function schedule() {
     main.innerHTML = scaffold();
     $('#filterForm').addEventListener('submit', (e) => { e.preventDefault(); void load(); });
     $('#btnSchedule').addEventListener('click', () => void schedule());
+    $('#dlTemplate').addEventListener('click', (e) => { e.preventDefault(); downloadTemplate(); });
+    $('#btnImport').addEventListener('click', () => {
+        const f = $('#impFile').files?.[0];
+        if (!f) {
+            setErr('Choose a CSV file first.');
+            return;
+        }
+        void importCsv(f);
+    });
     await Promise.all([loadCarriers(), load()]);
 })();
