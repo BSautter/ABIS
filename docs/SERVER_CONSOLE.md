@@ -27,7 +27,8 @@ config edits, no arbitrary shell.
 |---|---|---|
 | `Enabled` | `false` | Master switch. `false` → every console endpoint 503s. |
 | `AllowedUnits` | `abis,nginx` | The systemd units the console may inspect / restart. |
-| `AllowRestart` | `false` | Permit the restart action (needs the sudoers allowlist). |
+| `AllowRestart` | `false` | Permit the restart action (needs the polkit rule — or a sudoers allowlist). |
+| `RestartCommand` | *(empty)* | Restart command prefix; empty = `systemctl restart` (polkit, no sudo — works under `NoNewPrivileges`). Set to `sudo -n systemctl restart` only on a non-hardened box. |
 | `LogTailMax` | `1000` | Max journal lines one request may tail. |
 | `HostCronCommand` | *(empty)* | Argv to read the DB-host crontab read-only (an ssh command-locked key). Empty → the host-cron view 503s. |
 | `CommandTimeoutSeconds` | `15` | Kill a console command after this long. |
@@ -66,13 +67,30 @@ systemctl restart abis
 Verify: *Server console* now lists `abis` + `nginx` with live state; **Logs** tails the journal.
 
 ### 3) Enable restart (mutating — after security review)
-Install a **tightly-scoped** sudoers NOPASSWD allowlist for the exact commands only:
+> **The `abis` unit is hardened with `NoNewPrivileges=true`, which blocks `sudo`** (sudo can't gain
+> root). So the default restart is **polkit**, not sudo: the console runs `systemctl restart <unit>`
+> (no sudo) and a polkit rule authorizes it — which works under the hardening and keeps the sandbox
+> intact. Config `Admin__ServerConsole__RestartCommand` is empty by default = this polkit path.
+
+**Recommended — polkit rule** (grants the `abis` user *only* restart on `abis`/`nginx`):
 ```sh
-# visudo -f /etc/sudoers.d/abis-console   (validate the systemctl path with `command -v systemctl`)
-abis ALL=(root) NOPASSWD: /usr/bin/systemctl restart abis, /usr/bin/systemctl restart nginx
+# /etc/polkit-1/rules.d/49-abis-console.rules
+cat >/etc/polkit-1/rules.d/49-abis-console.rules <<'EOF'
+polkit.addRule(function(action, subject) {
+  if (action.id == "org.freedesktop.systemd1.manage-units" && subject.user == "abis") {
+    var unit = action.lookup("unit");
+    if ((unit == "abis.service" || unit == "nginx.service") && action.lookup("verb") == "restart")
+      return polkit.Result.YES;
+  }
+});
+EOF
 ```
-Then set `Admin__ServerConsole__AllowRestart=true` and restart abis. The console's **Restart**
-buttons now work; `sudo -n` guarantees nothing outside those two commands can run.
+Then set `Admin__ServerConsole__AllowRestart=true` and `systemctl restart abis`. Sanity-check the rule
+first: `sudo -u abis systemctl restart nginx` should succeed with no password prompt.
+
+*Alternative for a non-hardened box (only if you drop `NoNewPrivileges`):* set
+`Admin__ServerConsole__RestartCommand__0=sudo … __3=restart` + a sudoers allowlist
+(`abis ALL=(root) NOPASSWD: /usr/bin/systemctl restart abis, /usr/bin/systemctl restart nginx`).
 
 ### 4) Enable the DB-host cron view (read-only, after security review)
 On the **DB host that runs the EDI crons** — currently **db01 (192.168.1.9, production; strictly
@@ -82,9 +100,23 @@ the console can only *read* cron, never edit it:
 # ~cronview/.ssh/authorized_keys on the DB host — the forced command wins over any requested one
 command="crontab -l",no-port-forwarding,no-agent-forwarding,no-pty ssh-ed25519 AAAA...abis-cronview
 ```
-Put the matching private key at `/etc/abis/cronview_key` (chmod 600, owned by `abis`) and set
-`Admin__ServerConsole__HostCronCommand` as above. The **DB-host cron** card then shows the
-crontab; edits are impossible by construction (matches the read-only policy on `.9`/`.11`).
+Put the matching private key at `/etc/abis/cronview_key` (chmod 600, owned by `abis`). Because the
+`abis` service user has **no home dir** (and the unit sets `ProtectHome`), ssh can't use a `known_hosts`
+file — so pass those bits explicitly in `HostCronCommand`:
+```sh
+Admin__ServerConsole__HostCronCommand__0=ssh
+Admin__ServerConsole__HostCronCommand__1=-i
+Admin__ServerConsole__HostCronCommand__2=/etc/abis/cronview_key
+Admin__ServerConsole__HostCronCommand__3=-o
+Admin__ServerConsole__HostCronCommand__4=BatchMode=yes
+Admin__ServerConsole__HostCronCommand__5=-o
+Admin__ServerConsole__HostCronCommand__6=StrictHostKeyChecking=accept-new
+Admin__ServerConsole__HostCronCommand__7=-o
+Admin__ServerConsole__HostCronCommand__8=UserKnownHostsFile=/dev/null
+Admin__ServerConsole__HostCronCommand__9=cronview@192.168.1.9
+```
+The **DB-host cron** card then shows the crontab; edits are impossible by construction (the forced
+`command=` + the read-only policy on `.9`/`.11`).
 
 ## Endpoints
 - `GET  /api/admin/console/services` — status of the allowlisted units (read).

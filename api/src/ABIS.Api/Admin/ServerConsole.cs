@@ -17,9 +17,18 @@ public sealed class ServerConsoleOptions
     /// name is never interpolated into a shell, and only these fixed values reach <c>systemctl</c>.</summary>
     public string[] AllowedUnits { get; set; } = ["abis", "nginx"];
 
-    /// <summary>Whether the restart action is permitted. Needs the sudoers NOPASSWD allowlist for the exact
-    /// <c>systemctl restart &lt;unit&gt;</c> commands installed on the box. When false, restart returns 409.</summary>
+    /// <summary>Whether the restart action is permitted. Also needs the OS to authorize the service user to
+    /// restart the allowlisted units — a polkit rule (default, keeps the unit's NoNewPrivileges hardening)
+    /// or a sudoers allowlist (set <see cref="RestartCommand"/> to a sudo prefix). When false, restart 409s.</summary>
     public bool AllowRestart { get; set; }
+
+    /// <summary>The command prefix used to restart a unit; the unit name is appended. Empty (default) =
+    /// <c>systemctl restart</c> — invoked WITHOUT sudo so it works under a hardened
+    /// <c>NoNewPrivileges=true</c> unit via a polkit rule (see docs/SERVER_CONSOLE.md). For a
+    /// non-hardened box you may instead set this to <c>["sudo","-n","systemctl","restart"]</c> with a
+    /// matching sudoers allowlist. argv only — no shell. (Empty default so config binding replaces it
+    /// cleanly — a non-empty default array is not overwritten by config.)</summary>
+    public string[] RestartCommand { get; set; } = [];
 
     /// <summary>Max journal lines one log request may tail.</summary>
     public int LogTailMax { get; set; } = 1000;
@@ -128,10 +137,13 @@ public sealed class ServerConsoleService(ServerConsoleOptions opts, IProcessRunn
     public async Task<RestartOutcome> RestartAsync(string unit, CancellationToken ct)
     {
         if (!opts.AllowRestart)
-            return new RestartOutcome(false, unit, "restart is not enabled (set Admin:ServerConsole:AllowRestart=true + install the sudoers allowlist)");
-        // sudo -n = non-interactive: fails fast (no prompt) unless the NOPASSWD allowlist grants exactly
-        // `systemctl restart <unit>`. The unit is allowlist-validated by the caller.
-        var r = await runner.RunAsync("sudo", ["-n", "systemctl", "restart", unit], opts.CommandTimeoutSeconds, ct);
+            return new RestartOutcome(false, unit, "restart is not enabled (set Admin:ServerConsole:AllowRestart=true + a polkit rule or sudoers allowlist)");
+        // Empty config = the polkit default `systemctl restart <unit>` (no sudo) → authorized by a polkit
+        // rule, so it works under the unit's NoNewPrivileges hardening (sudo would be blocked). The unit is
+        // allowlist-validated by the caller.
+        string[] cmd = opts.RestartCommand.Length > 0 ? opts.RestartCommand : ["systemctl", "restart"];
+        var args = cmd.Skip(1).Append(unit).ToArray();
+        var r = await runner.RunAsync(cmd[0], args, opts.CommandTimeoutSeconds, ct);
         log.LogWarning("Server-console restart of unit '{Unit}' → exit {Code}", unit, r.ExitCode);
         var detail = r.Ok ? "restarted" : (r.Stderr.Trim() is { Length: > 0 } e ? e : $"restart failed (exit {r.ExitCode})");
         return new RestartOutcome(r.Ok, unit, detail);

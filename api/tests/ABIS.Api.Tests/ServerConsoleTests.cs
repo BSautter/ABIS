@@ -26,7 +26,7 @@ public sealed class ServerConsoleTests
         }
     }
 
-    private sealed class Factory(bool enabled, bool allowRestart, FakeRunner runner, string[]? hostCron = null) : WebApplicationFactory<Program>
+    private sealed class Factory(bool enabled, bool allowRestart, FakeRunner runner, string[]? hostCron = null, string[]? restartCommand = null) : WebApplicationFactory<Program>
     {
         private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"abis_console_{Guid.NewGuid():N}.db");
         protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -42,6 +42,9 @@ public sealed class ServerConsoleTests
             if (hostCron is not null)
                 for (var i = 0; i < hostCron.Length; i++)
                     builder.UseSetting($"Admin:ServerConsole:HostCronCommand:{i}", hostCron[i]);
+            if (restartCommand is not null)
+                for (var i = 0; i < restartCommand.Length; i++)
+                    builder.UseSetting($"Admin:ServerConsole:RestartCommand:{i}", restartCommand[i]);
             builder.ConfigureTestServices(s => s.AddSingleton<IProcessRunner>(runner));   // swap the real process runner
         }
         protected override void Dispose(bool disposing)
@@ -98,14 +101,26 @@ public sealed class ServerConsoleTests
     }
 
     [Fact]
-    public async Task Restart_allowed_invokes_sudo_systemctl_restart()
+    public async Task Restart_allowed_invokes_systemctl_restart_by_default()
     {
         var runner = new FakeRunner { Next = new(true, 0, "", "") };
         using var f = new Factory(enabled: true, allowRestart: true, runner);
         var r = await Client(f).PostAsync("/api/admin/console/services/abis/restart", null);
         Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        // Default is the polkit path: `systemctl restart abis` (no sudo → works under NoNewPrivileges).
+        Assert.Equal("systemctl", runner.Last!.Value.File);
+        Assert.Equal(new[] { "restart", "abis" }, runner.Last!.Value.Args);
+    }
+
+    [Fact]
+    public async Task Restart_honours_a_configured_sudo_command()
+    {
+        var runner = new FakeRunner { Next = new(true, 0, "", "") };
+        using var f = new Factory(enabled: true, allowRestart: true, runner, restartCommand: ["sudo", "-n", "systemctl", "restart"]);
+        var r = await Client(f).PostAsync("/api/admin/console/services/nginx/restart", null);
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
         Assert.Equal("sudo", runner.Last!.Value.File);
-        Assert.Equal(new[] { "-n", "systemctl", "restart", "abis" }, runner.Last!.Value.Args);
+        Assert.Equal(new[] { "-n", "systemctl", "restart", "nginx" }, runner.Last!.Value.Args);
     }
 
     [Fact]
