@@ -49,6 +49,10 @@ var apiKeyOptions = builder.Configuration.GetSection(ApiKeyOptions.SectionName).
 builder.Services.AddSingleton(apiKeyOptions);
 builder.AddAbisAuth();
 
+// On-prem Active Directory sign-in (Auth:Ldap simple-bind). No-op when Auth:Ldap isn't configured —
+// /auth/login then uses the local PBKDF2 credential store as before.
+builder.AddAbisLdap();
+
 // Browser OIDC client settings (Auth:Oidc), surfaced anonymously at /auth/config
 // so the SPA can run a PKCE login flow. Empty/disabled → SPA uses the API-key field.
 var oidcClientOptions = builder.Configuration.GetSection(OidcClientOptions.SectionName).Get<OidcClientOptions>()
@@ -76,6 +80,13 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0
         });
     });
+    // Stricter throttle for POST /auth/login — brute-force protection AND avoiding AD account
+    // lockouts. Per client IP (honours X-Forwarded-For behind nginx); fixed at 10 attempts/minute.
+    // Active only when RateLimiting:Enabled (UseRateLimiter is in the pipeline); harmless otherwise.
+    options.AddPolicy("auth-login", http =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            http.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
     options.OnRejected = async (context, token) =>
     {
         context.HttpContext.Response.Headers.RetryAfter = rateLimitOptions.WindowSeconds.ToString();

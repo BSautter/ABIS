@@ -231,7 +231,7 @@ function loginGate(): Promise<void> {
           <div><h1>ABIS</h1><div class="eyebrow" style="margin-top:2px;">Aluminum Blanking · Integrated Operations</div></div></div>
         <p class="sub">Sign in with your ABIS user.</p>
         <div class="field"><label for="lgUser">Username</label><input id="lgUser" autocomplete="username" placeholder="your ABIS username" /></div>
-        <div class="field"><label for="lgPass">Password</label><input id="lgPass" type="password" autocomplete="current-password" placeholder="leave blank if none set" /></div>
+        <div class="field"><label for="lgPass">Password</label><input id="lgPass" type="password" autocomplete="current-password" placeholder="your password" /></div>
         <div class="err" id="lgErr" style="margin:2px 0 8px"></div>
         <button class="btn block" id="lgGo" type="button">Sign in</button>
         <div class="note"><svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>

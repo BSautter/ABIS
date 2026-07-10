@@ -101,14 +101,17 @@ public static class ApiEndpoints
         // their grants). Passwordless on the LAN for now — identity, not a secret — until a password
         // layer or OIDC lands. Requires Auth:Jwt:SigningKey configured (the token is signed with the
         // same symmetric key the bearer validation trusts).
-        app.MapPost("/auth/login", async (LoginRequest body, JwtAuthOptions jwt, IAbisRepository repo, CancellationToken ct) =>
+        app.MapPost("/auth/login", async (LoginRequest body, JwtAuthOptions jwt, ILdapAuthenticator ldap, IAbisRepository repo, CancellationToken ct) =>
             {
                 if (string.IsNullOrWhiteSpace(jwt.SigningKey))
                     return Results.Problem(statusCode: StatusCodes.Status501NotImplemented, title: "Sign-in not configured",
                         detail: "Set Auth:Jwt:SigningKey (and Issuer/Audience) on the server to enable user login.");
-                var login = body.Login?.Trim();
-                if (string.IsNullOrWhiteSpace(login))
+                var raw = body.Login?.Trim();
+                if (string.IsNullOrWhiteSpace(raw))
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["login"] = ["A username is required."] });
+                // With AD sign-in, accept DOMAIN\user or user@domain and reduce to the bare sAMAccountName
+                // — which must equal the ABIS login_id (the security_user row supplies identity + RBAC).
+                var login = ldap.Enabled ? StripAdDomain(raw) : raw;
                 var user = await repo.GetSecurityUserByLoginAsync(login, ct);
                 if (user is null)
                     return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "Unknown user",
@@ -117,32 +120,57 @@ public static class ApiEndpoints
                     return Results.Problem(statusCode: StatusCodes.Status403Forbidden, title: "Inactive user",
                         detail: "This ABIS account is not active.");
 
-                // Password check against the ABIS credential store. A user WITH a credential must
-                // supply a matching password; a user WITHOUT one signs in passwordless during the
-                // rollout (unless Auth:Jwt:RequirePassword forces enrollment). A wrong/missing
-                // password on an enrolled user returns a generic 401.
-                var cred = await repo.GetUserCredentialAsync(user.LoginId ?? login, ct);
                 var mustChangePassword = false;
-                if (cred is not null)
+                bool passwordSet;
+                if (ldap.Enabled)
                 {
-                    if (!PasswordHashing.Verify(body.Password ?? string.Empty, cred.PasswordHash))
+                    // AD-backed: verify the password by binding to the domain controller. An empty
+                    // password is rejected up front (an LDAP simple-bind with an empty password is an
+                    // "unauthenticated bind" that succeeds) — this closes the blank-password sign-in.
+                    // AD owns the password lifecycle, so there's no ABIS must-change here.
+                    if (string.IsNullOrEmpty(body.Password) || !await ldap.ValidateAsync(login, body.Password, ct))
                         return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "Invalid credentials",
                             detail: "The username or password is incorrect.");
-                    mustChangePassword = cred.MustChange != 0;
+                    passwordSet = true;
                 }
-                else if (jwt.RequirePassword)
+                else
                 {
-                    return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "Password not set",
-                        detail: "No password is set for this account. Ask an administrator to set your initial password.");
+                    // Local password check against the ABIS credential store. A user WITH a credential
+                    // must supply a matching password; a user WITHOUT one signs in passwordless during
+                    // the rollout (unless Auth:Jwt:RequirePassword forces enrollment).
+                    var cred = await repo.GetUserCredentialAsync(user.LoginId ?? login, ct);
+                    if (cred is not null)
+                    {
+                        if (!PasswordHashing.Verify(body.Password ?? string.Empty, cred.PasswordHash))
+                            return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "Invalid credentials",
+                                detail: "The username or password is incorrect.");
+                        mustChangePassword = cred.MustChange != 0;
+                    }
+                    else if (jwt.RequirePassword)
+                    {
+                        return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "Password not set",
+                            detail: "No password is set for this account. Ask an administrator to set your initial password.");
+                    }
+                    passwordSet = cred is not null;
                 }
 
                 var name = $"{user.UserFirstName} {user.UserLastName}".Trim();
                 var token = IssueUserToken(jwt, user.LoginId ?? login, string.IsNullOrWhiteSpace(name) ? login : name, user.UserId);
                 return Results.Ok(new { token, login = user.LoginId ?? login, name, expiresInSeconds = 8 * 3600,
-                    mustChangePassword, passwordSet = cred is not null });
+                    mustChangePassword, passwordSet });
+
+                // DOMAIN\user or user@domain → bare sAMAccountName (for AD input).
+                static string StripAdDomain(string s)
+                {
+                    var slash = s.LastIndexOf('\\');
+                    if (slash >= 0) s = s[(slash + 1)..];
+                    var at = s.IndexOf('@');
+                    if (at >= 0) s = s[..at];
+                    return s.Trim();
+                }
             })
-           .WithTags("Meta").WithName("Login").AllowAnonymous()
-           .WithSummary("Sign in with an ABIS user login + optional password (verified against the credential store); returns a bearer token that drives RBAC.")
+           .WithTags("Meta").WithName("Login").AllowAnonymous().RequireRateLimiting("auth-login")
+           .WithSummary("Sign in with an ABIS user login + password (verified against Active Directory when Auth:Ldap is enabled, else the local credential store); returns a bearer token that drives RBAC.")
            .Produces(StatusCodes.Status200OK).ProducesValidationProblem()
            .Produces(StatusCodes.Status401Unauthorized).Produces(StatusCodes.Status403Forbidden)
            .Produces(StatusCodes.Status501NotImplemented);

@@ -8,6 +8,10 @@
   <ItemGroup>
     <PackageReference Include="Dapper" Version="2.1.35" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.8" />
+    <!-- Pure-managed LDAP client for on-prem Active Directory sign-in (Auth:Ldap simple-bind).
+         Chosen over System.DirectoryServices.Protocols so the self-contained Linux deploy needs
+         no native libldap OS package. Only exercised when Auth:Ldap:Enabled=true. -->
+    <PackageReference Include="Novell.Directory.Ldap.NETStandard" Version="3.6.0" />
     <!-- Lets the app integrate with systemd (Type=notify, journald-friendly logs)
          when installed as a native Linux service. No-op when not run under systemd,
          so the Docker/console paths are unaffected. See docs/INSTALL_PLAN.md. -->
