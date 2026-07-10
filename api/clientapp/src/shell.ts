@@ -14,7 +14,7 @@
 // no user resolves (service account / dev API key with no "act as"), nav fails OPEN —
 // the server remains the source of truth for every write.
 import { AbisClient } from './generated/abis-client.js';
-import { initAuth, authFetch, loginWithUser, changePassword, currentUserName, signOutSession } from './auth.js';
+import { initAuth, authFetch, loginWithUser, changePassword, currentUserName, isSignedIn, signOutSession } from './auth.js';
 
 export interface ShellOptions {
   active: string;
@@ -156,7 +156,7 @@ function topHtml(): string {
     <button class="icon-btn" id="shMenu" title="Toggle navigation" aria-label="Toggle navigation"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
     <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input placeholder="Search POs, jobs, coils, EDI…" aria-label="Search" /><kbd>/</kbd></label>
     <div class="spacer"></div>
-    <button class="icon-btn" title="Notifications" aria-label="Notifications"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg><span class="dot"></span></button>
+    <button class="icon-btn" id="shNotif" title="Notifications" aria-label="Notifications"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg><span class="dot" id="shNotifDot" style="display:none"></span></button>
     <button class="icon-btn" id="shTheme" title="Toggle theme" aria-label="Toggle theme"><svg viewBox="0 0 24 24"></svg></button>
     <button class="userchip" id="shUser" aria-haspopup="true">
       <span class="avatar" id="shAvatar">··</span>
@@ -200,8 +200,13 @@ function wireUserMenu(): void {
   const chip = document.querySelector('#shUser') as HTMLButtonElement;
   const pop = document.createElement('div');
   pop.className = 'pop'; pop.id = 'shPop'; pop.hidden = true;
-  const acts = ACT_AS.filter((a) => a.login).map((a) => `<button type="button" data-login="${esc(a.login)}"><span>${esc(a.name)}</span><small>${esc(a.login)}</small></button>`).join('');
-  pop.innerHTML = `<div class="h">Switch user</div>${acts}<div class="rule"></div><button type="button" id="shSignout"><span>Sign out</span><small>→</small></button>`;
+  // "Switch user" is dev impersonation (API-key mode only) — it doesn't function for a real signed-in
+  // user (the X-User-Login header isn't sent once a session token exists), so hide it for them.
+  const showSwitch = !isSignedIn();
+  const acts = showSwitch
+    ? ACT_AS.filter((a) => a.login).map((a) => `<button type="button" data-login="${esc(a.login)}"><span>${esc(a.name)}</span><small>${esc(a.login)}</small></button>`).join('')
+    : '';
+  pop.innerHTML = `${showSwitch ? `<div class="h">Switch user</div>${acts}<div class="rule"></div>` : ''}<button type="button" id="shSignout"><span>Sign out</span><small>→</small></button>`;
   document.querySelector('.abis-app')!.appendChild(pop);
   const place = () => { const r = chip.getBoundingClientRect(); pop.style.top = `${r.bottom + 6}px`; pop.style.right = `${window.innerWidth - r.right}px`; };
   chip.addEventListener('click', (e) => { e.stopPropagation(); place(); pop.hidden = !pop.hidden; });
@@ -217,6 +222,51 @@ function wireUserMenu(): void {
   pop.querySelector('#shSignout')!.addEventListener('click', () => {
     signOutSession(); localStorage.removeItem('abis_act_as'); sessionStorage.removeItem('abis_entered'); location.reload();
   });
+}
+
+// ---- notifications popover ----
+// No dedicated notifications backend yet, so surface a couple of real operational signals the API
+// already exposes (coils on hold, EDI awaiting a functional ack). Fetched on demand (on open) + once
+// non-blocking on load to drive the unread dot — no cost added to the page's critical path.
+async function fetchNotifications(): Promise<{ label: string; href: string }[]> {
+  const items: { label: string; href: string }[] = [];
+  try {
+    const hold = await client().getOnHoldCoils();
+    if (hold?.length) items.push({ label: `${hold.length} coil${hold.length === 1 ? '' : 's'} on hold`, href: '/ui/coil-inventory.html' });
+  } catch { /* non-fatal — a missing signal just doesn't show */ }
+  try {
+    const edi = await client().listEdiTransactions(1, 50, undefined, undefined, undefined, undefined);
+    const awaiting = (edi.items ?? []).filter((x) => (x.faReceiveStatus ?? 0) < 1).length;
+    if (awaiting) items.push({ label: `${awaiting} EDI transaction${awaiting === 1 ? '' : 's'} awaiting FA`, href: '/ui/edi.html' });
+  } catch { /* non-fatal */ }
+  return items;
+}
+
+function wireNotifications(): void {
+  const btn = document.querySelector('#shNotif') as HTMLButtonElement | null;
+  if (!btn) return;
+  const dot = document.querySelector('#shNotifDot') as HTMLElement | null;
+  const pop = document.createElement('div');
+  pop.className = 'pop'; pop.id = 'shNotifPop'; pop.hidden = true;
+  pop.innerHTML = `<div class="h">Notifications</div><div id="shNotifBody" style="min-width:230px"></div>`;
+  document.querySelector('.abis-app')!.appendChild(pop);
+  const body = pop.querySelector('#shNotifBody') as HTMLElement;
+  const place = () => { const r = btn.getBoundingClientRect(); pop.style.top = `${r.bottom + 6}px`; pop.style.right = `${window.innerWidth - r.right}px`; };
+  const render = (items: { label: string; href: string }[]) => {
+    if (dot) dot.style.display = items.length ? '' : 'none';
+    body.innerHTML = items.length
+      ? items.map((i) => `<a href="${esc(i.href)}" style="display:block;padding:9px 12px;color:inherit;text-decoration:none">${esc(i.label)}</a>`).join('')
+      : `<small class="muted" style="display:block;padding:9px 12px">You're all caught up.</small>`;
+  };
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    place(); pop.hidden = !pop.hidden;
+    if (!pop.hidden) { body.innerHTML = `<small class="muted" style="display:block;padding:9px 12px">Loading…</small>`; render(await fetchNotifications()); }
+  });
+  document.addEventListener('click', () => { pop.hidden = true; });
+  pop.addEventListener('click', (e) => e.stopPropagation());
+  // Set the unread dot without blocking page render.
+  void fetchNotifications().then((items) => { if (dot) dot.style.display = items.length ? '' : 'none'; });
 }
 
 // ---- login gate ----
@@ -346,6 +396,7 @@ export async function initShell(opts: ShellOptions): Promise<HTMLElement> {
   });
 
   wireUserMenu();
+  wireNotifications();
   const id = await gateNav();
   (top.querySelector('#shName') as HTMLElement).textContent = id.name;
   (top.querySelector('#shRole') as HTMLElement).textContent = id.role;
