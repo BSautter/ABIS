@@ -6,6 +6,7 @@
 import { AbisClient, PartWrite } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { statusChip } from './status-labels.js';
 const $ = (sel) => document.querySelector(sel);
 const client = () => new AbisClient('', { fetch: authFetch });
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -14,7 +15,6 @@ const setOk = (m) => { $('#ok').textContent = m; };
 const setBusy = (b) => document.body.classList.toggle('busy', b);
 const v = (id) => $(id).value.trim();
 const setV = (id, value) => { $(id).value = value == null ? '' : String(value); };
-const chip = (s) => `<span class="chip mut">${esc(s ?? '—')}</span>`;
 let editingId = null;
 const custNames = new Map();
 const custLabel = (id) => id == null ? '' : custNames.has(id) ? `${id} · ${custNames.get(id)}` : String(id);
@@ -105,7 +105,7 @@ async function search() {
         $('#parts').innerHTML = items.length ? items.map((p) => `
       <tr class="click" data-id="${p.partNumId}">
         <td class="mono">${esc(p.partNumId)}</td><td>${esc(custLabel(p.customerId))}</td><td>${esc(p.enduserPartNum)}</td>
-        <td>${esc(p.sheetType)}</td><td>${esc(p.alloy)}</td><td>${esc(p.temper)}</td><td class="num">${esc(p.gauge)}</td><td>${chip(p.itemStatus)}</td>
+        <td>${esc(p.sheetType)}</td><td>${esc(p.alloy)}</td><td>${esc(p.temper)}</td><td class="num">${esc(p.gauge)}</td><td>${statusChip('partItemStatus', p.itemStatus)}</td>
       </tr>`).join('') : '<tr><td colspan="8" class="muted">No matching parts.</td></tr>';
         $('#count').textContent = `${(page.totalCount ?? 0).toLocaleString()} parts`;
         $('#listSub').textContent = `${items.length} shown`;

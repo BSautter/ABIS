@@ -4,9 +4,10 @@
 // Every code→label pair below is AUTHORITATIVE — ported from the legacy PowerBuilder DataWindow
 // dddw/DropDownListBox value lists and CHOOSE CASE code (source file:line cited per domain). We do
 // NOT invent labels: any code with no legacy mapping falls through to the raw value in a neutral
-// chip, and status columns with no discoverable legacy map at all (shipment/vehicle/sketch/user/
-// receiving-BOL/part-item/shift status, OPC quality, error-type/maint-log text) are intentionally
-// left showing their raw value until the plant supplies the definitive list.
+// chip. Still left raw pending the plant's definitive list (no discoverable legacy value list):
+// vehicle (shipment.vehicle_status), sketch, receiving-BOL, and carrier status/type, plus OPC-DA
+// quality (opc_log_details.quality — likely 192 Good/64 Uncertain/0 Bad, but unconfirmed). Not codes
+// at all (already human text): line-error type (DB-joined error_type label) and maint-log status.
 //
 // Labels are lightly humanized from the legacy camelCase (InProcess → "In process", QAOnHold →
 // "QA on hold"); the original numeric code is preserved in each chip's title tooltip so operators
@@ -87,6 +88,24 @@ const dieStatus = {
     1: { label: 'Active', tone: 'ok' },
     2: { label: 'Gone', tone: 'mut' },
 };
+// part_num.item_status — ddlb d_pn_item_detail_new.srd:27,119 (values "Active 1 / Obsoleted 0").
+const partItemStatus = {
+    0: { label: 'Obsoleted', tone: 'warn' },
+    1: { label: 'Active', tone: 'ok' },
+};
+// shift.shift_data_status — a shift-data CERTIFICATION flag (the operator signed off the shift's data),
+// not a rich status list. d_end_shift_operator_signing_sheet.srd:11,28 (checkbox on=1/off=0) +
+// u_tabpg_print_shift_summary.sru:51 (blocks printing unless shift_data_status = 1).
+const shiftDataStatus = {
+    0: { label: 'Not certified', tone: 'mut' },
+    1: { label: 'Certified', tone: 'ok' },
+};
+// security_user.user_status — ABIS-owned table (the legacy ERP had no app users → no legacy value list);
+// the convention is the admin create form's own (default 1; hint "0 = inactive"). 1 active / 0 inactive.
+const userStatus = {
+    0: { label: 'Inactive', tone: 'mut' },
+    1: { label: 'Active', tone: 'ok' },
+};
 // abis_truck_appointment.truck_status — the plant's Excel "location status" legend
 // (TRUCK APPTS_TEMPLATE): the shaded truck-company field.
 const truckStatus = {
@@ -122,6 +141,9 @@ export const STATUS_MAPS = {
     skidScrapStatus,
     scrapType,
     dieStatus,
+    partItemStatus,
+    shiftDataStatus,
+    userStatus,
     truckStatus,
     shipmentStatus,
 };

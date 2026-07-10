@@ -6,6 +6,7 @@
 import { AbisClient, ShiftWrite } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { statusChip } from './status-labels.js';
 const $ = (sel) => document.querySelector(sel);
 const client = () => new AbisClient('', { fetch: authFetch });
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -16,7 +17,6 @@ const v = (id) => $(id).value.trim();
 const setV = (id, value) => { $(id).value = value == null ? '' : String(value); };
 const dtLocal = (d) => (d == null ? '' : d.toISOString().slice(0, 16));
 const dtShow = (d) => (d == null ? '' : d.toLocaleString());
-const chip = (s) => `<span class="chip mut">${esc(s ?? '—')}</span>`;
 let editingId = null;
 function scaffold() {
     return `
@@ -76,7 +76,7 @@ async function search() {
       <tr class="click" data-id="${s.shiftNum}">
         <td class="mono">${esc(s.shiftNum)}</td><td class="mono">${esc(dtShow(s.startTime))}</td>
         <td class="mono">${esc(s.lineNum)}</td><td>${esc(s.operatorInitial)}</td>
-        <td class="num">${esc(s.dtTotal)}</td><td>${chip(s.shiftDataStatus)}</td>
+        <td class="num">${esc(s.dtTotal)}</td><td>${statusChip('shiftDataStatus', s.shiftDataStatus)}</td>
       </tr>`).join('') : '<tr><td colspan="6" class="muted">No matching shifts.</td></tr>';
         $('#count').textContent = `${(page.totalCount ?? 0).toLocaleString()} shifts`;
         $('#listSub').textContent = `${items.length} shown`;

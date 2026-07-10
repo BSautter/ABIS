@@ -9,6 +9,7 @@
 import { AbisClient, GrantWrite } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { statusChip } from './status-labels.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
@@ -19,7 +20,6 @@ const setOk = (m: string) => { $('#ok').textContent = m; };
 const setBusy = (b: boolean) => document.body.classList.toggle('busy', b);
 const v = (id: string) => $<HTMLInputElement>(id).value.trim();
 const setV = (id: string, val: unknown) => { $<HTMLInputElement>(id).value = val == null ? '' : String(val); };
-const chip = (s: unknown): string => `<span class="chip mut">${esc(s ?? '—')}</span>`;
 const privChip = (p: unknown): string => `<span class="chip ${Number(p) >= 1 ? 'ok' : 'mut'}">${Number(p) >= 1 ? 'Write' : 'ReadOnly'}</span>`;
 
 let curUser: number | null = null;
@@ -195,7 +195,7 @@ async function loadUsers(): Promise<void> {
     $('#tUsers').innerHTML = (list ?? []).length ? (list ?? []).map((u) => `
       <tr class="click" data-id="${u.userId}">
         <td class="mono">${esc(u.userId)}</td><td class="mono">${esc(u.loginId)}</td>
-        <td>${esc(u.userFirstName)} ${esc(u.userLastName)}</td><td>${chip(u.userStatus)}</td></tr>`).join('')
+        <td>${esc(u.userFirstName)} ${esc(u.userLastName)}</td><td>${statusChip('userStatus', u.userStatus)}</td></tr>`).join('')
       : '<tr><td colspan="4" class="muted">No users.</td></tr>';
     document.querySelectorAll<HTMLTableRowElement>('#tUsers tr.click').forEach((tr) =>
       tr.addEventListener('click', () => void openUser(Number(tr.dataset.id))));

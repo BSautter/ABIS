@@ -8,6 +8,7 @@
 import { AbisClient } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { statusChip, statusText } from './status-labels.js';
 const $ = (sel) => document.querySelector(sel);
 function client() {
     return new AbisClient('', { fetch: authFetch });
@@ -88,7 +89,8 @@ const REPORTS = {
         load: () => client().getOpenShipments(),
         cols: [
             { h: 'Packing list', f: (r) => esc(r.packingList) }, { h: 'Customer', f: (r) => esc(r.customerShortName) },
-            { h: 'Carrier', f: (r) => esc(r.carrierId) }, { h: 'Status', f: (r) => esc(r.shipmentStatus) },
+            { h: 'Carrier', f: (r) => esc(r.carrierId) },
+            { h: 'Status', f: (r) => statusChip('shipmentStatus', r.shipmentStatus), raw: (r) => statusText('shipmentStatus', r.shipmentStatus) },
             { h: 'Scheduled', f: (r) => esc(dt(r.shipmentScheduledDateTime)) },
             { h: 'Vehicle', f: (r) => esc(r.vehicleId) }, { h: 'Notes', f: (r) => esc(r.shipmentNotes) },
         ],
@@ -136,7 +138,7 @@ const REPORTS = {
         note: 'Finished sheet-skid inventory by status: count + total net weight.',
         load: () => client().getSkidInventory(),
         cols: [
-            { h: 'Status', f: (r) => esc(r.skidSheetStatus) },
+            { h: 'Status', f: (r) => statusChip('skidSheetStatus', r.skidSheetStatus), raw: (r) => statusText('skidSheetStatus', r.skidSheetStatus) },
             { h: 'Skids', num: true, f: (r) => num(r.skidCount), raw: (r) => r.skidCount },
             { h: 'Total net wt', num: true, f: (r) => num(r.totalNetWt), raw: (r) => r.totalNetWt },
         ],
@@ -146,7 +148,8 @@ const REPORTS = {
         load: () => client().getUnmatchedCoils(),
         cols: [
             { h: 'Coil#', f: (r) => esc(r.coilAbcNum) }, { h: 'Org num', f: (r) => esc(r.coilOrgNum) },
-            { h: 'Alloy', f: (r) => esc(r.coilAlloy2) }, { h: 'Status', f: (r) => esc(r.coilStatus) },
+            { h: 'Alloy', f: (r) => esc(r.coilAlloy2) },
+            { h: 'Status', f: (r) => statusChip('coilStatus', r.coilStatus), raw: (r) => statusText('coilStatus', r.coilStatus) },
             { h: 'Location', f: (r) => esc(r.coilLocation) }, { h: 'Customer', f: (r) => esc(r.customerId) },
             { h: 'Balance wt', num: true, f: (r) => num(r.netWtBalance), raw: (r) => r.netWtBalance },
         ],
@@ -166,7 +169,7 @@ const REPORTS = {
         note: 'Scrap by type (code/defect) with skid count + total net weight.',
         load: () => client().getScrapSummary(),
         cols: [
-            { h: 'Type', f: (r) => esc(r.scrapType) }, { h: 'Code', f: (r) => esc(r.scrapCode) },
+            { h: 'Type', f: (r) => statusChip('scrapType', r.scrapType), raw: (r) => statusText('scrapType', r.scrapType) }, { h: 'Code', f: (r) => esc(r.scrapCode) },
             { h: 'Defect', f: (r) => esc(r.scrapDefect) },
             { h: 'Skids', num: true, f: (r) => num(r.skidCount), raw: (r) => r.skidCount },
             { h: 'Total net wt', num: true, f: (r) => num(r.totalNetWt), raw: (r) => r.totalNetWt },
