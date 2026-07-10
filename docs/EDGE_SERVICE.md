@@ -72,6 +72,11 @@ COM port. The web screens (or the API) consume readings over HTTP on the LAN.
     (stopped) / `null` (not configured, no value yet, or a bad read). Pass `?tag=` for a
     specific line (multiple lines each poll their own tag); omit for the default
     `RunStateTag`. The DAS console polls this to auto-open downtime.
+  - `GET /piece-count[?tag=<item id>]` → the stacker's running piece counter: `{ configured,
+    tag, value, quality, count, at }` where `count` is the counter as a whole number, or
+    `null` (not configured, no value yet, or a bad/non-numeric read). Pass `?tag=` for a
+    specific line's stacker; omit for the default `PieceCountTag`. The DAS console polls this
+    to show the live count and auto-fill pieces-per-skid (it computes the per-skid delta).
   - `GET /opc/browse?node=<id>` → browse the UA address space for discovery
     (`501` on the mock provider)
   - Read-only endpoints send permissive **CORS** headers so the ABIS DAS console
@@ -92,6 +97,7 @@ COM port. The web screens (or the API) consume readings over HTTP on the LAN.
 | `Edge:Opc:Tags` | array of node / item ids | the PLC tags to poll (`OpcUa`: node ids via `/opc/browse`; `ClassicDa`: INGEAR item ids, e.g. `PLC5-BL84.strokecnt`). Multiple lines = list each line's run-state tag here. |
 | `Edge:Opc:UpdateRateMs` | default `500` | `ClassicDa` group update rate (unused for the synchronous device read; retained for compat) |
 | `Edge:Opc:RunStateTag` | a node/item id | the DEFAULT run-state tag when `/run-state` is called without `?tag=`. For multiple lines, pass `?tag=<item>` per line instead. |
+| `Edge:Opc:PieceCountTag` | a node/item id | the DEFAULT stacker piece-counter tag when `/piece-count` is called without `?tag=`. The stacker's running/cumulative count; the DAS console derives pieces-per-skid from it. For multiple lines, pass `?tag=<item>` per line instead. |
 | `Edge:Opc:RunStateMode` | `Equals` (default) / `NotEquals` / `GreaterThan` / **`Changed`** | how to judge it: a running boolean/word (`Equals`), an inverted idle bit (`NotEquals`), a numeric like strokes/min (`GreaterThan`), or a **cumulative counter that stops climbing** (`Changed` — e.g. a stroke count; **this is the plant's signal**). |
 | `Edge:Opc:RunStateThreshold` | number, default `0` | `GreaterThan` cut-off (e.g. `spm > 0`); or, for `Changed`, the **no-change window in seconds** (default 10) before declaring stopped. |
 | `Edge:Opc:RunningValues` | array, default `RUNNING,RUN,ON,START,STARTED,1,TRUE` | Equals/NotEquals value set (case-insensitive). For `NotEquals` list the *stopped/idle* values (e.g. `1,TRUE` for an idle bit) |
@@ -234,3 +240,31 @@ neither opens nor closes downtime, so OPC hiccups can't fabricate downtime.
 > `configured:false` and the DAS console just shows "PLC: run-state not configured" —
 > everything else (manual downtime, weigh, tags) is unaffected. The `MockTagSource`
 > simulates a `…Status` tag (RUNNING, DOWN every 10th read) for testing without hardware.
+
+## Stacker piece count (DAS console) {#stacker-piece-count}
+
+The stacker counts the blanks it stacks; the DAS console reads that counter so the operator
+doesn't hand-count pieces-per-skid. The edge exposes the raw counter at `GET /piece-count`;
+the **per-skid delta is computed console-side** — this skid's pieces = current counter − the
+counter captured when the previous skid was saved. The console shows a live **"Stacker: N pcs"**
+readout, a **⤓ stacker** button to fill the field, and on save **auto-fills the pieces field
+when the operator left it blank** (a typed value always wins). It **never auto-fills on an
+unknown/bad read or a counter rollback** (current < baseline) — the field stays the operator's.
+
+**Site setup (what's needed to go live):**
+
+11. **Identify the stacker's piece-counter tag** — the running/cumulative count of pieces
+    stacked on the line. Use `/opc/browse` (or the INGEAR item list) to get its id and set
+    `Edge__Opc__PieceCountTag=<item id>` (e.g. `PLC5-BL110.piececount`). Per line, the DAS
+    console passes it as `?tag=` (remembered per station in the console's "Stacker count tag" field).
+12. **Verify:** `curl "http://localhost:<edgeport>/piece-count?tag=<item>"` should return a
+    `count` that climbs as the stacker runs. In the DAS console the "Stacker: N pcs" readout
+    then tracks the skid in progress.
+
+> Whether pieces == press strokes depends on the line: a **1-out die** makes the press
+> `strokecnt` a valid piece source, but a **multi-out die** stacks several pieces per stroke —
+> use the **stacker's own piece counter** where the die isn't 1-out. Point `PieceCountTag` at
+> whichever tag is the true per-line piece count. Until it's set (or on the Mock provider),
+> `/piece-count` returns `configured:false` and the console shows "Stacker: not configured" —
+> the operator hand-enters pieces exactly as before (the feature is purely additive). The
+> `MockTagSource` simulates any `…count` tag as a climbing integer for testing without hardware.

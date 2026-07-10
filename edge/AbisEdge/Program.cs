@@ -64,6 +64,12 @@ var runStateThreshold = opcCfg.GetValue("RunStateThreshold", 0.0);
 if (!string.IsNullOrWhiteSpace(runStateTag) && !opcTags.Contains(runStateTag))
     opcTags = opcTags.Append(runStateTag).ToArray();
 
+// Stacker piece counter: the tag whose running value = pieces stacked on this line (the DAS console
+// reads it to auto-fill pieces-per-skid). Ensure it's polled so /piece-count has a fresh value.
+var pieceCountTag = opcCfg.GetValue<string?>("PieceCountTag", null);
+if (!string.IsNullOrWhiteSpace(pieceCountTag) && !opcTags.Contains(pieceCountTag))
+    opcTags = opcTags.Append(pieceCountTag).ToArray();
+
 builder.Services.AddSingleton<ITagSource>(sp => opcProvider.ToLowerInvariant() switch
 {
     "opcua" => new OpcUaTagSource(
@@ -87,6 +93,7 @@ builder.Services.AddSingleton<ITagSource>(sp => opcProvider.ToLowerInvariant() s
 });
 builder.Services.AddSingleton(new TagSet(opcTags));
 builder.Services.AddSingleton(new RunStateConfig(runStateTag, runningValues, runStateMode, runStateThreshold));
+builder.Services.AddSingleton(new PieceCountConfig(pieceCountTag));
 builder.Services.AddSingleton<LatestTags>();
 builder.Services.AddHostedService<TagPump>();
 
@@ -139,6 +146,28 @@ app.MapGet("/run-state", (LatestTags tags, RunStateConfig cfg, string? tag) =>
         quality = r?.Quality,
         mode = cfg.Mode.ToString(),
         running,
+        at = r?.At,
+    });
+});
+
+// The stacker's running piece count — the DAS console polls this to show the live count and auto-fill
+// pieces-per-skid (the delta since the last skid is computed console-side). Pass ?tag=<item id> for a
+// specific line's stacker; omit to use the configured default PieceCountTag. count: the counter as a
+// whole number, or null = unknown (not configured, no value yet, or a bad/non-numeric read — the
+// console must NOT auto-fill on null, it leaves the field for the operator).
+app.MapGet("/piece-count", (LatestTags tags, PieceCountConfig cfg, string? tag) =>
+{
+    var t = string.IsNullOrWhiteSpace(tag) ? cfg.Tag : tag;
+    if (string.IsNullOrWhiteSpace(t))
+        return Results.Ok(new { configured = false, tag = (string?)null, value = (string?)null, quality = (string?)null, count = (long?)null, at = (DateTimeOffset?)null });
+    var r = tags.Get(t);
+    return Results.Ok(new
+    {
+        configured = true,
+        tag = t,
+        value = r?.Value,
+        quality = r?.Quality,
+        count = PieceCount.Parse(r?.Value, r?.Quality),
         at = r?.At,
     });
 });

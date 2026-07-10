@@ -41,3 +41,22 @@ export async function fetchRunState(bases, tag) {
     }
     return { reachable: false, via: '', configured: false, running: null };
 }
+/**
+ * Read the stacker's running piece counter across the edge hosts (primary first), same failover as
+ * run-state. The counter is cumulative — the DAS console computes the per-skid delta from it. Returns
+ * count=null on any non-response or a bad/non-numeric read so the console never auto-fills garbage.
+ */
+export async function fetchPieceCount(bases, tag) {
+    const q = tag ? `?tag=${encodeURIComponent(tag)}` : '';
+    for (let i = 0; i < bases.length; i++) {
+        try {
+            const r = await fetchWithTimeout(`${bases[i]}/piece-count${q}`, 2000);
+            if (!r.ok)
+                continue;
+            const s = await r.json();
+            return { reachable: true, via: i > 0 ? ' (fallback)' : '', configured: !!s.configured, count: s.count ?? null };
+        }
+        catch { /* unreachable/timeout → try the next host */ }
+    }
+    return { reachable: false, via: '', configured: false, count: null };
+}

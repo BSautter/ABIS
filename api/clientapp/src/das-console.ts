@@ -14,7 +14,7 @@
 import { AbisClient, SheetSkidWrite, ScrapSkidWrite, DowntimeInstanceWrite } from './generated/abis-client.js';
 import { initAuth, authFetch } from './auth.js';
 import { statusChip } from './status-labels.js';
-import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState } from './edge.js';
+import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount } from './edge.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
@@ -45,6 +45,12 @@ let runPollTimer: number | null = null;   // /run-state poll interval
 let dtTickTimer: number | null = null;    // 1s banner-timer tick
 // Edge primary→fallback list (.170/.175) + failover read live in ./edge (shared with the dashboard).
 
+// Stacker piece count (edge /piece-count). The stacker's cumulative counter feeds pieces-per-skid so
+// the operator doesn't hand-count: this skid's pieces = current counter − the baseline captured at the
+// last save. Baseline advances on every skid save; a reset/rollback (current < baseline) reads unknown.
+let pieceCurrent: number | null = null;   // latest stacker counter read
+let pieceBaseline: number | null = null;  // counter at the start of the skid in progress (null = not seeded)
+
 function scaffold(): string {
   const tab = (id: string, label: string) => `<button id="tab-${id}" type="button">${label}</button>`;
   return `
@@ -69,8 +75,10 @@ function scaffold(): string {
           <strong>⚖ Scale</strong>
           <input id="edgeUrl" placeholder="http://…:8090 (primary, fallback)" style="width:250px" title="Edge /run-state host(s), primary first — comma-separated for failover. e.g. http://192.168.10.170:8090, http://192.168.9.175:8090 (.170 primary, .175 fallback)" />
           <button class="btn sm ghost" id="btnPull" type="button" style="color:#fff;border-color:var(--rail-line)">Pull weight →</button>
-          <input id="runTag" placeholder="PLC run tag (e.g. PLC5-BL84.strokecnt)" style="width:230px" title="The edge item id whose change = this line running" />
+          <input id="runTag" placeholder="PLC run tag (e.g. PLC5-BL84.strokecnt)" style="width:210px" title="The edge item id whose change = this line running" />
+          <input id="pieceTag" placeholder="Stacker count tag (e.g. PLC5-BL110.piececount)" style="width:230px" title="The edge item id of the stacker's running piece counter for this line" />
           <span id="runInd" class="dop-note" style="color:var(--rail-ink-2);margin-left:auto" title="Line run-state from the edge PLC feed">PLC: —</span>
+          <span id="pieceInd" class="dop-note" style="color:var(--rail-ink-2)" title="Live stacker piece count for the skid in progress">Stacker: —</span>
         </div>
         <div id="dtBanner" style="display:none;background:#7f1d1d;color:#fff;border-radius:10px;padding:14px 18px;margin-bottom:12px"></div>
 
@@ -89,6 +97,7 @@ function scaffold(): string {
               <div class="fld"><label>Net wt</label><input id="skNet" class="big" type="number" step="0.01" style="width:110px" /></div>
               <div class="fld"><label>Tare wt</label><input id="skTare" class="big" type="number" step="0.01" style="width:110px" /></div>
               <div class="fld"><label>Pieces</label><input id="skPieces" class="big" inputmode="numeric" style="width:100px" /></div>
+              <div class="fld"><label>&nbsp;</label><button class="btn sm ghost" id="btnPullPieces" type="button" title="Fill from the stacker's live count for this skid">⤓ stacker</button></div>
             </div>
             <div class="frow" style="margin-top:10px;align-items:center">
               <button class="btn" id="btnSkid" type="button">Weigh &amp; save skid</button>
@@ -148,7 +157,9 @@ async function loadJob(): Promise<void> {
     $('#workarea').classList.remove('disabled');
     await Promise.all([loadCoils(), loadSkids(), loadScrap()]);
     $('#tDt').innerHTML = '<tr><td colspan="4" class="muted">No downtime logged this session.</td></tr>';
-    clearAutoDowntime(); lineRunning = null; startRunStatePoll();   // watch this job's line for PLC stops
+    clearAutoDowntime(); lineRunning = null;
+    pieceCurrent = null; pieceBaseline = null;   // fresh stacker baseline for the new job's first skid
+    startRunStatePoll();   // watch this job's line for PLC stops + read its stacker count
   } catch (e) { setErr(`Load job failed: ${(e as Error).message}`); }
   finally { setBusy(false); }
 }
@@ -209,15 +220,20 @@ async function saveSkid(): Promise<void> {
   if (job == null) return;
   setErr(''); setOk(''); setBusy(true);
   try {
+    // Pieces: what the operator typed wins; otherwise auto-fill the stacker's count for this skid.
+    const typed = v('#skPieces');
+    const auto = pieceThisSkid();
     const created = await client().createSheetSkid(new SheetSkidWrite({
       abJobNum: job,
       sheetSkidDisplayNum: v('#skDisplay') || undefined,
       sheetNetWt: v('#skNet') ? Number(v('#skNet')) : undefined,
       sheetTareWt: v('#skTare') ? Number(v('#skTare')) : undefined,
-      skidPieces: v('#skPieces') ? Number(v('#skPieces')) : undefined,
+      skidPieces: typed ? Number(typed) : (auto ?? undefined),
     }));
     lastSkid = created.sheetSkidNum ?? null;
-    setOk(`✓ Saved sheet skid #${created.sheetSkidNum}.`);
+    if (pieceCurrent != null) pieceBaseline = pieceCurrent;   // advance: the next skid counts from 0
+    const stackNote = !typed && auto != null ? ` (${auto.toLocaleString()} pcs from stacker)` : '';
+    setOk(`✓ Saved sheet skid #${created.sheetSkidNum}${stackNote}.`);
     ['#skDisplay', '#skNet', '#skTare', '#skPieces'].forEach((i) => setV(i, ''));
     await loadSkids();
   } catch (e) { setErr(`Save skid failed: ${(e as Error).message}`); }
@@ -303,14 +319,18 @@ function startRunStatePoll(): void {
   stopRunStatePoll();
   const edge = v('#edgeUrl');
   const runTag = v('#runTag');
+  const pieceTag = v('#pieceTag');
   if (edge) localStorage.setItem('abis_edge_url', edge);
   localStorage.setItem('abis_run_tag', runTag);
-  if (!edge || job == null) { setRunInd('—'); return; }
+  localStorage.setItem('abis_piece_tag', pieceTag);
+  if (!edge || job == null) { setRunInd('—'); setPieceInd('—'); return; }
   // One or more edge hosts, primary first (.170 primary, .175 fallback) — failover lives in ./edge.
   const bases = parseEdgeUrls(edge);
-  if (bases.length === 0) { setRunInd('—'); return; }
-  runPollTimer = window.setInterval(() => void pollRunState(bases, runTag), 3000);
-  void pollRunState(bases, runTag);
+  if (bases.length === 0) { setRunInd('—'); setPieceInd('—'); return; }
+  // The same 3s tick drives run-state (auto-downtime) and the stacker piece count.
+  const tick = () => { void pollRunState(bases, runTag); void pollPieceCount(bases, pieceTag); };
+  runPollTimer = window.setInterval(tick, 3000);
+  tick();
 }
 function stopRunStatePoll(): void {
   if (runPollTimer != null) { clearInterval(runPollTimer); runPollTimer = null; }
@@ -324,6 +344,39 @@ async function pollRunState(bases: string[], tag: string): Promise<void> {
   if (!s.configured) { setRunInd(`run-state not configured${s.via}`); return; }
   if (s.running == null) { setRunInd(`unknown${s.via}`); return; }
   void onRunState(s.running, s.via);
+}
+
+// ---- Stacker piece count (edge /piece-count → live count + auto-fill pieces-per-skid) ----
+
+const setPieceInd = (m: string) => { $('#pieceInd').textContent = `Stacker: ${m}`; };
+
+// Pieces on the skid in progress = current counter − the baseline captured at the last save. A
+// counter reset/rollback (current < baseline) reads null so we never auto-fill a negative/garbage count.
+function pieceThisSkid(): number | null {
+  if (pieceCurrent == null || pieceBaseline == null) return null;
+  const d = pieceCurrent - pieceBaseline;
+  return d >= 0 ? d : null;
+}
+
+// Poll the stacker counter alongside run-state; seed the baseline on the first good read so the skid
+// in progress starts at 0. Never acts on an unknown read — the pieces field stays the operator's.
+async function pollPieceCount(bases: string[], tag: string): Promise<void> {
+  if (!tag) { pieceCurrent = null; setPieceInd('—'); return; }
+  const s = await fetchPieceCount(bases, tag);
+  if (!s.reachable) { setPieceInd('edge unreachable'); return; }
+  if (!s.configured || s.count == null) { pieceCurrent = null; setPieceInd(`${s.configured ? 'unknown' : 'not configured'}${s.via}`); return; }
+  pieceCurrent = s.count;
+  if (pieceBaseline == null) pieceBaseline = s.count;   // first read of this skid = its zero point
+  const n = pieceThisSkid();
+  setPieceInd(n == null ? `—${s.via}` : `${n.toLocaleString()} pcs${s.via}`);
+}
+
+// Fill the Pieces field from the stacker's live count for the skid in progress.
+function pullPieces(): void {
+  const n = pieceThisSkid();
+  if (n == null) { setErr('No live stacker count yet — set the stacker tag + edge URL above, or enter pieces manually.'); return; }
+  setV('#skPieces', n);
+  setOk(`Filled ${n.toLocaleString()} pcs from the stacker.`);
 }
 
 async function onRunState(running: boolean, via = ''): Promise<void> {
@@ -446,8 +499,11 @@ function showTab(name: string): void {
   $('#btnPull').addEventListener('click', () => void pullWeight());
   setV('#edgeUrl', localStorage.getItem('abis_edge_url') ?? DEFAULT_EDGE_URLS);   // primary→fallback, remembered per station
   setV('#runTag', localStorage.getItem('abis_run_tag') ?? '');
-  $('#edgeUrl').addEventListener('change', () => startRunStatePoll());   // (re)start PLC run-state watch
+  setV('#pieceTag', localStorage.getItem('abis_piece_tag') ?? '');
+  $('#edgeUrl').addEventListener('change', () => startRunStatePoll());   // (re)start PLC run-state + stacker watch
   $('#runTag').addEventListener('change', () => startRunStatePoll());
+  $('#pieceTag').addEventListener('change', () => startRunStatePoll());
+  $('#btnPullPieces').addEventListener('click', () => pullPieces());
   $('#btnSkid').addEventListener('click', () => void saveSkid());
   $('#btnTag').addEventListener('click', () => void printTag());
   $('#btnScrap').addEventListener('click', () => void saveScrap());
