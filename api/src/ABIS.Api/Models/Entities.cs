@@ -904,7 +904,9 @@ public sealed class SalesQuoteListRow
     public decimal? TotalLbProcessed { get; set; }
     public DateTime? CreatedDate { get; set; }
     public DateTime? ValidDate { get; set; }
-    public int? LatestProbability { get; set; }
+    // long? (not int?): this is a MAX() aggregate, which SQLite returns as Int64 and Oracle as NUMBER —
+    // narrowing to int? throws an InvalidCastException as soon as a quote actually has a probability.
+    public long? LatestProbability { get; set; }
 }
 
 /// <summary>A sales quote header (table <c>sales_quote</c>, composite key

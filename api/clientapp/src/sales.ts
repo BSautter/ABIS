@@ -45,6 +45,47 @@ function scaffold(): string {
             <thead><tr><th>Quote</th><th>Customer</th><th>Contact</th><th>End use</th><th>Alloy</th><th class="num">Lb</th><th>Created</th><th>Win %</th></tr></thead>
             <tbody id="tQuotes"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
           </table></div>
+        </div>
+        <div class="card">
+          <header><h2>New quote</h2><span class="sub">creates revision 1</span></header>
+          <div class="body">
+            <div class="frow">
+              <div class="fld"><label>Customer id *</label><input id="nqCust" inputmode="numeric" style="width:110px" /></div>
+              <div class="fld"><label>Contact id</label><input id="nqContact" inputmode="numeric" style="width:100px" /></div>
+              <div class="fld"><label>End user id</label><input id="nqEnduser" inputmode="numeric" style="width:100px" /></div>
+            </div>
+            <div class="frow" style="margin-top:8px">
+              <div class="fld" style="flex:1;min-width:150px"><label>End use</label><input id="nqEndUse" maxlength="120" /></div>
+              <div class="fld"><label>Part shape</label><input id="nqShape" maxlength="60" style="width:120px" /></div>
+              <div class="fld"><label>Material</label><input id="nqMaterial" maxlength="60" style="width:120px" /></div>
+            </div>
+            <div class="frow" style="margin-top:8px">
+              <div class="fld"><label>Alloy</label><input id="nqAlloy" maxlength="30" style="width:90px" /></div>
+              <div class="fld"><label>Temper</label><input id="nqTemper" maxlength="30" style="width:90px" /></div>
+              <div class="fld"><label>Gauge</label><input id="nqGauge" inputmode="decimal" style="width:80px" /></div>
+              <div class="fld"><label>Width</label><input id="nqWidth" inputmode="decimal" style="width:80px" /></div>
+              <div class="fld"><label>Length</label><input id="nqLength" inputmode="decimal" style="width:80px" /></div>
+            </div>
+            <div class="frow" style="margin-top:8px">
+              <div class="fld"><label>Line</label><input id="nqLine" inputmode="numeric" style="width:70px" /></div>
+              <div class="fld"><label>Line speed</label><input id="nqLineSpeed" inputmode="decimal" style="width:90px" /></div>
+              <div class="fld"><label># coils</label><input id="nqCoils" inputmode="numeric" style="width:80px" /></div>
+              <div class="fld"><label># skids</label><input id="nqSkids" inputmode="numeric" style="width:80px" /></div>
+            </div>
+            <div class="frow" style="margin-top:8px">
+              <div class="fld"><label>Total lb</label><input id="nqLb" inputmode="decimal" style="width:100px" /></div>
+              <div class="fld"><label>Rev / hr</label><input id="nqRev" inputmode="decimal" style="width:90px" /></div>
+              <div class="fld"><label>Variable cost</label><input id="nqVar" inputmode="decimal" style="width:100px" /></div>
+              <div class="fld"><label>Fixed cost</label><input id="nqFixed" inputmode="decimal" style="width:90px" /></div>
+              <div class="fld"><label>Process charge</label><input id="nqCharge" inputmode="decimal" style="width:110px" /></div>
+              <div class="fld"><label>ROS</label><input id="nqRos" inputmode="decimal" style="width:80px" /></div>
+            </div>
+            <div class="frow" style="margin-top:8px">
+              <div class="fld"><label>Valid until</label><input id="nqValid" type="date" /></div>
+              <div class="fld" style="flex:1;min-width:160px"><label>Notes</label><input id="nqNotes" maxlength="2000" /></div>
+            </div>
+            <div class="frow" style="margin-top:10px;align-items:center"><button class="btn sm" id="btnNewQuote" type="button">Create quote</button><span id="nqMsg" class="ok-note"></span></div>
+          </div>
         </div></div>
         <div class="stack"><div class="card" id="detail">
           <header><h2 id="detailTitle">Quote detail</h2><span class="sub">click a quote</span></header>
@@ -207,6 +248,46 @@ async function loadContacts(): Promise<void> {
   } catch (e) { setErr(`Contacts failed: ${(e as Error).message}`); }
 }
 
+async function createQuote(): Promise<void> {
+  setErr(''); $('#nqMsg').textContent = '';
+  const custRaw = v('#nqCust');
+  if (!custRaw) { setErr('Customer id is required for a new quote.'); return; }
+  const n = (id: string): number | null => { const t = v(id); return t === '' ? null : Number(t); };
+  const body = {
+    customerId: Number(custRaw), contactId: n('#nqContact'), enduserId: n('#nqEnduser'),
+    endUse: v('#nqEndUse') || null, partShape: v('#nqShape') || null, material: v('#nqMaterial') || null,
+    alloy: v('#nqAlloy') || null, temper: v('#nqTemper') || null,
+    gauge: n('#nqGauge'), width: n('#nqWidth'), length: n('#nqLength'),
+    lineNum: n('#nqLine'), lineSpeed: n('#nqLineSpeed'), numOfCoil: n('#nqCoils'), numOfSkid: n('#nqSkids'),
+    totalLbProcessed: n('#nqLb'), totalRevPerHr: n('#nqRev'),
+    variableCost: n('#nqVar'), fixedCost: n('#nqFixed'), regProcessCharge: n('#nqCharge'), ros: n('#nqRos'),
+    validDate: v('#nqValid') ? new Date(v('#nqValid')).toISOString() : null, quoteNotes: v('#nqNotes') || null,
+  };
+  setBusy(true);
+  try {
+    // POSTed via authFetch (the create-quote endpoint is newer than the committed NSwag client).
+    const r = await authFetch('/api/sales/quotes', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      let m = `Create failed (${r.status}).`;
+      try {
+        const p = await r.json();
+        m = (p.detail as string) || (p.errors ? Object.values(p.errors as Record<string, string[]>).flat().join(' ') : (p.title as string)) || m;
+      } catch { /* keep default */ }
+      setErr(m); return;
+    }
+    const created = await r.json() as SalesQuote;
+    $('#nqMsg').textContent = `✓ Created quote ${created.quoteId}-${created.quoteRevisionId}.`;
+    ['#nqCust', '#nqContact', '#nqEnduser', '#nqEndUse', '#nqShape', '#nqMaterial', '#nqAlloy', '#nqTemper',
+      '#nqGauge', '#nqWidth', '#nqLength', '#nqLine', '#nqLineSpeed', '#nqCoils', '#nqSkids', '#nqLb', '#nqRev',
+      '#nqVar', '#nqFixed', '#nqCharge', '#nqRos', '#nqValid', '#nqNotes'].forEach((i) => setV(i, ''));
+    await loadQuotes();
+    await openQuote(created.quoteId!, created.quoteRevisionId!);
+  } catch (e) { setErr(`Create failed: ${(e as Error).message}`); }
+  finally { setBusy(false); }
+}
+
 function showTab(name: string): void {
   ['quotes', 'contacts'].forEach((t) => {
     $(`#pane-${t}`).style.display = t === name ? '' : 'none';
@@ -223,6 +304,7 @@ function showTab(name: string): void {
   $<HTMLFormElement>('#contactForm').addEventListener('submit', (e) => { e.preventDefault(); void loadContacts(); });
   $('#btnEvent').addEventListener('click', () => void addEvent());
   $('#btnProb').addEventListener('click', () => void addProbability());
+  $('#btnNewQuote').addEventListener('click', () => void createQuote());
   showTab('quotes');
   await loadQuotes();
 })();

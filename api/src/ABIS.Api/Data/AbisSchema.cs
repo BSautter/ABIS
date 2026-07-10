@@ -12,10 +12,12 @@ namespace Abis.Api.Data;
 /// ("name is already used by an existing object"), making a re-run on an already-provisioned
 /// schema a no-op. No-op on SQLite (the CI fixture models these tables directly).
 /// <para>
-/// STRICTLY schema provisioning: this only ever CREATEs <c>abis_*</c> tables — it never
-/// touches the legacy schema and never fires any scheduled job (the scheduler is inert; see
-/// docs/ADMIN_SUBSYSTEM_PLAN.md and the no-live-firing guardrail). The canonical DDL is
-/// mirrored in docs/data-model/migrations/001_admin_scheduler.sql for manual/DBA use.
+/// Schema provisioning only — it CREATEs the modernization's own tables (the <c>abis_*</c> tables,
+/// plus the <c>sales_quote</c>/<c>sales_reminder</c>/<c>sales_probability</c> tables the legacy schema
+/// retired and ABIS now owns), never fires any scheduled job (the scheduler is inert; see
+/// docs/ADMIN_SUBSYSTEM_PLAN.md and the no-live-firing guardrail), and never DROPs or alters existing
+/// data: each CREATE swallows ORA-00955, so a table that already exists is left untouched. Canonical
+/// DDL is mirrored under docs/data-model/migrations/ for manual/DBA use.
 /// </para>
 /// </summary>
 public static class AbisSchema
@@ -105,7 +107,70 @@ public static class AbisSchema
         // Additive driver phone for the self-sign-in kiosk (idempotent, same swallow as above).
         "ALTER TABLE abis_truck_appointment ADD (driver_phone VARCHAR2(30))",
         "CREATE INDEX ix_abis_truck_appt_start ON abis_truck_appointment (scheduled_start)",
-        "CREATE INDEX ix_abis_truck_appt_status ON abis_truck_appointment (truck_status)"
+        "CREATE INDEX ix_abis_truck_appt_status ON abis_truck_appointment (truck_status)",
+        // Sales quotes (legacy w_sales_main / w_new_quote / w_edit_quote). NOT abis_-prefixed because
+        // these keep the authoritative legacy column names (d_sales_quote_modify), but the legacy schema
+        // RETIRED these tables — they exist in no current database — so ABIS re-provisions and owns them.
+        // Header has a composite key (quote_id + revision); reminder/probability get a surrogate id for
+        // the modern write path. Ids are MAX+1 (Database:MaxIdTables) — no legacy sequence exists.
+        // Mirrored in docs/data-model/migrations/004_sales_quote.sql.
+        """
+        CREATE TABLE sales_quote (
+          quote_id            NUMBER(10)     NOT NULL,
+          quote_revision_id   NUMBER(6)      NOT NULL,
+          customer_id         NUMBER(10),
+          contact_id          NUMBER(10),
+          enduser_id          NUMBER(10),
+          end_use             VARCHAR2(120),
+          part_shape          VARCHAR2(60),
+          material            VARCHAR2(60),
+          alloy               VARCHAR2(30),
+          temper              VARCHAR2(30),
+          gauge               NUMBER(10,5),
+          width               NUMBER(12,4),
+          length              NUMBER(12,4),
+          line_num            NUMBER(6),
+          line_speed          NUMBER(12,3),
+          num_of_coil         NUMBER(8),
+          num_of_skid         NUMBER(8),
+          total_lb_processed  NUMBER(16,2),
+          total_rev_per_hr    NUMBER(16,4),
+          variable_cost       NUMBER(16,4),
+          fixed_cost          NUMBER(16,4),
+          reg_process_charge  NUMBER(16,4),
+          ros                 NUMBER(12,4),
+          quote_notes         VARCHAR2(2000),
+          approval_sales      VARCHAR2(30),
+          approval_vp         VARCHAR2(30),
+          approval_ceo        VARCHAR2(30),
+          pass_on_quote       VARCHAR2(1),
+          created_date        DATE,
+          valid_date          DATE,
+          CONSTRAINT pk_sales_quote PRIMARY KEY (quote_id, quote_revision_id))
+        """,
+        """
+        CREATE TABLE sales_reminder (
+          event_id            NUMBER(12)     NOT NULL,
+          quote_id            NUMBER(10),
+          quote_revision_id   NUMBER(6),
+          event_date          DATE,
+          event_notes         VARCHAR2(2000),
+          event_status        VARCHAR2(20),
+          user_id             VARCHAR2(64),
+          CONSTRAINT pk_sales_reminder PRIMARY KEY (event_id))
+        """,
+        """
+        CREATE TABLE sales_probability (
+          probability_id      NUMBER(12)     NOT NULL,
+          quote_id            NUMBER(10),
+          quote_revision_id   NUMBER(6),
+          review_date         DATE,
+          sales_probability   NUMBER(5),
+          probability_note    VARCHAR2(2000),
+          CONSTRAINT pk_sales_probability PRIMARY KEY (probability_id))
+        """,
+        "CREATE INDEX ix_sales_reminder_quote ON sales_reminder (quote_id, quote_revision_id)",
+        "CREATE INDEX ix_sales_probability_quote ON sales_probability (quote_id, quote_revision_id)"
     ];
 
     public static async Task EnsureOwnedTablesAsync(IDbConnectionFactory factory, ILogger logger, CancellationToken ct = default)

@@ -2083,6 +2083,23 @@ public static class ApiEndpoints
            .WithSummary("A quote header (a specific revision of a quote).")
            .Produces<SalesQuote>().Produces(StatusCodes.Status404NotFound);
 
+        api.MapPost("/sales/quotes", async (SalesQuoteWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                // A quote is for a customer; pre-check existence so a bad id is a clean 400, not an
+                // ORA-02291 500 on Oracle.
+                var errors = new Dictionary<string, string[]>();
+                if (body.CustomerId is not > 0)
+                    errors["customerId"] = ["customerId is required."];
+                else if (await repo.GetCustomerAsync(body.CustomerId.Value, ct) is null)
+                    errors["customerId"] = [$"customer {body.CustomerId} does not exist."];
+                if (errors.Count > 0) return Results.ValidationProblem(errors);
+                var created = await repo.CreateSalesQuoteAsync(body, ct);
+                return Results.Created($"/api/sales/quotes/{created.QuoteId}/{created.QuoteRevisionId}", created);
+            })
+           .WithName("CreateSalesQuote").WithTags("Sales")
+           .WithSummary("Create a new sales quote (revision 1).")
+           .Produces<SalesQuote>(StatusCodes.Status201Created).ProducesValidationProblem();
+
         api.MapGet("/sales/contacts", async (IAbisRepository repo, CancellationToken ct, long? customerId = null) =>
                 Results.Ok(await repo.GetSalesContactsAsync(customerId, ct)))
            .WithName("GetSalesContacts").WithTags("Sales")

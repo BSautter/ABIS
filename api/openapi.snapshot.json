@@ -7175,6 +7175,48 @@
             "description": "Unauthorized"
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Sales"
+        ],
+        "summary": "Create a new sales quote (revision 1).",
+        "operationId": "CreateSalesQuote",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SalesQuoteWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesQuote"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
       }
     },
     "/api/sales/quotes/{quoteId}/{revisionId}": {
@@ -16750,7 +16792,122 @@
           },
           "latestProbability": {
             "type": "integer",
+            "format": "int64",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "SalesQuoteWrite": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "contactId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "enduserId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "endUse": {
+            "type": "string",
+            "nullable": true
+          },
+          "partShape": {
+            "type": "string",
+            "nullable": true
+          },
+          "material": {
+            "type": "string",
+            "nullable": true
+          },
+          "alloy": {
+            "type": "string",
+            "nullable": true
+          },
+          "temper": {
+            "type": "string",
+            "nullable": true
+          },
+          "gauge": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "width": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "length": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "lineNum": {
+            "type": "integer",
             "format": "int32",
+            "nullable": true
+          },
+          "lineSpeed": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "numOfCoil": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "numOfSkid": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "totalLbProcessed": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "totalRevPerHr": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "variableCost": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "fixedCost": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "regProcessCharge": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "ros": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "quoteNotes": {
+            "type": "string",
+            "nullable": true
+          },
+          "validDate": {
+            "type": "string",
+            "format": "date-time",
             "nullable": true
           }
         },

@@ -517,6 +517,36 @@ public sealed class ScrapSkidWrite
     public int? SkidScrapStatus { get; set; }
 }
 
+/// <summary>Create a new sales quote (table <c>sales_quote</c>, legacy w_new_quote). The
+/// <c>quote_id</c> is server-assigned and a new quote starts at revision 1; <c>created_date</c>
+/// defaults to now and the approval flags are left unset. <see cref="CustomerId"/> is required.</summary>
+public sealed class SalesQuoteWrite
+{
+    public long? CustomerId { get; set; }
+    public long? ContactId { get; set; }
+    public long? EnduserId { get; set; }
+    public string? EndUse { get; set; }
+    public string? PartShape { get; set; }
+    public string? Material { get; set; }
+    public string? Alloy { get; set; }
+    public string? Temper { get; set; }
+    public decimal? Gauge { get; set; }
+    public decimal? Width { get; set; }
+    public decimal? Length { get; set; }
+    public int? LineNum { get; set; }
+    public decimal? LineSpeed { get; set; }
+    public int? NumOfCoil { get; set; }
+    public int? NumOfSkid { get; set; }
+    public decimal? TotalLbProcessed { get; set; }
+    public decimal? TotalRevPerHr { get; set; }
+    public decimal? VariableCost { get; set; }
+    public decimal? FixedCost { get; set; }
+    public decimal? RegProcessCharge { get; set; }
+    public decimal? Ros { get; set; }
+    public string? QuoteNotes { get; set; }
+    public DateTime? ValidDate { get; set; }
+}
+
 /// <summary>Log a follow-up / reminder against a quote (table <c>sales_reminder</c>).
 /// The quote id + revision come from the route; <c>event_id</c> is server-assigned.
 /// <see cref="EventDate"/> defaults to now when omitted.</summary>

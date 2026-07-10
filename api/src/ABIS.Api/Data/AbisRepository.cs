@@ -1922,6 +1922,42 @@ public sealed class AbisRepository : IAbisRepository
             """, new { quote = quoteId, rev = revisionId }, cancellationToken: ct));
     }, null);
 
+    // Create a new quote (legacy w_new_quote): a fresh quote_id (MAX+1) at revision 1. created_date
+    // defaults to now; approval flags stay unset. :len (not :length) keeps the bind name clear of any
+    // Oracle reserved-word risk. Positional-safe: the anon members are in the VALUES bind order.
+    public async Task<SalesQuote> CreateSalesQuoteAsync(SalesQuoteWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var quoteId = await NextIdAsync(conn, tx, "sales_quote", "quote_id", ct);
+        const long rev = 1;
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO sales_quote (quote_id, quote_revision_id, customer_id, contact_id, enduser_id,
+                end_use, part_shape, material, alloy, temper, gauge, width, length, line_num, line_speed,
+                num_of_coil, num_of_skid, total_lb_processed, total_rev_per_hr, variable_cost, fixed_cost,
+                reg_process_charge, ros, quote_notes, created_date, valid_date)
+            VALUES (:quoteId, :rev, :customerId, :contactId, :enduserId,
+                :endUse, :partShape, :material, :alloy, :temper, :gauge, :width, :len, :lineNum, :lineSpeed,
+                :numOfCoil, :numOfSkid, :totalLb, :totalRev, :variableCost, :fixedCost,
+                :regCharge, :ros, :quoteNotes, :createdDate, :validDate)
+            """,
+            new
+            {
+                quoteId, rev,
+                customerId = body.CustomerId, contactId = body.ContactId, enduserId = body.EnduserId,
+                endUse = body.EndUse, partShape = body.PartShape, material = body.Material,
+                alloy = body.Alloy, temper = body.Temper, gauge = body.Gauge, width = body.Width, len = body.Length,
+                lineNum = body.LineNum, lineSpeed = body.LineSpeed, numOfCoil = body.NumOfCoil, numOfSkid = body.NumOfSkid,
+                totalLb = body.TotalLbProcessed, totalRev = body.TotalRevPerHr,
+                variableCost = body.VariableCost, fixedCost = body.FixedCost, regCharge = body.RegProcessCharge,
+                ros = body.Ros, quoteNotes = body.QuoteNotes, createdDate = DateTime.UtcNow, validDate = body.ValidDate
+            },
+            transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+        return (await GetSalesQuoteAsync(quoteId, rev, ct))!;
+    }
+
     public async Task<IReadOnlyList<SalesContact>> GetSalesContactsAsync(long? customerId, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

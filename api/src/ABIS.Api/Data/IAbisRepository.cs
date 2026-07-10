@@ -81,6 +81,7 @@ public interface IAbisRepository
     // ---- Sales / quotes -------------------------------------------------
     Task<IReadOnlyList<SalesQuoteListRow>> GetSalesQuotesAsync(string? search, CancellationToken ct);
     Task<SalesQuote?> GetSalesQuoteAsync(long quoteId, long revisionId, CancellationToken ct);
+    Task<SalesQuote> CreateSalesQuoteAsync(SalesQuoteWrite body, CancellationToken ct);
     Task<IReadOnlyList<SalesContact>> GetSalesContactsAsync(long? customerId, CancellationToken ct);
     Task<IReadOnlyList<SalesReminder>> GetSalesRemindersAsync(long quoteId, long revisionId, CancellationToken ct);
     Task<SalesReminder> CreateSalesReminderAsync(long quoteId, long revisionId, SalesReminderWrite body, CancellationToken ct);

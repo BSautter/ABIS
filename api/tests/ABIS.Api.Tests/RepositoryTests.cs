@@ -1229,6 +1229,31 @@ public sealed class RepositoryTests : IDisposable
         Assert.Contains(types, t => t.CustomerTypeCode == "OEM" && t.CustomerTypeDescription == "Original equipment manufacturer");
     }
 
+    [Fact]
+    public async Task CreateSalesQuote_assigns_a_new_id_at_revision_1_and_round_trips()
+    {
+        var before = await _repo.GetSalesQuotesAsync(null, CancellationToken.None);
+        var created = await _repo.CreateSalesQuoteAsync(new SalesQuoteWrite
+        {
+            CustomerId = 1, EndUse = "Heat shield", Alloy = "3003", Temper = "H14",
+            Gauge = 0.032m, Width = 48.5m, Length = 96m, Ros = 12.5m, QuoteNotes = "created by test",
+        }, CancellationToken.None);
+
+        Assert.True(created.QuoteId > 0);
+        Assert.Equal(1, created.QuoteRevisionId);
+        Assert.Equal("Heat shield", created.EndUse);
+        Assert.Equal(0.032m, created.Gauge);
+        Assert.Equal(96m, created.Length);   // the :len bind maps to the length column
+
+        var after = await _repo.GetSalesQuotesAsync(null, CancellationToken.None);
+        Assert.Equal(before.Count + 1, after.Count);
+
+        var fetched = await _repo.GetSalesQuoteAsync(created.QuoteId, created.QuoteRevisionId, CancellationToken.None);
+        Assert.NotNull(fetched);
+        Assert.Equal("3003", fetched!.Alloy);
+        Assert.Equal("created by test", fetched.QuoteNotes);
+    }
+
     public void Dispose()
     {
         try { if (File.Exists(_dbPath)) File.Delete(_dbPath); } catch { /* best effort */ }
