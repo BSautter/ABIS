@@ -49,8 +49,11 @@ COM port. The web screens (or the API) consume readings over HTTP on the LAN.
     is a **Classic-DA→UA wrapper** on the OPC box (OPC Foundation UA Wrapper or
     Softing dataFEED); this UA client connects to the wrapper's `opc.tcp` endpoint.
     The PLCs and existing DA clients are untouched — see [the setup steps](#standing-up-the-uadawrapper-ingear).
-  - **Discovery:** `GET /opc/browse?node=<id>` walks the wrapper's address space so
-    you can find the node ids of the wrapped INGEAR tags without hand-mapping them.
+  - **Discovery:** `GET /opc/browse?node=<id>` walks the address space so you can find
+    the item/node ids of the INGEAR tags without hand-mapping them — works on both the
+    **UA** and **Classic-DA** providers (and the mock's canned tree), so you can pick a
+    line's run-state / piece-count tag from a browser instead of RDP-ing in to run
+    `--probe --browse`.
 - **No-hardware mode** — `MockScale` + `MockTagSource` let the whole service run
   and be tested on any machine (the defaults `Edge:Scale:Provider=Mock`,
   `Edge:Opc:Provider=Mock`).
@@ -77,8 +80,9 @@ COM port. The web screens (or the API) consume readings over HTTP on the LAN.
     `null` (not configured, no value yet, or a bad/non-numeric read). Pass `?tag=` for a
     specific line's stacker; omit for the default `PieceCountTag`. The DAS console polls this
     to show the live count and auto-fill pieces-per-skid (it computes the per-skid delta).
-  - `GET /opc/browse?node=<id>` → browse the UA address space for discovery
-    (`501` on the mock provider)
+  - `GET /opc/browse?node=<id>` → browse the OPC address space one level for tag discovery
+    (UA + Classic-DA + the mock's canned tree); `501` if the provider can't browse, `502`
+    with the error if a live browse fails
   - Read-only endpoints send permissive **CORS** headers so the ABIS DAS console
     (a different origin) can poll `/reading` + `/run-state` from the browser.
 - **Resilience** — background pumps reconnect with backoff if a device drops.

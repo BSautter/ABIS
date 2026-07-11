@@ -64,6 +64,36 @@ export async function fetchRunState(bases, tag) {
     return { reachable: false, via: '', configured: false, running: null };
 }
 /**
+ * Browse one level of the edge OPC address space (primary→fallback) for tag discovery — powers the
+ * DAS console's tag picker so an operator can pick a line's run-state / piece-count tag without
+ * knowing its exact INGEAR item id. Pass `node` to descend a branch; omit for the root. Branches come
+ * back NodeClass "Object" (descend into them), leaf tags "Variable" (a real item id to wire).
+ */
+export async function browseEdgeTags(bases, node) {
+    const q = node ? `?node=${encodeURIComponent(node)}` : '';
+    for (let i = 0; i < bases.length; i++) {
+        try {
+            const r = await fetchWithTimeout(`${bases[i]}/opc/browse${q}`, 4000);
+            if (r.status === 501)
+                return { reachable: true, supported: false, nodes: [] };
+            if (!r.ok) {
+                let error = `HTTP ${r.status}`;
+                try {
+                    const b = await r.json();
+                    if (b?.error)
+                        error = b.error;
+                }
+                catch { /* keep the status */ }
+                return { reachable: true, supported: true, nodes: [], error };
+            }
+            const nodes = await r.json();
+            return { reachable: true, supported: true, nodes: Array.isArray(nodes) ? nodes : [] };
+        }
+        catch { /* unreachable/timeout → try the next host */ }
+    }
+    return { reachable: false, supported: false, nodes: [], error: 'Edge unreachable' };
+}
+/**
  * Read the stacker's running piece counter across the edge hosts (primary first), same failover as
  * run-state. The counter is cumulative — the DAS console computes the per-skid delta from it. Returns
  * count=null on any non-response or a bad/non-numeric read so the console never auto-fills garbage.

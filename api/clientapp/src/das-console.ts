@@ -14,7 +14,7 @@
 import { AbisClient, SheetSkidWrite, ScrapSkidWrite, DowntimeInstanceWrite } from './generated/abis-client.js';
 import { initAuth, authFetch } from './auth.js';
 import { statusChip, lineLabel, loadLineNames } from './status-labels.js';
-import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount } from './edge.js';
+import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount, browseEdgeTags } from './edge.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
@@ -75,8 +75,10 @@ function scaffold(): string {
           <strong>⚖ Scale</strong>
           <input id="edgeUrl" placeholder="http://…:8090 (primary, fallback)" style="width:250px" title="Edge /run-state host(s), primary first — comma-separated for failover. e.g. http://192.168.10.170:8090, http://192.168.9.175:8090 (.170 primary, .175 fallback)" />
           <button class="btn sm ghost" id="btnPull" type="button" style="color:#fff;border-color:var(--rail-line)">Pull weight →</button>
-          <input id="runTag" placeholder="PLC run tag (e.g. PLC5-BL84.strokecnt)" style="width:210px" title="The edge item id whose change = this line running" />
-          <input id="pieceTag" placeholder="Stacker count tag (e.g. PLC5-BL110.piececount)" style="width:230px" title="The edge item id of the stacker's running piece counter for this line" />
+          <input id="runTag" placeholder="PLC run tag (e.g. PLC5-BL84.strokecnt)" style="width:190px" title="The edge item id whose change = this line running" />
+          <button class="btn sm ghost" id="btnBrowseRun" type="button" title="Browse the edge for this line's run tag" style="color:#fff;border-color:var(--rail-line)">🔎</button>
+          <input id="pieceTag" placeholder="Stacker count tag (e.g. PLC5-BL110.piececount)" style="width:210px" title="The edge item id of the stacker's running piece counter for this line" />
+          <button class="btn sm ghost" id="btnBrowsePiece" type="button" title="Browse the edge for this line's stacker count tag" style="color:#fff;border-color:var(--rail-line)">🔎</button>
           <span id="runInd" class="dop-note" style="color:var(--rail-ink-2);margin-left:auto" title="Line run-state from the edge PLC feed">PLC: —</span>
           <span id="pieceInd" class="dop-note" style="color:var(--rail-ink-2)" title="Live stacker piece count for the skid in progress">Stacker: —</span>
         </div>
@@ -528,6 +530,73 @@ function showTab(name: string): void {
   });
 }
 
+// ---- OPC tag picker (browse the edge /opc/browse → fill a run/piece tag field) ----
+// So an operator can pick this line's run-state / stacker tag by drilling into the edge's tag tree,
+// instead of typing an exact INGEAR item id. Descends branch-by-branch; a leaf fills the field,
+// persists it, and restarts the poll (same path as editing the input by hand).
+let pickerEl: HTMLDivElement | null = null;
+type Crumb = { id: string; name: string };
+
+function closeTagPicker(): void { pickerEl?.remove(); pickerEl = null; }
+
+function openTagPicker(targetId: string, title: string): void {
+  const bases = parseEdgeUrls(v('#edgeUrl'));
+  if (bases.length === 0) { setErr('Set the edge URL first, then browse for a tag.'); return; }
+  closeTagPicker();
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:20px';
+  el.innerHTML = `
+    <div style="background:var(--rail);color:var(--rail-ink);border:1px solid var(--rail-line);border-radius:14px;width:min(560px,94vw);max-height:82vh;display:flex;flex-direction:column;overflow:hidden">
+      <header style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--rail-line)">
+        <strong style="flex:1">${esc(title)}</strong>
+        <button type="button" class="btn sm ghost" id="pkClose" style="color:var(--rail-ink);border-color:var(--rail-line)">Close</button>
+      </header>
+      <div id="pkCrumb" style="padding:8px 16px;font-size:12px;color:var(--rail-ink-2);border-bottom:1px solid var(--rail-line);word-break:break-all"></div>
+      <div id="pkList" style="overflow:auto;padding:8px"><div class="muted" style="padding:12px">Loading…</div></div>
+    </div>`;
+  document.body.appendChild(el);
+  pickerEl = el;
+  el.addEventListener('click', (e) => { if (e.target === el) closeTagPicker(); });
+  $('#pkClose').addEventListener('click', closeTagPicker);
+  void pickerBrowse(bases, targetId, []);
+}
+
+async function pickerBrowse(bases: string[], targetId: string, path: Crumb[]): Promise<void> {
+  if (!pickerEl) return;
+  const crumb = $('#pkCrumb'), list = $('#pkList');
+  const parts = ['root', ...path.map((p) => p.name)];
+  crumb.innerHTML = parts.map((n, i) =>
+    `<a data-i="${i - 1}" style="color:var(--rail-ink);cursor:pointer;text-decoration:underline">${esc(n)}</a>`).join(' <span>›</span> ');
+  crumb.querySelectorAll<HTMLElement>('a').forEach((a) =>
+    a.addEventListener('click', () => void pickerBrowse(bases, targetId, path.slice(0, Number(a.dataset.i) + 1))));
+  list.innerHTML = '<div class="muted" style="padding:12px">Loading…</div>';
+
+  const node = path.length ? path[path.length - 1].id : undefined;
+  const res = await browseEdgeTags(bases, node);
+  if (!pickerEl) return;
+  if (!res.reachable) { list.innerHTML = '<div class="err" style="padding:12px">Edge unreachable — check the URL/host, then try again.</div>'; return; }
+  if (!res.supported) { list.innerHTML = "<div class=\"err\" style=\"padding:12px\">This edge provider can't browse (mock or unsupported). Type the item id instead.</div>"; return; }
+  if (res.error) { list.innerHTML = `<div class="err" style="padding:12px">Browse failed: ${esc(res.error)}</div>`; return; }
+  if (res.nodes.length === 0) { list.innerHTML = '<div class="muted" style="padding:12px">No tags under here.</div>'; return; }
+
+  const row = 'display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;padding:9px 12px;background:none;border:0;border-radius:8px;color:var(--rail-ink);cursor:pointer';
+  list.innerHTML = res.nodes.map((n, i) => {
+    const branch = n.nodeClass !== 'Variable';
+    return `<button type="button" class="pk-item" data-i="${i}" style="${row}">
+      <span style="font-size:14px">${branch ? '📁' : '🏷'} ${esc(n.displayName || n.nodeId)}${branch ? ' ›' : ''}</span>
+      <small style="color:var(--rail-ink-2)">${esc(n.nodeId)}</small></button>`;
+  }).join('');
+  list.querySelectorAll<HTMLButtonElement>('.pk-item').forEach((b) => {
+    b.addEventListener('mouseover', () => { b.style.background = 'var(--rail-active)'; });
+    b.addEventListener('mouseout', () => { b.style.background = 'none'; });
+    b.addEventListener('click', () => {
+      const n = res.nodes[Number(b.dataset.i)];
+      if (n.nodeClass !== 'Variable') void pickerBrowse(bases, targetId, [...path, { id: n.nodeId, name: n.displayName || n.nodeId }]);
+      else { setV(targetId, n.nodeId); closeTagPicker(); startRunStatePoll(); }   // fill + persist + restart the poll
+    });
+  });
+}
+
 (async () => {
   await initAuth();
   await loadLineNames(authFetch);   // real line names (LINE table) for the job header
@@ -541,6 +610,9 @@ function showTab(name: string): void {
   $('#edgeUrl').addEventListener('change', () => startRunStatePoll());   // (re)start PLC run-state + stacker watch
   $('#runTag').addEventListener('change', () => startRunStatePoll());
   $('#pieceTag').addEventListener('change', () => startRunStatePoll());
+  $('#btnBrowseRun').addEventListener('click', () => openTagPicker('#runTag', 'Pick this line’s run tag'));
+  $('#btnBrowsePiece').addEventListener('click', () => openTagPicker('#pieceTag', 'Pick this line’s stacker count tag'));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeTagPicker(); });
   $('#btnPullPieces').addEventListener('click', () => pullPieces());
   $('#btnSkid').addEventListener('click', () => void saveSkid());
   $('#btnTag').addEventListener('click', () => void printTag());

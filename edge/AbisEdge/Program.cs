@@ -172,13 +172,18 @@ app.MapGet("/piece-count", (LatestTags tags, PieceCountConfig cfg, string? tag) 
     });
 });
 
-// Discovery: browse the UA server's address space to find node ids (the wrapper's
-// view of the INGEAR tags). Pass ?node=<id> to descend; omit for the Objects root.
-// Only available on the OPC UA provider (the mock can't browse).
+// Discovery: browse the OPC server's address space one level at a time to find item ids without
+// hand-mapping them — so a tag picker (e.g. the DAS console choosing a line's piece-count tag) can
+// point-and-click instead of someone RDP-ing to the box to run --probe --browse. Pass ?node=<id> to
+// descend a branch; omit for the root. Works on the OPC UA and Classic-DA providers (and the mock's
+// canned tree); a provider with no browse support → 501, a live browse failure → 502 (with the error).
 app.MapGet("/opc/browse", async (string? node, ITagSource tags, CancellationToken ct) =>
-    tags is ITagBrowser browser
-        ? Results.Ok(await browser.BrowseAsync(node, ct))
-        : Results.Json(new { status = "browse-unavailable", source = tags.Name }, statusCode: 501));
+{
+    if (tags is not ITagBrowser browser)
+        return Results.Json(new { status = "browse-unavailable", source = tags.Name }, statusCode: 501);
+    try { return Results.Ok(await browser.BrowseAsync(node, ct)); }
+    catch (Exception ex) { return Results.Json(new { status = "browse-failed", error = ex.Message }, statusCode: 502); }
+});
 
 app.Run();
 

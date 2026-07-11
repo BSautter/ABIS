@@ -64,6 +64,40 @@ export async function fetchRunState(bases: string[], tag: string): Promise<RunSt
   return { reachable: false, via: '', configured: false, running: null };
 }
 
+/** One node from the edge's /opc/browse — a branch (NodeClass "Object") or a leaf tag ("Variable"). */
+export interface BrowsedTag { nodeId: string; displayName: string; nodeClass: string; }
+
+export interface BrowseResult {
+  reachable: boolean;   // did any edge host respond?
+  supported: boolean;   // false = the provider can't browse (501: e.g. an unconfigured mock)
+  nodes: BrowsedTag[];
+  error?: string;       // a live browse failure (502 message) — distinct from an empty branch
+}
+
+/**
+ * Browse one level of the edge OPC address space (primary→fallback) for tag discovery — powers the
+ * DAS console's tag picker so an operator can pick a line's run-state / piece-count tag without
+ * knowing its exact INGEAR item id. Pass `node` to descend a branch; omit for the root. Branches come
+ * back NodeClass "Object" (descend into them), leaf tags "Variable" (a real item id to wire).
+ */
+export async function browseEdgeTags(bases: string[], node?: string): Promise<BrowseResult> {
+  const q = node ? `?node=${encodeURIComponent(node)}` : '';
+  for (let i = 0; i < bases.length; i++) {
+    try {
+      const r = await fetchWithTimeout(`${bases[i]}/opc/browse${q}`, 4000);
+      if (r.status === 501) return { reachable: true, supported: false, nodes: [] };
+      if (!r.ok) {
+        let error = `HTTP ${r.status}`;
+        try { const b = await r.json() as { error?: string }; if (b?.error) error = b.error; } catch { /* keep the status */ }
+        return { reachable: true, supported: true, nodes: [], error };
+      }
+      const nodes = await r.json() as BrowsedTag[];
+      return { reachable: true, supported: true, nodes: Array.isArray(nodes) ? nodes : [] };
+    } catch { /* unreachable/timeout → try the next host */ }
+  }
+  return { reachable: false, supported: false, nodes: [], error: 'Edge unreachable' };
+}
+
 export interface PieceCountResult {
   reachable: boolean;      // did any host respond at all?
   via: string;             // '' = primary answered, ' (fallback)' = a later host answered

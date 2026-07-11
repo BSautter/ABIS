@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Runtime.Versioning;
 using TitaniumAS.Opc.Client.Common;
 using TitaniumAS.Opc.Client.Da;
+using TitaniumAS.Opc.Client.Da.Browsing;
 
 namespace AbisEdge.Tags;
 
@@ -21,7 +22,7 @@ namespace AbisEdge.Tags;
 /// session so the next poll reconnects (the <c>TagPump</c> retries with backoff).</para>
 /// </summary>
 [SupportedOSPlatform("windows")]
-public sealed class ClassicDaTagSource : ITagSource, IDisposable
+public sealed class ClassicDaTagSource : ITagSource, ITagBrowser, IDisposable
 {
     private readonly string _progId;
     private readonly object _gate = new();               // COM is apartment-sensitive: serialize access
@@ -77,6 +78,39 @@ public sealed class ClassicDaTagSource : ITagSource, IDisposable
         }
 
         return tags.Select(t => byId.TryGetValue(t, out var r) ? r : TagReading.Bad(t)).ToList();
+    }
+
+    /// <summary>Browse one level of the INGEAR DA address space for <c>/opc/browse</c> — the same
+    /// <see cref="OpcDaBrowserAuto"/> walk as <c>--probe --browse</c>, but a single level (the children
+    /// of <paramref name="nodeId"/>, or the root when null/empty) so a caller can descend branch-by-branch
+    /// like the OPC UA browser. Branches come back NodeClass <c>Object</c> (descend into them), leaf items
+    /// <c>Variable</c> (a real INGEAR item id you can wire as a run-state / piece-count tag). READ-ONLY.</summary>
+    public Task<IReadOnlyList<BrowsedNode>> BrowseAsync(string? nodeId, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            try
+            {
+                EnsureConnected();
+                var browser = new OpcDaBrowserAuto(_server!);
+                IReadOnlyList<BrowsedNode> nodes = browser.GetElements(nodeId ?? "")
+                    .Select(e => new BrowsedNode(e.ItemId, Leaf(e.ItemId), e.IsItem ? "Variable" : "Object"))
+                    .ToList();
+                return Task.FromResult(nodes);
+            }
+            catch
+            {
+                Reset();   // drop the session so the next read/browse reconnects
+                throw;     // surfaced by /opc/browse as a clean 502, not a wedged connection
+            }
+        }
+    }
+
+    // The short leaf name (last path segment) of an INGEAR item id, for display alongside the full id.
+    private static string Leaf(string itemId)
+    {
+        var dot = itemId.LastIndexOf('.');
+        return dot >= 0 ? itemId[(dot + 1)..] : itemId;
     }
 
     private void EnsureConnected()

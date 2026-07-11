@@ -39,6 +39,26 @@ public class TagSourceTests
     }
 
     [Fact]
+    public async Task MockTagSource_browses_a_navigable_fake_tree()
+    {
+        // /opc/browse is backed by ITagBrowser; the mock exposes a canned tree so the browse flow
+        // (and a tag picker built on it) works with no OPC server.
+        var src = new MockTagSource();
+
+        var root = await src.BrowseAsync(null, CancellationToken.None);
+        Assert.NotEmpty(root);
+        Assert.All(root, n => Assert.Equal("Object", n.NodeClass));   // root = descendable branches
+
+        // Descend a branch → leaf tags the DAS console can pick, including a piece-count tag.
+        var children = await src.BrowseAsync(root[0].NodeId, CancellationToken.None);
+        Assert.Contains(children, n => n.NodeClass == "Variable");
+        Assert.Contains(children, n => n.NodeId.Contains("piececount"));
+
+        // An unknown node browses empty — not an error.
+        Assert.Empty(await src.BrowseAsync("no-such-branch", CancellationToken.None));
+    }
+
+    [Fact]
     public async Task OpcUaTagSource_returns_Bad_readings_when_the_server_is_unreachable()
     {
         // Resilience contract: a failed connect must yield Bad readings (one per tag),
