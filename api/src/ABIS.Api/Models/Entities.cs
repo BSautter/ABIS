@@ -732,6 +732,9 @@ public sealed class DowntimeInstance
     public DateTime? EndingTime { get; set; }
     public string? Note { get; set; }
     public long? ShiftNum { get; set; }
+    // The downtime reason/type, resolved from the instance's cause segments (dt_instance_detail →
+    // dt_cause.cause_name). MIN() picks a single deterministic cause when an instance has several.
+    public string? DowntimeType { get; set; }
 }
 
 /// <summary>A maintenance log entry (table <c>maint_log</c>).</summary>

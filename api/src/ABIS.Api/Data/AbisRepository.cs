@@ -296,7 +296,9 @@ public sealed class AbisRepository : IAbisRepository
 
     private const string DowntimeCols = """
         instance_num AS InstanceNum, ab_job_num AS AbJobNum, line_num AS LineNum,
-        starting_time AS StartingTime, ending_time AS EndingTime, note AS Note, shift_num AS ShiftNum
+        starting_time AS StartingTime, ending_time AS EndingTime, note AS Note, shift_num AS ShiftNum,
+        (SELECT MIN(c.cause_name) FROM dt_instance_detail d JOIN dt_cause c ON c.id = d.instance_item
+           WHERE d.instance_num = dt_instance.instance_num) AS DowntimeType
         """;
 
     private const string MaintLogCols = """

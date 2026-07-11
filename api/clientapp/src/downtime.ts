@@ -37,8 +37,8 @@ function scaffold(): string {
       <div class="stack"><div class="card">
         <header><h2>Downtime instances</h2></header>
         <div style="overflow-x:auto"><table class="tbl" style="min-width:460px">
-          <thead><tr><th>#</th><th>Job</th><th>Line</th><th>Start</th><th>Note</th></tr></thead>
-          <tbody id="instances"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+          <thead><tr><th>#</th><th>Job</th><th>Line</th><th>Type</th><th>Start</th><th>Note</th></tr></thead>
+          <tbody id="instances"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
         </table></div>
       </div></div>
       <div class="stack"><div class="card">
@@ -75,8 +75,9 @@ async function search(): Promise<void> {
     $('#instances').innerHTML = items.length ? items.map((d) => `
       <tr class="click" data-id="${d.instanceNum}">
         <td class="mono">${esc(d.instanceNum)}</td><td class="mono">${esc(d.abJobNum)}</td><td class="mono">${esc(lineLabel(d.lineNum))}</td>
+        <td>${esc((d as unknown as { downtimeType?: string | null }).downtimeType ?? '—')}</td>
         <td class="mono">${esc(d.startingTime?.toString().slice(0, 16).replace('T', ' '))}</td><td>${esc(d.note)}</td>
-      </tr>`).join('') : '<tr><td colspan="5" class="muted">No matching downtime.</td></tr>';
+      </tr>`).join('') : '<tr><td colspan="6" class="muted">No matching downtime.</td></tr>';
     $('#count').textContent = `${(page.totalCount ?? 0).toLocaleString()} total`;
     document.querySelectorAll<HTMLTableRowElement>('#instances tr.click').forEach((tr) =>
       tr.addEventListener('click', () => void loadInstance(Number(tr.dataset.id))));

@@ -59,6 +59,15 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task GetDowntimeInstances_resolves_the_type_from_its_cause()
+    {
+        // The list carries a DowntimeType resolved from the instance's cause segments (dt_instance_detail
+        // -> dt_cause). At least one seeded instance has a cause, so its type is a real name.
+        var page = await _repo.GetDowntimeInstancesAsync(1, 50, null, null, null, CancellationToken.None);
+        Assert.Contains(page.Items, d => !string.IsNullOrEmpty(d.DowntimeType));
+    }
+
+    [Fact]
     public async Task GetJobs_paginates()
     {
         var p1 = await _repo.GetJobsAsync(1, 2, status: null, orderBy: null, CancellationToken.None);
