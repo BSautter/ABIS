@@ -128,6 +128,16 @@ const shipmentStatus = {
     3: { label: 'Open', tone: 'mut' },
     4: { label: 'On hold', tone: 'warn' },
 };
+// pst_test_result.test_type — the mechanical test-report test type (NUMBER, live values 1–5). Authoritative
+// labels ported from the legacy EDI-863 send window's radio buttons (w_edi_863.srw:752-767, which stamp
+// test_type 1–5). Shown as plain text (statusText), not a severity chip — these are categories, not states.
+const testType = {
+    1: { label: 'First Test', tone: 'info' },
+    2: { label: 'First Test Redo', tone: 'warn' },
+    3: { label: 'First Full Test', tone: 'info' },
+    4: { label: 'Full Test', tone: 'ok' },
+    5: { label: 'Full Test w/o N/R', tone: 'mut' },
+};
 // process_coil.process_coil_status shares the coil_status code space (accounting.js:19 confirms
 // 3=Rejected/7=Rebanded; w_invoice.srw:250/274). receiving coil lines are stamped 2=New / 11=QA
 // on hold (receiving.ts mint), also the coil_status space — so both reuse the coilStatus map.
@@ -145,6 +155,7 @@ export const STATUS_MAPS = {
     userStatus,
     truckStatus,
     shipmentStatus,
+    testType,
 };
 // The plant's real line names (BL78, BL84, BL110, BL108, BL60) live in the LINE table (line_num →
 // line_desc) and are NOT derivable from the number: `line_num` is an internal code (e.g. 4, 7), so the

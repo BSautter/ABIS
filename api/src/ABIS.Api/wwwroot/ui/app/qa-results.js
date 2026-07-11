@@ -6,6 +6,7 @@
 import { AbisClient } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { statusText } from './status-labels.js';
 const $ = (sel) => document.querySelector(sel);
 const client = () => new AbisClient('', { fetch: authFetch });
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -40,7 +41,7 @@ function scaffold() {
 }
 function render(rows, total) {
     $('#results').innerHTML = rows.length ? rows.map((t) => `
-    <tr><td class="mono">${esc(t.createdDate?.toISOString().slice(0, 10))}</td><td class="mono">${esc(t.testType)}</td><td>${esc(t.position)}</td>
+    <tr><td class="mono">${esc(t.createdDate?.toISOString().slice(0, 10))}</td><td>${esc(statusText('testType', t.testType))}</td><td>${esc(t.position)}</td>
       <td class="num">${dec(t.yts)}</td><td class="num">${dec(t.uts)}</td><td class="num">${dec(t.elong)}</td>
       <td class="num">${dec(t.n)}</td><td class="num">${dec(t.r)}</td><td class="num">${dec(t.thickness)}</td><td class="num">${dec(t.width)}</td></tr>`).join('')
         : '<tr><td colspan="10" class="muted">No matching results.</td></tr>';
