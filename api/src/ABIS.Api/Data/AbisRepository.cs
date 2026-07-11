@@ -396,9 +396,12 @@ public sealed class AbisRepository : IAbisRepository
         var p = new DynamicParameters();
         var conditions = new List<string>();
         // completed splits the list: true = Done (job_status 0 = the "completed jobs" card); false = active
-        // (NOT Done and NOT Cancelled = the "uncomplete jobs" card — in-process/new/on-hold).
+        // (NOT Done and NOT Cancelled = the "uncomplete jobs" card — in-process/new/on-hold). job_status is
+        // NULLABLE on Oracle, and `x NOT IN (...)` is UNKNOWN (excluded) when x IS NULL — so guard the active
+        // predicate to keep NULL-status jobs visible (a NULL isn't Done, so it belongs in the active view;
+        // otherwise it would silently vanish, which the pre-split single card never did). SQLite CI hides this.
         if (completed == true) conditions.Add("job_status = 0");
-        else if (completed == false) conditions.Add("job_status NOT IN (0, 3)");
+        else if (completed == false) conditions.Add("(job_status IS NULL OR job_status NOT IN (0, 3))");
         if (status is not null) { conditions.Add("job_status = :status"); p.Add("status", status); }
         // search = an exact job # OR order # (both numeric) — powers the searchable completed-jobs card.
         if (long.TryParse(search, out var s)) { conditions.Add("(ab_job_num = :search OR order_abc_num = :search)"); p.Add("search", s); }

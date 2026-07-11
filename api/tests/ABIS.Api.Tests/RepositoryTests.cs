@@ -79,6 +79,28 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task GetJobs_completed_false_keeps_null_status_jobs_visible()
+    {
+        // job_status is NULLABLE on Oracle. Since `x NOT IN (...)` is UNKNOWN when x IS NULL, a naive
+        // NOT IN would drop NULL-status jobs from the "Uncomplete jobs" card entirely — they'd vanish from
+        // the default active view (the pre-split single card showed them). A NULL isn't Done, so it must
+        // stay in the active list. (SQLite CI seeds no NULL status, so this guards the Oracle behaviour.)
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num, line_num, job_status) VALUES (1099, 9001, 7001, 110, NULL)";
+            cmd.ExecuteNonQuery();
+        }
+
+        var active = await _repo.GetJobsAsync(1, 25, status: null, completed: false, search: null, orderBy: null, CancellationToken.None);
+        Assert.Contains(active.Items, j => j.AbJobNum == 1099);   // NULL status → shown as active work
+
+        var done = await _repo.GetJobsAsync(1, 25, status: null, completed: true, search: null, orderBy: null, CancellationToken.None);
+        Assert.DoesNotContain(done.Items, j => j.AbJobNum == 1099);   // NULL status is not Done
+    }
+
+    [Fact]
     public async Task GetJobs_search_matches_job_or_order_number()
     {
         // Search the completed card by exact job # …
