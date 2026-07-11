@@ -8,7 +8,7 @@
 import { AbisClient, CoilPatch } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
-import { statusChip } from './status-labels.js';
+import { statusChip, buildingLabel } from './status-labels.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
@@ -55,6 +55,10 @@ function scaffold(): string {
 
       <div class="stack">
         <div class="card">
+          <header><h2>Coil detail</h2></header>
+          <div class="body" id="detail"><p class="muted">Select a coil to view its detail, processing history, and inline update.</p></div>
+        </div>
+        <div class="card">
           <header><h2>Weight on hand</h2></header>
           <div class="body">
             <div class="frow" style="margin-bottom:8px">
@@ -65,10 +69,6 @@ function scaffold(): string {
             </div>
             <div id="summary"><p class="muted">Run a rollup.</p></div>
           </div>
-        </div>
-        <div class="card">
-          <header><h2>Coil detail</h2></header>
-          <div class="body" id="detail"><p class="muted">Select a coil to view its detail, processing history, and inline update.</p></div>
         </div>
       </div>
     </div>
@@ -87,7 +87,7 @@ async function search(): Promise<void> {
     $('#coils').innerHTML = items.length ? items.map((c) => `
       <tr class="click" data-id="${c.coilAbcNum}">
         <td class="mono">${esc(c.coilAbcNum)}</td><td>${esc(c.coilAlloy2)}</td><td>${esc(c.coilTemper)}</td>
-        <td>${esc(c.coilLocation)}</td><td>${statusChip('coilStatus', c.coilStatus)}</td><td class="num">${numf(c.netWtBalance)}</td>
+        <td>${esc(buildingLabel(c.coilLocation))}</td><td>${statusChip('coilStatus', c.coilStatus)}</td><td class="num">${numf(c.netWtBalance)}</td>
       </tr>`).join('') : '<tr><td colspan="6" class="muted">No matching coils.</td></tr>';
     $('#coilCount').textContent = `${numf(page.totalCount)} coils`;
     $('#listSub').textContent = `${items.length} shown`;
@@ -104,7 +104,7 @@ async function summary(): Promise<void> {
     const groups = await client().coilInventorySummary(groupBy);
     $('#summary').innerHTML = `<table class="tbl">
       <thead><tr><th>${esc(groupBy)}</th><th class="num">Coils</th><th class="num">Net wt</th><th class="num">On hand</th></tr></thead>
-      <tbody>${groups.length ? groups.map((g) => `<tr><td>${esc(g.key)}</td><td class="num">${numf(g.count)}</td>
+      <tbody>${groups.length ? groups.map((g) => `<tr><td>${esc(groupBy === 'location' ? buildingLabel(g.key) : g.key)}</td><td class="num">${numf(g.count)}</td>
         <td class="num">${numf(g.totalNetWt)}</td><td class="num">${numf(g.totalBalance)}</td></tr>`).join('')
         : '<tr><td colspan="4" class="muted">No data.</td></tr>'}</tbody></table>`;
   } catch (e) { setErr(`Summary failed: ${(e as Error).message}`); }

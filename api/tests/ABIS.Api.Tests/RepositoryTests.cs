@@ -50,6 +50,15 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task GetSheetSkids_defaults_to_newest_first()
+    {
+        var page = await _repo.GetSheetSkidsAsync(1, 25, orderBy: null, CancellationToken.None);
+        var nums = page.Items.Select(s => s.SheetSkidNum).ToList();
+        Assert.True(nums.Count >= 2);
+        Assert.Equal(nums.OrderByDescending(n => n).ToList(), nums);
+    }
+
+    [Fact]
     public async Task GetJobs_paginates()
     {
         var p1 = await _repo.GetJobsAsync(1, 2, status: null, orderBy: null, CancellationToken.None);

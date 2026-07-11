@@ -181,6 +181,20 @@ export function lineLabel(lineNum) {
         return lineNames.get(n);
     return String(lineNum).trim();
 }
+/**
+ * Normalize the plant's inconsistently-entered coil_location values to "Building N" for display. The
+ * floor recorded the same building many ways — a bare number, or BLD / BLG / BLDG / "Building" (± space)
+ * + N, case-insensitive — all meaning the same place (user 2026-07-10: "1", "BLD 1", "blg 1", "BLDG 1"
+ * are all Building 1; "BLD 3", "BLDG 3" are Building 3). Anything that isn't one of those number-based
+ * variants (e.g. a yard/warehouse code) passes through unchanged, so non-building locations aren't mangled.
+ */
+export function buildingLabel(location) {
+    if (location == null)
+        return '';
+    const s = String(location).trim();
+    const m = s.match(/^(?:building|bldg|bld|blg)?\s*(\d+)$/i);
+    return m ? `Building ${m[1]}` : s;
+}
 function lookup(domain, code) {
     if (code == null || code === '')
         return undefined;

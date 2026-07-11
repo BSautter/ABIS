@@ -550,7 +550,9 @@ public sealed class AbisRepository : IAbisRepository
     }
 
     public Task<PagedResult<SheetSkid>> GetSheetSkidsAsync(int page, int pageSize, string? orderBy, CancellationToken ct) =>
-        PageAsync<SheetSkid>(SheetSkidCols, "sheet_skid", orderBy ?? "sheet_skid_num", null, new { }, page, pageSize, ct);
+        // Newest-first by default (sheet_skid_num is monotonic) so finished skids surface current work, not
+        // the oldest rows. A caller-supplied orderBy still wins. (Mirrors the jobs-list default, #167.)
+        PageAsync<SheetSkid>(SheetSkidCols, "sheet_skid", orderBy ?? "sheet_skid_num DESC", null, new { }, page, pageSize, ct);
 
     public async Task<IReadOnlyList<ScrapSkid>> GetJobScrapAsync(long abJobNum, CancellationToken ct)
     {
