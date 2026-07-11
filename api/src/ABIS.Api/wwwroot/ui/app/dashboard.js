@@ -9,6 +9,7 @@
 import { AbisClient } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { statusText } from './status-labels.js';
 import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState } from './edge.js';
 const client = new AbisClient('', { fetch: authFetch });
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -160,7 +161,7 @@ async function load(main) {
         $(main, '#scrap-sub').textContent = `${rows.length} types`;
         $(main, '#scrap-body').innerHTML = rows.length
             ? rows.slice(0, 6).map((r) => `<div style="display:grid;grid-template-columns:70px 1fr 74px;align-items:center;gap:10px;margin-bottom:9px">
-          <span class="mono" style="font-size:11px;color:var(--ink-2)">${esc(r.scrapCode ?? r.scrapType)}</span>
+          <span style="font-size:12px;color:var(--ink-2)">${esc(statusText('scrapType', r.scrapCode ?? r.scrapType))}</span>
           <span style="height:16px;border-radius:5px;background:var(--surface-2);border:1px solid var(--line-2);overflow:hidden;display:block"><i style="display:block;height:100%;width:${Math.round((r.totalNetWt ?? 0) / max * 100)}%;background:var(--accent)"></i></span>
           <span class="mono" style="font-size:11px;text-align:right">${num(r.totalNetWt)} lb</span></div>`).join('')
             : '<p class="muted">No scrap booked.</p>';

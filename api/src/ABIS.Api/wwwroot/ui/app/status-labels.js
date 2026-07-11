@@ -69,9 +69,10 @@ const skidScrapStatus = {
     5: { label: 'Pre-recap', tone: 'warn' },
     6: { label: 'Pallet only', tone: 'info' },
 };
-// scrap_skid.scrap_type — code table SCRAP_TYPE_DESC; ddlb d_acct_scrap_type_list.srd:8 +
-// CHOOSE CASE w_invoice.srw:330-347 (both agree on 1–8). Distinct from the 49-row scrap_type
-// defect catalog used on the Quality page.
+// scrap_skid.scrap_type — the full SCRAP_TYPE_DESC code table (verified live on .230, 2026-07-11:
+// 1–11). 1–8 also match ddlb d_acct_scrap_type_list.srd:8 + CHOOSE CASE w_invoice.srw:330-347; 9–11
+// (Scrap Credit / Full Sheet / Cut Out) come straight from SCRAP_TYPE_DESC — the dashboard "Scrap by
+// type" groups on this and showed code 11 (Cut Out). Distinct from the 49-row scrap defect catalog.
 const scrapType = {
     1: { label: 'Rej. Sheet-Mill', tone: 'mut' },
     2: { label: 'Accu. Scrap', tone: 'mut' },
@@ -81,6 +82,9 @@ const scrapType = {
     6: { label: 'Sample', tone: 'mut' },
     7: { label: 'Tote', tone: 'mut' },
     8: { label: 'Edge Trim', tone: 'mut' },
+    9: { label: 'Scrap Credit', tone: 'mut' },
+    10: { label: 'Full Sheet', tone: 'mut' },
+    11: { label: 'Cut Out', tone: 'mut' },
 };
 // die.status — ddlb d_die_new.srd:10 / d_die_display.srd:10.
 const dieStatus = {

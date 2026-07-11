@@ -131,7 +131,7 @@ function railHtml(active) {
         return `<div class="group" data-group>${esc(g.group)}</div>${items}`;
     }).join('');
     return `
-    <div class="logo"><span class="avatar" style="width:28px;height:28px;border-radius:7px;font-size:11px;">AB</span><b>ABIS</b><span class="chip">v0.3.1</span></div>
+    <div class="logo"><span class="avatar" style="width:28px;height:28px;border-radius:7px;font-size:11px;">AB</span><b>ABIS</b><span class="chip" id="shVersion" title="running version">v…</span></div>
     <nav id="shNav">${groups}</nav>
     <div class="foot"><button id="shCollapse" type="button"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg><span class="lbl">Collapse</span></button></div>`;
 }
@@ -425,6 +425,21 @@ function loginGate() {
 }
 /** Build the shell chrome, gate the nav to the caller's grants, and return the empty
  *  content element the page renders into. Call once at page startup. */
+// Fill the sidebar version badge from the running app (GET / returns the assembly version), so it
+// tracks the deployed build instead of a hardcoded string. Best-effort; leaves the placeholder on failure.
+async function loadVersion() {
+    try {
+        const r = await fetch('/');
+        if (!r.ok)
+            return;
+        const j = await r.json();
+        const v = String(j.version ?? '').split('.').slice(0, 3).join('.'); // 0.4.11.0 → 0.4.11
+        const el = document.querySelector('#shVersion');
+        if (el && v)
+            el.textContent = `v${v}`;
+    }
+    catch { /* leave the placeholder */ }
+}
 export async function initShell(opts) {
     // Adopt mode: detach the page's existing content up front so it isn't visible behind the
     // login gate, then re-home it inside the shell once the chrome is built.
@@ -478,6 +493,7 @@ export async function initShell(opts) {
     wireNotifications();
     observeTables(main); // sortable headers + a filter box on every data table the page renders
     await loadLineNames(authFetch); // line_num → real name (LINE table) so lineLabel shows BL78, not BL4
+    void loadVersion(); // fill the version badge from the running build (non-blocking)
     const id = await gateNav();
     top.querySelector('#shName').textContent = id.name;
     top.querySelector('#shRole').textContent = id.role;
