@@ -167,17 +167,6 @@ const REPORTS: Record<string, { note: string; load: (from?: Date, to?: Date) => 
       { h: 'Balance wt', num: true, f: (r) => num(r.netWtBalance), raw: (r) => r.netWtBalance },
     ],
   },
-  'qa-mechanical': {
-    note: 'Mechanical test results by test type: count + average YTS/UTS/elongation.',
-    load: (f, t) => client().getQaMechanical(f, t),
-    cols: [
-      { h: 'Test type', f: (r) => esc(statusText('testType', r.testType)) },
-      { h: 'Results', num: true, f: (r) => num(r.resultCount), raw: (r) => r.resultCount },
-      { h: 'Avg YTS', num: true, f: (r) => num(r.avgYts, 2), raw: (r) => r.avgYts },
-      { h: 'Avg UTS', num: true, f: (r) => num(r.avgUts, 2), raw: (r) => r.avgUts },
-      { h: 'Avg elong %', num: true, f: (r) => num(r.avgElong, 2), raw: (r) => r.avgElong },
-    ],
-  },
   'scrap-summary': {
     note: 'Scrap by type (code/defect) with skid count + total net weight.',
     load: () => client().getScrapSummary(),

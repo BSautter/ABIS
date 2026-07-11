@@ -80,7 +80,6 @@ const NAV: NavGroup[] = [
   ]},
   { group: 'Quality', items: [
     { id: 'coil-eval', label: 'Coil evaluation', href: '/ui/coil-eval.html', feature: 'Quality Control', icon: I.qc },
-    { id: 'qa-results', label: 'QA results', href: '/ui/qa-results.html', feature: 'Quality Control', icon: I.flask },
     { id: 'recovery', label: 'Recovery', href: '/ui/recovery.html', feature: 'Quality Control', icon: I.recovery },
     { id: 'quality', label: 'Recovery setup', href: '/ui/quality.html', feature: 'Quality Control', icon: I.gear },
   ]},
