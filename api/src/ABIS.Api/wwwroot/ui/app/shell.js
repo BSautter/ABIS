@@ -124,7 +124,7 @@ function initTheme() {
 function railHtml(active) {
     const groups = NAV.map((g) => {
         const items = g.items.map((it) => `
-      <a href="${it.href}" data-id="${it.id}" ${it.feature ? `data-feature="${esc(it.feature)}"` : ''} ${it.soon ? 'data-soon="1"' : ''} class="${it.id === active ? 'active' : ''}">
+      <a href="${it.href}" data-id="${it.id}" ${it.feature ? `data-feature="${esc(it.feature)}"` : ''} class="${it.id === active ? 'active' : ''}">
         <svg viewBox="0 0 24 24">${it.icon}</svg><span class="lbl">${esc(it.label)}</span>${it.badge ? `<span class="badge">${esc(it.badge)}</span>` : ''}
       </a>`).join('');
         return `<div class="group" data-group>${esc(g.group)}</div>${items}`;
@@ -478,10 +478,6 @@ export async function initShell(opts) {
         localStorage.setItem('abis_theme', next);
         applyTheme(next);
     });
-    rail.querySelectorAll('a[data-soon]').forEach((a) => a.addEventListener('click', (e) => {
-        e.preventDefault();
-        alert(`${a.querySelector('.lbl')?.textContent} — screen coming in a later overhaul increment.`);
-    }));
     document.addEventListener('keydown', (e) => {
         if (e.key === '/' && document.activeElement?.tagName !== 'INPUT') {
             e.preventDefault();

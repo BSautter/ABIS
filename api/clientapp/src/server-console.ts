@@ -11,6 +11,7 @@ const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.quer
 const esc = (s: unknown): string =>
   String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
 const setErr = (m: string) => { $('#err').textContent = m; };
+const setOk = (m: string) => { $('#ok').textContent = m; };
 const setBusy = (b: boolean) => document.body.classList.toggle('busy', b);
 
 interface Svc { unit: string; available: boolean; active: boolean; state: string; subState: string; mainPid?: string | null; since?: string | null; }
@@ -26,6 +27,7 @@ function scaffold(): string {
       <button class="btn sm" id="btnRefresh" type="button">Refresh</button>
     </div>
     <div id="err" class="err" style="margin-bottom:8px"></div>
+    <div id="ok" class="ok-note" style="margin-bottom:8px"></div>
     <div id="disabled" style="display:none" class="card"><div class="body">
       <b>Server console is disabled.</b>
       <p class="sub" style="margin:6px 0 0">Set <code>Admin:ServerConsole:Enabled=true</code> in <code>/etc/abis/abis.env</code> (and, for restarts, install the sudoers allowlist) — see <code>docs/SERVER_CONSOLE.md</code>.</p>
@@ -96,11 +98,11 @@ async function loadServices(): Promise<void> {
 
 async function restart(unit: string): Promise<void> {
   if (!confirm(`Restart the "${unit}" service now?`)) return;
-  setErr(''); setBusy(true);
+  setErr(''); setOk(''); setBusy(true);
   try {
     const r = await api(`/api/admin/console/services/${encodeURIComponent(unit)}/restart`, 'POST');
     const body = await r.json().catch(() => ({}));
-    if (r.ok) { setErr(''); await loadServices(); alert(`${unit}: ${(body as { detail?: string }).detail ?? 'restarted'}`); }
+    if (r.ok) { await loadServices(); setOk(`✓ ${unit}: ${(body as { detail?: string }).detail ?? 'restarted'}`); }
     else { setErr(`Restart ${unit} failed: ${(body as { detail?: string }).detail ?? r.status}`); }
   } catch (e) { setErr(`Restart failed: ${(e as Error).message}`); }
   finally { setBusy(false); }

@@ -9,6 +9,7 @@ import { initShell } from './shell.js';
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const setErr = (m) => { $('#err').textContent = m; };
+const setOk = (m) => { $('#ok').textContent = m; };
 const setBusy = (b) => document.body.classList.toggle('busy', b);
 let restartAllowed = false;
 const api = (path, method = 'GET') => authFetch(path, { method });
@@ -20,6 +21,7 @@ function scaffold() {
       <button class="btn sm" id="btnRefresh" type="button">Refresh</button>
     </div>
     <div id="err" class="err" style="margin-bottom:8px"></div>
+    <div id="ok" class="ok-note" style="margin-bottom:8px"></div>
     <div id="disabled" style="display:none" class="card"><div class="body">
       <b>Server console is disabled.</b>
       <p class="sub" style="margin:6px 0 0">Set <code>Admin:ServerConsole:Enabled=true</code> in <code>/etc/abis/abis.env</code> (and, for restarts, install the sudoers allowlist) — see <code>docs/SERVER_CONSOLE.md</code>.</p>
@@ -104,14 +106,14 @@ async function restart(unit) {
     if (!confirm(`Restart the "${unit}" service now?`))
         return;
     setErr('');
+    setOk('');
     setBusy(true);
     try {
         const r = await api(`/api/admin/console/services/${encodeURIComponent(unit)}/restart`, 'POST');
         const body = await r.json().catch(() => ({}));
         if (r.ok) {
-            setErr('');
             await loadServices();
-            alert(`${unit}: ${body.detail ?? 'restarted'}`);
+            setOk(`✓ ${unit}: ${body.detail ?? 'restarted'}`);
         }
         else {
             setErr(`Restart ${unit} failed: ${body.detail ?? r.status}`);
