@@ -1045,6 +1045,228 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Server console: status of the allowlisted systemd units (abis, nginx). Read-only.
+     * @return OK
+     */
+    getServerServices() {
+        let url_ = this.baseUrl + "/api/admin/console/services";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetServerServices(_response);
+        });
+    }
+    processGetServerServices(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 403) {
+            return response.text().then((_responseText) => {
+                return throwException("Forbidden", status, _responseText, _headers);
+            });
+        }
+        else if (status === 503) {
+            return response.text().then((_responseText) => {
+                return throwException("Service Unavailable", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Server console: tail an allowlisted unit's journal (read-only). ?tail=N (clamped).
+     * @param tail (optional)
+     * @return OK
+     */
+    getServerServiceLogs(unit, tail) {
+        let url_ = this.baseUrl + "/api/admin/console/services/{unit}/logs?";
+        if (unit === undefined || unit === null)
+            throw new globalThis.Error("The parameter 'unit' must be defined.");
+        url_ = url_.replace("{unit}", encodeURIComponent("" + unit));
+        if (tail === null)
+            throw new globalThis.Error("The parameter 'tail' cannot be null.");
+        else if (tail !== undefined)
+            url_ += "tail=" + encodeURIComponent("" + tail) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetServerServiceLogs(_response);
+        });
+    }
+    processGetServerServiceLogs(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 403) {
+            return response.text().then((_responseText) => {
+                return throwException("Forbidden", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 503) {
+            return response.text().then((_responseText) => {
+                return throwException("Service Unavailable", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Server console: restart an allowlisted unit (mutating — needs AllowRestart + the sudoers allowlist). 409 if not permitted / failed.
+     * @return OK
+     */
+    restartServerService(unit) {
+        let url_ = this.baseUrl + "/api/admin/console/services/{unit}/restart";
+        if (unit === undefined || unit === null)
+            throw new globalThis.Error("The parameter 'unit' must be defined.");
+        url_ = url_.replace("{unit}", encodeURIComponent("" + unit));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processRestartServerService(_response);
+        });
+    }
+    processRestartServerService(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 403) {
+            return response.text().then((_responseText) => {
+                return throwException("Forbidden", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status === 503) {
+            return response.text().then((_responseText) => {
+                return throwException("Service Unavailable", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Server console: read-only view of the DB-host crontab (via a command-locked channel). 503 until configured.
+     * @return OK
+     */
+    getHostCron() {
+        let url_ = this.baseUrl + "/api/admin/console/host/cron";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetHostCron(_response);
+        });
+    }
+    processGetHostCron(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 403) {
+            return response.text().then((_responseText) => {
+                return throwException("Forbidden", status, _responseText, _headers);
+            });
+        }
+        else if (status === 503) {
+            return response.text().then((_responseText) => {
+                return throwException("Service Unavailable", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * List the action/audit log, newest first.
      * @param page (optional)
      * @param pageSize (optional)
@@ -3559,6 +3781,123 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * The cause-segments (reason + duration) logged against a downtime instance.
+     * @return OK
+     */
+    getDowntimeSegments(instanceNum) {
+        let url_ = this.baseUrl + "/api/downtime/{instanceNum}/segments";
+        if (instanceNum === undefined || instanceNum === null)
+            throw new globalThis.Error("The parameter 'instanceNum' must be defined.");
+        url_ = url_.replace("{instanceNum}", encodeURIComponent("" + instanceNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetDowntimeSegments(_response);
+        });
+    }
+    processGetDowntimeSegments(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(DowntimeSegment.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Add a cause-segment (reason + duration) to a downtime instance.
+     * @return Created
+     */
+    addDowntimeSegment(instanceNum, body) {
+        let url_ = this.baseUrl + "/api/downtime/{instanceNum}/segments";
+        if (instanceNum === undefined || instanceNum === null)
+            throw new globalThis.Error("The parameter 'instanceNum' must be defined.");
+        url_ = url_.replace("{instanceNum}", encodeURIComponent("" + instanceNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processAddDowntimeSegment(_response);
+        });
+    }
+    processAddDowntimeSegment(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                let result201 = null;
+                let resultData201 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result201 = DowntimeSegment.fromJS(resultData201);
+                return result201;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * List outbound EDI transactions, newest first (paged, sortable; filter by customerId/transactionTypeId).
      * @param page (optional)
      * @param pageSize (optional)
@@ -3770,15 +4109,17 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * List production jobs (paged, filterable by status, sortable).
+     * List production jobs (paged; filter by status, completed=Done vs active, or search job/order #).
      * @param page (optional)
      * @param pageSize (optional)
      * @param status (optional)
+     * @param completed (optional)
+     * @param search (optional)
      * @param sort (optional)
      * @param dir (optional)
      * @return OK
      */
-    listJobs(page, pageSize, status, sort, dir) {
+    listJobs(page, pageSize, status, completed, search, sort, dir) {
         let url_ = this.baseUrl + "/api/jobs?";
         if (page === null)
             throw new globalThis.Error("The parameter 'page' cannot be null.");
@@ -3792,6 +4133,14 @@ export class AbisClient {
             throw new globalThis.Error("The parameter 'status' cannot be null.");
         else if (status !== undefined)
             url_ += "status=" + encodeURIComponent("" + status) + "&";
+        if (completed === null)
+            throw new globalThis.Error("The parameter 'completed' cannot be null.");
+        else if (completed !== undefined)
+            url_ += "completed=" + encodeURIComponent("" + completed) + "&";
+        if (search === null)
+            throw new globalThis.Error("The parameter 'search' cannot be null.");
+        else if (search !== undefined)
+            url_ += "search=" + encodeURIComponent("" + search) + "&";
         if (sort === null)
             throw new globalThis.Error("The parameter 'sort' cannot be null.");
         else if (sort !== undefined)
@@ -5163,6 +5512,40 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Report-not-triggered check — whether outbound EDI looks stalled during business hours (config-gated).
+     * @return OK
+     */
+    reportStall() {
+        let url_ = this.baseUrl + "/health/report-stall";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processReportStall(_response);
+        });
+    }
+    processReportStall(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Browser OIDC client config (or { oidc:false } to use the API-key field).
      * @return OK
      */
@@ -5187,6 +5570,115 @@ export class AbisClient {
         if (status === 200) {
             return response.text().then((_responseText) => {
                 return;
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Sign in with an ABIS user login + password (verified against Active Directory when Auth:Ldap is enabled, else the local credential store); returns a bearer token that drives RBAC.
+     * @return OK
+     */
+    login(body) {
+        let url_ = this.baseUrl + "/auth/login";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processLogin(_response);
+        });
+    }
+    processLogin(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 403) {
+            return response.text().then((_responseText) => {
+                return throwException("Forbidden", status, _responseText, _headers);
+            });
+        }
+        else if (status === 501) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Implemented", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Change the signed-in user's own ABIS password (sets it if none exists yet).
+     * @return OK
+     */
+    changePassword(body) {
+        let url_ = this.baseUrl + "/auth/change-password";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processChangePassword(_response);
+        });
+    }
+    processChangePassword(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                return throwException("Bad Request", status, _responseText, _headers);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -8967,6 +9459,61 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Create a new sales quote (revision 1).
+     * @return Created
+     */
+    createSalesQuote(body) {
+        let url_ = this.baseUrl + "/api/sales/quotes";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCreateSalesQuote(_response);
+        });
+    }
+    processCreateSalesQuote(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                let result201 = null;
+                let resultData201 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result201 = SalesQuote.fromJS(resultData201);
+                return result201;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * A quote header (a specific revision of a quote).
      * @return OK
      */
@@ -9666,6 +10213,127 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Edit an application user's login/name/status (requires User Control; 409 on a colliding login).
+     * @return No Content
+     */
+    updateSecurityUser(userId, body) {
+        let url_ = this.baseUrl + "/api/security/users/{userId}";
+        if (userId === undefined || userId === null)
+            throw new globalThis.Error("The parameter 'userId' must be defined.");
+        url_ = url_.replace("{userId}", encodeURIComponent("" + userId));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processUpdateSecurityUser(_response);
+        });
+    }
+    processUpdateSecurityUser(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 403) {
+            return response.text().then((_responseText) => {
+                return throwException("Forbidden", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Remove an application user and their grants/groups/credential (requires User Control).
+     * @return No Content
+     */
+    deleteSecurityUser(userId) {
+        let url_ = this.baseUrl + "/api/security/users/{userId}";
+        if (userId === undefined || userId === null)
+            throw new globalThis.Error("The parameter 'userId' must be defined.");
+        url_ = url_.replace("{userId}", encodeURIComponent("" + userId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeleteSecurityUser(_response);
+        });
+    }
+    processDeleteSecurityUser(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 403) {
+            return response.text().then((_responseText) => {
+                return throwException("Forbidden", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * The groups a user belongs to.
      * @return OK
      */
@@ -10085,6 +10753,70 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Set/reset a user's initial password (requires User Control; the user must change it on next sign-in).
+     * @return No Content
+     */
+    setUserPassword(userId, body) {
+        let url_ = this.baseUrl + "/api/security/users/{userId}/password";
+        if (userId === undefined || userId === null)
+            throw new globalThis.Error("The parameter 'userId' must be defined.");
+        url_ = url_.replace("{userId}", encodeURIComponent("" + userId));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processSetUserPassword(_response);
+        });
+    }
+    processSetUserPassword(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 403) {
+            return response.text().then((_responseText) => {
+                return throwException("Forbidden", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Set a user's privilege on a feature (0 = ReadOnly, 1 = Write; requires User Control).
      * @return No Content
      */
@@ -10152,6 +10884,61 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Clear a user's direct grant on a feature (requires User Control).
+     * @return No Content
+     */
+    deleteUserApplicationGrant(userId, applicationId) {
+        let url_ = this.baseUrl + "/api/security/users/{userId}/applications/{applicationId}";
+        if (userId === undefined || userId === null)
+            throw new globalThis.Error("The parameter 'userId' must be defined.");
+        url_ = url_.replace("{userId}", encodeURIComponent("" + userId));
+        if (applicationId === undefined || applicationId === null)
+            throw new globalThis.Error("The parameter 'applicationId' must be defined.");
+        url_ = url_.replace("{applicationId}", encodeURIComponent("" + applicationId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeleteUserApplicationGrant(_response);
+        });
+    }
+    processDeleteUserApplicationGrant(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 403) {
+            return response.text().then((_responseText) => {
+                return throwException("Forbidden", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Set a group's privilege on a feature (0 = ReadOnly, 1 = Write; requires User Control).
      * @return No Content
      */
@@ -10194,6 +10981,61 @@ export class AbisClient {
                 let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
                 result400 = HttpValidationProblemDetails.fromJS(resultData400);
                 return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 403) {
+            return response.text().then((_responseText) => {
+                return throwException("Forbidden", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Clear a group's grant on a feature (requires User Control).
+     * @return No Content
+     */
+    deleteGroupApplicationGrant(groupId, applicationId) {
+        let url_ = this.baseUrl + "/api/security/groups/{groupId}/applications/{applicationId}";
+        if (groupId === undefined || groupId === null)
+            throw new globalThis.Error("The parameter 'groupId' must be defined.");
+        url_ = url_.replace("{groupId}", encodeURIComponent("" + groupId));
+        if (applicationId === undefined || applicationId === null)
+            throw new globalThis.Error("The parameter 'applicationId' must be defined.");
+        url_ = url_.replace("{applicationId}", encodeURIComponent("" + applicationId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeleteGroupApplicationGrant(_response);
+        });
+    }
+    processDeleteGroupApplicationGrant(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
             });
         }
         else if (status === 401) {
@@ -10319,6 +11161,223 @@ export class AbisClient {
         else if (status === 404) {
             return response.text().then((_responseText) => {
                 return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * A group's per-feature grants (0 = ReadOnly, 1 = Write).
+     * @return OK
+     */
+    getGroupApplicationGrants(groupId) {
+        let url_ = this.baseUrl + "/api/security/groups/{groupId}/applications";
+        if (groupId === undefined || groupId === null)
+            throw new globalThis.Error("The parameter 'groupId' must be defined.");
+        url_ = url_.replace("{groupId}", encodeURIComponent("" + groupId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetGroupApplicationGrants(_response);
+        });
+    }
+    processGetGroupApplicationGrants(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(EffectivePermission.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * The users who belong to a group.
+     * @return OK
+     */
+    getGroupMembers(groupId) {
+        let url_ = this.baseUrl + "/api/security/groups/{groupId}/members";
+        if (groupId === undefined || groupId === null)
+            throw new globalThis.Error("The parameter 'groupId' must be defined.");
+        url_ = url_.replace("{groupId}", encodeURIComponent("" + groupId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetGroupMembers(_response);
+        });
+    }
+    processGetGroupMembers(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(SecurityUser.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Remove a security group and its memberships/grants (requires User Control).
+     * @return No Content
+     */
+    deleteSecurityGroup(groupId) {
+        let url_ = this.baseUrl + "/api/security/groups/{groupId}";
+        if (groupId === undefined || groupId === null)
+            throw new globalThis.Error("The parameter 'groupId' must be defined.");
+        url_ = url_.replace("{groupId}", encodeURIComponent("" + groupId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeleteSecurityGroup(_response);
+        });
+    }
+    processDeleteSecurityGroup(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 403) {
+            return response.text().then((_responseText) => {
+                return throwException("Forbidden", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Remove a protected feature and its grants (requires User Control; the User Control feature itself is protected).
+     * @return No Content
+     */
+    deleteSecurityApplication(applicationId) {
+        let url_ = this.baseUrl + "/api/security/applications/{applicationId}";
+        if (applicationId === undefined || applicationId === null)
+            throw new globalThis.Error("The parameter 'applicationId' must be defined.");
+        url_ = url_.replace("{applicationId}", encodeURIComponent("" + applicationId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeleteSecurityApplication(_response);
+        });
+    }
+    processDeleteSecurityApplication(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 403) {
+            return response.text().then((_responseText) => {
+                return throwException("Forbidden", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -10888,6 +11947,58 @@ export class AbisClient {
         else if (status === 412) {
             return response.text().then((_responseText) => {
                 return throwException("Precondition Failed", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Close out a shipment / BOL — mark it shipped and stamp the sent + actual dates.
+     * @return OK
+     */
+    closeShipment(packingList) {
+        let url_ = this.baseUrl + "/api/shipments/{packingList}/close";
+        if (packingList === undefined || packingList === null)
+            throw new globalThis.Error("The parameter 'packingList' must be defined.");
+        url_ = url_.replace("{packingList}", encodeURIComponent("" + packingList));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCloseShipment(_response);
+        });
+    }
+    processCloseShipment(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = Shipment.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -11941,6 +13052,481 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * List truck appointments (paged; filter by direction / status / scheduled-date range).
+     * @param page (optional)
+     * @param pageSize (optional)
+     * @param direction (optional)
+     * @param status (optional)
+     * @param from (optional)
+     * @param to (optional)
+     * @return OK
+     */
+    listTruckAppointments(page, pageSize, direction, status, from, to) {
+        let url_ = this.baseUrl + "/api/truck-appointments?";
+        if (page === null)
+            throw new globalThis.Error("The parameter 'page' cannot be null.");
+        else if (page !== undefined)
+            url_ += "page=" + encodeURIComponent("" + page) + "&";
+        if (pageSize === null)
+            throw new globalThis.Error("The parameter 'pageSize' cannot be null.");
+        else if (pageSize !== undefined)
+            url_ += "pageSize=" + encodeURIComponent("" + pageSize) + "&";
+        if (direction === null)
+            throw new globalThis.Error("The parameter 'direction' cannot be null.");
+        else if (direction !== undefined)
+            url_ += "direction=" + encodeURIComponent("" + direction) + "&";
+        if (status === null)
+            throw new globalThis.Error("The parameter 'status' cannot be null.");
+        else if (status !== undefined)
+            url_ += "status=" + encodeURIComponent("" + status) + "&";
+        if (from === null)
+            throw new globalThis.Error("The parameter 'from' cannot be null.");
+        else if (from !== undefined)
+            url_ += "from=" + encodeURIComponent(from ? "" + from.toISOString() : "") + "&";
+        if (to === null)
+            throw new globalThis.Error("The parameter 'to' cannot be null.");
+        else if (to !== undefined)
+            url_ += "to=" + encodeURIComponent(to ? "" + to.toISOString() : "") + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processListTruckAppointments(_response);
+        });
+    }
+    processListTruckAppointments(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = TruckAppointmentPagedResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Schedule a truck appointment.
+     * @return Created
+     */
+    createTruckAppointment(body) {
+        let url_ = this.baseUrl + "/api/truck-appointments";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCreateTruckAppointment(_response);
+        });
+    }
+    processCreateTruckAppointment(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                let result201 = null;
+                let resultData201 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result201 = TruckAppointment.fromJS(resultData201);
+                return result201;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Get one truck appointment.
+     * @return OK
+     */
+    getTruckAppointment(id) {
+        let url_ = this.baseUrl + "/api/truck-appointments/{id}";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetTruckAppointment(_response);
+        });
+    }
+    processGetTruckAppointment(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = TruckAppointment.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Edit a truck appointment.
+     * @return OK
+     */
+    updateTruckAppointment(id, body) {
+        let url_ = this.baseUrl + "/api/truck-appointments/{id}";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processUpdateTruckAppointment(_response);
+        });
+    }
+    processUpdateTruckAppointment(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = TruckAppointment.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Look up truck appointments by BOL / ref number or appointment id (driver kiosk).
+     * @return OK
+     */
+    lookupTruckAppointments(q) {
+        let url_ = this.baseUrl + "/api/truck-appointments/lookup?";
+        if (q === undefined || q === null)
+            throw new globalThis.Error("The parameter 'q' must be defined and cannot be null.");
+        else
+            url_ += "q=" + encodeURIComponent("" + q) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processLookupTruckAppointments(_response);
+        });
+    }
+    processLookupTruckAppointments(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(TruckAppointment.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Gate/kiosk check-in — stamp arrival + set status 'Parked out back'; an optional body captures the driver name/phone (kiosk sign-in).
+     * @param body (optional)
+     * @return OK
+     */
+    checkInTruck(id, body) {
+        let url_ = this.baseUrl + "/api/truck-appointments/{id}/check-in";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCheckInTruck(_response);
+        });
+    }
+    processCheckInTruck(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = TruckAppointment.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Gate check-out — stamp departure + set status Signed-out; an outbound truck also closes its linked BOL. 409 if it never checked in.
+     * @return OK
+     */
+    checkOutTruck(id) {
+        let url_ = this.baseUrl + "/api/truck-appointments/{id}/check-out";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCheckOutTruck(_response);
+        });
+    }
+    processCheckOutTruck(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = TruckAppointment.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Set a truck's location status (0 Pending, 1 Late, 2 Parked, 3–5 Sent to Bldg 1–3, 6 Signed out, 9 Cancelled).
+     * @return OK
+     */
+    setTruckStatus(id, body) {
+        let url_ = this.baseUrl + "/api/truck-appointments/{id}/status";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PATCH",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processSetTruckStatus(_response);
+        });
+    }
+    processSetTruckStatus(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = TruckAppointment.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Warehouse update of a sheet skid (location / ticket / status; 409 if the skid has shipped).
      * @return OK
      */
@@ -12296,6 +13882,34 @@ export class CarrierWrite {
         data["carrierState"] = this.carrierState;
         data["carrierPhoneNumber"] = this.carrierPhoneNumber;
         data["status"] = this.status;
+        return data;
+    }
+}
+export class ChangePasswordRequest {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.currentPassword = _data["currentPassword"];
+            this.newPassword = _data["newPassword"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new ChangePasswordRequest();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["currentPassword"] = this.currentPassword;
+        data["newPassword"] = this.newPassword;
         return data;
     }
 }
@@ -13827,6 +15441,7 @@ export class DowntimeInstance {
             this.endingTime = _data["endingTime"] ? new Date(_data["endingTime"].toString()) : undefined;
             this.note = _data["note"];
             this.shiftNum = _data["shiftNum"];
+            this.downtimeType = _data["downtimeType"];
         }
     }
     static fromJS(data) {
@@ -13844,6 +15459,7 @@ export class DowntimeInstance {
         data["endingTime"] = this.endingTime ? this.endingTime.toISOString() : undefined;
         data["note"] = this.note;
         data["shiftNum"] = this.shiftNum;
+        data["downtimeType"] = this.downtimeType;
         return data;
     }
 }
@@ -13922,6 +15538,72 @@ export class DowntimeInstanceWrite {
         data["endingTime"] = this.endingTime ? this.endingTime.toISOString() : undefined;
         data["note"] = this.note;
         data["shiftNum"] = this.shiftNum;
+        return data;
+    }
+}
+export class DowntimeSegment {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.id = _data["id"];
+            this.instanceNum = _data["instanceNum"];
+            this.instanceItem = _data["instanceItem"];
+            this.causeName = _data["causeName"];
+            this.duration = _data["duration"];
+            this.note = _data["note"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new DowntimeSegment();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["id"] = this.id;
+        data["instanceNum"] = this.instanceNum;
+        data["instanceItem"] = this.instanceItem;
+        data["causeName"] = this.causeName;
+        data["duration"] = this.duration;
+        data["note"] = this.note;
+        return data;
+    }
+}
+export class DowntimeSegmentWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.causeId = _data["causeId"];
+            this.durationSeconds = _data["durationSeconds"];
+            this.note = _data["note"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new DowntimeSegmentWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["causeId"] = this.causeId;
+        data["durationSeconds"] = this.durationSeconds;
+        data["note"] = this.note;
         return data;
     }
 }
@@ -14948,6 +16630,34 @@ export class LineErrorWrite {
         data["abJobNum"] = this.abJobNum;
         data["title"] = this.title;
         data["message"] = this.message;
+        return data;
+    }
+}
+export class LoginRequest {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.login = _data["login"];
+            this.password = _data["password"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new LoginRequest();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["login"] = this.login;
+        data["password"] = this.password;
         return data;
     }
 }
@@ -17536,6 +19246,76 @@ export class SalesQuoteListRow {
         return data;
     }
 }
+export class SalesQuoteWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.customerId = _data["customerId"];
+            this.contactId = _data["contactId"];
+            this.enduserId = _data["enduserId"];
+            this.endUse = _data["endUse"];
+            this.partShape = _data["partShape"];
+            this.material = _data["material"];
+            this.alloy = _data["alloy"];
+            this.temper = _data["temper"];
+            this.gauge = _data["gauge"];
+            this.width = _data["width"];
+            this.length = _data["length"];
+            this.lineNum = _data["lineNum"];
+            this.lineSpeed = _data["lineSpeed"];
+            this.numOfCoil = _data["numOfCoil"];
+            this.numOfSkid = _data["numOfSkid"];
+            this.totalLbProcessed = _data["totalLbProcessed"];
+            this.totalRevPerHr = _data["totalRevPerHr"];
+            this.variableCost = _data["variableCost"];
+            this.fixedCost = _data["fixedCost"];
+            this.regProcessCharge = _data["regProcessCharge"];
+            this.ros = _data["ros"];
+            this.quoteNotes = _data["quoteNotes"];
+            this.validDate = _data["validDate"] ? new Date(_data["validDate"].toString()) : undefined;
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new SalesQuoteWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["customerId"] = this.customerId;
+        data["contactId"] = this.contactId;
+        data["enduserId"] = this.enduserId;
+        data["endUse"] = this.endUse;
+        data["partShape"] = this.partShape;
+        data["material"] = this.material;
+        data["alloy"] = this.alloy;
+        data["temper"] = this.temper;
+        data["gauge"] = this.gauge;
+        data["width"] = this.width;
+        data["length"] = this.length;
+        data["lineNum"] = this.lineNum;
+        data["lineSpeed"] = this.lineSpeed;
+        data["numOfCoil"] = this.numOfCoil;
+        data["numOfSkid"] = this.numOfSkid;
+        data["totalLbProcessed"] = this.totalLbProcessed;
+        data["totalRevPerHr"] = this.totalRevPerHr;
+        data["variableCost"] = this.variableCost;
+        data["fixedCost"] = this.fixedCost;
+        data["regProcessCharge"] = this.regProcessCharge;
+        data["ros"] = this.ros;
+        data["quoteNotes"] = this.quoteNotes;
+        data["validDate"] = this.validDate ? this.validDate.toISOString() : undefined;
+        return data;
+    }
+}
 export class SalesReminder {
     constructor(data) {
         if (data) {
@@ -18249,6 +20029,32 @@ export class SecurityUserWrite {
         data["userMiddleInitial"] = this.userMiddleInitial;
         data["userStatus"] = this.userStatus;
         data["userNotes"] = this.userNotes;
+        return data;
+    }
+}
+export class SetPasswordRequest {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.password = _data["password"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new SetPasswordRequest();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["password"] = this.password;
         return data;
     }
 }
@@ -19301,6 +21107,224 @@ export class TransportationMethod {
         data = typeof data === 'object' ? data : {};
         data["transMethodCode"] = this.transMethodCode;
         data["transDesc"] = this.transDesc;
+        return data;
+    }
+}
+export class TruckAppointment {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.appointmentId = _data["appointmentId"];
+            this.direction = _data["direction"];
+            this.carrierId = _data["carrierId"];
+            this.carrierName = _data["carrierName"];
+            this.dock = _data["dock"];
+            this.scheduledStart = _data["scheduledStart"] ? new Date(_data["scheduledStart"].toString()) : undefined;
+            this.scheduledEnd = _data["scheduledEnd"] ? new Date(_data["scheduledEnd"].toString()) : undefined;
+            this.refType = _data["refType"];
+            this.refId = _data["refId"];
+            this.driverName = _data["driverName"];
+            this.driverPhone = _data["driverPhone"];
+            this.tractorNum = _data["tractorNum"];
+            this.trailerNum = _data["trailerNum"];
+            this.sealNum = _data["sealNum"];
+            this.quantity = _data["quantity"];
+            this.truckStatus = _data["truckStatus"];
+            this.checkinTime = _data["checkinTime"] ? new Date(_data["checkinTime"].toString()) : undefined;
+            this.checkoutTime = _data["checkoutTime"] ? new Date(_data["checkoutTime"].toString()) : undefined;
+            this.notes = _data["notes"];
+            this.createdUtc = _data["createdUtc"] ? new Date(_data["createdUtc"].toString()) : undefined;
+            this.updatedUtc = _data["updatedUtc"] ? new Date(_data["updatedUtc"].toString()) : undefined;
+            this.createdBy = _data["createdBy"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new TruckAppointment();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["appointmentId"] = this.appointmentId;
+        data["direction"] = this.direction;
+        data["carrierId"] = this.carrierId;
+        data["carrierName"] = this.carrierName;
+        data["dock"] = this.dock;
+        data["scheduledStart"] = this.scheduledStart ? this.scheduledStart.toISOString() : undefined;
+        data["scheduledEnd"] = this.scheduledEnd ? this.scheduledEnd.toISOString() : undefined;
+        data["refType"] = this.refType;
+        data["refId"] = this.refId;
+        data["driverName"] = this.driverName;
+        data["driverPhone"] = this.driverPhone;
+        data["tractorNum"] = this.tractorNum;
+        data["trailerNum"] = this.trailerNum;
+        data["sealNum"] = this.sealNum;
+        data["quantity"] = this.quantity;
+        data["truckStatus"] = this.truckStatus;
+        data["checkinTime"] = this.checkinTime ? this.checkinTime.toISOString() : undefined;
+        data["checkoutTime"] = this.checkoutTime ? this.checkoutTime.toISOString() : undefined;
+        data["notes"] = this.notes;
+        data["createdUtc"] = this.createdUtc ? this.createdUtc.toISOString() : undefined;
+        data["updatedUtc"] = this.updatedUtc ? this.updatedUtc.toISOString() : undefined;
+        data["createdBy"] = this.createdBy;
+        return data;
+    }
+}
+export class TruckAppointmentPagedResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            if (Array.isArray(_data["items"])) {
+                this.items = [];
+                for (let item of _data["items"])
+                    this.items.push(TruckAppointment.fromJS(item));
+            }
+            this.page = _data["page"];
+            this.pageSize = _data["pageSize"];
+            this.totalCount = _data["totalCount"];
+            this.totalPages = _data["totalPages"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new TruckAppointmentPagedResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        if (Array.isArray(this.items)) {
+            data["items"] = [];
+            for (let item of this.items)
+                data["items"].push(item ? item.toJSON() : undefined);
+        }
+        data["page"] = this.page;
+        data["pageSize"] = this.pageSize;
+        data["totalCount"] = this.totalCount;
+        data["totalPages"] = this.totalPages;
+        return data;
+    }
+}
+export class TruckAppointmentWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.direction = _data["direction"];
+            this.carrierId = _data["carrierId"];
+            this.carrierName = _data["carrierName"];
+            this.dock = _data["dock"];
+            this.scheduledStart = _data["scheduledStart"] ? new Date(_data["scheduledStart"].toString()) : undefined;
+            this.scheduledEnd = _data["scheduledEnd"] ? new Date(_data["scheduledEnd"].toString()) : undefined;
+            this.refType = _data["refType"];
+            this.refId = _data["refId"];
+            this.driverName = _data["driverName"];
+            this.driverPhone = _data["driverPhone"];
+            this.tractorNum = _data["tractorNum"];
+            this.trailerNum = _data["trailerNum"];
+            this.sealNum = _data["sealNum"];
+            this.quantity = _data["quantity"];
+            this.notes = _data["notes"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new TruckAppointmentWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["direction"] = this.direction;
+        data["carrierId"] = this.carrierId;
+        data["carrierName"] = this.carrierName;
+        data["dock"] = this.dock;
+        data["scheduledStart"] = this.scheduledStart ? this.scheduledStart.toISOString() : undefined;
+        data["scheduledEnd"] = this.scheduledEnd ? this.scheduledEnd.toISOString() : undefined;
+        data["refType"] = this.refType;
+        data["refId"] = this.refId;
+        data["driverName"] = this.driverName;
+        data["driverPhone"] = this.driverPhone;
+        data["tractorNum"] = this.tractorNum;
+        data["trailerNum"] = this.trailerNum;
+        data["sealNum"] = this.sealNum;
+        data["quantity"] = this.quantity;
+        data["notes"] = this.notes;
+        return data;
+    }
+}
+export class TruckCheckInBody {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.driverName = _data["driverName"];
+            this.driverPhone = _data["driverPhone"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new TruckCheckInBody();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["driverName"] = this.driverName;
+        data["driverPhone"] = this.driverPhone;
+        return data;
+    }
+}
+export class TruckStatusPatch {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.status = _data["status"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new TruckStatusPatch();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["status"] = this.status;
         return data;
     }
 }
