@@ -10,7 +10,7 @@ import { AbisClient } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
 import { statusText } from './status-labels.js';
-import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState } from './edge.js';
+import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount } from './edge.js';
 const client = new AbisClient('', { fetch: authFetch });
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const num = (v) => (v ?? 0).toLocaleString();
@@ -169,13 +169,20 @@ async function load(main) {
     else
         $(main, '#scrap-body').innerHTML = '<p class="err">Scrap summary unavailable.</p>';
 }
-// ---- Live production-floor feed (edge /run-state per line, .170→.175 failover) ----------------
-// The plant's presses by their edge run-state tag. Both OPC boxes read all three (see ./edge).
 const FLOOR_LINES = [
-    { name: 'BL110', tag: 'PLC5-BL110.strokecnt' },
+    { name: 'BL110', tag: 'PLC5-BL110.strokecnt', pieceTags: ['stacker110.station1_stack_counter', 'stacker110.station2_stack_counter'] },
     { name: 'BL78', tag: 'PLC5-BL78.strokecnt' },
     { name: 'BL84', tag: 'PLC5-BL84.strokecnt' },
 ];
+// Sum a line's stacker station counters (skipping any station that reads unknown/unreachable). Null =
+// the line has no stacker tags, or none read a value — so the row shows no count rather than a bogus 0.
+async function floorPieces(bases, line) {
+    if (!line.pieceTags?.length)
+        return null;
+    const reads = await Promise.all(line.pieceTags.map((t) => fetchPieceCount(bases, t)));
+    const counts = reads.map((r) => r.count).filter((n) => n != null);
+    return counts.length ? counts.reduce((a, b) => a + b, 0) : null;
+}
 function floorChip(r) {
     if (!r.reachable)
         return '<span class="chip">offline</span>';
@@ -184,7 +191,10 @@ function floorChip(r) {
     return r.running ? '<span class="chip ok">running</span>' : '<span class="chip warn">stopped</span>';
 }
 async function pollFloor(main, bases) {
-    const results = await Promise.all(FLOOR_LINES.map((l) => fetchRunState(bases, l.tag)));
+    const [results, pieces] = await Promise.all([
+        Promise.all(FLOOR_LINES.map((l) => fetchRunState(bases, l.tag))),
+        Promise.all(FLOOR_LINES.map((l) => floorPieces(bases, l))),
+    ]);
     const el = $(main, '#floor-feed');
     // If NO line reached any edge host, the edge just isn't reachable from here — say so plainly
     // rather than showing every line as an error.
@@ -194,8 +204,14 @@ async function pollFloor(main, bases) {
         return;
     }
     const onFallback = results.some((r) => r.reachable && r.via);
-    const rows = FLOOR_LINES.map((l, i) => `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 2px;border-bottom:1px solid var(--line-2)">
-      <span style="font-weight:600">${esc(l.name)}</span>${floorChip(results[i])}</div>`).join('');
+    const rows = FLOOR_LINES.map((l, i) => {
+        const pcs = pieces[i] != null
+            ? `<span class="muted" style="font-size:12px" title="Live stacker piece count (both stations)">${pieces[i].toLocaleString()} pcs</span>`
+            : '';
+        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line-2)">
+      <span style="font-weight:600">${esc(l.name)}</span>
+      <span style="display:flex;align-items:center;gap:10px">${pcs}${floorChip(results[i])}</span></div>`;
+    }).join('');
     const foot = onFallback
         ? '<p class="muted" style="margin-top:9px;font-size:11px">⚠ primary edge (.170) not responding — serving via .175 fallback.</p>'
         : '';
