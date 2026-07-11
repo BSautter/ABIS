@@ -40,6 +40,16 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task GetJobs_defaults_to_newest_first()
+    {
+        // No orderBy → most-recent-first (descending ab_job_num), so current jobs surface, not 1999 ones.
+        var page = await _repo.GetJobsAsync(1, 25, status: null, orderBy: null, CancellationToken.None);
+        var nums = page.Items.Select(j => j.AbJobNum).ToList();
+        Assert.True(nums.Count >= 2);
+        Assert.Equal(nums.OrderByDescending(n => n).ToList(), nums);
+    }
+
+    [Fact]
     public async Task GetJobs_paginates()
     {
         var p1 = await _repo.GetJobsAsync(1, 2, status: null, orderBy: null, CancellationToken.None);

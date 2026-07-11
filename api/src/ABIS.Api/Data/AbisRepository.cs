@@ -390,7 +390,9 @@ public sealed class AbisRepository : IAbisRepository
     }
 
     public Task<PagedResult<AbJob>> GetJobsAsync(int page, int pageSize, int? status, string? orderBy, CancellationToken ct) =>
-        PageAsync<AbJob>(JobCols, "ab_job", orderBy ?? "ab_job_num",
+        // Default to newest-first: ab_job_num is monotonic (a sequence), so DESC surfaces current jobs
+        // instead of ones from 1999. (A caller-supplied orderBy still wins.)
+        PageAsync<AbJob>(JobCols, "ab_job", orderBy ?? "ab_job_num DESC",
             status is null ? null : "job_status = :status",
             new { status }, page, pageSize, ct);
 
