@@ -643,7 +643,8 @@ function showTab(name) {
 // instead of typing an exact INGEAR item id. Descends branch-by-branch; a leaf fills the field,
 // persists it, and restarts the poll (same path as editing the input by hand).
 let pickerEl = null;
-function closeTagPicker() { pickerEl?.remove(); pickerEl = null; }
+let pickerRender = null; // re-renders the current level with the filter applied
+function closeTagPicker() { pickerEl?.remove(); pickerEl = null; pickerRender = null; }
 function openTagPicker(targetId, title) {
     const bases = parseEdgeUrls(v('#edgeUrl'));
     if (bases.length === 0) {
@@ -660,6 +661,9 @@ function openTagPicker(targetId, title) {
         <button type="button" class="btn sm ghost" id="pkClose" style="color:var(--rail-ink);border-color:var(--rail-line)">Close</button>
       </header>
       <div id="pkCrumb" style="padding:8px 16px;font-size:12px;color:var(--rail-ink-2);border-bottom:1px solid var(--rail-line);word-break:break-all"></div>
+      <div style="padding:8px 12px;border-bottom:1px solid var(--rail-line)">
+        <input id="pkFilter" placeholder="filter tags…" autocomplete="off" style="width:100%;box-sizing:border-box;background:var(--rail-2);color:var(--rail-ink);border:1px solid var(--rail-line);border-radius:6px;padding:7px 9px" />
+      </div>
       <div id="pkList" style="overflow:auto;padding:8px"><div class="muted" style="padding:12px">Loading…</div></div>
     </div>`;
     document.body.appendChild(el);
@@ -667,12 +671,15 @@ function openTagPicker(targetId, title) {
     el.addEventListener('click', (e) => { if (e.target === el)
         closeTagPicker(); });
     $('#pkClose').addEventListener('click', closeTagPicker);
+    $('#pkFilter').addEventListener('input', () => pickerRender?.());
     void pickerBrowse(bases, targetId, []);
 }
 async function pickerBrowse(bases, targetId, path) {
     if (!pickerEl)
         return;
     const crumb = $('#pkCrumb'), list = $('#pkList');
+    pickerRender = null;
+    setV('#pkFilter', ''); // fresh level → clear any prior filter
     const parts = ['root', ...path.map((p) => p.name)];
     crumb.innerHTML = parts.map((n, i) => `<a data-i="${i - 1}" style="color:var(--rail-ink);cursor:pointer;text-decoration:underline">${esc(n)}</a>`).join(' <span>›</span> ');
     crumb.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => void pickerBrowse(bases, targetId, path.slice(0, Number(a.dataset.i) + 1))));
@@ -698,26 +705,40 @@ async function pickerBrowse(bases, targetId, path) {
         return;
     }
     const row = 'display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;padding:9px 12px;background:none;border:0;border-radius:8px;color:var(--rail-ink);cursor:pointer';
-    list.innerHTML = res.nodes.map((n, i) => {
-        const branch = n.nodeClass !== 'Variable';
-        return `<button type="button" class="pk-item" data-i="${i}" style="${row}">
-      <span style="font-size:14px">${branch ? '📁' : '🏷'} ${esc(n.displayName || n.nodeId)}${branch ? ' ›' : ''}</span>
-      <small style="color:var(--rail-ink-2)">${esc(n.nodeId)}</small></button>`;
-    }).join('');
-    list.querySelectorAll('.pk-item').forEach((b) => {
-        b.addEventListener('mouseover', () => { b.style.background = 'var(--rail-active)'; });
-        b.addEventListener('mouseout', () => { b.style.background = 'none'; });
-        b.addEventListener('click', () => {
-            const n = res.nodes[Number(b.dataset.i)];
-            if (n.nodeClass !== 'Variable')
-                void pickerBrowse(bases, targetId, [...path, { id: n.nodeId, name: n.displayName || n.nodeId }]);
-            else {
-                setV(targetId, n.nodeId);
-                closeTagPicker();
-                startRunStatePoll();
-            } // fill + persist + restart the poll
+    // Filter the current level's nodes by the search box (matches leaf name OR full id), keeping each node's
+    // original index so a click resolves correctly. INGEAR branches can hold 40+ tags, so the filter is how
+    // you actually find one (e.g. type "count" under stacker110 to jump to the stack counters).
+    const renderNodes = () => {
+        const f = v('#pkFilter').toLowerCase();
+        const hits = res.nodes.map((n, i) => ({ n, i })).filter(({ n }) => !f || `${n.displayName} ${n.nodeId}`.toLowerCase().includes(f));
+        if (hits.length === 0) {
+            list.innerHTML = `<div class="muted" style="padding:12px">No tags match “${esc(f)}”.</div>`;
+            return;
+        }
+        list.innerHTML = hits.map(({ n, i }) => {
+            const branch = n.nodeClass !== 'Variable';
+            return `<button type="button" class="pk-item" data-i="${i}" style="${row}">
+        <span style="font-size:14px">${branch ? '📁' : '🏷'} ${esc(n.displayName || n.nodeId)}${branch ? ' ›' : ''}</span>
+        <small style="color:var(--rail-ink-2)">${esc(n.nodeId)}</small></button>`;
+        }).join('');
+        list.querySelectorAll('.pk-item').forEach((b) => {
+            b.addEventListener('mouseover', () => { b.style.background = 'var(--rail-active)'; });
+            b.addEventListener('mouseout', () => { b.style.background = 'none'; });
+            b.addEventListener('click', () => {
+                const n = res.nodes[Number(b.dataset.i)];
+                if (n.nodeClass !== 'Variable')
+                    void pickerBrowse(bases, targetId, [...path, { id: n.nodeId, name: n.displayName || n.nodeId }]);
+                else {
+                    setV(targetId, n.nodeId);
+                    closeTagPicker();
+                    startRunStatePoll();
+                } // fill + persist + restart the poll
+            });
         });
-    });
+    };
+    pickerRender = renderNodes;
+    renderNodes();
+    $('#pkFilter').focus();
 }
 (async () => {
     await initAuth();
