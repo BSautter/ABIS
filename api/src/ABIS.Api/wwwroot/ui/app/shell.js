@@ -16,6 +16,7 @@
 import { AbisClient } from './generated/abis-client.js';
 import { initAuth, authFetch, loginWithUser, changePassword, currentUserName, isSignedIn, signOutSession } from './auth.js';
 import { observeTables } from './table-tools.js';
+import { loadLineNames } from './status-labels.js';
 import { DEFAULT_EDGE_URLS, parseEdgeUrls, probeEdgeHosts } from './edge.js';
 // Icons are inline SVG path/shape markup (stroked via currentColor in theme.css).
 const I = {
@@ -476,6 +477,7 @@ export async function initShell(opts) {
     wireUserMenu();
     wireNotifications();
     observeTables(main); // sortable headers + a filter box on every data table the page renders
+    await loadLineNames(authFetch); // line_num → real name (LINE table) so lineLabel shows BL78, not BL4
     const id = await gateNav();
     top.querySelector('#shName').textContent = id.name;
     top.querySelector('#shRole').textContent = id.role;

@@ -13,7 +13,7 @@
 // Compiled by tsc to wwwroot/ui/app/das-console.js; served at /ui/das-console.html.
 import { AbisClient, SheetSkidWrite, ScrapSkidWrite, DowntimeInstanceWrite } from './generated/abis-client.js';
 import { initAuth, authFetch } from './auth.js';
-import { statusChip, lineLabel } from './status-labels.js';
+import { statusChip, lineLabel, loadLineNames } from './status-labels.js';
 import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount } from './edge.js';
 const $ = (sel) => document.querySelector(sel);
 const client = () => new AbisClient('', { fetch: authFetch });
@@ -638,6 +638,7 @@ function showTab(name) {
 }
 (async () => {
     await initAuth();
+    await loadLineNames(authFetch); // real line names (LINE table) for the job header
     document.body.innerHTML = scaffold();
     $('#jobForm').addEventListener('submit', (e) => { e.preventDefault(); void loadJob(); });
     ['skids', 'scrap', 'downtime'].forEach((t) => $(`#tab-${t}`).addEventListener('click', () => showTab(t)));

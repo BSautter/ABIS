@@ -146,18 +146,40 @@ export const STATUS_MAPS = {
     truckStatus,
     shipmentStatus,
 };
-/**
- * Display name for a production line. The plant's lines are all "BL"-prefixed on the floor —
- * BL78, BL84, BL108, BL110 (confirmed by the OPC tags `PLC5-BL84…` and the `bl78/bl84/bl108/bl110`
- * operator logins) — so a bare `line_num` reads far more clearly as its floor name. A purely numeric
- * value gets the `BL` prefix; anything already carrying a non-digit (or blank) is passed through
- * untouched, so a future non-BL designation isn't mangled.
- */
+// The plant's real line names (BL78, BL84, BL110, BL108, BL60) live in the LINE table (line_num →
+// line_desc) and are NOT derivable from the number: `line_num` is an internal code (e.g. 4, 7), so the
+// old `BL${num}` guess rendered bogus BL4 / BL7. Callers load this map once from GET /api/lookups/lines
+// (the shell + the standalone DAS kiosks do); lineLabel then resolves the real name, falling back to the
+// raw code only when the map isn't loaded or the line isn't in it.
+let lineNames = new Map();
+/** Populate the line_num → name map from ProductionLine rows (GET /api/lookups/lines). */
+export function setLineNames(lines) {
+    const m = new Map();
+    for (const l of lines ?? []) {
+        const n = Number(l.lineNum);
+        const name = (l.lineDesc ?? '').trim();
+        if (Number.isFinite(n) && name)
+            m.set(n, name);
+    }
+    lineNames = m;
+}
+/** Best-effort: fetch the LINE lookup and populate the map. Pass authFetch (kept auth-agnostic here). */
+export async function loadLineNames(fetchFn) {
+    try {
+        const r = await fetchFn('/api/lookups/lines');
+        if (r.ok)
+            setLineNames(await r.json());
+    }
+    catch { /* best-effort — lineLabel falls back to the raw code */ }
+}
+/** A production line's real display name (from the LINE table), or the raw code if unmapped. */
 export function lineLabel(lineNum) {
     if (lineNum == null || lineNum === '')
         return '—';
-    const s = String(lineNum).trim();
-    return /^\d+$/.test(s) ? `BL${s}` : s;
+    const n = Number(lineNum);
+    if (Number.isFinite(n) && lineNames.has(n))
+        return lineNames.get(n);
+    return String(lineNum).trim();
 }
 function lookup(domain, code) {
     if (code == null || code === '')

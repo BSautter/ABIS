@@ -11,7 +11,7 @@
 // Compiled by tsc to wwwroot/ui/app/das-board.js; served at /ui/das-board.html.
 import { AbisClient } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
-import { statusChip, lineLabel } from './status-labels.js';
+import { statusChip, lineLabel, loadLineNames } from './status-labels.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
@@ -137,6 +137,7 @@ function tick(): void { $('#clock').textContent = new Date().toLocaleTimeString(
 (async () => {
   document.body.innerHTML = scaffold();
   tick(); setInterval(tick, 1000);
+  await loadLineNames(authFetch);   // real line names (LINE table) for the tile headers
   await load();
   setInterval(() => void load(), REFRESH_MS);
 })();
