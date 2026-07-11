@@ -391,12 +391,22 @@ public sealed class AbisRepository : IAbisRepository
         };
     }
 
-    public Task<PagedResult<AbJob>> GetJobsAsync(int page, int pageSize, int? status, string? orderBy, CancellationToken ct) =>
+    public Task<PagedResult<AbJob>> GetJobsAsync(int page, int pageSize, int? status, bool? completed, string? search, string? orderBy, CancellationToken ct)
+    {
+        var p = new DynamicParameters();
+        var conditions = new List<string>();
+        // completed splits the list: true = Done (job_status 0 = the "completed jobs" card); false = active
+        // (NOT Done and NOT Cancelled = the "uncomplete jobs" card — in-process/new/on-hold).
+        if (completed == true) conditions.Add("job_status = 0");
+        else if (completed == false) conditions.Add("job_status NOT IN (0, 3)");
+        if (status is not null) { conditions.Add("job_status = :status"); p.Add("status", status); }
+        // search = an exact job # OR order # (both numeric) — powers the searchable completed-jobs card.
+        if (long.TryParse(search, out var s)) { conditions.Add("(ab_job_num = :search OR order_abc_num = :search)"); p.Add("search", s); }
+        var where = conditions.Count > 0 ? string.Join(" AND ", conditions) : null;
         // Default to newest-first: ab_job_num is monotonic (a sequence), so DESC surfaces current jobs
         // instead of ones from 1999. (A caller-supplied orderBy still wins.)
-        PageAsync<AbJob>(JobCols, "ab_job", orderBy ?? "ab_job_num DESC",
-            status is null ? null : "job_status = :status",
-            new { status }, page, pageSize, ct);
+        return PageAsync<AbJob>(JobCols, "ab_job", orderBy ?? "ab_job_num DESC", where, p, page, pageSize, ct);
+    }
 
     public async Task<AbJob?> GetJobAsync(long abJobNum, CancellationToken ct)
     {

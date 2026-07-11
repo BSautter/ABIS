@@ -75,7 +75,7 @@ test('getCoil(missing) throws a typed ApiException(404)', async () => {
 });
 
 test('listJobs filters + sorts via the typed client', async () => {
-  const page = await client.listJobs(1, 25, undefined, 'jobStatus', 'desc');
+  const page = await client.listJobs(1, 25, undefined, undefined, undefined, 'jobStatus', 'desc');
   const statuses = page.items.map((j) => j.jobStatus);
   assert.deepEqual(statuses, [...statuses].sort((a, b) => b - a));
 });
@@ -246,7 +246,7 @@ test('skids flow: list + create sheet & scrap skids (typed)', async () => {
 
 // The production-jobs SPA's flow: list, open a job + its contents, patch it (typed).
 test('jobs flow: list, get, children, patch (typed)', async () => {
-  const page = await client.listJobs(1, 5, undefined, undefined, undefined);
+  const page = await client.listJobs(1, 5, undefined, undefined, undefined, undefined, undefined);
   assert.ok(page.items.length > 0);
   const job = await client.getJob(1001);
   assert.equal(job.abJobNum, 1001);

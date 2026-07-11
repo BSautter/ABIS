@@ -99,7 +99,7 @@ async function load(main) {
     const [coils, hold, jobs, edi, scrap, sched] = await Promise.allSettled([
         client.listCoils(1, 1, undefined, undefined, undefined, undefined, undefined, undefined),
         client.getOnHoldCoils(),
-        client.listJobs(1, 1, undefined, undefined, undefined),
+        client.listJobs(1, 1, undefined, undefined, undefined, undefined, undefined),
         client.listEdiTransactions(1, 50, undefined, undefined, undefined, undefined),
         client.getScrapSummary(),
         client.getScheduledJobs(),

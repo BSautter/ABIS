@@ -26,7 +26,7 @@ public sealed class RepositoryTests : IDisposable
     [Fact]
     public async Task GetJobs_returns_all_seeded_jobs()
     {
-        var page = await _repo.GetJobsAsync(1, 25, status: null, orderBy: null, CancellationToken.None);
+        var page = await _repo.GetJobsAsync(1, 25, status: null, completed: null, search: null, orderBy: null, CancellationToken.None);
         Assert.Equal(3, page.TotalCount);
         Assert.Equal(3, page.Items.Count);
     }
@@ -34,7 +34,7 @@ public sealed class RepositoryTests : IDisposable
     [Fact]
     public async Task GetJobs_filters_by_status()
     {
-        var page = await _repo.GetJobsAsync(1, 25, status: 1, orderBy: null, CancellationToken.None);
+        var page = await _repo.GetJobsAsync(1, 25, status: 1, completed: null, search: null, orderBy: null, CancellationToken.None);
         Assert.Equal(2, page.TotalCount);
         Assert.All(page.Items, j => Assert.Equal(1, j.JobStatus));
     }
@@ -43,7 +43,7 @@ public sealed class RepositoryTests : IDisposable
     public async Task GetJobs_defaults_to_newest_first()
     {
         // No orderBy → most-recent-first (descending ab_job_num), so current jobs surface, not 1999 ones.
-        var page = await _repo.GetJobsAsync(1, 25, status: null, orderBy: null, CancellationToken.None);
+        var page = await _repo.GetJobsAsync(1, 25, status: null, completed: null, search: null, orderBy: null, CancellationToken.None);
         var nums = page.Items.Select(j => j.AbJobNum).ToList();
         Assert.True(nums.Count >= 2);
         Assert.Equal(nums.OrderByDescending(n => n).ToList(), nums);
@@ -59,6 +59,40 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task GetJobs_completed_true_returns_only_done()
+    {
+        // completed=true → the searchable "Completed jobs" card: job_status 0 only (1003 is Done).
+        var page = await _repo.GetJobsAsync(1, 25, status: null, completed: true, search: null, orderBy: null, CancellationToken.None);
+        Assert.Single(page.Items);
+        Assert.All(page.Items, j => Assert.Equal(0, j.JobStatus));
+        Assert.Contains(page.Items, j => j.AbJobNum == 1003);
+    }
+
+    [Fact]
+    public async Task GetJobs_completed_false_excludes_done_and_cancelled()
+    {
+        // completed=false → the "Uncomplete jobs" card: active work only (1001, 1002 are In process; 1003 Done is out).
+        var page = await _repo.GetJobsAsync(1, 25, status: null, completed: false, search: null, orderBy: null, CancellationToken.None);
+        Assert.Equal(2, page.TotalCount);
+        Assert.All(page.Items, j => Assert.NotEqual(0, j.JobStatus));
+        Assert.DoesNotContain(page.Items, j => j.AbJobNum == 1003);
+    }
+
+    [Fact]
+    public async Task GetJobs_search_matches_job_or_order_number()
+    {
+        // Search the completed card by exact job # …
+        var byJob = await _repo.GetJobsAsync(1, 25, status: null, completed: true, search: "1003", orderBy: null, CancellationToken.None);
+        Assert.Single(byJob.Items);
+        Assert.Equal(1003, byJob.Items[0].AbJobNum);
+
+        // … or by order #, which fans out to every job on that order.
+        var byOrder = await _repo.GetJobsAsync(1, 25, status: null, completed: null, search: "9001", orderBy: null, CancellationToken.None);
+        Assert.Equal(2, byOrder.TotalCount);
+        Assert.All(byOrder.Items, j => Assert.Equal(9001, j.OrderAbcNum));
+    }
+
+    [Fact]
     public async Task GetDowntimeInstances_resolves_the_type_from_its_cause()
     {
         // The list carries a DowntimeType resolved from the instance's cause segments (dt_instance_detail
@@ -70,12 +104,12 @@ public sealed class RepositoryTests : IDisposable
     [Fact]
     public async Task GetJobs_paginates()
     {
-        var p1 = await _repo.GetJobsAsync(1, 2, status: null, orderBy: null, CancellationToken.None);
+        var p1 = await _repo.GetJobsAsync(1, 2, status: null, completed: null, search: null, orderBy: null, CancellationToken.None);
         Assert.Equal(3, p1.TotalCount);
         Assert.Equal(2, p1.Items.Count);
         Assert.Equal(2, p1.TotalPages);
 
-        var p2 = await _repo.GetJobsAsync(2, 2, status: null, orderBy: null, CancellationToken.None);
+        var p2 = await _repo.GetJobsAsync(2, 2, status: null, completed: null, search: null, orderBy: null, CancellationToken.None);
         Assert.Single(p2.Items);
     }
 

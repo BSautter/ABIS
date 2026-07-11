@@ -44,6 +44,6 @@ public sealed class MissingTableGracefulTests
         // an empty DB must still surface the error — we did not blanket-swallow "table does not exist".
         var repo = EmptyRepo();
         await Assert.ThrowsAnyAsync<Exception>(
-            () => repo.GetJobsAsync(1, 25, status: null, orderBy: null, CancellationToken.None));
+            () => repo.GetJobsAsync(1, 25, status: null, completed: null, search: null, orderBy: null, CancellationToken.None));
     }
 }

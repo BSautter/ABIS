@@ -3267,7 +3267,7 @@
         "tags": [
           "Jobs"
         ],
-        "summary": "List production jobs (paged, filterable by status, sortable).",
+        "summary": "List production jobs (paged; filter by status, completed=Done vs active, or search job/order #).",
         "operationId": "ListJobs",
         "parameters": [
           {
@@ -3294,6 +3294,20 @@
             "schema": {
               "type": "integer",
               "format": "int32"
+            }
+          },
+          {
+            "name": "completed",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
             }
           },
           {

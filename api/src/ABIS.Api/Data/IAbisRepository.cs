@@ -14,7 +14,7 @@ public interface IAbisRepository
     Task<DateTime?> GetLatestEdiActivityAsync(CancellationToken ct);
 
     // ---- Jobs -----------------------------------------------------------
-    Task<PagedResult<AbJob>> GetJobsAsync(int page, int pageSize, int? status, string? orderBy, CancellationToken ct);
+    Task<PagedResult<AbJob>> GetJobsAsync(int page, int pageSize, int? status, bool? completed, string? search, string? orderBy, CancellationToken ct);
     Task<AbJob?> GetJobAsync(long abJobNum, CancellationToken ct);
     Task<IReadOnlyList<ProcessCoil>> GetJobCoilsAsync(long abJobNum, CancellationToken ct);
     Task<IReadOnlyList<SheetSkid>> GetJobSheetSkidsAsync(long abJobNum, CancellationToken ct);

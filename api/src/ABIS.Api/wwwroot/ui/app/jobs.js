@@ -1,7 +1,9 @@
 // ABIS Production Jobs — the heart of ABIS (slitting / cut-to-length job processing), restyled to
-// the design system in the shared shell (#4 polish). Job search, a job detail with its processed
-// coils / finished skids / scrap / in-process partials / scans, an operational patch, and a create
-// form. Typed calls via the NSwag client.
+// the design system in the shared shell (#4 polish). Two lists now: "Uncomplete jobs" (active work —
+// in-process / new / on-hold, never Done or Cancelled) and a searchable "Completed jobs" card, plus a
+// shared job detail (processed coils / finished skids / scrap / partials / scans), an operational
+// patch, and a create form. Typed calls via the NSwag client; the two lists use authFetch so they can
+// pass the completed/search filters the generated client doesn't carry.
 //
 // Compiled by tsc to wwwroot/ui/app/jobs.js; served at /ui/jobs.html.
 import { AbisClient, JobWrite, JobPatch } from './generated/abis-client.js';
@@ -19,8 +21,34 @@ const setV = (id, value) => { $(id).value = value == null ? '' : String(value); 
 const num = (n) => (n == null ? '' : n.toLocaleString());
 const dShow = (d) => (d == null ? '' : d.toLocaleString());
 const dLocal = (d) => (d == null ? '' : d.toISOString().slice(0, 16));
-const chip = (s) => `<span class="chip mut">${esc(s ?? '—')}</span>`;
+// The two lists come off raw fetch, so dates arrive as ISO strings, not Date objects.
+const dText = (s) => {
+    if (s == null || s === '')
+        return '';
+    const dt = s instanceof Date ? s : new Date(s);
+    return Number.isNaN(dt.getTime()) ? String(s) : dt.toLocaleString();
+};
 let selectedJob = null;
+async function fetchJobs(params) {
+    const qs = new URLSearchParams({ page: '1', pageSize: '50' });
+    for (const [k, val] of Object.entries(params))
+        qs.set(k, String(val));
+    const res = await authFetch(`/api/jobs?${qs.toString()}`);
+    if (!res.ok)
+        throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+function jobRowsHtml(items, lastCol) {
+    return items.map((j) => `
+    <tr class="click" data-id="${j.abJobNum}">
+      <td class="mono">${esc(j.abJobNum)}</td><td class="mono">${esc(lineLabel(j.lineNum))}</td>
+      <td>${statusChip('jobStatus', j.jobStatus)}</td><td class="num">${esc(num(j.materialYield))}</td>
+      <td class="mono">${esc(lastCol(j))}</td>
+    </tr>`).join('');
+}
+function wireRows(sel) {
+    document.querySelectorAll(`${sel} tr.click`).forEach((tr) => tr.addEventListener('click', () => void loadJob(Number(tr.dataset.id))));
+}
 function scaffold() {
     const tab = (id, label) => `<button id="tab-${id}" type="button">${label}</button>`;
     const pane = (id, head) => `<div id="pane-${id}"><div style="overflow-x:auto"><table class="tbl" style="min-width:520px"><thead><tr>${head}</tr></thead><tbody id="t${id[0].toUpperCase()}${id.slice(1)}"><tr><td class="muted">Select a job.</td></tr></tbody></table></div></div>`;
@@ -31,17 +59,11 @@ function scaffold() {
       <div class="shift-tag" id="count">—</div>
     </div>
 
-    <div class="card" style="margin-bottom:16px"><div class="body">
-      <form id="searchForm" class="frow">
-        <div class="fld"><label>Status</label><input id="fStatus" inputmode="numeric" style="width:100px" placeholder="any" /></div>
-        <button class="btn sm" type="submit">Search</button>
-      </form>
-      <div id="err" class="err" style="margin-top:8px"></div>
-    </div></div>
+    <div id="err" class="err" style="margin-bottom:12px"></div>
 
     <div class="grid">
       <div class="stack"><div class="card">
-        <header><h2>Jobs</h2><span class="sub" id="listSub"></span></header>
+        <header><h2>Uncomplete jobs</h2><span class="sub" id="listSub"></span></header>
         <div style="overflow-x:auto"><table class="tbl" style="min-width:460px">
           <thead><tr><th>Job</th><th>Line</th><th>Status</th><th class="num">Yield</th><th>Due</th></tr></thead>
           <tbody id="jobs"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
@@ -61,6 +83,21 @@ function scaffold() {
           <div class="frow" style="margin-top:10px;align-items:center"><button class="btn sm" id="btnPatch" type="button">Save update</button><span id="ok" class="ok-note"></span></div>
         </div>
       </div></div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <header><h2>Completed jobs</h2><span class="sub" id="completedSub"></span></header>
+      <div class="body">
+        <form id="completedForm" class="frow">
+          <div class="fld"><label>Search job / order #</label><input id="fSearch" inputmode="numeric" style="width:170px" placeholder="job or order #" /></div>
+          <button class="btn sm" type="submit">Search</button>
+          <button class="btn sm ghost" id="btnRecent" type="button">Recent</button>
+        </form>
+      </div>
+      <div style="overflow-x:auto"><table class="tbl" style="min-width:460px">
+        <thead><tr><th>Job</th><th>Line</th><th>Status</th><th class="num">Yield</th><th>Finished</th></tr></thead>
+        <tbody id="completedJobs"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+      </table></div>
     </div>
 
     <div class="card" style="margin-top:16px">
@@ -94,21 +131,37 @@ function scaffold() {
     </div>
   </div>`;
 }
-async function search() {
+// The "Uncomplete jobs" card: active work only (completed=false → NOT Done, NOT Cancelled).
+async function loadUncomplete() {
     setErr('');
     setBusy(true);
-    const status = v('#fStatus') ? Number(v('#fStatus')) : undefined;
     try {
-        const page = await client().listJobs(1, 50, status, undefined, undefined);
+        const page = await fetchJobs({ completed: false });
         const items = page.items ?? [];
-        $('#jobs').innerHTML = items.length ? items.map((j) => `
-      <tr class="click" data-id="${j.abJobNum}">
-        <td class="mono">${esc(j.abJobNum)}</td><td class="mono">${esc(lineLabel(j.lineNum))}</td>
-        <td>${statusChip('jobStatus', j.jobStatus)}</td><td class="num">${esc(num(j.materialYield))}</td><td class="mono">${esc(dShow(j.dueDate))}</td>
-      </tr>`).join('') : '<tr><td colspan="5" class="muted">No matching jobs.</td></tr>';
-        $('#count').textContent = `${(page.totalCount ?? 0).toLocaleString()} jobs`;
+        $('#jobs').innerHTML = jobRowsHtml(items, (j) => dText(j.dueDate)) || '<tr><td colspan="5" class="muted">No active jobs.</td></tr>';
+        $('#count').textContent = `${(page.totalCount ?? 0).toLocaleString()} active`;
         $('#listSub').textContent = `${items.length} shown`;
-        document.querySelectorAll('#jobs tr.click').forEach((tr) => tr.addEventListener('click', () => void loadJob(Number(tr.dataset.id))));
+        wireRows('#jobs');
+    }
+    catch (e) {
+        setErr(`Load failed: ${e.message}`);
+    }
+    finally {
+        setBusy(false);
+    }
+}
+// The "Completed jobs" card: Done jobs (completed=true), optionally narrowed by an exact job / order #.
+async function loadCompleted() {
+    setErr('');
+    setBusy(true);
+    const search = v('#fSearch');
+    try {
+        const page = await fetchJobs(search ? { completed: true, search } : { completed: true });
+        const items = page.items ?? [];
+        $('#completedJobs').innerHTML = jobRowsHtml(items, (j) => dText(j.timeDateFinished))
+            || `<tr><td colspan="5" class="muted">${search ? 'No completed job matches that number.' : 'No completed jobs.'}</td></tr>`;
+        $('#completedSub').textContent = search ? `${items.length} match` : `${(page.totalCount ?? 0).toLocaleString()} total`;
+        wireRows('#completedJobs');
     }
     catch (e) {
         setErr(`Search failed: ${e.message}`);
@@ -165,6 +218,7 @@ async function loadChildren(id) {
     fill('#tScans', (scans ?? []).map((x) => `<tr><td class="mono">${esc(x.scanId)}</td><td class="mono">${esc(dShow(x.scanDatetime))}</td>
     <td>${esc(x.scanStation)}</td><td>${esc(x.note)}</td></tr>`).join(''), 4, 'No scans.');
 }
+// A patch can flip a job Done → refresh both lists so it moves from Uncomplete to Completed.
 async function patch() {
     if (selectedJob == null)
         return;
@@ -180,7 +234,7 @@ async function patch() {
     try {
         await client().patchJob(selectedJob, body);
         setOk(`✓ Updated job #${selectedJob}.`);
-        await search();
+        await Promise.all([loadUncomplete(), loadCompleted()]);
     }
     catch (e) {
         setErr(`Update failed: ${e.message}`);
@@ -207,7 +261,7 @@ async function createJob() {
     try {
         const created = await client().createJob(body);
         setOk(`✓ Created job #${created.abJobNum}.`);
-        await search();
+        await loadUncomplete();
         if (created.abJobNum != null)
             await loadJob(created.abJobNum);
     }
@@ -227,10 +281,11 @@ function showTab(name) {
 (async () => {
     const main = await initShell({ active: 'jobs' });
     main.innerHTML = scaffold();
-    $('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); void search(); });
+    $('#completedForm').addEventListener('submit', (e) => { e.preventDefault(); void loadCompleted(); });
+    $('#btnRecent').addEventListener('click', () => { setV('#fSearch', ''); void loadCompleted(); });
     $('#btnPatch').addEventListener('click', () => void patch());
     $('#btnCreate').addEventListener('click', () => void createJob());
     ['coils', 'skids', 'scrap', 'partials', 'scans'].forEach((t) => $(`#tab-${t}`).addEventListener('click', () => showTab(t)));
     showTab('coils');
-    await search();
+    await Promise.all([loadUncomplete(), loadCompleted()]);
 })();

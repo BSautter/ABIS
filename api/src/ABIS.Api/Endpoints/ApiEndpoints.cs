@@ -256,14 +256,14 @@ public static class ApiEndpoints
 
         // ---- Jobs -------------------------------------------------------
         api.MapGet("/jobs", async (IAbisRepository repo, CancellationToken ct,
-                int page = 1, int pageSize = 25, int? status = null, string? sort = null, string? dir = null) =>
+                int page = 1, int pageSize = 25, int? status = null, bool? completed = null, string? search = null, string? sort = null, string? dir = null) =>
             {
                 if (!Sort.TryResolve("jobs", sort, dir, out var orderBy, out var problems))
                     return Results.ValidationProblem(problems!);
-                return Results.Ok(await repo.GetJobsAsync(page, pageSize, status, orderBy, ct));
+                return Results.Ok(await repo.GetJobsAsync(page, pageSize, status, completed, search, orderBy, ct));
             })
            .WithName("ListJobs").WithTags("Jobs")
-           .WithSummary("List production jobs (paged, filterable by status, sortable).")
+           .WithSummary("List production jobs (paged; filter by status, completed=Done vs active, or search job/order #).")
            .Produces<PagedResult<AbJob>>().ProducesValidationProblem();
 
         api.MapGet("/jobs/{abJobNum:long}", async (long abJobNum, IAbisRepository repo, CancellationToken ct) =>
