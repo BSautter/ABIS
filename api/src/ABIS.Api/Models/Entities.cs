@@ -1598,6 +1598,22 @@ public sealed class Edi861Result
     public string? Note { get; set; }
 }
 
+/// <summary>Request for the admin "send a test email" diagnostic. All fields optional (sensible defaults).</summary>
+public sealed class EmailTestRequest
+{
+    public string? To { get; set; }
+    public string? Subject { get; set; }
+    public string? Body { get; set; }
+}
+
+/// <summary>Outcome of the test email — shows where it ACTUALLY went (the override address during testing).</summary>
+public sealed class EmailTestResult
+{
+    public bool Sent { get; set; }
+    public string[] ActualRecipients { get; set; } = System.Array.Empty<string>();
+    public string Detail { get; set; } = "";
+}
+
 // ---- Coil evaluation / QC (legacy coil_eval: w_qc_sheet) ----
 
 /// <summary>A coil to evaluate on a job (coil ⋈ process_coil) — the QC coil picker.</summary>

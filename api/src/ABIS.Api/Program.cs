@@ -78,6 +78,12 @@ builder.Services.AddSingleton<Abis.Api.Admin.ServerConsoleService>();
 var reportStallOptions = builder.Configuration.GetSection(Abis.Api.Health.ReportStallOptions.SectionName)
                              .Get<Abis.Api.Health.ReportStallOptions>() ?? new Abis.Api.Health.ReportStallOptions();
 builder.Services.AddSingleton(reportStallOptions);
+
+// Outbound email. In the test phase Email:OverrideRecipient redirects EVERY email (automated / triggered /
+// manual) to one inbox so nothing reaches a real recipient; no SMTP host = log-only. Enforced in SmtpEmailSender.
+builder.Services.Configure<Abis.Api.Email.EmailOptions>(builder.Configuration.GetSection(Abis.Api.Email.EmailOptions.SectionName));
+builder.Services.AddSingleton<Abis.Api.Email.IEmailSender, Abis.Api.Email.SmtpEmailSender>();
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;

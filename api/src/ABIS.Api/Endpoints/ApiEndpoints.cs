@@ -1857,6 +1857,23 @@ public static class ApiEndpoints
            .WithSummary("Set a customer's 'create 861 at receiving' flag (Y/N). Config only — generates no EDI.")
            .Produces(StatusCodes.Status200OK).ProducesValidationProblem().Produces(StatusCodes.Status404NotFound);
 
+        // Diagnostic: send a test email to confirm the SMTP path AND the test-recipient override. During the
+        // test phase Email:OverrideRecipient redirects every email to one inbox, so ActualRecipients on the
+        // response shows where it really went regardless of the To you pass.
+        api.MapPost("/admin/email/test", async (EmailTestRequest body, HttpContext ctx, IAbisRepository repo, Abis.Api.Email.IEmailSender email, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, EdiFeature, 1, ct) is { } deny) return deny;
+                var to = string.IsNullOrWhiteSpace(body.To) ? "someone@example.com" : body.To!.Trim();
+                var r = await email.SendAsync(new Abis.Api.Email.EmailMessage(
+                    new[] { to },
+                    string.IsNullOrWhiteSpace(body.Subject) ? "ABIS test email" : body.Subject!.Trim(),
+                    string.IsNullOrWhiteSpace(body.Body) ? "This is a test email from ABIS." : body.Body!), ct);
+                return Results.Ok(new EmailTestResult { Sent = r.Sent, ActualRecipients = r.ActualRecipients.ToArray(), Detail = r.Detail });
+            })
+           .WithName("SendTestEmail").WithTags("Admin")
+           .WithSummary("Send a test email — verifies SMTP + the global test-recipient override (all mail → Email:OverrideRecipient).")
+           .Produces<EmailTestResult>();
+
         // #7 server/service console — view + safe restarts only (docs/SERVER_CONSOLE.md). Gated on the
         // "Server Admin" feature AND Admin:ServerConsole:Enabled (503 when disabled); the mutating restart
         // additionally needs AllowRestart + the sudoers allowlist. Units are validated against a fixed
