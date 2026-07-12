@@ -15,7 +15,10 @@ const setOk = (m) => { $('#ok').textContent = m; };
 const setBusy = (b) => document.body.classList.toggle('busy', b);
 const v = (id) => $(id).value.trim();
 const setV = (id, value) => { $(id).value = value == null ? '' : String(value); };
-const dtLocal = (d) => (d == null ? '' : d.toISOString().slice(0, 16));
+// Format a Date for a datetime-local input / display in the operator's LOCAL time. toISOString() would
+// emit UTC wall-clock, which a datetime-local shows and re-parses as local → a whole-timezone-offset shift
+// (e.g. a US plant logs downtime 5–6h off, corrupting duration/efficiency reports).
+const dtLocal = (d) => (d == null ? '' : new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
 let editingId = null;
 function scaffold() {
     return `
@@ -72,7 +75,7 @@ async function search() {
       <tr class="click" data-id="${d.instanceNum}">
         <td class="mono">${esc(d.instanceNum)}</td><td class="mono">${esc(d.abJobNum)}</td><td class="mono">${esc(lineLabel(d.lineNum))}</td>
         <td>${esc(d.downtimeType ?? '—')}</td>
-        <td class="mono">${esc(d.startingTime?.toString().slice(0, 16).replace('T', ' '))}</td><td>${esc(d.note)}</td>
+        <td class="mono">${esc(dtLocal(d.startingTime).replace('T', ' '))}</td><td>${esc(d.note)}</td>
       </tr>`).join('') : '<tr><td colspan="6" class="muted">No matching downtime.</td></tr>';
         $('#count').textContent = `${(page.totalCount ?? 0).toLocaleString()} total`;
         document.querySelectorAll('#instances tr.click').forEach((tr) => tr.addEventListener('click', () => void loadInstance(Number(tr.dataset.id))));
@@ -110,7 +113,7 @@ function newInstance() {
     editingId = null;
     $('#formTitle').textContent = 'New downtime instance';
     ['#dJob', '#dLine', '#dShift', '#dNote'].forEach((id) => setV(id, ''));
-    $('#dStart').value = new Date().toISOString().slice(0, 16);
+    $('#dStart').value = dtLocal(new Date());
     $('#dEnd').value = '';
     setOk('');
     setErr('');

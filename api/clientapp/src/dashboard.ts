@@ -155,7 +155,7 @@ async function load(main: HTMLElement): Promise<void> {
     $(main, '#scrap-sub').textContent = `${rows.length} types`;
     $(main, '#scrap-body').innerHTML = rows.length
       ? rows.slice(0, 6).map((r) => `<div style="display:grid;grid-template-columns:70px 1fr 74px;align-items:center;gap:10px;margin-bottom:9px">
-          <span style="font-size:12px;color:var(--ink-2)">${esc(statusText('scrapType', r.scrapCode ?? r.scrapType))}</span>
+          <span style="font-size:12px;color:var(--ink-2)">${esc(statusText('scrapType', r.scrapType))}</span>
           <span style="height:16px;border-radius:5px;background:var(--surface-2);border:1px solid var(--line-2);overflow:hidden;display:block"><i style="display:block;height:100%;width:${Math.round((r.totalNetWt ?? 0) / max * 100)}%;background:var(--accent)"></i></span>
           <span class="mono" style="font-size:11px;text-align:right">${num(r.totalNetWt)} lb</span></div>`).join('')
       : '<p class="muted">No scrap booked.</p>';

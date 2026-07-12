@@ -17,7 +17,10 @@ const setOk = (m: string) => { $('#ok').textContent = m; };
 const setBusy = (b: boolean) => document.body.classList.toggle('busy', b);
 const v = (id: string) => $<HTMLInputElement>(id).value.trim();
 const setV = (id: string, value: unknown) => { $<HTMLInputElement>(id).value = value == null ? '' : String(value); };
-const dtLocal = (d: Date | undefined): string => (d == null ? '' : d.toISOString().slice(0, 16));
+// Local-time formatter for datetime-local inputs — toISOString() would emit UTC and shift the value by
+// the whole timezone offset on show/re-save (see downtime.ts).
+const dtLocal = (d: Date | undefined): string =>
+  (d == null ? '' : new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
 const chip = (s: unknown): string => `<span class="chip mut">${esc(s ?? '—')}</span>`;
 
 let editingId: number | null = null;
@@ -119,7 +122,7 @@ function newLog(): void {
   $('#formTitle').textContent = 'New maintenance log';
   ['#mStatus', '#mDept', '#mSystem', '#mSubsystem', '#mItem', '#mDetails', '#mActions',
     '#mAuthor', '#mReportedBy', '#mAssignedTo', '#mCompletedBy', '#mLabor'].forEach((id) => setV(id, ''));
-  $<HTMLInputElement>('#mProbDt').value = new Date().toISOString().slice(0, 16);
+  $<HTMLInputElement>('#mProbDt').value = dtLocal(new Date());
   setOk(''); setErr('');
 }
 

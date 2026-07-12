@@ -22,7 +22,10 @@ const v = (id: string) => $<HTMLInputElement>(id).value.trim();
 const setV = (id: string, value: unknown) => { $<HTMLInputElement>(id).value = value == null ? '' : String(value); };
 const num = (n: number | undefined): string => (n == null ? '' : n.toLocaleString());
 const dShow = (d: Date | undefined): string => (d == null ? '' : d.toLocaleString());
-const dLocal = (d: Date | undefined): string => (d == null ? '' : d.toISOString().slice(0, 16));
+// Local-time formatter for the datetime-local "Finished" input — toISOString() would emit UTC and shift
+// the value by the whole timezone offset on show/re-save (see downtime.ts).
+const dLocal = (d: Date | undefined): string =>
+  (d == null ? '' : new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
 // The two lists come off raw fetch, so dates arrive as ISO strings, not Date objects.
 const dText = (s: string | Date | null | undefined): string => {
   if (s == null || s === '') return '';

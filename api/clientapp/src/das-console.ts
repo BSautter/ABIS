@@ -209,15 +209,21 @@ async function loadScrap(): Promise<void> {
 
 // Pull the current weight from the shop-floor edge service (/reading), if its URL is set.
 async function pullWeight(): Promise<void> {
-  const edge = v('#edgeUrl');
-  if (!edge) { setErr('Set the edge URL to pull a live weight (e.g. http://edge-host:8090).'); return; }
-  try {
-    const r = await fetch(edge.replace(/\/$/, '') + '/reading', { cache: 'no-store' });
-    if (!r.ok) throw new Error(`edge ${r.status}`);
-    const reading = await r.json() as { value?: number; unit?: string };
-    setV('#skNet', reading.value);
-    setOk(`Pulled ${reading.value ?? ''} ${reading.unit ?? ''} from the scale.`);
-  } catch (e) { setErr(`Scale read failed: ${(e as Error).message} (enter the weight manually).`); }
+  // Split the edge field the same way run-state/piece-count do — it defaults to a primary,fallback pair,
+  // so the raw value ("http://.170:8090, http://.175:8090") is NOT a valid URL. Try hosts in order.
+  const bases = parseEdgeUrls(v('#edgeUrl'));
+  if (bases.length === 0) { setErr('Set the edge URL to pull a live weight (e.g. http://edge-host:8090).'); return; }
+  for (let i = 0; i < bases.length; i++) {
+    try {
+      const r = await fetch(`${bases[i]}/reading`, { cache: 'no-store' });
+      if (!r.ok) continue;
+      const reading = await r.json() as { value?: number; unit?: string };
+      setV('#skNet', reading.value);
+      setOk(`Pulled ${reading.value ?? ''} ${reading.unit ?? ''} from the scale${i > 0 ? ' (fallback)' : ''}.`);
+      return;
+    } catch { /* host unreachable → try the next */ }
+  }
+  setErr('Scale read failed on all edge hosts (enter the weight manually).');
 }
 
 async function saveSkid(): Promise<void> {

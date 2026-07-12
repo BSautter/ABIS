@@ -17,7 +17,11 @@ const setOk = (m: string) => { $('#ok').textContent = m; };
 const setBusy = (b: boolean) => document.body.classList.toggle('busy', b);
 const v = (id: string) => $<HTMLInputElement>(id).value.trim();
 const setV = (id: string, value: unknown) => { $<HTMLInputElement>(id).value = value == null ? '' : String(value); };
-const dtLocal = (d: Date | undefined): string => (d == null ? '' : d.toISOString().slice(0, 16));
+// Format a Date for a datetime-local input / display in the operator's LOCAL time. toISOString() would
+// emit UTC wall-clock, which a datetime-local shows and re-parses as local → a whole-timezone-offset shift
+// (e.g. a US plant logs downtime 5–6h off, corrupting duration/efficiency reports).
+const dtLocal = (d: Date | undefined): string =>
+  (d == null ? '' : new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
 
 let editingId: number | null = null;
 
@@ -76,7 +80,7 @@ async function search(): Promise<void> {
       <tr class="click" data-id="${d.instanceNum}">
         <td class="mono">${esc(d.instanceNum)}</td><td class="mono">${esc(d.abJobNum)}</td><td class="mono">${esc(lineLabel(d.lineNum))}</td>
         <td>${esc((d as unknown as { downtimeType?: string | null }).downtimeType ?? '—')}</td>
-        <td class="mono">${esc(d.startingTime?.toString().slice(0, 16).replace('T', ' '))}</td><td>${esc(d.note)}</td>
+        <td class="mono">${esc(dtLocal(d.startingTime).replace('T', ' '))}</td><td>${esc(d.note)}</td>
       </tr>`).join('') : '<tr><td colspan="6" class="muted">No matching downtime.</td></tr>';
     $('#count').textContent = `${(page.totalCount ?? 0).toLocaleString()} total`;
     document.querySelectorAll<HTMLTableRowElement>('#instances tr.click').forEach((tr) =>
@@ -103,7 +107,7 @@ function newInstance(): void {
   editingId = null;
   $('#formTitle').textContent = 'New downtime instance';
   ['#dJob', '#dLine', '#dShift', '#dNote'].forEach((id) => setV(id, ''));
-  $<HTMLInputElement>('#dStart').value = new Date().toISOString().slice(0, 16);
+  $<HTMLInputElement>('#dStart').value = dtLocal(new Date());
   $<HTMLInputElement>('#dEnd').value = '';
   setOk(''); setErr('');
 }

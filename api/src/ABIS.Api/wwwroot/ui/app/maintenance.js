@@ -15,7 +15,9 @@ const setOk = (m) => { $('#ok').textContent = m; };
 const setBusy = (b) => document.body.classList.toggle('busy', b);
 const v = (id) => $(id).value.trim();
 const setV = (id, value) => { $(id).value = value == null ? '' : String(value); };
-const dtLocal = (d) => (d == null ? '' : d.toISOString().slice(0, 16));
+// Local-time formatter for datetime-local inputs — toISOString() would emit UTC and shift the value by
+// the whole timezone offset on show/re-save (see downtime.ts).
+const dtLocal = (d) => (d == null ? '' : new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
 const chip = (s) => `<span class="chip mut">${esc(s ?? '—')}</span>`;
 let editingId = null;
 function scaffold() {
@@ -130,7 +132,7 @@ function newLog() {
     $('#formTitle').textContent = 'New maintenance log';
     ['#mStatus', '#mDept', '#mSystem', '#mSubsystem', '#mItem', '#mDetails', '#mActions',
         '#mAuthor', '#mReportedBy', '#mAssignedTo', '#mCompletedBy', '#mLabor'].forEach((id) => setV(id, ''));
-    $('#mProbDt').value = new Date().toISOString().slice(0, 16);
+    $('#mProbDt').value = dtLocal(new Date());
     setOk('');
     setErr('');
 }

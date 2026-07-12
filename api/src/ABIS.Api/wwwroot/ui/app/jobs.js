@@ -20,7 +20,9 @@ const v = (id) => $(id).value.trim();
 const setV = (id, value) => { $(id).value = value == null ? '' : String(value); };
 const num = (n) => (n == null ? '' : n.toLocaleString());
 const dShow = (d) => (d == null ? '' : d.toLocaleString());
-const dLocal = (d) => (d == null ? '' : d.toISOString().slice(0, 16));
+// Local-time formatter for the datetime-local "Finished" input — toISOString() would emit UTC and shift
+// the value by the whole timezone offset on show/re-save (see downtime.ts).
+const dLocal = (d) => (d == null ? '' : new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
 // The two lists come off raw fetch, so dates arrive as ISO strings, not Date objects.
 const dText = (s) => {
     if (s == null || s === '')

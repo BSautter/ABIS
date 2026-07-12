@@ -90,7 +90,7 @@ function compute(): Pattern[] | null {
     width,
     circles: counts[i],
     yieldPct: 100 * circleArea / ((pz * width) / counts[i]),
-    weight: Math.round(d * pz * a * width + 0.5), // plate weight ≈ density·length·thickness·width
+    weight: Math.round(d * pz * a * width), // plate weight ≈ density·length·thickness·width (legacy Int(x+0.5) = round)
   }));
 }
 
