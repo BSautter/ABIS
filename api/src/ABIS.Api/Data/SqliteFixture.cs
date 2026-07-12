@@ -71,6 +71,7 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS equipment_type;
             DROP TABLE IF EXISTS customer_type;
             DROP TABLE IF EXISTS outbound_edi_transaction;
+            DROP TABLE IF EXISTS abis_edi_payload;
             DROP TABLE IF EXISTS edi_log;
             DROP TABLE IF EXISTS edi_type;
             DROP TABLE IF EXISTS customer_edi;
@@ -384,6 +385,13 @@ public static class SqliteFixture
                 edi_log_flag INTEGER, edi_file_id INTEGER, isa_seq INTEGER, gs_seq INTEGER, edi_text TEXT,
                 PRIMARY KEY (edi_log_timestamp, customer_id, customer_edi_name));
 
+            -- ABIS-owned generated-EDI payload store (mirrors AbisSchema.abis_edi_payload). Holds the X12
+            -- payload the modern engine builds (generation only — never transmitted).
+            CREATE TABLE abis_edi_payload (
+                edi_file_id INTEGER, transaction_type TEXT, receiving_bol_id INTEGER, customer_id INTEGER,
+                edi_file_name TEXT, payload TEXT, created_utc TEXT,
+                PRIMARY KEY (edi_file_id, transaction_type));
+
             CREATE TABLE edi_type (
                 edi_type_id INTEGER, edi_version TEXT, edi_type_description TEXT,
                 PRIMARY KEY (edi_type_id, edi_version));
@@ -656,6 +664,44 @@ public static class SqliteFixture
             {
                 new { ReceivingBolId = 5501L, CoilId = 1, CoilOrgNum = "ORG-IN-1", Status = (int?)2, Temper = "H14", NetWeight = (int?)12000, GrossWeight = (int?)12100, CoilWidth = (decimal?)48.5m, CoilGauge = (decimal?)0.125m, Lot = "LOTA", Alloy = "3003" },
                 new { ReceivingBolId = 5501L, CoilId = 2, CoilOrgNum = "ORG-IN-2", Status = (int?)2, Temper = "H14", NetWeight = (int?)11500, GrossWeight = (int?)11600, CoilWidth = (decimal?)48.5m, CoilGauge = (decimal?)0.125m, Lot = "LOTB", Alloy = "3003" }
+            });
+
+        // A Novelis 861 trading partner (customer_id 1153, DUNS from the legacy proc comment for
+        // Novelis Kingston) + a received, fully-minted receiving BOL for the 861 generator to work on.
+        // The DUNS column is not in the main customer seed above, so this row is inserted on its own.
+        // BOL id 5500 sits *below* the existing 5501/5502 so MAX(receiving_bol_id) stays 5502 (keeps the
+        // CreateReceivingBol id-assignment test stable).
+        conn.Execute(
+            """
+            INSERT INTO customer (customer_id, customer_full_name, customer_short_name, customer_city, customer_state,
+                customer_type, edi_req, create_861_at_receiving, customer_duns_number_string)
+            VALUES (1153, 'NOVELIS KINGSTON', 'NOVELIS', 'Kingston', 'ON', 1, 'Y', 'Y', '241003755')
+            """);
+        conn.Execute(
+            """
+            INSERT INTO receiving_bol (receiving_bol_id, bol, customer_id, created_by, created_date, received_date, status)
+            VALUES (5500, 'BOL-NOV-500', 1153, 'recv1', :Created, :Received, 3)
+            """,
+            new { Created = (DateTime?)d, Received = (DateTime?)d.AddHours(2) });
+        conn.Execute(
+            """
+            INSERT INTO receiving_bol_coil (receiving_bol_id, coil_id, coil_org_num, coil_abc_num, status, damaged_fault,
+                damaged_code, temper, net_weight, gross_weight, lineal_feed, coil_width, coil_gauge, lot, pack_id, alloy,
+                part_num, purchase_order_num, consumed_coil_num)
+            VALUES (:ReceivingBolId, :CoilId, :CoilOrgNum, :CoilAbcNum, :Status, :DamagedFault, :DamagedCode, :Temper,
+                :NetWeight, :GrossWeight, :LinealFeed, :CoilWidth, :CoilGauge, :Lot, :PackId, :Alloy, :PartNum,
+                :PurchaseOrderNum, :ConsumedCoilNum)
+            """,
+            new[]
+            {
+                new { ReceivingBolId = 5500L, CoilId = 1, CoilOrgNum = "NC-1001", CoilAbcNum = (long?)900001L, Status = (int?)2,
+                    DamagedFault = (int?)0, DamagedCode = (int?)0, Temper = "H24", NetWeight = (int?)20000, GrossWeight = (int?)20200,
+                    LinealFeed = (decimal?)3500.5m, CoilWidth = (decimal?)60.0m, CoilGauge = (decimal?)0.0400m, Lot = "HL-77",
+                    PackId = "PK-1", Alloy = "5052", PartNum = "P-100", PurchaseOrderNum = "PO-55", ConsumedCoilNum = "NC-1001" },
+                new { ReceivingBolId = 5500L, CoilId = 2, CoilOrgNum = "NC-1002", CoilAbcNum = (long?)900002L, Status = (int?)11,
+                    DamagedFault = (int?)1, DamagedCode = (int?)5, Temper = "H24", NetWeight = (int?)18000, GrossWeight = (int?)18150,
+                    LinealFeed = (decimal?)3200m, CoilWidth = (decimal?)60.0m, CoilGauge = (decimal?)0.0400m, Lot = "HL-78",
+                    PackId = "PK-2", Alloy = "5052", PartNum = "P-100", PurchaseOrderNum = "PO-55", ConsumedCoilNum = "NC-1002" }
             });
 
         conn.Execute("""

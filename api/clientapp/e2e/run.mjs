@@ -829,8 +829,8 @@ test('security enforcement: me/permissions + me/allowed (typed)', async () => {
 });
 
 // Coil-minting at receiving (legacy w_coil_receiving save): mint COIL inventory for a
-// BOL's lines, then the 861 stub.
-test('receiving flow: mint coil inventory + 861 stub (typed)', async () => {
+// BOL's lines, then generate the 861 (Receiving Advice).
+test('receiving flow: mint coil inventory + real 861 (typed)', async () => {
   const bol = await client.createReceivingBol(new ReceivingBolWrite({ bol: 'E2E-MINT', customerId: 4001, createdBy: 'e2e', status: 0 }));
   const good = await client.addReceivingBolCoil(bol.receivingBolId, new ReceivingBolCoilWrite({ coilOrgNum: 'MINT-1', alloy: '3003', temper: 'H14', netWeight: 9000, coilGauge: 0.05, coilWidth: 48 }));
   const dmg = await client.addReceivingBolCoil(bol.receivingBolId, new ReceivingBolCoilWrite({ coilOrgNum: 'MINT-2', alloy: '5052', netWeight: 8000, damagedFault: 1 }));
@@ -855,10 +855,16 @@ test('receiving flow: mint coil inventory + 861 stub (typed)', async () => {
   const again = await client.mintBolCoils(bol.receivingBolId);
   assert.equal(again.minted, 0);
 
-  // 861 stub: deferred (DB-side in production).
-  const edi = await client.generateReceiving861(bol.receivingBolId);
-  assert.equal(edi.status, 'deferred');
-  assert.equal(edi.customerId, 4001);
+  // 861: customer 4001 isn't a configured trading partner -> the generator rejects (422).
+  await assert.rejects(() => client.generateReceiving861(bol.receivingBolId));
+
+  // The seeded Novelis BOL (5500, customer 1153) IS a configured 861 partner -> build + store
+  // the X12, never transmit.
+  const edi = await client.generateReceiving861(5500);
+  assert.equal(edi.status, 'generated');
+  assert.equal(edi.partner, 'Novelis');
+  assert.equal(edi.transmitted, false);
+  assert.ok(edi.ediFileId > 0);
 });
 
 // Coil evaluation / QC (legacy coil_eval w_qc_sheet): QC coil picker, dimensional checks,

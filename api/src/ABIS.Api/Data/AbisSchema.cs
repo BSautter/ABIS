@@ -170,7 +170,24 @@ public static class AbisSchema
           CONSTRAINT pk_sales_probability PRIMARY KEY (probability_id))
         """,
         "CREATE INDEX ix_sales_reminder_quote ON sales_reminder (quote_id, quote_revision_id)",
-        "CREATE INDEX ix_sales_probability_quote ON sales_probability (quote_id, quote_revision_id)"
+        "CREATE INDEX ix_sales_probability_quote ON sales_probability (quote_id, quote_revision_id)",
+        // ABIS-owned EDI payload store (docs/data-model/migrations/005_edi_payload.sql). The legacy engine
+        // wrote each generated X12 to a file on the DB host and only tracked it in outbound_edi_transaction;
+        // the modern engine keeps the payload itself as a CLOB here (NOT the deprecated LONG RAW), keyed by
+        // edi_file_id + transaction set. The 861 carries its source receiving_bol_id so a BOL's advice can be
+        // found and re-generation guarded. This table is generation-only: nothing here transmits.
+        """
+        CREATE TABLE abis_edi_payload (
+          edi_file_id       NUMBER(12)     NOT NULL,
+          transaction_type  VARCHAR2(6)    NOT NULL,
+          receiving_bol_id  NUMBER(12),
+          customer_id       NUMBER(10),
+          edi_file_name     VARCHAR2(80),
+          payload           CLOB           NOT NULL,
+          created_utc       DATE,
+          CONSTRAINT pk_abis_edi_payload PRIMARY KEY (edi_file_id, transaction_type))
+        """,
+        "CREATE INDEX ix_abis_edi_payload_bol ON abis_edi_payload (receiving_bol_id, transaction_type)"
     ];
 
     public static async Task EnsureOwnedTablesAsync(IDbConnectionFactory factory, ILogger logger, CancellationToken ct = default)

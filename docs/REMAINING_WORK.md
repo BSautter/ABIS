@@ -7,6 +7,20 @@
 
 **Legend:** `[ ]` open · `[~]` partial · severity **C**ritical / **H**igh / **M**edium / **L**ow.
 
+## Version roadmap to 1.0.0 (agreed 2026-07-11)
+The target for **1.0.0 is full legacy-ABIS parity, cutover-ready**. Honest distance from v0.4.x: the platform
+is production-mature (auth/RBAC, ~37 pages, all domain CRUD, the 4 subsystems, doc/print engine, live edge/OPC
+auto-downtime, native deploy + AD login + server console) — ~75–80% to parity **by breadth**, but the
+remaining ~20–25% holds the two heaviest programs (EDI engine + the live-DAS spine), so it's more work than the
+percentage suggests.
+
+| Milestone | Definition |
+|-----------|------------|
+| **0.5.0** | **EDI engine complete** — generation + inbound + 997, **never transmits** (§A). ← *pushing for this now* |
+| **0.6 – 0.8** | Buildable feature-gap batches (§C: commercial → coils/receiving → quality) + the **live-DAS workflow spine** (§B), in increments |
+| **0.9.x** | Feature-complete parity + a hardening / verification pass |
+| **1.0.0** | Cutover-ready: everything built, so the deferred **EDI transmit** + **data-source cutover** become an operational go-live decision, not a code gap |
+
 ## Suggested next 5 (highest value, buildable now)
 1. **Packing-list line items** (C2) — unblocks a real packing list + the 856 trigger.
 2. **863 mechanical test-result WRITE** (C5) — the test-result list cannot populate without it.
@@ -16,13 +30,17 @@
 
 ---
 
-## A. Deferred by policy — do NOT build without a single-owner cutover decision
-The no-live-firing rule: legacy crontab on .9 is the sole owner until a controlled cutover. See `[[abis-no-live-firing-guardrail]]`, `[[abis-230-cron-inventory]]`.
-- [ ] **C** EDI outbound generation (861 / 870 / 846 / 856 / 863) + the `ediprocess` pipeline
-- [ ] **C** EDI VAN transport (GXS / Inovis SFTP) + postpro + ISA/GS control-number mgmt
+## A. EDI engine → 0.5.0 (BUILD fully + integrated, but NEVER transmit)
+Directive 2026-07-11: build ALL of EDI generation/ingestion/ack, stopping at an explicit no-op transmit seam.
+The VAN SFTP stays the single legacy owner (`GXS.ksh`) — the ONLY items still deferred-by-policy are the
+transport + the data-source cutover. Design in `docs/EDI_ENGINE.md`; see `[[abis-edi-engine-build]]`,
+`[[abis-no-live-firing-guardrail]]`, `[[abis-230-cron-inventory]]`. **Foundation shipped: #183 (X12Writer +
+`IEdiTransport`→`NoOpEdiTransport`, no SFTP anywhere), #184 (email → cmattinson override).**
+- [~] **C** EDI outbound generation (861 / 870 / 846 / 856 / 863) — foundation + **861 DONE** (generate + payload store + view endpoint); **870 = next**
 - [ ] **H** Inbound EDI ingestion (856 ASN parse → `inbound_shipment` / `inbound_coil` / status)
-- [ ] **H** 997 functional-ack matching + aging alert (>2h no FA)
-- [ ] **—** Data-source cutover (codi-ABIS reads the .230 sandbox, not live prod .9) — enables EDI-stall alert to be meaningful
+- [ ] **H** 997 functional-ack matching + aging alert (>2h no FA) — routes through `IEmailSender` (override-safe)
+- [ ] **DEFERRED** EDI VAN transport (GXS / Inovis SFTP) + postpro — legacy-owned, do NOT build (transmit seam stays no-op)
+- [ ] **DEFERRED** Data-source cutover (codi-ABIS reads the .230 sandbox, not live prod .9) — enables EDI-stall alert to be meaningful
 
 ## B. Architectural program — the live-DAS workflow spine
 The edge read path is live (run-state + piece-count → auto-downtime); the DAS *workflow core* is absent. Buildable in pieces.

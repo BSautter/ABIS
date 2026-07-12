@@ -46,9 +46,12 @@ On codi-ABIS (which runs the .230 sandbox, not prod .9) it's doubly isolated fro
 Version `004010` for the SQL sets (861/870/846/863); `002002`/`002040` for the PB 856 (VAN adds the ISA).
 
 ## Transaction sets (build order) — trigger · source · output
-1. **861 Receiving Advice** ✅-planned-next — trigger: BOL received at dock (`inbound_shipment_status.status=3`);
-   source: `inbound_shipment(_status/_customer)` + `inbound_coil(_status)` for cust 1153/1459/2582 (Novelis) or
-   1980 (Aleris); output: `outbound_edi_transaction` type 861 + payload, then `status→1`. Novelis + Aleris variants.
+1. **861 Receiving Advice** ✅ **DONE** — `Edi/Edi861Generator` (+ `ClobText` CLOB binding, `abis_edi_payload`
+   store). `POST /receiving-bols/{id}/generate-861` builds the X12 for the receiving BOL + its coils (Novelis
+   1153/1459/2582 or Aleris 1980 variants), persists `outbound_edi_transaction` type 861 + the payload CLOB,
+   and marks the BOL `status→1`; view it at `GET /edi/transactions/{ediFileId}/payload`. 422 if the customer
+   isn't a configured 861 partner, 409 if already generated. Never transmits. (Modern receiving-BOL source
+   replaces the legacy `inbound_shipment`/`inbound_coil` staging; the abc# comes straight off the minted line.)
 2. **870 Order/Coil Status** — trigger: finished skids shippable (`skid_sheet_status IN(2,8)`, `prod_item_edi870_date IS NULL`)
    or job scrap ready; source: sheet_skid ⋈ production_sheet_item ⋈ coil ⋈ order_item ⋈ ab_job; output: type 870,
    stamp `prod_item_edi870_date`/`scrap_870_date`. Live partner: Aleris (Wise needs the missing `_by_coil` body).

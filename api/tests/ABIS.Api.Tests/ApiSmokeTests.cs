@@ -1305,6 +1305,32 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Generate861_builds_stores_and_guards_for_a_novelis_bol()
+    {
+        // Customer 4001 (BOL 5501) isn't a configured 861 partner -> 422.
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await _client.PostAsync("/api/receiving-bols/5501/generate-861", null)).StatusCode);
+        // Unknown BOL -> 404.
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync("/api/receiving-bols/999999/generate-861", null)).StatusCode);
+
+        // Novelis BOL 5500 -> generated + stored (never transmitted).
+        var resp = await _client.PostAsync("/api/receiving-bols/5500/generate-861", null);
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("generated", body.GetProperty("status").GetString());
+        Assert.Equal("Novelis", body.GetProperty("partner").GetString());
+        Assert.False(body.GetProperty("transmitted").GetBoolean());
+        var fileId = body.GetProperty("ediFileId").GetInt64();
+
+        // The payload endpoint returns the X12 text.
+        var payload = await _client.GetStringAsync($"/api/edi/transactions/{fileId}/payload");
+        Assert.Contains("ST*861*", payload);
+        Assert.Contains("N1*SU**1*241003755", payload);
+
+        // A second attempt is a 409 (one 861 per BOL).
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync("/api/receiving-bols/5500/generate-861", null)).StatusCode);
+    }
+
+    [Fact]
     public async Task Dimension_check_absolute_bounds_enforced()
     {
         const string url = "/api/coil-eval/skids/3001/dimension-checks";
@@ -1389,9 +1415,18 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
         var body = await _client.GetFromJsonAsync<JsonElement>("/api/edi/transactions");
         Assert.True(body.GetProperty("totalCount").GetInt32() >= 2);
         var items = body.GetProperty("items");
-        // default order is edi_file_id DESC
-        Assert.Equal(9002, items[0].GetProperty("ediFileId").GetInt64());
-        Assert.Equal("870", items[0].GetProperty("transactionTypeId").GetString());
+        // Default order is edi_file_id DESC. A generated 861 (this class shares one DB) may add a row newer
+        // than the seeded 9001/9002, so assert the ordering + the seeded 870's presence, not a fixed head.
+        long? prev = null;
+        var has870 = false;
+        foreach (var it in items.EnumerateArray())
+        {
+            var id = it.GetProperty("ediFileId").GetInt64();
+            if (prev is { } p) Assert.True(id <= p, "EDI transactions should be listed edi_file_id DESC");
+            prev = id;
+            if (id == 9002) has870 = true;
+        }
+        Assert.True(has870, "the seeded 870 transaction (9002) should be present");
     }
 
     [Fact]

@@ -291,7 +291,7 @@ public sealed class RepositoryTests : IDisposable
     public async Task GetCustomers_lists_and_filters_by_name()
     {
         var all = await _repo.GetCustomersAsync(1, 25, name: null, orderBy: null, CancellationToken.None);
-        Assert.Equal(2, all.TotalCount);
+        Assert.Equal(3, all.TotalCount);   // ACME + BETA + the Novelis 861 partner (1153)
 
         var acme = await _repo.GetCustomersAsync(1, 25, name: "ACME", orderBy: null, CancellationToken.None);
         Assert.Single(acme.Items);
@@ -868,11 +868,42 @@ public sealed class RepositoryTests : IDisposable
     public async Task GetReceivingBols_lists_and_filters_by_status()
     {
         var all = await _repo.GetReceivingBolsAsync(1, 25, customerId: null, status: null, orderBy: null, CancellationToken.None);
-        Assert.Equal(2, all.TotalCount);
+        Assert.Equal(3, all.TotalCount);   // BOL-IN-001/002 + the Novelis 861 BOL (5500)
 
         var open = await _repo.GetReceivingBolsAsync(1, 25, customerId: null, status: 0, orderBy: null, CancellationToken.None);
         Assert.Single(open.Items);
         Assert.Equal("BOL-IN-002", open.Items[0].Bol);
+    }
+
+    [Fact]
+    public async Task PersistEdi861_generates_persists_marks_and_guards_duplicates()
+    {
+        var bol = await _repo.GetReceivingBolAsync(5500, CancellationToken.None);
+        Assert.NotNull(bol);
+        var coils = await _repo.GetReceivingBolCoilsAsync(5500, CancellationToken.None);
+        Assert.Equal(2, coils.Count);
+        var partner = Abis.Api.Edi.Edi861Generator.ResolvePartner(bol!.CustomerId, "241003755")!;
+
+        var result = await _repo.PersistEdi861Async(bol, coils, partner, new DateTime(2026, 7, 11, 14, 30, 0), CancellationToken.None);
+        Assert.Equal("generated", result.Status);
+        Assert.Equal("Novelis", result.Partner);
+        Assert.False(result.Transmitted);            // built + stored, never transmitted
+        Assert.Equal(2, result.CoilCount);
+        Assert.NotNull(result.EdiFileId);
+
+        // Payload stored + retrievable; tracking row present with the 861 type.
+        var payload = await _repo.GetEdiPayloadAsync(result.EdiFileId!.Value, CancellationToken.None);
+        Assert.NotNull(payload);
+        Assert.Contains("ST*861*", payload!.Payload);
+        Assert.Contains("CTT*2", payload.Payload);
+        var tx = await _repo.GetEdiTransactionAsync(result.EdiFileId!.Value, CancellationToken.None);
+        Assert.Equal("861", tx!.TransactionTypeId);
+        Assert.Equal("039630926", tx.DunsFrom);
+
+        // BOL marked 861-generated (status → 1) and the stored 861 acts as the duplicate guard.
+        Assert.Equal(1, (await _repo.GetReceivingBolAsync(5500, CancellationToken.None))!.Status);
+        var existing = await _repo.GetEdi861ForBolAsync(5500, CancellationToken.None);
+        Assert.Equal(result.EdiFileId, existing!.EdiFileId);
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
+using Abis.Api.Edi;
 using Abis.Api.Models;
 using Dapper;
 
@@ -264,6 +265,11 @@ public sealed class AbisRepository : IAbisRepository
         transaction_time AS TransactionTime, customer_sent_to AS CustomerSentTo, edi_file_name AS EdiFileName,
         fa_receive_status AS FaReceiveStatus, customer_id AS CustomerId, set_control_num AS SetControlNum,
         transaction_type_id AS TransactionTypeId, fa_received_time AS FaReceivedTime, fa_received_file_name AS FaReceivedFileName
+        """;
+
+    private const string EdiPayloadCols = """
+        edi_file_id AS EdiFileId, transaction_type AS TransactionType, receiving_bol_id AS ReceivingBolId,
+        customer_id AS CustomerId, edi_file_name AS EdiFileName, payload AS Payload, created_utc AS CreatedUtc
         """;
 
     private const string EdiLogCols = """
@@ -3253,6 +3259,88 @@ public sealed class AbisRepository : IAbisRepository
         await using var conn = await OpenAsync(ct);
         return await conn.QuerySingleOrDefaultAsync<EdiTransaction>(new CommandDefinition(
             $"SELECT {EdiTransactionCols} FROM outbound_edi_transaction WHERE edi_file_id = :id", new { id = ediFileId }, cancellationToken: ct));
+    }
+
+    /// <summary>The stored X12 payload for a generated EDI file (any transaction set), or null.</summary>
+    public async Task<EdiPayload?> GetEdiPayloadAsync(long ediFileId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.QuerySingleOrDefaultAsync<EdiPayload>(new CommandDefinition(
+            $"SELECT {EdiPayloadCols} FROM abis_edi_payload WHERE edi_file_id = :id", new { id = ediFileId }, cancellationToken: ct));
+    }
+
+    /// <summary>The 861 already generated for a receiving BOL (the idempotency guard), or null.</summary>
+    public async Task<EdiPayload?> GetEdi861ForBolAsync(long receivingBolId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.QuerySingleOrDefaultAsync<EdiPayload>(new CommandDefinition(
+            $"SELECT {EdiPayloadCols} FROM abis_edi_payload WHERE receiving_bol_id = :id AND transaction_type = '861'",
+            new { id = receivingBolId }, cancellationToken: ct));
+    }
+
+    /// <summary>Generate + persist the 861 (Receiving Advice) for a received BOL, in one transaction: build
+    /// the X12 (see <see cref="Edi861Generator"/>), allocate the edi_file_id (= interchange/group/set control
+    /// number, MAX+1), insert the tracking row (<c>outbound_edi_transaction</c>) + the payload CLOB
+    /// (<c>abis_edi_payload</c>), and mark the BOL 861-generated (<c>status = 1</c>). <b>Never transmits.</b>
+    /// The caller has already resolved <paramref name="partner"/> and guarded duplicates.</summary>
+    public async Task<Edi861Result> PersistEdi861Async(
+        ReceivingBol bol, IReadOnlyList<ReceivingBolCoil> coils, Edi861Partner partner, DateTime timestamp, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        var ediFileId = await NextIdAsync(conn, (DbTransaction)tx, "outbound_edi_transaction", "edi_file_id", ct);
+        // Legacy uses distinct gs/st sequences with ICN = GCN; the modern engine derives all three control
+        // numbers from the new edi_file_id (collision-safe MAX+1) — one value for ISA13 / GS06 / ST02.
+        var payload = Edi861Generator.Generate(bol, coils, partner, ediFileId, ediFileId, timestamp);
+        var fileName = Edi861Generator.FileName(partner, ediFileId);
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO outbound_edi_transaction
+                (edi_file_id, duns_from, duns_to, interchange_control_number, group_control_number,
+                 transaction_time, edi_file_name, fa_receive_status, customer_id, set_control_num, transaction_type_id)
+            VALUES (:fileId, :from, :to, :icn, :gcn, :now, :name, 0, :cust, :scn, '861')
+            """,
+            new
+            {
+                fileId = ediFileId, from = Edi861Generator.SenderDuns, to = partner.SupplierDuns,
+                icn = ediFileId, gcn = ediFileId, now = (DateTime?)timestamp, name = fileName,
+                cust = bol.CustomerId, scn = ediFileId
+            },
+            transaction: tx, cancellationToken: ct));
+
+        var payloadParams = new DynamicParameters();
+        payloadParams.Add("fileId", ediFileId);
+        payloadParams.Add("bolId", bol.ReceivingBolId);
+        payloadParams.Add("cust", bol.CustomerId);
+        payloadParams.Add("name", fileName);
+        payloadParams.Add("payload", new ClobText(payload));
+        payloadParams.Add("now", (DateTime?)timestamp);
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO abis_edi_payload
+                (edi_file_id, transaction_type, receiving_bol_id, customer_id, edi_file_name, payload, created_utc)
+            VALUES (:fileId, '861', :bolId, :cust, :name, :payload, :now)
+            """,
+            payloadParams, transaction: tx, cancellationToken: ct));
+
+        // Mark the BOL 861-generated (legacy inbound_shipment_status.status = 1). The payload row above is the
+        // authoritative duplicate guard, so this is a display marker, not the correctness gate.
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE receiving_bol SET status = 1 WHERE receiving_bol_id = :id",
+            new { id = bol.ReceivingBolId }, transaction: tx, cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
+
+        return new Edi861Result
+        {
+            ReceivingBolId = bol.ReceivingBolId, CustomerId = bol.CustomerId, Status = "generated",
+            Partner = partner.Name, EdiFileId = ediFileId, EdiFileName = fileName,
+            GroupControlNumber = ediFileId, SetControlNumber = ediFileId, CoilCount = coils.Count,
+            PayloadBytes = System.Text.Encoding.UTF8.GetByteCount(payload), Transmitted = false,
+            Note = $"861 generated for {partner.Name} ({coils.Count} coils); stored, not transmitted.",
+        };
     }
 
     public Task<PagedResult<EdiLogEntry>> GetEdiLogAsync(int page, int pageSize, long? customerId, string? orderBy, CancellationToken ct)

@@ -1587,15 +1587,41 @@ public sealed class MintResult
     public IReadOnlyList<ReceivingBolCoil> Coils { get; set; } = [];
 }
 
-/// <summary>Result of an 861 (Receiving Advice) generation request. The real EDI is
-/// produced DB-side by per-customer Oracle functions (f_edi_*_861), gated on the
-/// customer's create_861_at_receiving flag — this records the dispatch decision.</summary>
+/// <summary>Result of an 861 (Receiving Advice) generation. The engine builds + persists the X12 payload
+/// and the tracking row, then marks the BOL as 861-generated — but <b>never transmits</b> (the VAN SFTP
+/// stays the legacy owner; see docs/EDI_ENGINE.md). <see cref="Transmitted"/> is always false.</summary>
 public sealed class Edi861Result
 {
     public long ReceivingBolId { get; set; }
     public long? CustomerId { get; set; }
-    public string Status { get; set; } = "deferred";
+    /// <summary><c>generated</c> on success. Error cases surface as HTTP problems, not this field.</summary>
+    public string Status { get; set; } = "generated";
     public string? Note { get; set; }
+    /// <summary>The trading partner the 861 was framed for ("Novelis" / "Aleris").</summary>
+    public string? Partner { get; set; }
+    /// <summary>The assigned EDI file id (= interchange/group/set control number) — the outbound_edi_transaction PK.</summary>
+    public long? EdiFileId { get; set; }
+    public string? EdiFileName { get; set; }
+    public long? GroupControlNumber { get; set; }
+    public long? SetControlNumber { get; set; }
+    public int CoilCount { get; set; }
+    public int PayloadBytes { get; set; }
+    /// <summary>Always false — generation is fully built and integrated but nothing is transmitted.</summary>
+    public bool Transmitted { get; set; }
+}
+
+/// <summary>A stored, generated X12 EDI payload (the modern CLOB companion to the legacy tracking row).
+/// Keyed by <see cref="EdiFileId"/> + <see cref="TransactionType"/>; the receiving 861 carries its source
+/// <see cref="ReceivingBolId"/> so a BOL's advice can be looked up (and re-generation guarded).</summary>
+public sealed class EdiPayload
+{
+    public long EdiFileId { get; set; }
+    public string? TransactionType { get; set; }
+    public long? ReceivingBolId { get; set; }
+    public long? CustomerId { get; set; }
+    public string? EdiFileName { get; set; }
+    public string? Payload { get; set; }
+    public DateTime? CreatedUtc { get; set; }
 }
 
 /// <summary>Request for the admin "send a test email" diagnostic. All fields optional (sensible defaults).</summary>

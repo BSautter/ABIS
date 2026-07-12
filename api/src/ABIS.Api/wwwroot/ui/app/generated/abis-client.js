@@ -1045,6 +1045,53 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Send a test email — verifies SMTP + the global test-recipient override (all mail → Email:OverrideRecipient).
+     * @return OK
+     */
+    sendTestEmail(body) {
+        let url_ = this.baseUrl + "/api/admin/email/test";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processSendTestEmail(_response);
+        });
+    }
+    processSendTestEmail(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = EmailTestResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Server console: status of the allowlisted systemd units (abis, nginx). Read-only.
      * @return OK
      */
@@ -4012,6 +4059,53 @@ export class AbisClient {
                 let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
                 result200 = EdiTransaction.fromJS(resultData200);
                 return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * The stored X12 payload for a generated EDI transaction, as plain text. Generation only — nothing here transmits.
+     * @return OK
+     */
+    getEdiPayload(ediFileId) {
+        let url_ = this.baseUrl + "/api/edi/transactions/{ediFileId}/payload";
+        if (ediFileId === undefined || ediFileId === null)
+            throw new globalThis.Error("The parameter 'ediFileId' must be defined.");
+        url_ = url_.replace("{ediFileId}", encodeURIComponent("" + ediFileId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetEdiPayload(_response);
+        });
+    }
+    processGetEdiPayload(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
             });
         }
         else if (status === 401) {
@@ -7937,7 +8031,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Generate the 861 (Receiving Advice) for a BOL — DB-side in production; a documented stub here.
+     * Generate + persist the 861 (Receiving Advice) X12 for a received BOL — built, integrated and stored, but NEVER transmitted (the VAN SFTP stays the legacy owner). 400 if the BOL has no coils, 422 if the customer isn't a configured 861 partner (Novelis/Aleris), 409 if already generated. View the payload at /edi/transactions/{ediFileId}/payload.
      * @return OK
      */
     generateReceiving861(receivingBolId) {
@@ -7971,6 +8065,11 @@ export class AbisClient {
                 return result200;
             });
         }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                return throwException("Bad Request", status, _responseText, _headers);
+            });
+        }
         else if (status === 401) {
             return response.text().then((_responseText) => {
                 return throwException("Unauthorized", status, _responseText, _headers);
@@ -7979,6 +8078,16 @@ export class AbisClient {
         else if (status === 404) {
             return response.text().then((_responseText) => {
                 return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status === 422) {
+            return response.text().then((_responseText) => {
+                return throwException("Unprocessable Content", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -15622,6 +15731,14 @@ export class Edi861Result {
             this.customerId = _data["customerId"];
             this.status = _data["status"];
             this.note = _data["note"];
+            this.partner = _data["partner"];
+            this.ediFileId = _data["ediFileId"];
+            this.ediFileName = _data["ediFileName"];
+            this.groupControlNumber = _data["groupControlNumber"];
+            this.setControlNumber = _data["setControlNumber"];
+            this.coilCount = _data["coilCount"];
+            this.payloadBytes = _data["payloadBytes"];
+            this.transmitted = _data["transmitted"];
         }
     }
     static fromJS(data) {
@@ -15636,6 +15753,14 @@ export class Edi861Result {
         data["customerId"] = this.customerId;
         data["status"] = this.status;
         data["note"] = this.note;
+        data["partner"] = this.partner;
+        data["ediFileId"] = this.ediFileId;
+        data["ediFileName"] = this.ediFileName;
+        data["groupControlNumber"] = this.groupControlNumber;
+        data["setControlNumber"] = this.setControlNumber;
+        data["coilCount"] = this.coilCount;
+        data["payloadBytes"] = this.payloadBytes;
+        data["transmitted"] = this.transmitted;
         return data;
     }
 }
@@ -15908,6 +16033,74 @@ export class EffectivePermission {
         data["privilege"] = this.privilege;
         data["privilegeLabel"] = this.privilegeLabel;
         data["viaGroup"] = this.viaGroup;
+        return data;
+    }
+}
+export class EmailTestRequest {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.to = _data["to"];
+            this.subject = _data["subject"];
+            this.body = _data["body"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new EmailTestRequest();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["to"] = this.to;
+        data["subject"] = this.subject;
+        data["body"] = this.body;
+        return data;
+    }
+}
+export class EmailTestResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.sent = _data["sent"];
+            if (Array.isArray(_data["actualRecipients"])) {
+                this.actualRecipients = [];
+                for (let item of _data["actualRecipients"])
+                    this.actualRecipients.push(item);
+            }
+            this.detail = _data["detail"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new EmailTestResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["sent"] = this.sent;
+        if (Array.isArray(this.actualRecipients)) {
+            data["actualRecipients"] = [];
+            for (let item of this.actualRecipients)
+                data["actualRecipients"].push(item);
+        }
+        data["detail"] = this.detail;
         return data;
     }
 }

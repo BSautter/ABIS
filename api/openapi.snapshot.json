@@ -3220,6 +3220,37 @@
         }
       }
     },
+    "/api/edi/transactions/{ediFileId}/payload": {
+      "get": {
+        "tags": [
+          "EDI"
+        ],
+        "summary": "The stored X12 payload for a generated EDI transaction, as plain text. Generation only — nothing here transmits.",
+        "operationId": "GetEdiPayload",
+        "parameters": [
+          {
+            "name": "ediFileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/edi/log": {
       "get": {
         "tags": [
@@ -6149,7 +6180,7 @@
         "tags": [
           "Receiving"
         ],
-        "summary": "Generate the 861 (Receiving Advice) for a BOL — DB-side in production; a documented stub here.",
+        "summary": "Generate + persist the 861 (Receiving Advice) X12 for a received BOL — built, integrated and stored, but NEVER transmitted (the VAN SFTP stays the legacy owner). 400 if the BOL has no coils, 422 if the customer isn't a configured 861 partner (Novelis/Aleris), 409 if already generated. View the payload at /edi/transactions/{ediFileId}/payload.",
         "operationId": "GenerateReceiving861",
         "parameters": [
           {
@@ -6173,8 +6204,17 @@
               }
             }
           },
+          "400": {
+            "description": "Bad Request"
+          },
           "404": {
             "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Unprocessable Content"
           },
           "401": {
             "description": "Unauthorized"
@@ -12782,6 +12822,40 @@
           "note": {
             "type": "string",
             "nullable": true
+          },
+          "partner": {
+            "type": "string",
+            "nullable": true
+          },
+          "ediFileId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "ediFileName": {
+            "type": "string",
+            "nullable": true
+          },
+          "groupControlNumber": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "setControlNumber": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "coilCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "payloadBytes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "transmitted": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false

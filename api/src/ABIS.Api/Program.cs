@@ -33,6 +33,8 @@ var dbOptions = builder.Configuration.GetSection(DatabaseOptions.SectionName).Ge
 builder.Services.AddSingleton(dbOptions);
 builder.Services.AddSingleton<IDbConnectionFactory, DbConnectionFactory>();
 builder.Services.AddScoped<IAbisRepository, AbisRepository>();
+// Bind large CLOB payloads (generated EDI X12) correctly on Oracle 11g — see ClobText.
+Dapper.SqlMapper.AddTypeHandler(new Abis.Api.Data.ClobTextHandler());
 
 // Audit middleware options: enabled by default; turn off (or it self-disables on
 // the first write failure) when the target schema has no compatible audit table.

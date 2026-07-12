@@ -821,24 +821,38 @@ public static class ApiEndpoints
            .WithSummary("Mint coil inventory for the BOL's lines (legacy w_coil_receiving save) — creates COIL rows (status 2/new, 11/on-hold if damaged) and links them. Idempotent; 400 if the BOL has no coils.")
            .Produces<MintResult>().Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status404NotFound);
 
-        api.MapPost("/receiving-bols/{receivingBolId:long}/generate-861", async (long receivingBolId, IAbisRepository repo, CancellationToken ct) =>
+        api.MapPost("/receiving-bols/{receivingBolId:long}/generate-861", async (long receivingBolId, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
             {
+                // Generation is an EDI write — gate on the EDI feature (service accounts pass through).
+                if (await RequireFeatureAsync(ctx, repo, "EDI", 1, ct) is { } deny) return deny;
                 var bol = await repo.GetReceivingBolAsync(receivingBolId, ct);
                 if (bol is null) return Results.NotFound();
-                // The real 861 (Receiving Advice) is produced DB-side by per-customer Oracle
-                // functions (f_edi_novelis_861 / _constellium_861 / _commonwealth_861 /
-                // f_edi_861_for_all), gated on customer.create_861_at_receiving. The greenfield
-                // dev stack has no Oracle EDI packages, so this records the dispatch decision.
-                return Results.Ok(new Edi861Result
-                {
-                    ReceivingBolId = receivingBolId, CustomerId = bol.CustomerId, Status = "deferred",
-                    Note = "861 generation runs DB-side via per-customer Oracle functions (f_edi_*_861); " +
-                           "not implemented in the greenfield dev stack. Wire to the Oracle function in production.",
-                });
+                var coils = await repo.GetReceivingBolCoilsAsync(receivingBolId, ct);
+                if (coils.Count == 0)
+                    return Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Empty BOL",
+                        detail: $"Receiving BOL {receivingBolId} has no coil lines; nothing to advise.");
+
+                // Resolve the trading-partner profile from the receiving customer (Novelis 1153/1459/2582 or
+                // Aleris 1980), using the customer's own DUNS for N1*SU. Not a configured 861 partner → 422.
+                var customer = bol.CustomerId is null ? null : await repo.GetCustomerAsync(bol.CustomerId.Value, ct);
+                var partner = Abis.Api.Edi.Edi861Generator.ResolvePartner(bol.CustomerId, customer?.CustomerDunsNumberString ?? "");
+                if (partner is null)
+                    return Results.Problem(statusCode: StatusCodes.Status422UnprocessableEntity, title: "Not an 861 partner",
+                        detail: $"Customer {bol.CustomerId} is not a configured 861 trading partner (Novelis 1153/1459/2582 or Aleris 1980).");
+
+                // One 861 per BOL — the stored payload is the idempotency guard.
+                if (await repo.GetEdi861ForBolAsync(receivingBolId, ct) is { } existing)
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Already generated",
+                        detail: $"An 861 was already generated for BOL {receivingBolId} (edi_file_id {existing.EdiFileId}, {existing.EdiFileName}). It is stored, not transmitted.");
+
+                // Build + persist the X12 + tracking row and mark the BOL 861-generated. Never transmits.
+                var result = await repo.PersistEdi861Async(bol, coils, partner, DateTime.Now, ct);
+                return Results.Ok(result);
             })
            .WithName("GenerateReceiving861").WithTags("Receiving")
-           .WithSummary("Generate the 861 (Receiving Advice) for a BOL — DB-side in production; a documented stub here.")
-           .Produces<Edi861Result>().Produces(StatusCodes.Status404NotFound);
+           .WithSummary("Generate + persist the 861 (Receiving Advice) X12 for a received BOL — built, integrated and stored, but NEVER transmitted (the VAN SFTP stays the legacy owner). 400 if the BOL has no coils, 422 if the customer isn't a configured 861 partner (Novelis/Aleris), 409 if already generated. View the payload at /edi/transactions/{ediFileId}/payload.")
+           .Produces<Edi861Result>().Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status404NotFound)
+           .Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status422UnprocessableEntity);
 
         // ---- Coil evaluation / QC (legacy coil_eval w_qc_sheet) ----
         api.MapGet("/coil-eval/coils", async (long abJobNum, IAbisRepository repo, CancellationToken ct) =>
@@ -961,6 +975,14 @@ public static class ApiEndpoints
            .WithName("GetEdiTransaction").WithTags("EDI")
            .WithSummary("Get one outbound EDI transaction by its EDI file id.")
            .Produces<EdiTransaction>().Produces(StatusCodes.Status404NotFound);
+
+        api.MapGet("/edi/transactions/{ediFileId:long}/payload", async (long ediFileId, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetEdiPayloadAsync(ediFileId, ct) is { } p
+                    ? Results.Text(p.Payload ?? "", "text/plain")
+                    : Results.NotFound())
+           .WithName("GetEdiPayload").WithTags("EDI")
+           .WithSummary("The stored X12 payload for a generated EDI transaction, as plain text. Generation only — nothing here transmits.")
+           .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status404NotFound);
 
         api.MapGet("/edi/log", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, long? customerId = null, string? sort = null, string? dir = null) =>
