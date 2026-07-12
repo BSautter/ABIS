@@ -195,6 +195,35 @@ if (dbOptions.Dialect == SqlDialect.Oracle)
     }
 }
 
+// Opt-in deploy-time email smoke test (Email:SendTestOnStartup). Sends ONE message through the real
+// IEmailSender pipeline so a deploy proves the wiring + the test-recipient override fire. With no
+// Smtp.Host it only logs the redirect; once a relay is set it actually delivers on the next restart.
+// Non-fatal: a failure is logged and never blocks startup.
+{
+    var emailOpts = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Abis.Api.Email.EmailOptions>>().Value;
+    if (emailOpts.SendTestOnStartup)
+    {
+        try
+        {
+            var sender = app.Services.GetRequiredService<Abis.Api.Email.IEmailSender>();
+            string to = string.IsNullOrWhiteSpace(emailOpts.OverrideRecipient) ? "qa@albl.com" : emailOpts.OverrideRecipient!;
+            var result = await sender.SendAsync(new Abis.Api.Email.EmailMessage(
+                new List<string> { to },
+                "ABIS startup email test",
+                $"This is the ABIS startup email smoke test, sent at {DateTime.Now:yyyy-MM-dd HH:mm} server time. " +
+                "If you received this, the email pipeline and the test-recipient override are working."),
+                CancellationToken.None);
+            app.Logger.LogInformation(
+                "Startup email test: sent={Sent}, recipients=[{Recipients}]. {Detail}",
+                result.Sent, string.Join(", ", result.ActualRecipients), result.Detail);
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogError(ex, "Startup email test failed (non-fatal).");
+        }
+    }
+}
+
 // Very first: apply X-Forwarded-* from the nginx proxy so every downstream
 // component (rate limiter, auth, URL generation) sees the real scheme + client IP.
 app.UseForwardedHeaders();

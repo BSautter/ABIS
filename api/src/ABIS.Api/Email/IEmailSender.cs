@@ -15,6 +15,13 @@ public sealed class EmailOptions
 
     public string FromAddress { get; set; } = "abis@albl.com";
     public string FromName { get; set; } = "ABIS";
+
+    /// <summary>When true, the app sends one diagnostic email through the full pipeline at startup — a
+    /// deploy-time smoke test that the wiring + <see cref="OverrideRecipient"/> fire. With no
+    /// <see cref="SmtpOptions.Host"/> it only logs the redirect (proves the path); once a relay is set it
+    /// actually delivers on the next restart. Default off (don't email on every boot). Non-fatal.</summary>
+    public bool SendTestOnStartup { get; set; }
+
     public SmtpOptions Smtp { get; set; } = new();
 }
 
