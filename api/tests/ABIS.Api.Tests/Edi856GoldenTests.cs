@@ -53,4 +53,34 @@ public class Edi856GoldenTests
 
         Assert.Equal(Golden("novelis_856.edi"), Segments(Edi856Generator.Generate(shp, profile, 12345, 12345, new DateTime(2026, 1, 5, 7, 51, 0))));
     }
+
+    [Fact]
+    public void Constellium_856_matches_the_redacted_golden()
+    {
+        var profile = new EdiPartnerProfile
+        {
+            CustomerId = 2776, TransactionSet = "856", Enabled = true, Variant = "constellium",
+            ReceiverQualifier = "01", ReceiverId = "043207177", ComponentSeparator = "@",
+            EnvelopeVersion = "00401", GsFunctionalCode = "SH", FilePrefix = "S_constellium_856_",
+        };
+        Edi856Item Skid(int gross, string se) => new()
+        {
+            GrossWeight = gross, Pieces = 315, Gauge = 0.0394m, Width = 47.125m, LinealFeed = 9875m,
+            EnduserPart = "PART-0001", CoilOrgNum = "COIL-0001", LotNum = "LOT-0001", CoilAbcNum = "233462",
+            Vo = "JOB-0001", Alloy = "", Temper = "T4", SkidDisplayNum = se,
+        };
+        var shp = new Edi856Shipment
+        {
+            PackingList = "PL-0001", ShipDate = new DateTime(2026, 1, 2, 0, 0, 0),
+            GrossWeight = 4760, NetWeight = 4560, PalletCount = 3,   // pallets == skids
+            Scac = "AGGP", CarrierName = "AGGRESSIVE", CarrierDescCode = "TL", VehicleId = "1706",
+            MfName = "CONSTELLIUM - BG", MfDuns = "043207177",
+            ShipToName = "WAYNE IND", ShipToDuns = "074212689",
+            OrigCustomerPo = "PO-0001", OrderDate = new DateTime(2025, 12, 19, 0, 0, 0),
+            OrderPieceCount = 945,   // 3 skids * 315
+            Items = new[] { Skid(1585, "SKID-0001"), Skid(1590, "SKID-0002"), Skid(1585, "SKID-0003") },
+        };
+
+        Assert.Equal(Golden("constellium_856.edi"), Segments(Edi856Generator.Generate(shp, profile, 12345, 12345, new DateTime(2026, 1, 2, 9, 37, 0))));
+    }
 }

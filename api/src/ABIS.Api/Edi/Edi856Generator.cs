@@ -33,6 +33,10 @@ public static class Edi856Generator
     public static string Generate(Edi856Shipment shp, EdiPartnerProfile profile, long groupControl, long setControl, DateTime timestamp)
     {
         var w = EdiInterchange.Open(profile, "856", "SH", "00401", groupControl, setControl, timestamp);
+        var variant = (profile.Variant ?? "").Trim().ToLowerInvariant();
+        if (variant == "constellium")
+            return ConstelliumBody(w, shp, timestamp);
+
         var today = timestamp.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
         var now = timestamp.ToString("HHmm", CultureInfo.InvariantCulture);
         var shipDate = shp.ShipDate.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
@@ -85,12 +89,70 @@ public static class Edi856Generator
         // order piece count (the quantity hash). The legacy's `li_hl01 - 1` equals this because it increments
         // its counter AFTER emitting each HL (ending one past the last); our `hl` already ends at the last HL.
         w.Segment("CTT", hl.ToString(CultureInfo.InvariantCulture),
-            (shp.PalletCount + shp.OrderPieceCount).ToString(CultureInfo.InvariantCulture));
+            (shp.Items.Count + shp.OrderPieceCount).ToString(CultureInfo.InvariantCulture));
+        return w.Close();
+    }
+
+    /// <summary>The Constellium 856 body (legacy <c>EDI_CONST_856_X12</c>): weights ride inside two TD1 segments,
+    /// the carrier is trimmed with a <c>*CC</c> suffix, parties are N1*SF/MF/ST/MA, the order HL carries only a
+    /// PRF, and each skid HL has a rich per-item LIN (BP/SN/HN/LS/JN) + PID*S*55/16 (alloy/temper) + MEA*WT*WT /
+    /// CT*NL / PD*TH (leading zero kept) / PD*WD / PD*LN + REF*SE. The interchange uses the <c>@</c> component
+    /// separator. Validated byte-for-byte against a production golden.</summary>
+    private static string ConstelliumBody(X12Writer w, Edi856Shipment shp, DateTime timestamp)
+    {
+        var today = timestamp.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+        var now = timestamp.ToString("HHmm", CultureInfo.InvariantCulture);
+        var shipDate = shp.ShipDate.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+        var shipTime = shp.ShipDate.ToString("HHmm", CultureInfo.InvariantCulture);
+
+        w.Segment("BSN", "00", shp.PackingList, today, now);
+        w.Segment("DTM", "011", shipDate, shipTime);
+        w.Segment("DTM", "017", shipDate, shipTime);
+
+        // ---- Shipment HL (level S) — weights ride in TD1, not separate MEA ----
+        w.Segment("HL", "01", "", "S", "1");
+        w.Segment("TD1", "PLT90", Int(shp.PalletCount), "", "", "", "G", Int(shp.GrossWeight), "LB");
+        w.Segment("TD1", "PLT90", Int(shp.PalletCount), "", "", "", "N", Int(shp.NetWeight), "LB");
+        w.Segment("TD5", "B", "2", shp.Scac, "M", (shp.CarrierName ?? "").Trim(), "CC");
+        w.Segment("TD3", shp.CarrierDescCode, shp.Scac, shp.VehicleId);
+        w.Segment("REF", "CN", shp.PackingList);
+        w.Segment("REF", "BM", shp.PackingList);
+        w.Segment("N1", "SF", "Aluminum Blanking Co", "1", EdiInterchange.SenderParty);
+        w.Segment("N1", "MF", shp.MfName, "1", shp.MfDuns);
+        w.Segment("N1", "ST", shp.ShipToName, "1", shp.ShipToDuns);
+        w.Segment("N1", "MA", shp.ShipToName, "1", shp.ShipToDuns);
+
+        // ---- Order HL (level O) — just the PRF ----
+        w.Segment("HL", "02", "01", "O");
+        w.Segment("PRF", shp.OrigCustomerPo, "", "", shp.OrderDate.ToString("yyyyMMdd", CultureInfo.InvariantCulture));
+
+        // ---- Item HLs (level I) — one per skid, with the rich LIN + alloy/temper PIDs ----
+        var hl = 2;
+        foreach (var it in shp.Items)
+        {
+            hl++;
+            w.Segment("HL", Hl(hl), "02", "I");
+            w.Segment("LIN", "1", "BP", it.EnduserPart, "SN", it.CoilOrgNum, "HN", it.LotNum, "LS", it.CoilAbcNum, "JN", it.Vo);
+            w.Segment("PID", "S", "55", "", it.Alloy);
+            w.Segment("PID", "S", "16", "", it.Temper);
+            w.Segment("MEA", "WT", "WT", Int(it.GrossWeight), "01");
+            w.Segment("MEA", "CT", "NL", Int(it.Pieces), "PC");
+            w.Segment("MEA", "PD", "TH", Dec4(it.Gauge));   // '0.0000' — leading zero kept (unlike Novelis GG)
+            w.Segment("MEA", "PD", "WD", OraNum(it.Width));
+            w.Segment("MEA", "PD", "LN", OraNum(it.LinealFeed));
+            w.Segment("REF", "SE", it.SkidDisplayNum);
+        }
+
+        w.Segment("CTT", hl.ToString(CultureInfo.InvariantCulture),
+            (shp.Items.Count + shp.OrderPieceCount).ToString(CultureInfo.InvariantCulture));
         return w.Close();
     }
 
     // HL id: the legacy zero-pads to 2 digits below 10 (HL*03), raw at/above (HL*10). ToString("00") matches both.
     private static string Hl(int n) => n.ToString("00", CultureInfo.InvariantCulture);
+
+    // Legacy TRIM(to_char(x, '0.0000')): 4 decimals, keeps the leading zero (0.0394). Constellium MEA*PD*TH.
+    private static string Dec4(decimal v) => v.ToString("0.0000", CultureInfo.InvariantCulture);
 
     private static string Int(int v) => v.ToString(CultureInfo.InvariantCulture);
 

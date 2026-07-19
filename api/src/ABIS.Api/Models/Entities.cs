@@ -1790,11 +1790,14 @@ public sealed class Edi856Shipment
     public string? CarrierDescCode { get; set; }
     public string? VehicleId { get; set; }
     public string? EqType { get; set; }
-    /// <summary>Ship-to customer name + DUNS — N1*ST (name comes DB-padded).</summary>
+    /// <summary>Ship-to customer name + DUNS — N1*ST (Novelis: name DB-padded; Constellium: also the N1*MA party).</summary>
     public string? ShipToName { get; set; }
     public string? ShipToDuns { get; set; }
-    /// <summary>The receiving customer's own DUNS — N1*SU.</summary>
+    /// <summary>The receiving customer's own DUNS — N1*SU (Novelis only).</summary>
     public string? SupplierDuns { get; set; }
+    /// <summary>Constellium N1*MF party — the customer short name + its DUNS. Null for Novelis.</summary>
+    public string? MfName { get; set; }
+    public string? MfDuns { get; set; }
     /// <summary>order_item.enduser_part_num — LIN*BP.</summary>
     public string? EnduserPart { get; set; }
     /// <summary>The order-level piece count — SN1 and the CTT02 hash component.</summary>
@@ -1808,22 +1811,38 @@ public sealed class Edi856Shipment
     public IReadOnlyList<Edi856Item> Items { get; set; } = [];
 }
 
-/// <summary>One skid line item (I-level HL) in an 856 — net/pieces/gross + gauge/width + the three references.</summary>
+/// <summary>One skid line item (I-level HL) in an 856. The Novelis fields are net/pieces/gross + gauge/width +
+/// three references; the Constellium fields (a per-item LIN with part/coil/lot/abc/vo, alloy, temper, lineal
+/// feed) are a superset the novelis variant ignores.</summary>
 public sealed class Edi856Item
 {
     public int NetWeight { get; set; }
     public int Pieces { get; set; }
+    /// <summary>Gross weight — Novelis MEA*WT*G; Constellium MEA*WT*WT.</summary>
     public int GrossWeight { get; set; }
-    /// <summary>coil.coil_gauge — MEA*PD*GG (Oracle default number format, e.g. .0374).</summary>
+    /// <summary>coil.coil_gauge — Novelis MEA*PD*GG (Oracle default, .0374); Constellium MEA*PD*TH (0.0000, leading zero kept).</summary>
     public decimal Gauge { get; set; }
     /// <summary>coil.coil_width — MEA*PD*WD.</summary>
     public decimal Width { get; set; }
-    /// <summary>coil.lot_num — REF*BT.</summary>
+    /// <summary>coil.lot_num — Novelis REF*BT; Constellium LIN*HN.</summary>
     public string? LotNum { get; set; }
     /// <summary>sheet_skid.sheet_skid_display_num — REF*SE.</summary>
     public string? SkidDisplayNum { get; set; }
-    /// <summary>coil.coil_org_num — REF*LS.</summary>
+    /// <summary>coil.coil_org_num — Novelis REF*LS; Constellium LIN*SN.</summary>
     public string? CoilOrgNum { get; set; }
+    // ---- Constellium-only (per-item LIN + PID) ----
+    /// <summary>order_item.enduser_part_num — Constellium LIN*BP.</summary>
+    public string? EnduserPart { get; set; }
+    /// <summary>coil.coil_abc_num — Constellium LIN*LS.</summary>
+    public string? CoilAbcNum { get; set; }
+    /// <summary>coil.vo — Constellium LIN*JN.</summary>
+    public string? Vo { get; set; }
+    /// <summary>coil.coil_alloy — Constellium PID*S*55.</summary>
+    public string? Alloy { get; set; }
+    /// <summary>coil.coil_temper — Constellium PID*S*16.</summary>
+    public string? Temper { get; set; }
+    /// <summary>lineal feed — Constellium MEA*PD*LN.</summary>
+    public decimal LinealFeed { get; set; }
 }
 
 /// <summary>Request for the admin "send a test email" diagnostic. All fields optional (sensible defaults).</summary>
