@@ -1261,8 +1261,18 @@ public static class SqliteFixture
             """,
             new[]
             {
-                new { EdiTypeId = 856, EdiVersion = "2002FORD", EdiTypeDescription = "Advance Ship Notice (Ford)" },
-                new { EdiTypeId = 870, EdiVersion = "3030", EdiTypeDescription = "Order status report" }
+                // Legacy per-customer rows (mirror the .230 data, with descriptions backfilled).
+                new { EdiTypeId = 856, EdiVersion = "2002FORD", EdiTypeDescription = "Ship Notice/Manifest (ASN) — Ford" },
+                new { EdiTypeId = 856, EdiVersion = "2040GM", EdiTypeDescription = "Ship Notice/Manifest (ASN) — GM" },
+                new { EdiTypeId = 856, EdiVersion = "3030", EdiTypeDescription = "Ship Notice/Manifest (ASN)" },
+                new { EdiTypeId = 870, EdiVersion = "3030", EdiTypeDescription = "Order Status Report" },
+                // The sets the modern engine generates, at the going-forward 004010 version.
+                new { EdiTypeId = 856, EdiVersion = "004010", EdiTypeDescription = "Ship Notice/Manifest (ASN)" },
+                new { EdiTypeId = 861, EdiVersion = "004010", EdiTypeDescription = "Receiving Advice / Acceptance Certificate" },
+                new { EdiTypeId = 870, EdiVersion = "004010", EdiTypeDescription = "Order Status Report" },
+                new { EdiTypeId = 846, EdiVersion = "004010", EdiTypeDescription = "Inventory Inquiry / Advice" },
+                new { EdiTypeId = 863, EdiVersion = "004010", EdiTypeDescription = "Report of Test Results" },
+                new { EdiTypeId = 997, EdiVersion = "004010", EdiTypeDescription = "Functional Acknowledgment" }
             });
 
         conn.Execute("""

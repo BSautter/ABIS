@@ -331,7 +331,10 @@ public static class AbisSchema
          WHERE NOT EXISTS (SELECT 1 FROM abis_edi_partner WHERE customer_id = 3061 AND transaction_set = '846')
         """,
         // The 846 AISI code-map rows (from the live .230 DB) — idempotent, no-op once present.
-        .. Edi846CodeMapSeeds()
+        .. Edi846CodeMapSeeds(),
+        // Transaction-type lookup (the EDI "Types" tab): the sets the modern engine generates, at the going-forward
+        // 004010 version, with descriptions. Idempotent; also backfills descriptions on the blank legacy rows.
+        .. EdiTypeSeeds()
     ];
 
     // The 846 AISI status→code maps, verbatim from the live .230 DB (see abis-edi-846-codemaps). One idempotent
@@ -353,6 +356,24 @@ public static class AbisSchema
             yield return $"INSERT INTO abis_scrap_status_x12 (abis_scrap_status, table70_material_status_op) SELECT {k}, '{t70}' FROM dual WHERE NOT EXISTS (SELECT 1 FROM abis_scrap_status_x12 WHERE abis_scrap_status = {k})";
         foreach (var (k, t67) in ScrapType)
             yield return $"INSERT INTO abis_scrap_type_x12 (abis_scrap_type, table67_material_class) SELECT {k}, '{t67}' FROM dual WHERE NOT EXISTS (SELECT 1 FROM abis_scrap_type_x12 WHERE abis_scrap_type = {k})";
+    }
+
+    // The transaction sets the modern engine generates, at the going-forward 004010 version, with descriptions
+    // (the EDI "Types" reference lookup). Idempotent inserts + a description backfill for the blank legacy rows
+    // (only where blank, so admin edits survive).
+    private static readonly (int Id, string Desc)[] EdiTypeDescriptions =
+        [(856, "Ship Notice/Manifest (ASN)"), (861, "Receiving Advice / Acceptance Certificate"),
+         (870, "Order Status Report"), (846, "Inventory Inquiry / Advice"), (863, "Report of Test Results"),
+         (997, "Functional Acknowledgment")];
+
+    private static IEnumerable<string> EdiTypeSeeds()
+    {
+        foreach (var (id, desc) in EdiTypeDescriptions)
+            yield return $"INSERT INTO edi_type (edi_type_id, edi_version, edi_type_description) SELECT {id}, '004010', '{desc}' FROM dual WHERE NOT EXISTS (SELECT 1 FROM edi_type WHERE edi_type_id = {id} AND edi_version = '004010')";
+        yield return "UPDATE edi_type SET edi_type_description = 'Ship Notice/Manifest (ASN) — Ford' WHERE edi_type_id = 856 AND edi_version = '2002FORD' AND edi_type_description IS NULL";
+        yield return "UPDATE edi_type SET edi_type_description = 'Ship Notice/Manifest (ASN) — GM' WHERE edi_type_id = 856 AND edi_version = '2040GM' AND edi_type_description IS NULL";
+        yield return "UPDATE edi_type SET edi_type_description = 'Ship Notice/Manifest (ASN)' WHERE edi_type_id = 856 AND edi_version = '3030' AND edi_type_description IS NULL";
+        yield return "UPDATE edi_type SET edi_type_description = 'Order Status Report' WHERE edi_type_id = 870 AND edi_version = '3030' AND edi_type_description IS NULL";
     }
 
     // An idempotent 861 partner-profile seed row (GS code RC; envelope version per partner — the pre-transition
