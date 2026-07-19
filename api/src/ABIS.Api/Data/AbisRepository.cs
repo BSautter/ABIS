@@ -272,6 +272,15 @@ public sealed class AbisRepository : IAbisRepository
         customer_id AS CustomerId, edi_file_name AS EdiFileName, payload AS Payload, created_utc AS CreatedUtc
         """;
 
+    // Oracle stores an empty component_separator / segment_suffix as NULL, so COALESCE them back to ''.
+    private const string EdiPartnerCols = """
+        customer_id AS CustomerId, transaction_set AS TransactionSet, enabled AS Enabled, variant AS Variant,
+        receiver_qualifier AS ReceiverQualifier, receiver_id AS ReceiverId,
+        COALESCE(component_separator, '') AS ComponentSeparator, COALESCE(segment_suffix, '') AS SegmentSuffix,
+        envelope_version AS EnvelopeVersion, gs_functional_code AS GsFunctionalCode, file_prefix AS FilePrefix,
+        item_reference AS ItemReference, updated_utc AS UpdatedUtc, updated_by AS UpdatedBy
+        """;
+
     private const string EdiLogCols = """
         edi_log_timestamp AS EdiLogTimestamp, customer_id AS CustomerId, customer_edi_name AS CustomerEdiName,
         edi_log_contents AS EdiLogContents, edi_log_flag AS EdiLogFlag, edi_file_id AS EdiFileId,
@@ -3269,6 +3278,26 @@ public sealed class AbisRepository : IAbisRepository
             $"SELECT {EdiPayloadCols} FROM abis_edi_payload WHERE edi_file_id = :id", new { id = ediFileId }, cancellationToken: ct));
     }
 
+    /// <summary>The EDI trading-partner profile for a customer + transaction set (the config backbone), or null
+    /// when that customer isn't configured to exchange that document.</summary>
+    public async Task<EdiPartnerProfile?> GetEdiPartnerAsync(long customerId, string transactionSet, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.QuerySingleOrDefaultAsync<EdiPartnerProfile>(new CommandDefinition(
+            $"SELECT {EdiPartnerCols} FROM abis_edi_partner WHERE customer_id = :c AND transaction_set = :t",
+            new { c = customerId, t = transactionSet }, cancellationToken: ct));
+    }
+
+    /// <summary>All EDI trading-partner profiles (optionally one transaction set), for the admin EDI setup.</summary>
+    public async Task<IReadOnlyList<EdiPartnerProfile>> ListEdiPartnersAsync(string? transactionSet, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var where = transactionSet is null ? "" : " WHERE transaction_set = :t";
+        return (await conn.QueryAsync<EdiPartnerProfile>(new CommandDefinition(
+            $"SELECT {EdiPartnerCols} FROM abis_edi_partner{where} ORDER BY customer_id, transaction_set",
+            new { t = transactionSet }, cancellationToken: ct))).ToList();
+    }
+
     /// <summary>The 861 already generated for a receiving BOL (the idempotency guard), or null.</summary>
     public async Task<EdiPayload?> GetEdi861ForBolAsync(long receivingBolId, CancellationToken ct)
     {
@@ -3525,22 +3554,24 @@ public sealed class AbisRepository : IAbisRepository
     /// (<see cref="Edi870Generator"/>), allocate the edi_file_id (= control number), insert the tracking row +
     /// the payload CLOB, and mark every reported item ('ITEM') and every job whose scrap was sent ('SCRAP') so
     /// they are not reported again. <b>Never transmits.</b> Empty batch → Status "nothing" (nothing written).</summary>
-    public async Task<Edi870Result> PersistEdi870Async(Edi870Batch batch, DateTime timestamp, CancellationToken ct)
+    public async Task<Edi870Result> PersistEdi870Async(Edi870Batch batch, EdiPartnerProfile profile, DateTime timestamp, CancellationToken ct)
     {
+        var partnerName = string.IsNullOrEmpty(profile.Variant) ? "870 partner"
+            : char.ToUpperInvariant(profile.Variant![0]) + profile.Variant!.Substring(1);
         var itemCount = batch.Jobs.Sum(j => j.Items.Count);
         var scrapCount = batch.Jobs.Sum(j => j.Scrap.Count);
         if (batch.Jobs.Count == 0 || (itemCount == 0 && scrapCount == 0))
             return new Edi870Result
             {
-                CustomerId = batch.CustomerId, Status = "nothing", Partner = "Aleris", Transmitted = false,
+                CustomerId = batch.CustomerId, Status = "nothing", Partner = partnerName, Transmitted = false,
                 Note = "No unsent 870 items or scrap for this customer.",
             };
 
         await using var conn = await OpenAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
         var ediFileId = await NextIdAsync(conn, (DbTransaction)tx, "outbound_edi_transaction", "edi_file_id", ct);
-        var payload = Edi870Generator.Generate(batch, ediFileId, ediFileId, timestamp);
-        var fileName = Edi870Generator.FileName(ediFileId);
+        var payload = Edi870Generator.Generate(batch, profile, ediFileId, ediFileId, timestamp);
+        var fileName = Edi870Generator.FileName(profile, ediFileId);
         var hlCount = batch.Jobs.Count * 2 + itemCount + scrapCount;
 
         await conn.ExecuteAsync(new CommandDefinition(
@@ -3591,11 +3622,11 @@ public sealed class AbisRepository : IAbisRepository
         await tx.CommitAsync(ct);
         return new Edi870Result
         {
-            CustomerId = batch.CustomerId, Status = "generated", Partner = "Aleris", Transmitted = false,
+            CustomerId = batch.CustomerId, Status = "generated", Partner = partnerName, Transmitted = false,
             EdiFileId = ediFileId, EdiFileName = fileName, GroupControlNumber = ediFileId, SetControlNumber = ediFileId,
             JobCount = batch.Jobs.Count, ItemCount = itemCount, ScrapCount = scrapCount, HlCount = hlCount,
             PayloadBytes = System.Text.Encoding.UTF8.GetByteCount(payload),
-            Note = $"870 generated for Aleris ({batch.Jobs.Count} jobs, {itemCount} items, {scrapCount} scrap); stored, not transmitted.",
+            Note = $"870 generated for {partnerName} ({batch.Jobs.Count} jobs, {itemCount} items, {scrapCount} scrap); stored, not transmitted.",
         };
     }
 

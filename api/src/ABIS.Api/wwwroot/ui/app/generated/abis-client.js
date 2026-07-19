@@ -4180,6 +4180,62 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * The per-(customer, transaction set) EDI trading-partner profiles — the config backbone that lets each customer have different requirements for their 861/870/846/… documents. Optionally filter by transactionSet.
+     * @param transactionSet (optional)
+     * @return OK
+     */
+    listEdiPartners(transactionSet) {
+        let url_ = this.baseUrl + "/api/edi/partners?";
+        if (transactionSet === null)
+            throw new globalThis.Error("The parameter 'transactionSet' cannot be null.");
+        else if (transactionSet !== undefined)
+            url_ += "transactionSet=" + encodeURIComponent("" + transactionSet) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processListEdiPartners(_response);
+        });
+    }
+    processListEdiPartners(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(EdiPartnerProfile.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * List EDI transmission-log entries, newest first (paged, sortable; filter by customerId).
      * @param page (optional)
      * @param pageSize (optional)
@@ -15951,6 +16007,58 @@ export class EdiLogEntryPagedResult {
         data["pageSize"] = this.pageSize;
         data["totalCount"] = this.totalCount;
         data["totalPages"] = this.totalPages;
+        return data;
+    }
+}
+export class EdiPartnerProfile {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.customerId = _data["customerId"];
+            this.transactionSet = _data["transactionSet"];
+            this.enabled = _data["enabled"];
+            this.variant = _data["variant"];
+            this.receiverQualifier = _data["receiverQualifier"];
+            this.receiverId = _data["receiverId"];
+            this.componentSeparator = _data["componentSeparator"];
+            this.segmentSuffix = _data["segmentSuffix"];
+            this.envelopeVersion = _data["envelopeVersion"];
+            this.gsFunctionalCode = _data["gsFunctionalCode"];
+            this.filePrefix = _data["filePrefix"];
+            this.itemReference = _data["itemReference"];
+            this.updatedUtc = _data["updatedUtc"] ? new Date(_data["updatedUtc"].toString()) : undefined;
+            this.updatedBy = _data["updatedBy"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new EdiPartnerProfile();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["customerId"] = this.customerId;
+        data["transactionSet"] = this.transactionSet;
+        data["enabled"] = this.enabled;
+        data["variant"] = this.variant;
+        data["receiverQualifier"] = this.receiverQualifier;
+        data["receiverId"] = this.receiverId;
+        data["componentSeparator"] = this.componentSeparator;
+        data["segmentSuffix"] = this.segmentSuffix;
+        data["envelopeVersion"] = this.envelopeVersion;
+        data["gsFunctionalCode"] = this.gsFunctionalCode;
+        data["filePrefix"] = this.filePrefix;
+        data["itemReference"] = this.itemReference;
+        data["updatedUtc"] = this.updatedUtc ? this.updatedUtc.toISOString() : undefined;
+        data["updatedBy"] = this.updatedBy;
         return data;
     }
 }

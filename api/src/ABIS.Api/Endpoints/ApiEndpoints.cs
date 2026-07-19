@@ -832,13 +832,14 @@ public static class ApiEndpoints
                     return Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Empty BOL",
                         detail: $"Receiving BOL {receivingBolId} has no coil lines; nothing to advise.");
 
-                // Resolve the trading-partner profile from the receiving customer (Novelis 1153/1459/2582 or
-                // Aleris 1980), using the customer's own DUNS for N1*SU. Not a configured 861 partner → 422.
+                // Resolve the customer's 861 trading-partner profile (the config backbone) + their own DUNS for
+                // N1*SU. No enabled 861 profile → 422 (configure it in the admin EDI setup).
                 var customer = bol.CustomerId is null ? null : await repo.GetCustomerAsync(bol.CustomerId.Value, ct);
-                var partner = Abis.Api.Edi.Edi861Generator.ResolvePartner(bol.CustomerId, customer?.CustomerDunsNumberString ?? "");
-                if (partner is null)
+                var profile = bol.CustomerId is null ? null : await repo.GetEdiPartnerAsync(bol.CustomerId.Value, "861", ct);
+                if (profile is null || !profile.Enabled)
                     return Results.Problem(statusCode: StatusCodes.Status422UnprocessableEntity, title: "Not an 861 partner",
-                        detail: $"Customer {bol.CustomerId} is not a configured 861 trading partner (Novelis 1153/1459/2582 or Aleris 1980).");
+                        detail: $"Customer {bol.CustomerId} has no enabled 861 trading-partner profile (configure it in the admin EDI setup).");
+                var partner = Abis.Api.Edi.Edi861Generator.PartnerFromProfile(profile, customer?.CustomerDunsNumberString ?? "");
 
                 // One 861 per BOL — the stored payload is the idempotency guard.
                 if (await repo.GetEdi861ForBolAsync(receivingBolId, ct) is { } existing)
@@ -987,17 +988,25 @@ public static class ApiEndpoints
         api.MapPost("/edi/870/generate", async (HttpContext ctx, IAbisRepository repo, CancellationToken ct, long customerId = 1980) =>
             {
                 if (await RequireFeatureAsync(ctx, repo, "EDI", 1, ct) is { } deny) return deny;
-                // Only Aleris (1980) has an 870 body variant wired (Wise would need its own — a documented follow-up).
-                if (customerId != 1980)
+                // Resolve the customer's 870 trading-partner profile (the config backbone). No enabled 870
+                // profile → 422. (Only the "aleris" body variant is wired today; Wise would add its own.)
+                var profile = await repo.GetEdiPartnerAsync(customerId, "870", ct);
+                if (profile is null || !profile.Enabled)
                     return Results.Problem(statusCode: StatusCodes.Status422UnprocessableEntity, title: "Not an 870 partner",
-                        detail: $"Customer {customerId} is not a configured 870 trading partner (only Aleris 1980 is wired).");
+                        detail: $"Customer {customerId} has no enabled 870 trading-partner profile (configure it in the admin EDI setup).");
                 var batch = await repo.AssembleEdi870BatchAsync(customerId, ct);
-                var result = await repo.PersistEdi870Async(batch, DateTime.Now, ct);
+                var result = await repo.PersistEdi870Async(batch, profile, DateTime.Now, ct);
                 return Results.Ok(result);
             })
            .WithName("GenerateEdi870").WithTags("EDI")
            .WithSummary("Generate + persist the 870 (Order/Coil Status) batch for a customer (default Aleris 1980) — every not-yet-reported shippable item + finished-job scrap, built and stored but NEVER transmitted. Returns status 'nothing' when there's nothing to report; view the payload at /edi/transactions/{ediFileId}/payload. Marks reported items/jobs so they aren't sent twice.")
            .Produces<Edi870Result>().Produces(StatusCodes.Status422UnprocessableEntity);
+
+        api.MapGet("/edi/partners", async (IAbisRepository repo, CancellationToken ct, string? transactionSet = null) =>
+                Results.Ok(await repo.ListEdiPartnersAsync(transactionSet, ct)))
+           .WithName("ListEdiPartners").WithTags("EDI")
+           .WithSummary("The per-(customer, transaction set) EDI trading-partner profiles — the config backbone that lets each customer have different requirements for their 861/870/846/… documents. Optionally filter by transactionSet.")
+           .Produces<IReadOnlyList<EdiPartnerProfile>>();
 
         api.MapGet("/edi/log", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, long? customerId = null, string? sort = null, string? dir = null) =>

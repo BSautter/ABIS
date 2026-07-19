@@ -882,7 +882,8 @@ public sealed class RepositoryTests : IDisposable
         Assert.NotNull(bol);
         var coils = await _repo.GetReceivingBolCoilsAsync(5500, CancellationToken.None);
         Assert.Equal(2, coils.Count);
-        var partner = Abis.Api.Edi.Edi861Generator.ResolvePartner(bol!.CustomerId, "241003755")!;
+        var profile = await _repo.GetEdiPartnerAsync(bol!.CustomerId!.Value, "861", CancellationToken.None);
+        var partner = Abis.Api.Edi.Edi861Generator.PartnerFromProfile(profile!, "241003755");
 
         var result = await _repo.PersistEdi861Async(bol, coils, partner, new DateTime(2026, 7, 11, 14, 30, 0), CancellationToken.None);
         Assert.Equal("generated", result.Status);
@@ -924,7 +925,9 @@ public sealed class RepositoryTests : IDisposable
         Assert.Equal(2.5m, item.TheoreticalUnitWt);
         Assert.Equal(3000m, job.Scrap[0].ScrapNetWeight);   // 25000 process − 2000 end − 20000 prime
 
-        var result = await _repo.PersistEdi870Async(batch, new DateTime(2026, 7, 12, 9, 30, 0), CancellationToken.None);
+        var profile = await _repo.GetEdiPartnerAsync(1980, "870", CancellationToken.None);
+        Assert.NotNull(profile);   // the seeded Aleris 870 profile drives the envelope
+        var result = await _repo.PersistEdi870Async(batch, profile!, new DateTime(2026, 7, 12, 9, 30, 0), CancellationToken.None);
         Assert.Equal("generated", result.Status);
         Assert.Equal("Aleris", result.Partner);
         Assert.Equal(1, result.JobCount);
@@ -940,7 +943,28 @@ public sealed class RepositoryTests : IDisposable
         // Report-once: the item + job are marked, so a second assemble finds nothing.
         var again = await _repo.AssembleEdi870BatchAsync(1980, CancellationToken.None);
         Assert.Empty(again.Jobs);
-        Assert.Equal("nothing", (await _repo.PersistEdi870Async(again, DateTime.Now, CancellationToken.None)).Status);
+        Assert.Equal("nothing", (await _repo.PersistEdi870Async(again, profile!, DateTime.Now, CancellationToken.None)).Status);
+    }
+
+    [Fact]
+    public async Task EdiPartner_profiles_are_seeded_and_readable()
+    {
+        var nov = await _repo.GetEdiPartnerAsync(1153, "861", CancellationToken.None);
+        Assert.NotNull(nov);
+        Assert.Equal("novelis", nov!.Variant);
+        Assert.Equal("0015049350011G", nov.ReceiverId);
+        Assert.Equal("", nov.ComponentSeparator);   // Novelis empty component separator round-trips
+        Assert.True(nov.Enabled);
+
+        var ale870 = await _repo.GetEdiPartnerAsync(1980, "870", CancellationToken.None);
+        Assert.Equal("300578504", ale870!.ItemReference);
+        Assert.Equal("00401", ale870.EnvelopeVersion);
+        Assert.Equal("RS", ale870.GsFunctionalCode);
+
+        Assert.Null(await _repo.GetEdiPartnerAsync(4001, "861", CancellationToken.None));   // not a configured partner
+
+        var all861 = await _repo.ListEdiPartnersAsync("861", CancellationToken.None);
+        Assert.Equal(4, all861.Count);   // Novelis 1153/1459/2582 + Aleris 1980
     }
 
     [Fact]

@@ -22,20 +22,27 @@ public static class Edi870Generator
     private const string SenderQualifier = "01";
     private const string SenderId = "039630926T";   // ISA06 + GS02
     private const string SenderParty = "039630926";  // outbound_edi_transaction.duns_from
-    private const string AlerisReceiverQualifier = "ZZ";
-    private const string AlerisReceiverId = "964790856";  // ISA08 + GS03 (Aleris hub)
-    private const string AlerisComponentSeparator = ">";
 
     /// <summary>The trading-partner id for <c>outbound_edi_transaction.duns_from</c>.</summary>
     public static string SenderDuns => SenderParty;
-    /// <summary>Output file-name prefix (legacy <c>edi_file_prefix</c>).</summary>
-    public static string FileName(long ediFileId) => $"S_aleris_{ediFileId.ToString(CultureInfo.InvariantCulture)}.edi";
+    /// <summary>Output file name from the partner profile's prefix (legacy <c>edi_file_prefix</c>).</summary>
+    public static string FileName(EdiPartnerProfile profile, long ediFileId) =>
+        $"{(string.IsNullOrEmpty(profile.FilePrefix) ? "S_aleris_" : profile.FilePrefix)}{ediFileId.ToString(CultureInfo.InvariantCulture)}.edi";
 
-    /// <summary>Build the 870 payload for a batch. <paramref name="groupControl"/> is ISA13 = GS06;
-    /// <paramref name="setControl"/> is ST02. The modern engine sets both to the new edi_file_id.</summary>
-    public static string Generate(Edi870Batch batch, long groupControl, long setControl, DateTime timestamp)
+    /// <summary>Build the 870 payload for a batch, taking the envelope (receiver identity, component separator,
+    /// envelope version, GS code, item reference) from the partner <paramref name="profile"/> — so a different
+    /// customer's 870 is configuration, not a fork. <paramref name="groupControl"/> is ISA13 = GS06;
+    /// <paramref name="setControl"/> is ST02. The body below is the Aleris variant (the only live 870 today).</summary>
+    public static string Generate(Edi870Batch batch, EdiPartnerProfile profile, long groupControl, long setControl, DateTime timestamp)
     {
-        var w = new X12Writer(new X12Options { ComponentSeparator = AlerisComponentSeparator });
+        var compSep = profile.ComponentSeparator ?? ">";
+        var recvQual = string.IsNullOrEmpty(profile.ReceiverQualifier) ? "ZZ" : profile.ReceiverQualifier!;
+        var recvId = string.IsNullOrEmpty(profile.ReceiverId) ? "964790856" : profile.ReceiverId!;
+        var version = string.IsNullOrEmpty(profile.EnvelopeVersion) ? "00401" : profile.EnvelopeVersion!;
+        var gsFunc = string.IsNullOrEmpty(profile.GsFunctionalCode) ? "RS" : profile.GsFunctionalCode!;
+        var itemRef = string.IsNullOrEmpty(profile.ItemReference) ? "300578504" : profile.ItemReference!;
+
+        var w = new X12Writer(new X12Options { ComponentSeparator = compSep });
         var gs = groupControl.ToString(CultureInfo.InvariantCulture);
         var st = setControl.ToString(CultureInfo.InvariantCulture);
         var yyMMdd = timestamp.ToString("yyMMdd", CultureInfo.InvariantCulture);
@@ -43,9 +50,9 @@ public static class Edi870Generator
         var hhmm = timestamp.ToString("HHmm", CultureInfo.InvariantCulture);
         var suDuns = batch.SupplierDuns ?? "";
 
-        w.Isa("00", "", "00", "", SenderQualifier, SenderId, AlerisReceiverQualifier, AlerisReceiverId,
-            yyMMdd, hhmm, "U", "00401", gs, "0", "P");
-        w.Gs("RS", SenderId, AlerisReceiverId, yyyyMMdd, hhmm, gs, "X", "004010");
+        w.Isa("00", "", "00", "", SenderQualifier, SenderId, recvQual, recvId,
+            yyMMdd, hhmm, "U", version, gs, "0", "P");
+        w.Gs(gsFunc, SenderId, recvId, yyyyMMdd, hhmm, gs, "X", "004010");
         w.St("870", st);
         w.Segment("BSR", "2", "PP", st, yyyyMMdd, "", "", hhmm, "", "", "", "", "");
         w.Segment("N1", "OU", "ALUMINUM BLANKING/MI", "1", SenderId);
@@ -62,7 +69,7 @@ public static class Edi870Generator
             w.Segment("PRF", enduserPo, "", "", yyyyMMdd);
             hl++;
             w.Segment("HL", hl.ToString(CultureInfo.InvariantCulture), "1", "I", "1");
-            w.Segment("PRF", "RV", "300578504");   // the Aleris item reference (magic constant, per legacy)
+            w.Segment("PRF", "RV", itemRef);   // the partner item reference (profile.ItemReference; Aleris = 300578504)
             var hlLin = hl;   // li_hllin — the I-level HL id, parent of every F-level block below
 
             foreach (var item in job.Items)

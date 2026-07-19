@@ -36,7 +36,7 @@ The VAN SFTP stays the single legacy owner (`GXS.ksh`) — the ONLY items still 
 transport + the data-source cutover. Design in `docs/EDI_ENGINE.md`; see `[[abis-edi-engine-build]]`,
 `[[abis-no-live-firing-guardrail]]`, `[[abis-230-cron-inventory]]`. **Foundation shipped: #183 (X12Writer +
 `IEdiTransport`→`NoOpEdiTransport`, no SFTP anywhere), #184 (email → cmattinson override).**
-- [~] **C** EDI outbound generation (861 / 870 / 846 / 856 / 863) — foundation + **861 + 870 DONE** (generate + payload store + view + report-once markers); **846 = next**
+- [~] **C** EDI outbound generation (861 / 870 / 846 / 856 / 863) — foundation + **861 + 870 DONE** + **partner-profile backbone** (`abis_edi_partner`: per-customer per-doc config, 861/870 refactored onto it); **846 = next (on the backbone)**. Admin UI for the profiles = a small follow-up.
 - [ ] **H** Inbound EDI ingestion (856 ASN parse → `inbound_shipment` / `inbound_coil` / status)
 - [ ] **H** 997 functional-ack matching + aging alert (>2h no FA) — routes through `IEmailSender` (override-safe)
 - [ ] **DEFERRED** EDI VAN transport (GXS / Inovis SFTP) + postpro — legacy-owned, do NOT build (transmit seam stays no-op)

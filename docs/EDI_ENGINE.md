@@ -19,6 +19,17 @@ is **not built**; it stays the legacy owner. The seam is `IEdiTransport`; its on
 logs "would transmit N bytes" and returns `Transmitted=false`. There is no SFTP client in this codebase.
 On codi-ABIS (which runs the .230 sandbox, not prod .9) it's doubly isolated from the legacy transmit owner.
 
+## Trading-partner backbone (✅ built) — different customers, different requirements
+Each customer can have **different requirements for each document** (the legacy had a separate proc per
+customer per set). The engine now reads a per-`(customer, transaction set)` profile — table
+**`abis_edi_partner`** (`EdiPartnerProfile`; admin-editable, seeded from the legacy procs): the ENVELOPE
+(receiver qualifier/id, component separator, segment suffix, envelope version, GS functional code, file
+prefix) + **enablement** are data; a **`variant`** field selects the generator's body code path where a
+customer's layout genuinely differs (e.g. `novelis` vs `aleris` for the 861). Magic body constants that are
+per-partner (e.g. the Aleris 870 `PRF*RV` value) ride on the profile too (`item_reference`). 861 + 870 now
+resolve their partner from this backbone (`GetEdiPartnerAsync` → 422 if no enabled profile); every new set
+builds on it. The receiving customer's own DUNS (N1*SU/N1*MF) still comes from `customer.customer_duns_number_string`.
+
 ## Architecture (`api/src/ABIS.Api/Edi/`)
 - **`X12Writer` + `X12Options`** ✅ (this PR) — builds one ISA/GS/ST…SE/GE/IEA interchange segment-by-segment,
   reproducing per-partner framing (element sep `*`; segment suffix `""` for 861/870/863/856 vs `~` for 846;

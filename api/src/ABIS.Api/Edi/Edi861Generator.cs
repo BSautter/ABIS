@@ -72,43 +72,34 @@ public static class Edi861Generator
     /// <summary>The trading-partner id for <c>outbound_edi_transaction.duns_from</c> / the N1*OU party.</summary>
     public static string SenderDuns => SenderParty;
 
-    /// <summary>Resolve the 861 partner profile for a receiving customer, or null when that customer is not a
-    /// configured 861 trading partner. Mirrors the legacy proc customer gates
-    /// (<c>customer_id IN (1153,1459,2582)</c> → Novelis; <c>= 1980</c> → Aleris). The receiving customer's
-    /// own DUNS (<paramref name="supplierDuns"/>) fills N1*SU. TODO: lift these magic customer ids into a
-    /// partner-config table (docs/EDI_ENGINE.md open decisions).</summary>
-    public static Edi861Partner? ResolvePartner(long? customerId, string supplierDuns) => customerId switch
+    /// <summary>Build the resolved 861 partner from its configured <see cref="EdiPartnerProfile"/> (the backbone)
+    /// + the receiving customer's own DUNS (<paramref name="supplierDuns"/>, N1*SU). The envelope (qualifier,
+    /// receiver id, component separator, file prefix) comes straight from the profile <em>data</em>; the body
+    /// differences are driven by <see cref="EdiPartnerProfile.Variant"/> — "aleris" vs the "novelis" default
+    /// (LIN order, REF*BM placement, N1*MF, and the net-weight MEA qualifier).</summary>
+    public static Edi861Partner PartnerFromProfile(EdiPartnerProfile profile, string supplierDuns)
     {
-        1153 or 1459 or 2582 => new Edi861Partner
+        var (linStyle, headerRefBm, mfName, coilRefBm, netWtQual, name) =
+            profile.Variant?.Trim().ToLowerInvariant() switch
+            {
+                "aleris" => (Edi861LinStyle.Aleris, true, (string?)"Aleris", false, "WT", "Aleris"),
+                _ => (Edi861LinStyle.Novelis, false, (string?)null, true, "", "Novelis"),
+            };
+        return new Edi861Partner
         {
-            Name = "Novelis",
-            ReceiverQualifier = "09",
-            ReceiverId = "0015049350011G",
-            ComponentSeparator = "",
-            FilePrefix = "S_Novelis_",
-            LinStyle = Edi861LinStyle.Novelis,
-            HeaderRefBm = false,
-            ManufacturerName = null,
-            CoilRefBm = true,
-            NetWeightQualifier = "",
+            Name = name,
+            ReceiverQualifier = profile.ReceiverQualifier ?? "",
+            ReceiverId = profile.ReceiverId ?? "",
+            ComponentSeparator = profile.ComponentSeparator ?? "",
+            FilePrefix = string.IsNullOrEmpty(profile.FilePrefix) ? "S_" : profile.FilePrefix!,
+            LinStyle = linStyle,
+            HeaderRefBm = headerRefBm,
+            ManufacturerName = mfName,
+            CoilRefBm = coilRefBm,
+            NetWeightQualifier = netWtQual,
             SupplierDuns = supplierDuns,
-        },
-        1980 => new Edi861Partner
-        {
-            Name = "Aleris",
-            ReceiverQualifier = "ZZ",
-            ReceiverId = "964790856",
-            ComponentSeparator = ">",
-            FilePrefix = "S_edi_",
-            LinStyle = Edi861LinStyle.Aleris,
-            HeaderRefBm = true,
-            ManufacturerName = "Aleris",
-            CoilRefBm = false,
-            NetWeightQualifier = "WT",
-            SupplierDuns = supplierDuns,
-        },
-        _ => null,
-    };
+        };
+    }
 
     /// <summary>The output EDI file name for a generated 861 (legacy <c>edi_file_prefix || id || '.edi'</c>).</summary>
     public static string FileName(Edi861Partner partner, long ediFileId) =>

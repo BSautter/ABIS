@@ -73,6 +73,7 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS outbound_edi_transaction;
             DROP TABLE IF EXISTS abis_edi_payload;
             DROP TABLE IF EXISTS abis_edi_870_mark;
+            DROP TABLE IF EXISTS abis_edi_partner;
             DROP TABLE IF EXISTS edi_log;
             DROP TABLE IF EXISTS edi_type;
             DROP TABLE IF EXISTS customer_edi;
@@ -398,6 +399,16 @@ public static class SqliteFixture
             CREATE TABLE abis_edi_870_mark (
                 mark_type TEXT, ref_id INTEGER, edi_file_id INTEGER, customer_id INTEGER, sent_utc TEXT,
                 PRIMARY KEY (mark_type, ref_id));
+
+            -- ABIS-owned EDI trading-partner profiles (mirrors AbisSchema.abis_edi_partner): one row per
+            -- (customer, transaction set), so each customer's 861/870/846/… can differ. Envelope + enablement
+            -- are data; `variant` selects the generator body path. Generation config only — never transmits.
+            CREATE TABLE abis_edi_partner (
+                customer_id INTEGER, transaction_set TEXT, enabled INTEGER, variant TEXT,
+                receiver_qualifier TEXT, receiver_id TEXT, component_separator TEXT, segment_suffix TEXT,
+                envelope_version TEXT, gs_functional_code TEXT, file_prefix TEXT, item_reference TEXT,
+                updated_utc TEXT, updated_by TEXT,
+                PRIMARY KEY (customer_id, transaction_set));
 
             CREATE TABLE edi_type (
                 edi_type_id INTEGER, edi_version TEXT, edi_type_description TEXT,
@@ -763,6 +774,24 @@ public static class SqliteFixture
             INSERT INTO process_coil (ab_job_num, coil_abc_num, process_coil_status, process_end_wt, process_quantity)
             VALUES (990, 4990, 2, 2000, 25000)
             """);
+
+        // EDI trading-partner profiles (the config backbone) seeded from the legacy per-customer procs:
+        // Novelis (1153/1459/2582) + Aleris (1980) 861s, and the Aleris 870. Each customer's envelope +
+        // enablement live here; `variant` selects the generator body path.
+        conn.Execute(
+            """
+            INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier,
+                receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, file_prefix, item_reference)
+            VALUES (:CustomerId, :TransactionSet, 1, :Variant, :RecvQual, :RecvId, :Comp, :Suffix, :Ver, :Gs, :Prefix, :ItemRef)
+            """,
+            new[]
+            {
+                new { CustomerId = 1153L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00200", Gs = "RC", Prefix = "S_Novelis_", ItemRef = (string?)null },
+                new { CustomerId = 1459L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00200", Gs = "RC", Prefix = "S_Novelis_", ItemRef = (string?)null },
+                new { CustomerId = 2582L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00200", Gs = "RC", Prefix = "S_Novelis_", ItemRef = (string?)null },
+                new { CustomerId = 1980L, TransactionSet = "861", Variant = "aleris", RecvQual = "ZZ", RecvId = "964790856", Comp = ">", Suffix = "", Ver = "00200", Gs = "RC", Prefix = "S_edi_", ItemRef = (string?)null },
+                new { CustomerId = 1980L, TransactionSet = "870", Variant = "aleris", RecvQual = "ZZ", RecvId = "964790856", Comp = ">", Suffix = "", Ver = "00401", Gs = "RS", Prefix = "S_aleris_", ItemRef = (string?)"300578504" }
+            });
 
         conn.Execute("""
             INSERT INTO scan_log (scan_id, scan_datetime, ab_job_num, scan_station, note)

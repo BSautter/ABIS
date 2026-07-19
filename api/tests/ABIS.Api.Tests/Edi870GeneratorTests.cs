@@ -12,6 +12,14 @@ public class Edi870GeneratorTests
     private static readonly DateTime Now = new(2026, 7, 12, 9, 30, 0);
     private const long Ctrl = 5000;
 
+    // The seeded Aleris 870 profile drives the envelope; the generator body is the aleris variant.
+    private static EdiPartnerProfile Profile() => new()
+    {
+        CustomerId = 1980, TransactionSet = "870", Enabled = true, Variant = "aleris",
+        ReceiverQualifier = "ZZ", ReceiverId = "964790856", ComponentSeparator = ">",
+        EnvelopeVersion = "00401", GsFunctionalCode = "RS", FilePrefix = "S_aleris_", ItemReference = "300578504",
+    };
+
     private static Edi870Batch Batch(bool withScrap)
     {
         var item = new Edi870Item
@@ -35,7 +43,7 @@ public class Edi870GeneratorTests
     [Fact]
     public void Envelope_is_the_aleris_870_frame()
     {
-        var lines = Lines(Edi870Generator.Generate(Batch(withScrap: false), Ctrl, Ctrl, Now));
+        var lines = Lines(Edi870Generator.Generate(Batch(withScrap: false), Profile(), Ctrl, Ctrl, Now));
         var isa = lines[0].Split('*');
         Assert.Equal("01", isa[5]);
         Assert.Equal("039630926T".PadRight(15), isa[6]);
@@ -54,7 +62,7 @@ public class Edi870GeneratorTests
     [Fact]
     public void Item_block_has_the_HL_hierarchy_and_measurements()
     {
-        var lines = Lines(Edi870Generator.Generate(Batch(withScrap: false), Ctrl, Ctrl, Now));
+        var lines = Lines(Edi870Generator.Generate(Batch(withScrap: false), Profile(), Ctrl, Ctrl, Now));
 
         // order → item → detail hierarchy
         Assert.Contains("HL*1**O*1", lines);
@@ -82,7 +90,7 @@ public class Edi870GeneratorTests
     [Fact]
     public void Scrap_block_is_appended_when_present()
     {
-        var lines = Lines(Edi870Generator.Generate(Batch(withScrap: true), Ctrl, Ctrl, Now));
+        var lines = Lines(Edi870Generator.Generate(Batch(withScrap: true), Profile(), Ctrl, Ctrl, Now));
         Assert.Contains("HL*4*2*F", lines);             // the scrap detail block
         Assert.Contains("PO1**1*UN***VO*ALE-EPO-77*SN*ALE-COIL-1*HN*ALE-LOT-1***BP* ", lines);
         Assert.Contains("PID*S*DAC*ST*258***73", lines);
@@ -103,7 +111,7 @@ public class Edi870GeneratorTests
         {
             var b = new Edi870Batch { CustomerId = 1980, SupplierDuns = "d",
                 Jobs = new[] { new Edi870Job { AbJobNum = 1, EnduserPo = "P", Items = new[] { WithStatus(s) } } } };
-            return Edi870Generator.Generate(b, Ctrl, Ctrl, Now);
+            return Edi870Generator.Generate(b, Profile(), Ctrl, Ctrl, Now);
         }
         Assert.Contains("PID*S*MA*ST*1***70", Lines(Gen(2)));    // Ready
         Assert.Contains("PID*S*MA*ST*8***70", Lines(Gen(13)));   // Partial
@@ -114,7 +122,7 @@ public class Edi870GeneratorTests
     [Fact]
     public void SE_count_matches_and_trailers_carry_the_control_number()
     {
-        var lines = Lines(Edi870Generator.Generate(Batch(withScrap: true), Ctrl, Ctrl, Now));
+        var lines = Lines(Edi870Generator.Generate(Batch(withScrap: true), Profile(), Ctrl, Ctrl, Now));
         var stIndex = Array.FindIndex(lines, l => l.StartsWith("ST*"));
         var seIndex = Array.FindIndex(lines, l => l.StartsWith("SE*"));
         var se = lines[seIndex].Split('*');

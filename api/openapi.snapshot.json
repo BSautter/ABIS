@@ -3289,6 +3289,42 @@
         }
       }
     },
+    "/api/edi/partners": {
+      "get": {
+        "tags": [
+          "EDI"
+        ],
+        "summary": "The per-(customer, transaction set) EDI trading-partner profiles — the config backbone that lets each customer have different requirements for their 861/870/846/… documents. Optionally filter by transactionSet.",
+        "operationId": "ListEdiPartners",
+        "parameters": [
+          {
+            "name": "transactionSet",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EdiPartnerProfile"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/edi/log": {
       "get": {
         "tags": [
@@ -13041,6 +13077,68 @@
             "type": "integer",
             "format": "int32",
             "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "EdiPartnerProfile": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "transactionSet": {
+            "type": "string",
+            "nullable": true
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "variant": {
+            "type": "string",
+            "nullable": true
+          },
+          "receiverQualifier": {
+            "type": "string",
+            "nullable": true
+          },
+          "receiverId": {
+            "type": "string",
+            "nullable": true
+          },
+          "componentSeparator": {
+            "type": "string",
+            "nullable": true
+          },
+          "segmentSuffix": {
+            "type": "string",
+            "nullable": true
+          },
+          "envelopeVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "gsFunctionalCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "filePrefix": {
+            "type": "string",
+            "nullable": true
+          },
+          "itemReference": {
+            "type": "string",
+            "nullable": true
+          },
+          "updatedUtc": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedBy": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false

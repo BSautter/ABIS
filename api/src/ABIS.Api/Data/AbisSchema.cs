@@ -201,6 +201,29 @@ public static class AbisSchema
           customer_id   NUMBER(10),
           sent_utc      DATE,
           CONSTRAINT pk_abis_edi_870_mark PRIMARY KEY (mark_type, ref_id))
+        """,
+        // ABIS-owned EDI trading-partner profiles (docs/data-model/migrations/007_edi_partner.sql). One row per
+        // (customer, transaction set) so each customer can have different requirements for their 861/870/846/…:
+        // enablement + the envelope (partner identity, separators, version, GS code, file prefix) as data, plus
+        // a `variant` that selects the generator's body code path where the layout differs. Seeded from the
+        // legacy per-customer procs; editable in the admin EDI setup. Generation config only — never transmits.
+        """
+        CREATE TABLE abis_edi_partner (
+          customer_id          NUMBER(10)    NOT NULL,
+          transaction_set      VARCHAR2(6)   NOT NULL,
+          enabled              NUMBER(1)     DEFAULT 1 NOT NULL,
+          variant              VARCHAR2(40),
+          receiver_qualifier   VARCHAR2(4),
+          receiver_id          VARCHAR2(20),
+          component_separator  VARCHAR2(2),
+          segment_suffix       VARCHAR2(2),
+          envelope_version     VARCHAR2(6),
+          gs_functional_code   VARCHAR2(4),
+          file_prefix          VARCHAR2(40),
+          item_reference       VARCHAR2(40),
+          updated_utc          DATE,
+          updated_by           VARCHAR2(64),
+          CONSTRAINT pk_abis_edi_partner PRIMARY KEY (customer_id, transaction_set))
         """
     ];
 

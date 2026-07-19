@@ -28,20 +28,40 @@ public class Edi861GeneratorTests
     private static string[] Lines(string payload) =>
         payload.Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
-    [Fact]
-    public void ResolvePartner_maps_the_legacy_customer_gates()
+    // The partner identity now comes from the config backbone (EdiPartnerProfile); these mirror the seeded rows.
+    private static EdiPartnerProfile NovelisProfile() => new()
     {
-        Assert.Equal("Novelis", Edi861Generator.ResolvePartner(1153, "d")!.Name);
-        Assert.Equal("Novelis", Edi861Generator.ResolvePartner(2582, "d")!.Name);
-        Assert.Equal("Aleris", Edi861Generator.ResolvePartner(1980, "d")!.Name);
-        Assert.Null(Edi861Generator.ResolvePartner(4001, "d"));   // not a configured 861 partner
-        Assert.Null(Edi861Generator.ResolvePartner(null, "d"));
+        CustomerId = 1153, TransactionSet = "861", Enabled = true, Variant = "novelis",
+        ReceiverQualifier = "09", ReceiverId = "0015049350011G", ComponentSeparator = "", FilePrefix = "S_Novelis_",
+    };
+    private static EdiPartnerProfile AlerisProfile() => new()
+    {
+        CustomerId = 1980, TransactionSet = "861", Enabled = true, Variant = "aleris",
+        ReceiverQualifier = "ZZ", ReceiverId = "964790856", ComponentSeparator = ">", FilePrefix = "S_edi_",
+    };
+
+    [Fact]
+    public void PartnerFromProfile_maps_the_variant_to_body_flags()
+    {
+        var nov = Edi861Generator.PartnerFromProfile(NovelisProfile(), "d");
+        Assert.Equal("Novelis", nov.Name);
+        Assert.Equal(Edi861LinStyle.Novelis, nov.LinStyle);
+        Assert.True(nov.CoilRefBm);
+        Assert.Null(nov.ManufacturerName);
+        Assert.Equal("09", nov.ReceiverQualifier);      // envelope carried straight from the profile data
+
+        var ale = Edi861Generator.PartnerFromProfile(AlerisProfile(), "d");
+        Assert.Equal("Aleris", ale.Name);
+        Assert.Equal(Edi861LinStyle.Aleris, ale.LinStyle);
+        Assert.Equal("Aleris", ale.ManufacturerName);
+        Assert.Equal("WT", ale.NetWeightQualifier);
+        Assert.Equal(">", ale.ComponentSeparator);
     }
 
     [Fact]
     public void Novelis_861_has_the_expected_envelope_and_body()
     {
-        var partner = Edi861Generator.ResolvePartner(1153, "241003755")!;
+        var partner = Edi861Generator.PartnerFromProfile(NovelisProfile(), "241003755");
         var coils = new[] { Coil("NC-1001", 900001, 20000, 20200), Coil("NC-1002", 900002, 18000, 18150) };
         var lines = Lines(Edi861Generator.Generate(Bol(1153), coils, partner, Ctrl, Ctrl, Now));
 
@@ -85,7 +105,7 @@ public class Edi861GeneratorTests
     [Fact]
     public void Aleris_861_uses_its_receiver_component_sep_and_body_variant()
     {
-        var partner = Edi861Generator.ResolvePartner(1980, "964790111")!;
+        var partner = Edi861Generator.PartnerFromProfile(AlerisProfile(), "964790111");
         var coils = new[] { Coil("AC-1", 700001, 15000, 15100) };
         var lines = Lines(Edi861Generator.Generate(Bol(1980), coils, partner, Ctrl, Ctrl, Now));
 
@@ -107,7 +127,7 @@ public class Edi861GeneratorTests
     [Fact]
     public void Damaged_coil_adds_the_DAC_and_DAF_segments()
     {
-        var partner = Edi861Generator.ResolvePartner(1153, "d")!;
+        var partner = Edi861Generator.PartnerFromProfile(NovelisProfile(), "d");
         var clean = Lines(Edi861Generator.Generate(Bol(1153), new[] { Coil("A", 1, 100, 110) }, partner, Ctrl, Ctrl, Now));
         var damaged = Lines(Edi861Generator.Generate(Bol(1153), new[] { Coil("A", 1, 100, 110, dmgCode: 5, dmgFault: 1) }, partner, Ctrl, Ctrl, Now));
 
@@ -119,7 +139,7 @@ public class Edi861GeneratorTests
     [Fact]
     public void SE_count_matches_the_segments_from_ST_through_SE()
     {
-        var partner = Edi861Generator.ResolvePartner(1153, "d")!;
+        var partner = Edi861Generator.PartnerFromProfile(NovelisProfile(), "d");
         var coils = new[] { Coil("A", 1, 100, 110), Coil("B", 2, 200, 210) };
         var lines = Lines(Edi861Generator.Generate(Bol(1153), coils, partner, Ctrl, Ctrl, Now));
 

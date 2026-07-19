@@ -1624,6 +1624,41 @@ public sealed class EdiPayload
     public DateTime? CreatedUtc { get; set; }
 }
 
+/// <summary>Per-<c>(customer, transaction set)</c> EDI trading-partner configuration — the backbone that lets
+/// each customer have different requirements for their 861 / 870 / 846 / … documents. The <em>envelope</em>
+/// (partner identity, separators, version, file prefix) and enablement live here as data; where a customer's
+/// <em>body layout</em> genuinely differs, <see cref="Variant"/> selects the generator's code path (e.g.
+/// "novelis" vs "aleris" for the 861). Seeded from the legacy per-customer procs; editable in the admin EDI
+/// setup. Table <c>abis_edi_partner</c>. Generation only — nothing here transmits.</summary>
+public sealed class EdiPartnerProfile
+{
+    public long CustomerId { get; set; }
+    /// <summary>The X12 transaction set: "861", "870", "846", "856", "863".</summary>
+    public string TransactionSet { get; set; } = "";
+    /// <summary>When false, the generator refuses (422) — the customer doesn't exchange this document.</summary>
+    public bool Enabled { get; set; } = true;
+    /// <summary>Selects the body code path when the layout differs by partner (e.g. "novelis"/"aleris").</summary>
+    public string? Variant { get; set; }
+    /// <summary>ISA/GS receiver qualifier (e.g. "09" Novelis, "ZZ" Aleris, "01" Cleveland-Cliffs).</summary>
+    public string? ReceiverQualifier { get; set; }
+    /// <summary>ISA08 + GS03 receiver id — the trading-partner hub DUNS.</summary>
+    public string? ReceiverId { get; set; }
+    /// <summary>ISA16 component separator ("" Novelis, "&gt;" Aleris, "|" Cliffs).</summary>
+    public string? ComponentSeparator { get; set; }
+    /// <summary>Segment terminator appended before the line break ("" for 861/870, "~" for 846).</summary>
+    public string? SegmentSuffix { get; set; }
+    /// <summary>ISA12 envelope version ("00200" for 861, "00401" for 870/846).</summary>
+    public string? EnvelopeVersion { get; set; }
+    /// <summary>GS01 functional identifier code ("RC" 861, "RS" 870, "IB" 846, …).</summary>
+    public string? GsFunctionalCode { get; set; }
+    /// <summary>Output file-name prefix (legacy <c>edi_file_prefix</c>).</summary>
+    public string? FilePrefix { get; set; }
+    /// <summary>A per-partner magic reference used in the body (e.g. the Aleris 870 <c>PRF*RV</c> value).</summary>
+    public string? ItemReference { get; set; }
+    public DateTime? UpdatedUtc { get; set; }
+    public string? UpdatedBy { get; set; }
+}
+
 // ---- EDI 870 (Order/Coil Status) — the assembled input graph + result ----
 // The legacy edi_aleris_870 proc builds ONE 870 per customer, batching every not-yet-sent production
 // item (+ finished-job scrap) into an HL hierarchy (order → item → detail). These DTOs are the modern
