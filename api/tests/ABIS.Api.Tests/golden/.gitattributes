@@ -1,0 +1,3 @@
+# Golden EDI fixtures are byte-significant (trailing spaces, LF terminators are load-bearing).
+# Disable EOL conversion + text munging so the committed bytes reach CI unchanged.
+*.edi -text
