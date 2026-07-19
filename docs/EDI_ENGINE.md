@@ -63,6 +63,15 @@ Shared pieces live in `Edi/EdiInterchange.cs` (sender identity + envelope opener
 - **Orchestrator** — replicate `ediprocess.sh` selection order + readiness gates. Generation only.
 - **`Edi997Monitor`** — the watchdog query (unsent txns with no FA, 2h–1d old) → alert list.
 
+## More 861 partners to build out (source vendored, not yet ported)
+The seed covers **Novelis + Aleris** only. The plant also exchanges 861 (and 870) with **Constellium**,
+**Arconic**, and **Commonwealth** (the former Aleris, rebranded) — the legacy has a per-customer proc for each
+in `docs/data-model/oracle_ddl.sql` / `oracle_plsql_current.sql`: `EDI_ARCONIC_861_TEST` (customer **2784**,
+ARCONIC-TN, prefix `s_arconic_861_`), `F_EDI_CONSTELLIUM_861`, `F_EDI_COMMONWEALTH_861`, plus `EDI_ARCONIC_870`
+(job-scoped). To add each: port its body onto the standard pattern (a new `Edi861Generator` variant if the
+layout diverges from novelis/aleris), add its `EdiPartnerProfile` seed row, and confirm the customer_ids +
+whether Commonwealth is just the existing `aleris` variant under a new name. Tracked as its own task.
+
 ## Party constants (sender = Aluminum Blanking Co.)
 | Party | ID | Qual |
 |---|---|---|
