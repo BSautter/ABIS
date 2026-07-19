@@ -256,4 +256,43 @@ public class Edi870GeneratorTests
     {
         Assert.Equal("S_novelis_870_9007_Job-124315.edi", Edi870Generator.NovelisFileName(NovelisProfile(), 9007, 124315));
     }
+
+    // Guthrie (customer 2950) rides the SAME Novelis body + envelope (F_EDI_NOVELIS_870_4JOB gates on
+    // customer_short_name LIKE '%novelis%' and hard-codes the Novelis EDI hub 0015049350011G / GS03 001504935001).
+    // The only customer-specific element is the N1*SU DUNS, which the assembler carries on the batch — so the
+    // Guthrie profile is Kingston's with a different customer id, and its envelope is byte-identical.
+    private static EdiPartnerProfile GuthrieProfile() => new()
+    {
+        CustomerId = 2950, TransactionSet = "870", Enabled = true, Variant = "novelis",
+        ReceiverQualifier = "09", ReceiverId = "0015049350011G", ComponentSeparator = "",
+        EnvelopeVersion = "00401", GsFunctionalCode = "RS", GsReceiverCode = "001504935001",
+        FilePrefix = "S_novelis_870_", ItemReference = null,
+    };
+
+    [Fact]
+    public void Guthrie_shares_the_novelis_envelope_and_carries_its_own_su_duns()
+    {
+        var batch = new Edi870Batch
+        {
+            CustomerId = 2950, SupplierDuns = "117061565",   // Guthrie's own DUNS → N1*SU
+            Jobs = new[] { new Edi870Job { AbJobNum = 700100, EnduserPo = "GPO", Items = new[]
+            {
+                new Edi870Item
+                {
+                    ProdItemNum = 601, SkidSheetStatus = 2, Pieces = 40, NetWeight = 8000m, GrossWeight = 8100m,
+                    CoilOrgNum = "GC-1", OrigCustomerPo = "NA", CustProdLine = "NA",
+                    FinishedGoodsMaterialNum = "FG-G", ConsumedCoil = "CC-G", SheetSkidDisplayNum = "GS-1",
+                },
+            } } },
+        };
+        var lines = Lines(Edi870Generator.Generate(batch, GuthrieProfile(), Ctrl, Ctrl, Now));
+
+        // Envelope is byte-identical to Kingston/Oswego (shared Novelis hub); only N1*SU carries Guthrie's DUNS.
+        Assert.Equal("GS*RS*039630926T*001504935001*20260712*0930*5000*X*004010", lines[1]);
+        Assert.Equal("N1*SU**1*117061565", lines[5]);
+        Assert.Equal("N1*OU*ALUMINUM BLANKING/MI*1*039630926", lines[6]);
+        Assert.Contains("HL*1**I", lines);                 // the same flat Novelis HL body
+        Assert.Contains("PO1**1*UN*******SN*GC-1***VP*FG-G", lines);
+        Assert.Equal("S_novelis_870_9007_Job-700100.edi", Edi870Generator.NovelisFileName(GuthrieProfile(), 9007, 700100));
+    }
 }

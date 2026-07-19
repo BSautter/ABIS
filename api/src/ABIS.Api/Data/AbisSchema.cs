@@ -304,10 +304,14 @@ public static class AbisSchema
         SELECT 1980, '870', 1, 'aleris', 'ZZ', '964790856', '>', '', '00401', 'RS', 'S_aleris_', '300578504' FROM dual
          WHERE NOT EXISTS (SELECT 1 FROM abis_edi_partner WHERE customer_id = 1980 AND transaction_set = '870')
         """,
-        // Novelis 870 (customers 1153 Kingston + 1459 Oswego): per-job variant. GS03 receiver (001504935001)
-        // differs from the ISA08 receiver id (0015049350011G), so gs_receiver_code overrides it.
+        // Novelis 870 (customers 1153 Kingston + 1459 Oswego + 2950 Guthrie): per-job variant. GS03 receiver
+        // (001504935001) differs from the ISA08 receiver id (0015049350011G), so gs_receiver_code overrides it.
+        // All Novelis plants share the legacy F_EDI_NOVELIS_870_4JOB proc (it gates on customer_short_name LIKE
+        // '%novelis%' and hard-codes the Novelis EDI hub), so Guthrie is the same envelope + body as Kingston/Oswego,
+        // differing only in the per-customer N1*SU DUNS (117061565), which the assembler pulls per job.
         Seed870Novelis("1153"),
         Seed870Novelis("1459"),
+        Seed870Novelis("2950"),
         // Arconic 861 (customer 2784, ARCONIC-TN): its own body variant + a distinct GS sender (R0P7ATN) and SH code.
         """
         INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier,
