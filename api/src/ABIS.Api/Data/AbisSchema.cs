@@ -281,9 +281,16 @@ public static class AbisSchema
         Seed861Novelis("2582"),
         // Customer 1980 = Commonwealth Rolled Products (formerly Aleris). Live 861 = F_EDI_COMMONWEALTH_861:
         // variant commonwealth, prefix S_Commonwealth_861_, envelope 00401 (the pre-transition Aleris variant is
-        // kept in code for reference). On an existing DB this INSERT is a no-op — flip the 1980/861 profile in the
-        // admin EDI setup (variant→commonwealth, prefix→S_Commonwealth_861_, version→00401).
+        // kept in code for reference). The INSERT is a no-op on an existing DB; the UPDATE below flips the stale row.
         Seed861("1980", "commonwealth", "ZZ", "964790856", ">", "S_Commonwealth_861_", "00401"),
+        // Flip the 1980/861 profile from the pre-transition Aleris settings to Commonwealth (the live output is now
+        // F_EDI_COMMONWEALTH_861 → S_Commonwealth_861_ / 00401). Guarded on the stale aleris/00200 values so it's a
+        // no-op once migrated and never clobbers a deliberate admin edit. The 1980/870 stays aleris (still live).
+        """
+        UPDATE abis_edi_partner
+           SET variant = 'commonwealth', file_prefix = 'S_Commonwealth_861_', envelope_version = '00401'
+         WHERE customer_id = 1980 AND transaction_set = '861' AND variant = 'aleris' AND envelope_version = '00200'
+        """,
         // Correct any Novelis 861 rows seeded before the golden-file fidelity fix (still at the old 00200/RC
         // defaults), without clobbering admin edits (guard on the stale values). One-shot: a no-op once corrected.
         """
