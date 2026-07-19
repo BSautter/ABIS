@@ -967,10 +967,15 @@ public sealed class RepositoryTests : IDisposable
         Assert.Equal("R0P7ATN", arc.GsSenderCode);
         Assert.Equal("SH", arc.GsFunctionalCode);
 
+        // Constellium 861 — the '@' component separator round-trips.
+        var con = await _repo.GetEdiPartnerAsync(2776, "861", CancellationToken.None);
+        Assert.Equal("constellium", con!.Variant);
+        Assert.Equal("@", con.ComponentSeparator);
+
         Assert.Null(await _repo.GetEdiPartnerAsync(4001, "861", CancellationToken.None));   // not a configured partner
 
         var all861 = await _repo.ListEdiPartnersAsync("861", CancellationToken.None);
-        Assert.Equal(5, all861.Count);   // Novelis 1153/1459/2582 + Aleris 1980 + Arconic 2784
+        Assert.Equal(6, all861.Count);   // Novelis 1153/1459/2582 + Aleris 1980 + Arconic 2784 + Constellium 2776
     }
 
     [Fact]

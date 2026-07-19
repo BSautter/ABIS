@@ -792,7 +792,9 @@ public static class SqliteFixture
                 new { CustomerId = 1980L, TransactionSet = "861", Variant = "aleris", RecvQual = "ZZ", RecvId = "964790856", Comp = ">", Suffix = "", Ver = "00200", Gs = "RC", GsSender = (string?)null, Prefix = "S_edi_", ItemRef = (string?)null },
                 new { CustomerId = 1980L, TransactionSet = "870", Variant = "aleris", RecvQual = "ZZ", RecvId = "964790856", Comp = ">", Suffix = "", Ver = "00401", Gs = "RS", GsSender = (string?)null, Prefix = "S_aleris_", ItemRef = (string?)"300578504" },
                 // Arconic 861 (customer 2784, ARCONIC-TN): its own variant + a distinct GS sender (R0P7ATN) and SH group code.
-                new { CustomerId = 2784L, TransactionSet = "861", Variant = "arconic", RecvQual = "01", RecvId = "961613887", Comp = ">", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)"R0P7ATN", Prefix = "S_arconic_861_", ItemRef = (string?)null }
+                new { CustomerId = 2784L, TransactionSet = "861", Variant = "arconic", RecvQual = "01", RecvId = "961613887", Comp = ">", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)"R0P7ATN", Prefix = "S_arconic_861_", ItemRef = (string?)null },
+                // Constellium 861 (customer 2776): SH group code, standard ABCo GS sender, '@' component separator.
+                new { CustomerId = 2776L, TransactionSet = "861", Variant = "constellium", RecvQual = "01", RecvId = "043207177", Comp = "@", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)null, Prefix = "S_constellium_861_", ItemRef = (string?)null }
             });
 
         conn.Execute("""

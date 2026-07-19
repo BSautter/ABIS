@@ -248,6 +248,13 @@ public static class AbisSchema
             receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, gs_sender_code, file_prefix, item_reference)
         SELECT 2784, '861', 1, 'arconic', '01', '961613887', '>', '', '00401', 'SH', 'R0P7ATN', 'S_arconic_861_', NULL FROM dual
          WHERE NOT EXISTS (SELECT 1 FROM abis_edi_partner WHERE customer_id = 2784 AND transaction_set = '861')
+        """,
+        // Constellium 861 (customer 2776): SH group code, standard ABCo GS sender, '@' component separator.
+        """
+        INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier,
+            receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, gs_sender_code, file_prefix, item_reference)
+        SELECT 2776, '861', 1, 'constellium', '01', '043207177', '@', '', '00401', 'SH', NULL, 'S_constellium_861_', NULL FROM dual
+         WHERE NOT EXISTS (SELECT 1 FROM abis_edi_partner WHERE customer_id = 2776 AND transaction_set = '861')
         """
     ];
 

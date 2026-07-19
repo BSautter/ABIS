@@ -46,6 +46,40 @@ public class Edi861GeneratorTests
         EnvelopeVersion = "00401", GsFunctionalCode = "SH", GsSenderCode = "R0P7ATN", FilePrefix = "S_arconic_861_",
     };
 
+    private static EdiPartnerProfile ConstelliumProfile() => new()
+    {
+        CustomerId = 2776, TransactionSet = "861", Enabled = true, Variant = "constellium",
+        ReceiverQualifier = "01", ReceiverId = "043207177", ComponentSeparator = "@",
+        EnvelopeVersion = "00401", GsFunctionalCode = "SH", FilePrefix = "S_constellium_861_",
+    };
+
+    [Fact]
+    public void Constellium_861_uses_its_at_separator_and_body()
+    {
+        var coils = new[] { Coil("CN-3", 700003, 9000, 9100) };
+        var lines = Lines(Edi861Generator.Generate(Bol(2776), coils, ConstelliumProfile(), "043207177", Ctrl, Ctrl, Now));
+
+        // Envelope — receiver 01/043207177, '@' component separator, GS SH with the standard ABCo sender (no override).
+        var isa = lines[0].Split('*');
+        Assert.Equal("01", isa[7]);
+        Assert.Equal("043207177".PadRight(15), isa[8]);
+        Assert.Equal("@", isa[16]);
+        Assert.Equal("GS*SH*039630926T*043207177*20260711*1430*1234*X*004010", lines[1]);
+
+        // Header — REF*MA + N1*MF/N1*OU, and no N1*SU.
+        Assert.Contains("REF*MA*BOL-NOV-500", lines);
+        Assert.Contains("N1*MF**1*043207177", lines);
+        Assert.Contains("N1*OU**1*039630926", lines);
+        Assert.DoesNotContain(lines, l => l.StartsWith("N1*SU"));
+
+        // Coil block — RCD**1*UN, LIN VO/**/SN/HN, PID*S*QAS, qualified MEA*WT*WT, MEA*PD*WD default width + *IN.
+        Assert.Contains("RCD**1*UN", lines);
+        Assert.Contains("LIN**VO*PO-55***SN*CN-3*HN*HL-77", lines);
+        Assert.Contains("PID*S*QAS*ST*1***68", lines);
+        Assert.Contains("MEA*WT*WT*9000*01", lines);
+        Assert.Contains("MEA*PD*WD*60*IN", lines);
+    }
+
     [Fact]
     public void Arconic_861_uses_its_distinct_envelope_and_body()
     {

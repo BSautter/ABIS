@@ -60,6 +60,14 @@ public static class Edi861Generator
             w.Segment("CTT", coils.Count.ToString(CultureInfo.InvariantCulture));
             return w.Close();
         }
+        // Constellium (customer 2776) — like Arconic (REF*MA, RCD**1*UN, N1 MF/OU) but its own body:
+        // component sep '@', *ET dates, no N1*SU, a PID*S*QAS, LIN**VO*{po}***SN*{coil}*HN, MEA*WT*WT weights.
+        if (variant == "constellium")
+        {
+            ConstelliumBody(w, bol, coils, supplierDuns, timestamp);
+            w.Segment("CTT", coils.Count.ToString(CultureInfo.InvariantCulture));
+            return w.Close();
+        }
 
         // ---- novelis/aleris body flavour (envelope itself is data, applied by EdiInterchange.Open) ----
         var (linStyle, headerRefBm, mfName, coilRefBm, netWtQual) = variant switch
@@ -153,6 +161,44 @@ public static class Edi861Generator
             w.Segment("MEA", "WT", "", Int(c.GrossWeight), "24");
             w.Segment("MEA", "PD", "TH", Dec4(c.CoilGauge), "ED");
             w.Segment("MEA", "PD", "WD", Dec4(c.CoilWidth), "ED");
+            w.Segment("MEA", "PD", "LN", DecTrim(c.LinealFeed), "LF");
+        }
+    }
+
+    /// <summary>The Constellium 861 body (legacy <c>f_edi_constellium_861</c>): a <c>REF*MA</c> header with
+    /// <c>N1*MF</c>/<c>N1*OU</c> (no N1*SU), <c>*ET</c> date qualifiers, and a per-coil block of
+    /// <c>RCD**1*UN</c>, <c>LIN**VO*{po}***SN*{coil}*HN*{lot}</c>, three PIDs (incl. <c>PID*S*QAS*ST*1</c>),
+    /// <c>REF*SE</c> + <c>DTM*206</c>, qualified <c>MEA*WT*WT</c> weights, and <c>MEA*PD*..</c> dimensions
+    /// (thickness *ED, width/length *IN/*LF). The interchange uses the <c>@</c> component separator. Never transmits.</summary>
+    private static void ConstelliumBody(X12Writer w, ReceivingBol bol, IReadOnlyList<ReceivingBolCoil> coils,
+        string supplierDuns, DateTime timestamp)
+    {
+        var bolNum = bol.Bol ?? "";
+        var received = bol.ReceivedDate ?? timestamp;
+        var yyyyMMdd = timestamp.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+        var hhmm = timestamp.ToString("HHmm", CultureInfo.InvariantCulture);
+
+        w.Segment("BRA", bolNum, yyyyMMdd, "00", "1", hhmm);
+        w.Segment("REF", "MA", bolNum);
+        w.Segment("DTM", "050", received.ToString("yyyyMMdd", CultureInfo.InvariantCulture),
+            received.ToString("HHmm", CultureInfo.InvariantCulture), "ET");
+        w.Segment("N1", "MF", "", "1", supplierDuns);
+        w.Segment("N1", "OU", "", "1", EdiInterchange.SenderParty);
+
+        var received206 = received.ToString("yyyyMMdd HHmm", CultureInfo.InvariantCulture);   // legacy 'yyyymmdd hhmi'
+        foreach (var c in coils)
+        {
+            w.Segment("RCD", "", "1", "UN");
+            w.Segment("LIN", "", "VO", c.PurchaseOrderNum ?? "", "", "", "SN", c.CoilOrgNum, "HN", c.Lot);
+            w.Segment("PID", "S", "MAC", "ST", "01", "", "", "67");
+            w.Segment("PID", "S", "MA", "ST", "7", "", "", "70");
+            w.Segment("PID", "S", "QAS", "ST", "1", "", "", "68");
+            w.Segment("REF", "SE", (c.CoilAbcNum ?? 0).ToString(CultureInfo.InvariantCulture));
+            w.Segment("DTM", "206", received206, "ET");
+            w.Segment("MEA", "WT", "WT", Int(c.NetWeight), "01");
+            w.Segment("MEA", "WT", "WT", Int(c.GrossWeight), "24");
+            w.Segment("MEA", "PD", "TH", Dec4(c.CoilGauge), "ED");
+            w.Segment("MEA", "PD", "WD", DecTrim(c.CoilWidth), "IN");
             w.Segment("MEA", "PD", "LN", DecTrim(c.LinealFeed), "LF");
         }
     }
