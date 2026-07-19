@@ -3545,6 +3545,102 @@
         }
       }
     },
+    "/api/edi/997/waiting": {
+      "get": {
+        "tags": [
+          "EDI"
+        ],
+        "summary": "Outbound transactions still awaiting a 997 functional acknowledgment (fa_received_time IS NULL), oldest first — the in-app form of the legacy check_997.sh email. Each is bucketed by age: fresh (<2h), waiting (2–24h, what legacy chased), overdue (>24h). Read-only.",
+        "operationId": "Edi997Waiting",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50
+            }
+          },
+          {
+            "name": "customerId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Edi997WaitingReport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/edi/997/ingest": {
+      "post": {
+        "tags": [
+          "EDI"
+        ],
+        "summary": "Ingest an inbound 997 (Functional Acknowledgment) and reconcile its acks against the outbound ledger — stamps fa_received_time / fa_receive_status on each matched transaction (matched by group control number = edi_file_id). Parse + store only; never transmits. Returns a matched/unmatched + accept/reject summary.",
+        "operationId": "Edi997Ingest",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Edi997IngestWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Edi997IngestResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/jobs": {
       "get": {
         "tags": [
@@ -13234,6 +13330,209 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Edi870FileResult"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Edi997IngestDetail": {
+        "type": "object",
+        "properties": {
+          "groupControlNumber": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "functionalIdCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "ackCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "ackLabel": {
+            "type": "string",
+            "nullable": true
+          },
+          "matched": {
+            "type": "boolean"
+          },
+          "ediFileId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "transactionTypeId": {
+            "type": "string",
+            "nullable": true
+          },
+          "wasAlreadyAcked": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Edi997IngestResult": {
+        "type": "object",
+        "properties": {
+          "sourceName": {
+            "type": "string",
+            "nullable": true
+          },
+          "senderId": {
+            "type": "string",
+            "nullable": true
+          },
+          "receiverId": {
+            "type": "string",
+            "nullable": true
+          },
+          "interchangeControlNumber": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "acksParsed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "matched": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "unmatched": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "accepted": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "rejected": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "partial": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "alreadyAcked": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Edi997IngestDetail"
+            },
+            "nullable": true
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Edi997IngestWrite": {
+        "type": "object",
+        "properties": {
+          "payload": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceName": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Edi997WaitingItem": {
+        "type": "object",
+        "properties": {
+          "ediFileId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "transactionTypeId": {
+            "type": "string",
+            "nullable": true
+          },
+          "customerId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "customerSentTo": {
+            "type": "string",
+            "nullable": true
+          },
+          "groupControlNumber": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "transactionTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "ediFileName": {
+            "type": "string",
+            "nullable": true
+          },
+          "ageHours": {
+            "type": "number",
+            "format": "double"
+          },
+          "bucket": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Edi997WaitingReport": {
+        "type": "object",
+        "properties": {
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "totalWaiting": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pageSize": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "freshCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "waitingCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "overdueCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Edi997WaitingItem"
             },
             "nullable": true
           }

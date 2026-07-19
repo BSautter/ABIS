@@ -1047,6 +1047,25 @@ public static class ApiEndpoints
            .WithSummary("List EDI transmission-log entries, newest first (paged, sortable; filter by customerId).")
            .Produces<PagedResult<EdiLogEntry>>().ProducesValidationProblem();
 
+        api.MapGet("/edi/997/waiting", async (IAbisRepository repo, CancellationToken ct,
+                int page = 1, int pageSize = 50, long? customerId = null) =>
+                Results.Ok(await repo.GetEdi997WaitingAsync(page, pageSize, customerId, DateTime.Now, ct)))
+           .WithName("Edi997Waiting").WithTags("EDI")
+           .WithSummary("Outbound transactions still awaiting a 997 functional acknowledgment (fa_received_time IS NULL), oldest first — the in-app form of the legacy check_997.sh email. Each is bucketed by age: fresh (<2h), waiting (2–24h, what legacy chased), overdue (>24h). Read-only.")
+           .Produces<Edi997WaitingReport>();
+
+        api.MapPost("/edi/997/ingest", async (Edi997IngestWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, "EDI", 1, ct) is { } deny) return deny;
+                if (string.IsNullOrWhiteSpace(body.Payload))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["payload"] = ["A 997 payload is required."] });
+                var result = await repo.IngestEdi997Async(body.Payload, body.SourceName?.Trim(), DateTime.Now, ct);
+                return Results.Ok(result);
+            })
+           .WithName("Edi997Ingest").WithTags("EDI")
+           .WithSummary("Ingest an inbound 997 (Functional Acknowledgment) and reconcile its acks against the outbound ledger — stamps fa_received_time / fa_receive_status on each matched transaction (matched by group control number = edi_file_id). Parse + store only; never transmits. Returns a matched/unmatched + accept/reject summary.")
+           .Produces<Edi997IngestResult>().ProducesValidationProblem();
+
         // ---- Scan log (shop-floor tracking) ----------------------------
         api.MapGet("/scan-logs", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, long? abJobNum = null, string? sort = null, string? dir = null) =>

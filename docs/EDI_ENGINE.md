@@ -103,7 +103,15 @@ Version `004010` for the SQL sets (861/870/846/863); `002002`/`002040` for the P
    writes `edi_log` + `edi_out_file` (not `outbound_edi_transaction` today).
 5. **863 Test Cert** — operator-driven (lab Instron results); writes `edi_file_863` (full payload) + `outbound_edi_transaction`.
    ⚠️ legacy filename suffix is `.863`, NOT `S*.edi` — so GXS may not even sweep it; confirm before treating as live.
-6. **997 monitor** — watchdog over `outbound_edi_transaction` (no FA, 2h–1d old) → alert.
+6. **997 monitor** ✅ **DONE** — both halves the legacy split between `P_CHECK_997` (the watchdog) and Templar
+   (the reconciler) now live in the app. `GET /edi/997/waiting` lists outbound transactions with no FA yet
+   (`fa_received_time IS NULL`), oldest first, bucketed by age — fresh `<2h` / waiting `2–24h` (the window
+   `P_CHECK_997` emailed) / overdue `>24h`. `POST /edi/997/ingest` takes a raw inbound 997, and `Edi997Parser`
+   turns it into group acks that reconcile back to `outbound_edi_transaction` by group control number
+   (= `edi_file_id`, since GS06/ST02 both equal it), stamping `fa_received_time` + `fa_receive_status`
+   (A/E→accepted, P→partial, R→rejected). Parse + store only — never transmits. Surfaced on the EDI page's
+   **Functional acks (997)** tab. (Deferred fast-follow: a background "waiting 997" notification-bell alert
+   mirroring `check_997.sh`'s email, alongside the existing EDI-stall alert.)
 7. **Inbound 856 ingest** — the upstream that feeds 861. VAN pull + decode is legacy-owned; the DB-load + the
    dock `status` state machine (0 → received 3 → 861-sent 1) is what the modern app owns.
 

@@ -820,6 +820,16 @@ public sealed class Customer861FlagWrite
     public string? Create861AtReceiving { get; set; }
 }
 
+/// <summary>An inbound 997 (Functional Acknowledgment) handed in for reconciliation against the outbound ledger.
+/// <c>Payload</c> is the raw X12 text a trading partner returned (via the VAN). Parse + store only — never transmits.</summary>
+public sealed class Edi997IngestWrite
+{
+    /// <summary>The raw 997 X12 text.</summary>
+    public string? Payload { get; set; }
+    /// <summary>Optional label for where this 997 came from (e.g. the file name); stored on the acked rows.</summary>
+    public string? SourceName { get; set; }
+}
+
 /// <summary>Editable fields of an EDI trading-partner profile (<c>abis_edi_partner</c>) — the customer_id +
 /// transaction_set are the path keys. Config only: what a customer's document looks like; generates/sends nothing.</summary>
 public sealed class EdiPartnerWrite

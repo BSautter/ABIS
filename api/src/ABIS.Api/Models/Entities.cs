@@ -849,6 +849,74 @@ public sealed class EdiTransaction
     public string? FaReceivedFileName { get; set; }
 }
 
+/// <summary>One outbound transaction still awaiting its 997 functional acknowledgment, with its age classified
+/// against the legacy <c>P_CHECK_997</c> window (fresh &lt; 2h, waiting 2–24h, overdue &gt; 24h).</summary>
+public sealed class Edi997WaitingItem
+{
+    public long EdiFileId { get; set; }
+    public string? TransactionTypeId { get; set; }
+    public long? CustomerId { get; set; }
+    public string? CustomerSentTo { get; set; }
+    public long? GroupControlNumber { get; set; }
+    public DateTime? TransactionTime { get; set; }
+    public string? EdiFileName { get; set; }
+    /// <summary>Hours since the transaction was generated, at the report's as-of time.</summary>
+    public double AgeHours { get; set; }
+    /// <summary>"fresh" (&lt;2h — ack window still open), "waiting" (2–24h — chase it, what legacy emailed),
+    /// or "overdue" (&gt;24h — past the window).</summary>
+    public string Bucket { get; set; } = "";
+}
+
+/// <summary>The 997 "waiting on ack" monitor — the modern, in-app form of the legacy <c>check_997.sh</c> email.
+/// Lists outbound transactions with no functional acknowledgment yet (<c>fa_received_time IS NULL</c>), oldest
+/// first, and buckets each by age.</summary>
+public sealed class Edi997WaitingReport
+{
+    public DateTime AsOf { get; set; }
+    /// <summary>Total un-acknowledged transactions matching the filter (across all pages).</summary>
+    public long TotalWaiting { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    /// <summary>Counts over the returned page.</summary>
+    public int FreshCount { get; set; }
+    public int WaitingCount { get; set; }
+    public int OverdueCount { get; set; }
+    public IReadOnlyList<Edi997WaitingItem> Items { get; set; } = Array.Empty<Edi997WaitingItem>();
+}
+
+/// <summary>One acknowledgment line from an ingested 997, and whether it reconciled to an outbound transaction.</summary>
+public sealed class Edi997IngestDetail
+{
+    public long? GroupControlNumber { get; set; }
+    public string? FunctionalIdCode { get; set; }
+    public string? AckCode { get; set; }
+    public string? AckLabel { get; set; }
+    public bool Matched { get; set; }
+    public long? EdiFileId { get; set; }
+    public string? TransactionTypeId { get; set; }
+    /// <summary>True when the matched transaction already carried a functional acknowledgment (re-ingest).</summary>
+    public bool WasAlreadyAcked { get; set; }
+}
+
+/// <summary>The outcome of ingesting one inbound 997: how many acks it carried, how many reconciled to our
+/// outbound ledger, and the verdict breakdown. Parse + reconcile only — nothing is transmitted.</summary>
+public sealed class Edi997IngestResult
+{
+    public string? SourceName { get; set; }
+    public string? SenderId { get; set; }
+    public string? ReceiverId { get; set; }
+    public long? InterchangeControlNumber { get; set; }
+    public int AcksParsed { get; set; }
+    public int Matched { get; set; }
+    public int Unmatched { get; set; }
+    public int Accepted { get; set; }
+    public int Rejected { get; set; }
+    public int Partial { get; set; }
+    public int AlreadyAcked { get; set; }
+    public IReadOnlyList<Edi997IngestDetail> Details { get; set; } = Array.Empty<Edi997IngestDetail>();
+    public IReadOnlyList<string> Warnings { get; set; } = Array.Empty<string>();
+}
+
 /// <summary>An EDI transmission log entry (table <c>edi_log</c>).</summary>
 public sealed class EdiLogEntry
 {

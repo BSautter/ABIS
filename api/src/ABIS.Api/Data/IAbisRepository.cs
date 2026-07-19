@@ -246,6 +246,12 @@ public interface IAbisRepository
     Task<EdiPartnerProfile> UpsertEdiPartnerAsync(EdiPartnerProfile profile, CancellationToken ct);
     Task<bool> DeleteEdiPartnerAsync(long customerId, string transactionSet, CancellationToken ct);
     Task<PagedResult<EdiLogEntry>> GetEdiLogAsync(int page, int pageSize, long? customerId, string? orderBy, CancellationToken ct);
+    /// <summary>Outbound transactions still awaiting a 997 functional acknowledgment (the modern P_CHECK_997
+    /// monitor), oldest first, each bucketed by age against <paramref name="asOf"/>.</summary>
+    Task<Edi997WaitingReport> GetEdi997WaitingAsync(int page, int pageSize, long? customerId, DateTime asOf, CancellationToken ct);
+    /// <summary>Parse an inbound 997 and reconcile its acks against the outbound ledger, stamping
+    /// <c>fa_received_time</c> / <c>fa_receive_status</c> on each matched transaction. Parse + store only — never transmits.</summary>
+    Task<Edi997IngestResult> IngestEdi997Async(string payload, string? sourceName, DateTime now, CancellationToken ct);
     Task<IReadOnlyList<EdiType>> GetEdiTypesAsync(CancellationToken ct);
     Task<IReadOnlyList<CustomerEdi>> GetCustomerEdiAsync(CancellationToken ct);
     Task<PagedResult<ScanLog>> GetScanLogsAsync(int page, int pageSize, long? abJobNum, string? orderBy, CancellationToken ct);

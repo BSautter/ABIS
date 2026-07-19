@@ -4488,6 +4488,120 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Outbound transactions still awaiting a 997 functional acknowledgment (fa_received_time IS NULL), oldest first — the in-app form of the legacy check_997.sh email. Each is bucketed by age: fresh (<2h), waiting (2–24h, what legacy chased), overdue (>24h). Read-only.
+     * @param page (optional)
+     * @param pageSize (optional)
+     * @param customerId (optional)
+     * @return OK
+     */
+    edi997Waiting(page, pageSize, customerId) {
+        let url_ = this.baseUrl + "/api/edi/997/waiting?";
+        if (page === null)
+            throw new globalThis.Error("The parameter 'page' cannot be null.");
+        else if (page !== undefined)
+            url_ += "page=" + encodeURIComponent("" + page) + "&";
+        if (pageSize === null)
+            throw new globalThis.Error("The parameter 'pageSize' cannot be null.");
+        else if (pageSize !== undefined)
+            url_ += "pageSize=" + encodeURIComponent("" + pageSize) + "&";
+        if (customerId === null)
+            throw new globalThis.Error("The parameter 'customerId' cannot be null.");
+        else if (customerId !== undefined)
+            url_ += "customerId=" + encodeURIComponent("" + customerId) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processEdi997Waiting(_response);
+        });
+    }
+    processEdi997Waiting(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = Edi997WaitingReport.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Ingest an inbound 997 (Functional Acknowledgment) and reconcile its acks against the outbound ledger — stamps fa_received_time / fa_receive_status on each matched transaction (matched by group control number = edi_file_id). Parse + store only; never transmits. Returns a matched/unmatched + accept/reject summary.
+     * @return OK
+     */
+    edi997Ingest(body) {
+        let url_ = this.baseUrl + "/api/edi/997/ingest";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processEdi997Ingest(_response);
+        });
+    }
+    processEdi997Ingest(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = Edi997IngestResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * List production jobs (paged; filter by status, completed=Done vs active, or search job/order #).
      * @param page (optional)
      * @param pageSize (optional)
@@ -16193,6 +16307,230 @@ export class Edi870Result {
             data["files"] = [];
             for (let item of this.files)
                 data["files"].push(item ? item.toJSON() : undefined);
+        }
+        return data;
+    }
+}
+export class Edi997IngestDetail {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.groupControlNumber = _data["groupControlNumber"];
+            this.functionalIdCode = _data["functionalIdCode"];
+            this.ackCode = _data["ackCode"];
+            this.ackLabel = _data["ackLabel"];
+            this.matched = _data["matched"];
+            this.ediFileId = _data["ediFileId"];
+            this.transactionTypeId = _data["transactionTypeId"];
+            this.wasAlreadyAcked = _data["wasAlreadyAcked"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new Edi997IngestDetail();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["groupControlNumber"] = this.groupControlNumber;
+        data["functionalIdCode"] = this.functionalIdCode;
+        data["ackCode"] = this.ackCode;
+        data["ackLabel"] = this.ackLabel;
+        data["matched"] = this.matched;
+        data["ediFileId"] = this.ediFileId;
+        data["transactionTypeId"] = this.transactionTypeId;
+        data["wasAlreadyAcked"] = this.wasAlreadyAcked;
+        return data;
+    }
+}
+export class Edi997IngestResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.sourceName = _data["sourceName"];
+            this.senderId = _data["senderId"];
+            this.receiverId = _data["receiverId"];
+            this.interchangeControlNumber = _data["interchangeControlNumber"];
+            this.acksParsed = _data["acksParsed"];
+            this.matched = _data["matched"];
+            this.unmatched = _data["unmatched"];
+            this.accepted = _data["accepted"];
+            this.rejected = _data["rejected"];
+            this.partial = _data["partial"];
+            this.alreadyAcked = _data["alreadyAcked"];
+            if (Array.isArray(_data["details"])) {
+                this.details = [];
+                for (let item of _data["details"])
+                    this.details.push(Edi997IngestDetail.fromJS(item));
+            }
+            if (Array.isArray(_data["warnings"])) {
+                this.warnings = [];
+                for (let item of _data["warnings"])
+                    this.warnings.push(item);
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new Edi997IngestResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["sourceName"] = this.sourceName;
+        data["senderId"] = this.senderId;
+        data["receiverId"] = this.receiverId;
+        data["interchangeControlNumber"] = this.interchangeControlNumber;
+        data["acksParsed"] = this.acksParsed;
+        data["matched"] = this.matched;
+        data["unmatched"] = this.unmatched;
+        data["accepted"] = this.accepted;
+        data["rejected"] = this.rejected;
+        data["partial"] = this.partial;
+        data["alreadyAcked"] = this.alreadyAcked;
+        if (Array.isArray(this.details)) {
+            data["details"] = [];
+            for (let item of this.details)
+                data["details"].push(item ? item.toJSON() : undefined);
+        }
+        if (Array.isArray(this.warnings)) {
+            data["warnings"] = [];
+            for (let item of this.warnings)
+                data["warnings"].push(item);
+        }
+        return data;
+    }
+}
+export class Edi997IngestWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.payload = _data["payload"];
+            this.sourceName = _data["sourceName"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new Edi997IngestWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["payload"] = this.payload;
+        data["sourceName"] = this.sourceName;
+        return data;
+    }
+}
+export class Edi997WaitingItem {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.ediFileId = _data["ediFileId"];
+            this.transactionTypeId = _data["transactionTypeId"];
+            this.customerId = _data["customerId"];
+            this.customerSentTo = _data["customerSentTo"];
+            this.groupControlNumber = _data["groupControlNumber"];
+            this.transactionTime = _data["transactionTime"] ? new Date(_data["transactionTime"].toString()) : undefined;
+            this.ediFileName = _data["ediFileName"];
+            this.ageHours = _data["ageHours"];
+            this.bucket = _data["bucket"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new Edi997WaitingItem();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["ediFileId"] = this.ediFileId;
+        data["transactionTypeId"] = this.transactionTypeId;
+        data["customerId"] = this.customerId;
+        data["customerSentTo"] = this.customerSentTo;
+        data["groupControlNumber"] = this.groupControlNumber;
+        data["transactionTime"] = this.transactionTime ? this.transactionTime.toISOString() : undefined;
+        data["ediFileName"] = this.ediFileName;
+        data["ageHours"] = this.ageHours;
+        data["bucket"] = this.bucket;
+        return data;
+    }
+}
+export class Edi997WaitingReport {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.asOf = _data["asOf"] ? new Date(_data["asOf"].toString()) : undefined;
+            this.totalWaiting = _data["totalWaiting"];
+            this.page = _data["page"];
+            this.pageSize = _data["pageSize"];
+            this.freshCount = _data["freshCount"];
+            this.waitingCount = _data["waitingCount"];
+            this.overdueCount = _data["overdueCount"];
+            if (Array.isArray(_data["items"])) {
+                this.items = [];
+                for (let item of _data["items"])
+                    this.items.push(Edi997WaitingItem.fromJS(item));
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new Edi997WaitingReport();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["asOf"] = this.asOf ? this.asOf.toISOString() : undefined;
+        data["totalWaiting"] = this.totalWaiting;
+        data["page"] = this.page;
+        data["pageSize"] = this.pageSize;
+        data["freshCount"] = this.freshCount;
+        data["waitingCount"] = this.waitingCount;
+        data["overdueCount"] = this.overdueCount;
+        if (Array.isArray(this.items)) {
+            data["items"] = [];
+            for (let item of this.items)
+                data["items"].push(item ? item.toJSON() : undefined);
         }
         return data;
     }

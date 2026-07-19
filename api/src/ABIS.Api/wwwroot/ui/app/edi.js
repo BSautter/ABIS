@@ -3,7 +3,7 @@
 // (+ detail), the processing log, the per-customer EDI setup, and the transaction-type lookup.
 //
 // Compiled by tsc to wwwroot/ui/app/edi.js; served at /ui/edi.html.
-import { AbisClient, EdiPartnerWrite } from './generated/abis-client.js';
+import { AbisClient, EdiPartnerWrite, Edi997IngestWrite } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
 const $ = (sel) => document.querySelector(sel);
@@ -14,6 +14,11 @@ const setBusy = (b) => document.body.classList.toggle('busy', b);
 const val = (id) => $(id).value.trim();
 const dShow = (d) => (d == null ? '' : d.toLocaleString());
 const faChip = (s) => (s ?? 0) >= 1 ? '<span class="chip ok">FA received</span>' : '<span class="chip warn">awaiting</span>';
+// 997 age bucket → chip: fresh (ack window open) / waiting (2–24h, chase it) / overdue (>24h).
+const bucketChip = (b) => {
+    const cls = b === 'overdue' ? 'crit' : b === 'waiting' ? 'warn' : 'info';
+    return `<span class="chip ${cls}">${esc(b ?? '')}</span>`;
+};
 function scaffold() {
     const tab = (id, label) => `<button id="tab-${id}" type="button">${label}</button>`;
     return `
@@ -21,7 +26,7 @@ function scaffold() {
     <div class="page-head"><div><div class="eyebrow">EDI · Monitor</div><h1>EDI operations</h1></div></div>
     <div id="err" class="err" style="margin-bottom:12px"></div>
 
-    <div class="tabs">${tab('tx', 'Transactions')}${tab('log', 'Processing log')}${tab('partners', 'Partner profiles')}${tab('cust', 'Customer setup')}${tab('types', 'Types')}</div>
+    <div class="tabs">${tab('tx', 'Transactions')}${tab('acks', 'Functional acks (997)')}${tab('log', 'Processing log')}${tab('partners', 'Partner profiles')}${tab('cust', 'Customer setup')}${tab('types', 'Types')}</div>
 
     <div id="pane-tx" class="grid">
       <div class="stack"><div class="card">
@@ -35,6 +40,29 @@ function scaffold() {
       <div class="stack"><div class="card">
         <header><h2>Transaction detail</h2></header>
         <div class="body kv" id="txDetail"><p class="muted">Select a transaction.</p></div>
+      </div></div>
+    </div>
+
+    <div id="pane-acks" class="grid" style="display:none">
+      <div class="stack"><div class="card">
+        <header><h2>Waiting on 997</h2><span class="sub" id="cWait"></span></header>
+        <div class="body"><p class="muted" style="margin:0 0 4px">Outbound transactions with no functional acknowledgment yet — the in-app form of the legacy <span class="mono">check_997.sh</span>, oldest first. <b>fresh</b> &lt;2h (window open) · <b>waiting</b> 2–24h (chase it) · <b>overdue</b> &gt;24h.</p></div>
+        <div style="overflow-x:auto"><table class="tbl" style="min-width:660px">
+          <thead><tr><th>Age</th><th>Age (h)</th><th>File</th><th>Doc</th><th>Cust</th><th>Group ctl</th><th>Time</th></tr></thead>
+          <tbody id="tWait"><tr><td colspan="7" class="muted">Loading…</td></tr></tbody>
+        </table></div>
+      </div></div>
+      <div class="stack"><div class="card">
+        <header><h2>Ingest a 997</h2></header>
+        <div class="body">
+          <p class="muted" style="margin:0 0 8px">Paste an inbound 997 (Functional Acknowledgment) to reconcile it against the outbound ledger — matched by group control number (= EDI file id). Parse + store only; never transmits.</p>
+          <form id="ingForm">
+            <div class="fld" style="margin-bottom:8px"><label>Source name (optional)</label><input id="iName" style="width:240px" placeholder="e.g. 997_in_1001.x12" /></div>
+            <textarea id="iPayload" rows="9" style="width:100%;font-family:var(--mono,monospace);font-size:12px" placeholder="ISA*00*          *00*          *ZZ*PARTNER..."></textarea>
+            <div style="margin-top:8px"><button class="btn sm" type="submit">Ingest &amp; reconcile</button></div>
+          </form>
+          <div id="ingResult" class="kv" style="margin-top:12px"></div>
+        </div>
       </div></div>
     </div>
 
@@ -121,6 +149,49 @@ async function loadTxDetail(id) {
     }
     catch (e) {
         setErr(`Detail load failed: ${e.message}`);
+    }
+    finally {
+        setBusy(false);
+    }
+}
+async function loadWaiting() {
+    setErr('');
+    try {
+        const r = await client().edi997Waiting(1, 100, undefined);
+        const items = r.items ?? [];
+        $('#tWait').innerHTML = items.length ? items.map((x) => `<tr>
+      <td>${bucketChip(x.bucket)}</td><td class="mono">${esc((x.ageHours ?? 0).toFixed(1))}</td>
+      <td class="mono">${esc(x.ediFileId)}</td><td class="mono">${esc(x.transactionTypeId)}</td>
+      <td class="mono">${esc(x.customerId)}</td><td class="mono">${esc(x.groupControlNumber)}</td>
+      <td class="mono">${esc(dShow(x.transactionTime))}</td></tr>`).join('')
+            : '<tr><td colspan="7" class="muted">Nothing waiting on a 997.</td></tr>';
+        $('#cWait').textContent =
+            `${(r.totalWaiting ?? 0).toLocaleString()} waiting · ${r.waitingCount ?? 0} to chase · ${r.overdueCount ?? 0} overdue`;
+    }
+    catch (e) {
+        setErr(`997 waiting load failed: ${e.message}`);
+    }
+}
+async function ingest997() {
+    setErr('');
+    const payload = $('#iPayload').value.trim();
+    if (!payload) {
+        setErr('Paste a 997 payload first.');
+        return;
+    }
+    setBusy(true);
+    try {
+        const r = await client().edi997Ingest(new Edi997IngestWrite({ payload, sourceName: val('#iName') || undefined }));
+        const row = (k, v) => `<span><b>${esc(k)}</b>${esc(v)}</span>`;
+        const warn = (r.warnings ?? []).length ? `<span><b>warnings</b>${esc((r.warnings ?? []).join('; '))}</span>` : '';
+        $('#ingResult').innerHTML =
+            row('acks parsed', r.acksParsed) + row('matched', r.matched) + row('unmatched', r.unmatched) +
+                row('accepted', r.accepted) + row('rejected', r.rejected) + row('partial', r.partial) +
+                row('already acked', r.alreadyAcked) + warn;
+        await Promise.all([loadWaiting(), loadTransactions()]);
+    }
+    catch (e) {
+        setErr(`997 ingest failed: ${ediErr(e)}`);
     }
     finally {
         setBusy(false);
@@ -256,7 +327,7 @@ async function deletePartner(customerId, set) {
     }
 }
 function showTab(name) {
-    ['tx', 'log', 'partners', 'cust', 'types'].forEach((t) => {
+    ['tx', 'acks', 'log', 'partners', 'cust', 'types'].forEach((t) => {
         $(`#pane-${t}`).style.display = t === name ? '' : 'none';
         $(`#tab-${t}`).classList.toggle('active', t === name);
     });
@@ -264,11 +335,12 @@ function showTab(name) {
 (async () => {
     const main = await initShell({ active: 'edi' });
     main.innerHTML = scaffold();
-    ['tx', 'log', 'partners', 'cust', 'types'].forEach((t) => $(`#tab-${t}`).addEventListener('click', () => showTab(t)));
+    ['tx', 'acks', 'log', 'partners', 'cust', 'types'].forEach((t) => $(`#tab-${t}`).addEventListener('click', () => showTab(t)));
     $('#txForm').addEventListener('submit', (e) => { e.preventDefault(); void loadTransactions(); });
+    $('#ingForm').addEventListener('submit', (e) => { e.preventDefault(); void ingest997(); });
     $('#logForm').addEventListener('submit', (e) => { e.preventDefault(); void loadLog(); });
     $('#partForm').addEventListener('submit', (e) => { e.preventDefault(); void savePartner(); });
     $('#pReset').addEventListener('click', () => clearPartner());
     showTab('tx');
-    await Promise.all([loadTransactions(), loadLog(), loadPartners(), loadCustomers(), loadTypes()]);
+    await Promise.all([loadTransactions(), loadWaiting(), loadLog(), loadPartners(), loadCustomers(), loadTypes()]);
 })();

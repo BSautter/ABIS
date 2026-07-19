@@ -3906,6 +3906,102 @@ public sealed class AbisRepository : IAbisRepository
         return PageAsync<EdiLogEntry>(EdiLogCols, "edi_log", orderBy ?? "edi_log_timestamp DESC", where, p, page, pageSize, ct);
     }
 
+    // ---- 997 functional-acknowledgment monitor ------------------------------------------------------------
+    // The legacy engine leaned on Templar to parse inbound 997s and stamp outbound_edi_transaction.fa_received_time,
+    // and on P_CHECK_997 (check_997.sh, hourly) to email whatever was still un-acked after 2–24h. The modern engine
+    // owns both halves here: GetEdi997WaitingAsync is the monitor (the email, made a screen), IngestEdi997Async is
+    // the reconciler (Templar's job, made an endpoint). Both are read/parse only — nothing transmits.
+
+    public async Task<Edi997WaitingReport> GetEdi997WaitingAsync(int page, int pageSize, long? customerId, DateTime asOf, CancellationToken ct)
+    {
+        var p = new DynamicParameters();
+        // fa_received_time IS NULL = no 997 back yet. (fa_receive_status stays 0 too, but the timestamp is the
+        // authoritative signal P_CHECK_997 keyed on.) Oldest first so the most-overdue lead the list.
+        var where = "fa_received_time IS NULL";
+        if (customerId is not null) { where += " AND customer_id = :customerId"; p.Add("customerId", customerId); }
+        var paged = await PageAsync<EdiTransaction>(EdiTransactionCols, "outbound_edi_transaction",
+            "transaction_time ASC, edi_file_id ASC", where, p, page, pageSize, ct);
+
+        var items = new List<Edi997WaitingItem>(paged.Items.Count);
+        int fresh = 0, waiting = 0, overdue = 0;
+        foreach (var t in paged.Items)
+        {
+            var ageHours = t.TransactionTime is { } tt ? Math.Max(0, (asOf - tt).TotalHours) : 0;
+            // Mirrors P_CHECK_997's window: < 2h the ack may still be in flight; 2–24h is what it emailed; > 24h
+            // is past the window it chased.
+            var bucket = ageHours < 2 ? "fresh" : ageHours <= 24 ? "waiting" : "overdue";
+            if (bucket == "fresh") fresh++; else if (bucket == "waiting") waiting++; else overdue++;
+            items.Add(new Edi997WaitingItem
+            {
+                EdiFileId = t.EdiFileId, TransactionTypeId = t.TransactionTypeId, CustomerId = t.CustomerId,
+                CustomerSentTo = t.CustomerSentTo, GroupControlNumber = t.GroupControlNumber,
+                TransactionTime = t.TransactionTime, EdiFileName = t.EdiFileName,
+                AgeHours = Math.Round(ageHours, 2), Bucket = bucket
+            });
+        }
+        return new Edi997WaitingReport
+        {
+            AsOf = asOf, TotalWaiting = paged.TotalCount, Page = paged.Page, PageSize = paged.PageSize,
+            FreshCount = fresh, WaitingCount = waiting, OverdueCount = overdue, Items = items
+        };
+    }
+
+    public async Task<Edi997IngestResult> IngestEdi997Async(string payload, string? sourceName, DateTime now, CancellationToken ct)
+    {
+        var parsed = Edi997Parser.Parse(payload);
+        var details = new List<Edi997IngestDetail>(parsed.Acks.Count);
+        int matched = 0, accepted = 0, rejected = 0, partial = 0, already = 0;
+
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        foreach (var ack in parsed.Acks)
+        {
+            // Our engine sets GS06 = ST02 = edi_file_id, so either the group or set control number reconciles.
+            var key = ack.GroupControlNumber ?? ack.SetControlNumber;
+            var (status, label) = Edi997Parser.Classify(ack.AckCode);
+            var d = new Edi997IngestDetail
+            {
+                GroupControlNumber = ack.GroupControlNumber, FunctionalIdCode = ack.FunctionalIdCode,
+                AckCode = ack.AckCode, AckLabel = label
+            };
+            if (key is { } gcn)
+            {
+                var row = await conn.QuerySingleOrDefaultAsync<EdiTransaction>(new CommandDefinition(
+                    $"SELECT {EdiTransactionCols} FROM outbound_edi_transaction WHERE group_control_number = :gcn OR edi_file_id = :gcn",
+                    new { gcn }, transaction: tx, cancellationToken: ct));
+                if (row is not null)
+                {
+                    d.Matched = true;
+                    d.EdiFileId = row.EdiFileId;
+                    d.TransactionTypeId = row.TransactionTypeId;
+                    d.WasAlreadyAcked = !string.IsNullOrEmpty(row.FaReceivedTime);
+                    matched++;
+                    if (d.WasAlreadyAcked) already++;
+                    if (status == 2) rejected++; else if (status == 3) partial++; else accepted++;
+                    await conn.ExecuteAsync(new CommandDefinition(
+                        """
+                        UPDATE outbound_edi_transaction
+                           SET fa_received_time = :now, fa_receive_status = :status, fa_received_file_name = :src
+                         WHERE edi_file_id = :id
+                        """,
+                        new { now = (DateTime?)now, status, src = sourceName, id = row.EdiFileId },
+                        transaction: tx, cancellationToken: ct));
+                }
+            }
+            details.Add(d);
+        }
+        await tx.CommitAsync(ct);
+
+        return new Edi997IngestResult
+        {
+            SourceName = sourceName, SenderId = parsed.SenderId, ReceiverId = parsed.ReceiverId,
+            InterchangeControlNumber = parsed.InterchangeControlNumber,
+            AcksParsed = parsed.Acks.Count, Matched = matched, Unmatched = parsed.Acks.Count - matched,
+            Accepted = accepted, Rejected = rejected, Partial = partial, AlreadyAcked = already,
+            Details = details, Warnings = parsed.Warnings
+        };
+    }
+
     public async Task<IReadOnlyList<EdiType>> GetEdiTypesAsync(CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
