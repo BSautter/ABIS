@@ -52,9 +52,15 @@ Version `004010` for the SQL sets (861/870/846/863); `002002`/`002040` for the P
    and marks the BOL `status→1`; view it at `GET /edi/transactions/{ediFileId}/payload`. 422 if the customer
    isn't a configured 861 partner, 409 if already generated. Never transmits. (Modern receiving-BOL source
    replaces the legacy `inbound_shipment`/`inbound_coil` staging; the abc# comes straight off the minted line.)
-2. **870 Order/Coil Status** — trigger: finished skids shippable (`skid_sheet_status IN(2,8)`, `prod_item_edi870_date IS NULL`)
-   or job scrap ready; source: sheet_skid ⋈ production_sheet_item ⋈ coil ⋈ order_item ⋈ ab_job; output: type 870,
-   stamp `prod_item_edi870_date`/`scrap_870_date`. Live partner: Aleris (Wise needs the missing `_by_coil` body).
+2. **870 Order/Coil Status** ✅ **DONE** — `Edi/Edi870Generator` builds the batched HL hierarchy (order→item→detail)
+   for Aleris (1980): every unsent production item (skids `2,4,7,8,13`) + finished-job coil scrap → one X12.
+   `POST /edi/870/generate?customerId=1980` assembles (`AssembleEdi870BatchAsync`: sheet_skid ⋈ production_sheet_item
+   ⋈ coil ⋈ order_item ⋈ ab_job, + the 12 shape tables for dims, + `process_coil` scrap), persists type 870 +
+   payload CLOB, and marks items/jobs sent in **`abis_edi_870_mark`** (the modern replacement for the legacy
+   `prod_item_edi870_date`/`scrap_870_date` columns — report-once). Returns "nothing" when there's nothing new.
+   Order/shape resolved via `ab_job.order_abc_num/order_item_num` (modern `sheet_skid` has no `ref_order_abc_num`).
+   Wise 870 stays deferred (needs its own `_by_coil` body). One deliberate fix vs legacy: SCRAP is marked only
+   when actually sent (legacy marked every processed job, which could drop a not-yet-done job's scrap).
 3. **846 Inventory Advice** (Cleveland-Cliffs) — full snapshot; `ABIS_X12_COIL/SKID` status→AISI code maps; `~` suffix.
    Note: legacy commented out its `outbound_edi_transaction` insert — **re-enable** in the port.
 4. **856 ASN** — event-driven at shipment dispatch; partners Alcan→GM, Alcan→Ford (dual customer + Alcan-hub file);

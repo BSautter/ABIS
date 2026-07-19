@@ -72,6 +72,7 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS customer_type;
             DROP TABLE IF EXISTS outbound_edi_transaction;
             DROP TABLE IF EXISTS abis_edi_payload;
+            DROP TABLE IF EXISTS abis_edi_870_mark;
             DROP TABLE IF EXISTS edi_log;
             DROP TABLE IF EXISTS edi_type;
             DROP TABLE IF EXISTS customer_edi;
@@ -392,6 +393,12 @@ public static class SqliteFixture
                 edi_file_name TEXT, payload TEXT, created_utc TEXT,
                 PRIMARY KEY (edi_file_id, transaction_type));
 
+            -- ABIS-owned 870 "sent" markers (mirrors AbisSchema.abis_edi_870_mark): mark_type 'ITEM'→prod_item_num,
+            -- 'SCRAP'→ab_job_num. Excludes already-reported items/jobs from the 870 batch (report-once).
+            CREATE TABLE abis_edi_870_mark (
+                mark_type TEXT, ref_id INTEGER, edi_file_id INTEGER, customer_id INTEGER, sent_utc TEXT,
+                PRIMARY KEY (mark_type, ref_id));
+
             CREATE TABLE edi_type (
                 edi_type_id INTEGER, edi_version TEXT, edi_type_description TEXT,
                 PRIMARY KEY (edi_type_id, edi_version));
@@ -703,6 +710,59 @@ public static class SqliteFixture
                     LinealFeed = (decimal?)3200m, CoilWidth = (decimal?)60.0m, CoilGauge = (decimal?)0.0400m, Lot = "HL-78",
                     PackId = "PK-2", Alloy = "5052", PartNum = "P-100", PurchaseOrderNum = "PO-55", ConsumedCoilNum = "NC-1002" }
             });
+
+        // An Aleris 870 trading partner (customer 1980, DUNS = the Aleris hub) + a complete, done job with a
+        // ready skid and coil scrap, so the 870 (Order/Coil Status) generator has both an item and a scrap line
+        // to build. order 2990 → item 1 (RECTANGLE) → coil 4990 → job 990 (done) → prod_item 990 → skid 2990
+        // (Ready) + process_coil scrap. The coil/job/skid ids sit *below* the other seeds' maxima so the MAX+1
+        // id-assignment tests stay stable; the extra coil/job still shift the row counts (tests updated).
+        conn.Execute(
+            """
+            INSERT INTO customer (customer_id, customer_full_name, customer_short_name, customer_city, customer_state,
+                customer_type, edi_req, customer_duns_number_string)
+            VALUES (1980, 'ALERIS', 'ALERIS', 'Beachwood', 'OH', 1, 'Y', '964790856')
+            """);
+        conn.Execute(
+            """
+            INSERT INTO customer_order (order_abc_num, orig_customer_id, enduser_id, orig_customer_po, enduser_po, sales_order)
+            VALUES (2990, 1980, 1980, 'ALE-CPO-1', 'ALE-EPO-77', 'SO-2990')
+            """);
+        conn.Execute(
+            """
+            INSERT INTO order_item (order_item_num, order_abc_num, enduser_part_num, sheet_type, theoretical_unit_wt, item_status)
+            VALUES (1, 2990, 'ALE-PART-1', 'RECTANGLE', 2.5, 1)
+            """);
+        conn.Execute(
+            """
+            INSERT INTO rectangle (order_item_num, order_abc_num, rt_length, rt_width)
+            VALUES (1, 2990, 48.0, 36.0)
+            """);
+        conn.Execute(
+            """
+            INSERT INTO coil (coil_abc_num, coil_org_num, coil_gauge, coil_status, customer_id, lot_num, net_wt, net_wt_balance)
+            VALUES (4990, 'ALE-COIL-1', 0.0625, 13, 1980, 'ALE-LOT-1', 25000, 0)
+            """);
+        conn.Execute(
+            """
+            INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num, job_status)
+            VALUES (990, 2990, 1, 0)
+            """);
+        conn.Execute(
+            """
+            INSERT INTO production_sheet_item (prod_item_num, coil_abc_num, ab_job_num, prod_item_status, prod_item_pieces, prod_item_net_wt)
+            VALUES (990, 4990, 990, 1, 100, 20000)
+            """);
+        conn.Execute(
+            """
+            INSERT INTO sheet_skid (sheet_skid_num, ab_job_num, sheet_net_wt, sheet_tare_wt, skid_pieces, skid_sheet_status)
+            VALUES (2990, 990, 20000, 200, 100, 2)
+            """);
+        conn.Execute("INSERT INTO sheet_skid_detail (sheet_skid_num, prod_item_num) VALUES (2990, 990)");
+        conn.Execute(
+            """
+            INSERT INTO process_coil (ab_job_num, coil_abc_num, process_coil_status, process_end_wt, process_quantity)
+            VALUES (990, 4990, 2, 2000, 25000)
+            """);
 
         conn.Execute("""
             INSERT INTO scan_log (scan_id, scan_datetime, ab_job_num, scan_station, note)

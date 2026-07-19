@@ -867,6 +867,19 @@ test('receiving flow: mint coil inventory + real 861 (typed)', async () => {
   assert.ok(edi.ediFileId > 0);
 });
 
+// EDI 870 (Order/Coil Status): batch every unsent Aleris item + finished-job scrap into one X12 — built and
+// stored, never transmitted. Non-partner customers are rejected; a second run has nothing new to report.
+test('edi flow: generate the Aleris 870 (typed, stored not transmitted)', async () => {
+  await assert.rejects(() => client.generateEdi870(1153));   // Novelis isn't a configured 870 partner
+  const r = await client.generateEdi870(1980);
+  assert.equal(r.status, 'generated');
+  assert.equal(r.partner, 'Aleris');
+  assert.equal(r.transmitted, false);
+  assert.ok(r.ediFileId > 0 && r.itemCount >= 1);
+  const again = await client.generateEdi870(1980);
+  assert.equal(again.status, 'nothing');   // report-once
+});
+
 // Coil evaluation / QC (legacy coil_eval w_qc_sheet): QC coil picker, dimensional checks,
 // and eval scrap (upsert on the composite key).
 test('coil-eval flow: QC coils, dimension checks, eval scrap (typed)', async () => {

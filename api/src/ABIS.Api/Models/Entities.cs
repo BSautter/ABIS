@@ -1624,6 +1624,79 @@ public sealed class EdiPayload
     public DateTime? CreatedUtc { get; set; }
 }
 
+// ---- EDI 870 (Order/Coil Status) — the assembled input graph + result ----
+// The legacy edi_aleris_870 proc builds ONE 870 per customer, batching every not-yet-sent production
+// item (+ finished-job scrap) into an HL hierarchy (order → item → detail). These DTOs are the modern
+// assembled equivalent; Edi870Generator turns them into the X12. Generation only — never transmitted.
+
+/// <summary>One 870 batch: all unsent items + finished-job scrap for a trading-partner customer.</summary>
+public sealed class Edi870Batch
+{
+    public long CustomerId { get; set; }
+    /// <summary>The customer's DUNS (customer_duns_number_string) — the N1*MF party.</summary>
+    public string? SupplierDuns { get; set; }
+    public IReadOnlyList<Edi870Job> Jobs { get; set; } = [];
+}
+
+/// <summary>One job in an 870 batch: its order PO, the shippable items, and any finished-job scrap.</summary>
+public sealed class Edi870Job
+{
+    public long AbJobNum { get; set; }
+    /// <summary>customer_order.enduser_po (falls back to 'NA') — the order-level PRF reference.</summary>
+    public string? EnduserPo { get; set; }
+    public IReadOnlyList<Edi870Item> Items { get; set; } = [];
+    /// <summary>Scrap lines — only present when the job is done (job_status 0) and its scrap is unsent.</summary>
+    public IReadOnlyList<Edi870Scrap> Scrap { get; set; } = [];
+}
+
+/// <summary>One shippable production item (a skid's worth) in an 870 — the F-level detail block.</summary>
+public sealed class Edi870Item
+{
+    public long ProdItemNum { get; set; }
+    public long SheetSkidNum { get; set; }
+    /// <summary>skid_sheet_status → the material-status PID (2=Ready, 13=Partial, 4=On-hold, else Warehouse).</summary>
+    public int SkidSheetStatus { get; set; }
+    public int Pieces { get; set; }
+    public decimal NetWeight { get; set; }
+    public string? EnduserPo { get; set; }
+    public string? CoilOrgNum { get; set; }
+    public string? LotNum { get; set; }
+    public string? EnduserPartNum { get; set; }
+    /// <summary>MAX(coil_gauge) across the coils feeding this skid — the MEA*PD*TH thickness.</summary>
+    public decimal CoilThickness { get; set; }
+    public decimal Length { get; set; }
+    public decimal Width { get; set; }
+    public decimal TheoreticalUnitWt { get; set; }
+}
+
+/// <summary>One scrap line in an 870 (finished-job coil scrap = process qty − end wt − prime shipped).</summary>
+public sealed class Edi870Scrap
+{
+    public string? CoilOrgNum { get; set; }
+    public string? LotNum { get; set; }
+    public decimal ScrapNetWeight { get; set; }
+}
+
+/// <summary>Result of an 870 generation. Like the 861 it builds + stores + marks the items/jobs as sent —
+/// but <b>never transmits</b>. <see cref="Status"/> is "generated", or "nothing" when there was nothing to send.</summary>
+public sealed class Edi870Result
+{
+    public long CustomerId { get; set; }
+    public string Status { get; set; } = "generated";
+    public string? Partner { get; set; }
+    public string? Note { get; set; }
+    public long? EdiFileId { get; set; }
+    public string? EdiFileName { get; set; }
+    public long? GroupControlNumber { get; set; }
+    public long? SetControlNumber { get; set; }
+    public int JobCount { get; set; }
+    public int ItemCount { get; set; }
+    public int ScrapCount { get; set; }
+    public int HlCount { get; set; }
+    public int PayloadBytes { get; set; }
+    public bool Transmitted { get; set; }
+}
+
 /// <summary>Request for the admin "send a test email" diagnostic. All fields optional (sensible defaults).</summary>
 public sealed class EmailTestRequest
 {

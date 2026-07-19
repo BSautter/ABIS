@@ -4126,6 +4126,60 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Generate + persist the 870 (Order/Coil Status) batch for a customer (default Aleris 1980) — every not-yet-reported shippable item + finished-job scrap, built and stored but NEVER transmitted. Returns status 'nothing' when there's nothing to report; view the payload at /edi/transactions/{ediFileId}/payload. Marks reported items/jobs so they aren't sent twice.
+     * @param customerId (optional)
+     * @return OK
+     */
+    generateEdi870(customerId) {
+        let url_ = this.baseUrl + "/api/edi/870/generate?";
+        if (customerId === null)
+            throw new globalThis.Error("The parameter 'customerId' cannot be null.");
+        else if (customerId !== undefined)
+            url_ += "customerId=" + encodeURIComponent("" + customerId) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGenerateEdi870(_response);
+        });
+    }
+    processGenerateEdi870(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = Edi870Result.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 422) {
+            return response.text().then((_responseText) => {
+                return throwException("Unprocessable Content", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * List EDI transmission-log entries, newest first (paged, sortable; filter by customerId).
      * @param page (optional)
      * @param pageSize (optional)
@@ -15759,6 +15813,58 @@ export class Edi861Result {
         data["groupControlNumber"] = this.groupControlNumber;
         data["setControlNumber"] = this.setControlNumber;
         data["coilCount"] = this.coilCount;
+        data["payloadBytes"] = this.payloadBytes;
+        data["transmitted"] = this.transmitted;
+        return data;
+    }
+}
+export class Edi870Result {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.customerId = _data["customerId"];
+            this.status = _data["status"];
+            this.partner = _data["partner"];
+            this.note = _data["note"];
+            this.ediFileId = _data["ediFileId"];
+            this.ediFileName = _data["ediFileName"];
+            this.groupControlNumber = _data["groupControlNumber"];
+            this.setControlNumber = _data["setControlNumber"];
+            this.jobCount = _data["jobCount"];
+            this.itemCount = _data["itemCount"];
+            this.scrapCount = _data["scrapCount"];
+            this.hlCount = _data["hlCount"];
+            this.payloadBytes = _data["payloadBytes"];
+            this.transmitted = _data["transmitted"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new Edi870Result();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["customerId"] = this.customerId;
+        data["status"] = this.status;
+        data["partner"] = this.partner;
+        data["note"] = this.note;
+        data["ediFileId"] = this.ediFileId;
+        data["ediFileName"] = this.ediFileName;
+        data["groupControlNumber"] = this.groupControlNumber;
+        data["setControlNumber"] = this.setControlNumber;
+        data["jobCount"] = this.jobCount;
+        data["itemCount"] = this.itemCount;
+        data["scrapCount"] = this.scrapCount;
+        data["hlCount"] = this.hlCount;
         data["payloadBytes"] = this.payloadBytes;
         data["transmitted"] = this.transmitted;
         return data;

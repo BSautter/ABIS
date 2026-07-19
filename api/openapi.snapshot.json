@@ -3251,6 +3251,44 @@
         }
       }
     },
+    "/api/edi/870/generate": {
+      "post": {
+        "tags": [
+          "EDI"
+        ],
+        "summary": "Generate + persist the 870 (Order/Coil Status) batch for a customer (default Aleris 1980) — every not-yet-reported shippable item + finished-job scrap, built and stored but NEVER transmitted. Returns status 'nothing' when there's nothing to report; view the payload at /edi/transactions/{ediFileId}/payload. Marks reported items/jobs so they aren't sent twice.",
+        "operationId": "GenerateEdi870",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "default": 1980
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Edi870Result"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/edi/log": {
       "get": {
         "tags": [
@@ -12847,6 +12885,70 @@
             "nullable": true
           },
           "coilCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "payloadBytes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "transmitted": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Edi870Result": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "partner": {
+            "type": "string",
+            "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "ediFileId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "ediFileName": {
+            "type": "string",
+            "nullable": true
+          },
+          "groupControlNumber": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "setControlNumber": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "jobCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "itemCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "scrapCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "hlCount": {
             "type": "integer",
             "format": "int32"
           },

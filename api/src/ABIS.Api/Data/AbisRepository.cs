@@ -3343,6 +3343,262 @@ public sealed class AbisRepository : IAbisRepository
         };
     }
 
+    // ---- EDI 870 (Order/Coil Status) — assemble the batch, then generate + persist + mark ----
+
+    private sealed class Edi870ItemRow
+    {
+        public long ProdItemNum { get; set; }
+        public long SheetSkidNum { get; set; }
+        public int SkidSheetStatus { get; set; }
+        public int Pieces { get; set; }
+        public decimal NetWeight { get; set; }
+        public string? EnduserPo { get; set; }
+        public string? CoilOrgNum { get; set; }
+        public string? LotNum { get; set; }
+        public string? EnduserPartNum { get; set; }
+        public string? SheetType { get; set; }
+        public decimal TheoreticalUnitWt { get; set; }
+        public long OrderAbcNum { get; set; }
+        public long OrderItemNum { get; set; }
+    }
+
+    private sealed class ShapeDim { public decimal? L { get; set; } public decimal? W { get; set; } }
+
+    private sealed class Edi870ScrapRow
+    {
+        public long CoilAbcNum { get; set; }
+        public decimal ProcessQuantity { get; set; }
+        public decimal ProcessEndWt { get; set; }
+    }
+
+    // sheet_type → the shape table + its length/width columns (legacy CASE in edi_aleris_870). Names are fixed
+    // internal constants (safe to interpolate). x1_shape (the ELSE fallback) isn't modeled here → dims default 0.
+    private static (string Table, string LenCol, string WidCol)? ShapeSource(string? sheetType) =>
+        sheetType?.Trim().ToUpperInvariant() switch
+        {
+            "RECTANGLE" => ("rectangle", "rt_length", "rt_width"),
+            "PARALLELOGRAM" => ("parallelogram", "p_length", "p_width"),
+            "FENDER" => ("fender", "fe_length", "fe_side"),
+            "CHEVRON" => ("chevron", "ch_length", "ch_width"),
+            "CIRCLE" => ("circle", "c_diameter", "c_diameter"),
+            "TRAPEZOID" => ("trapezoid", "tr_long_length", "tr_width"),
+            "L.TRAPEZOID" => ("left_trapezoid", "ltr_long_length", "ltr_width"),
+            "R.TRAPEZOID" => ("right_trapezoid", "rtr_long_length", "rtr_width"),
+            "REINFORCEMENT" => ("reinforcement", "re_length", "re_width"),
+            "LIFTGATE" => ("liftgate_shape", "li_length", "li_width"),
+            _ => null,
+        };
+
+    /// <summary>Assemble the 870 (Order/Coil Status) batch for a customer: every not-yet-reported production
+    /// item on a ready/on-hold/warehouse skid, plus finished-job coil scrap. Mirrors the legacy
+    /// <c>edi_aleris_870</c> selection, resolving the order/shape via <c>ab_job.order_abc_num/order_item_num</c>
+    /// (the modern <c>sheet_skid</c> has no <c>ref_order_abc_num</c>). Read-only — no state is changed here.</summary>
+    public async Task<Edi870Batch> AssembleEdi870BatchAsync(long customerId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var suDuns = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
+            "SELECT customer_duns_number_string FROM customer WHERE customer_id = :c",
+            new { c = customerId }, cancellationToken: ct));
+
+        // Candidate jobs: (A) unsent items on ready/warehouse skids, or (B) done jobs with unsent scrap.
+        var jobNums = (await conn.QueryAsync<long>(new CommandDefinition(
+            """
+            SELECT DISTINCT psi.ab_job_num
+              FROM production_sheet_item psi
+              JOIN sheet_skid_detail ssd ON ssd.prod_item_num = psi.prod_item_num
+              JOIN sheet_skid ss ON ss.sheet_skid_num = ssd.sheet_skid_num
+              JOIN coil c ON c.coil_abc_num = psi.coil_abc_num
+             WHERE ss.skid_sheet_status IN (2, 8)
+               AND c.customer_id = :c
+               AND NOT EXISTS (SELECT 1 FROM abis_edi_870_mark m WHERE m.mark_type = 'ITEM' AND m.ref_id = psi.prod_item_num)
+            UNION
+            SELECT aj.ab_job_num
+              FROM ab_job aj
+              JOIN customer_order co ON co.order_abc_num = aj.order_abc_num
+             WHERE aj.job_status = 0
+               AND co.orig_customer_id = :c
+               AND NOT EXISTS (SELECT 1 FROM abis_edi_870_mark m WHERE m.mark_type = 'SCRAP' AND m.ref_id = aj.ab_job_num)
+            """, new { c = customerId }, cancellationToken: ct))).ToList();
+
+        var jobs = new List<Edi870Job>();
+        foreach (var jobNum in jobNums)
+        {
+            var job = await conn.QuerySingleOrDefaultAsync<(string? EnduserPo, int JobStatus)>(new CommandDefinition(
+                """
+                SELECT co.enduser_po AS EnduserPo, aj.job_status AS JobStatus
+                  FROM ab_job aj JOIN customer_order co ON co.order_abc_num = aj.order_abc_num
+                 WHERE aj.ab_job_num = :j
+                """, new { j = jobNum }, cancellationToken: ct));
+
+            var itemRows = (await conn.QueryAsync<Edi870ItemRow>(new CommandDefinition(
+                """
+                SELECT psi.prod_item_num AS ProdItemNum, ss.sheet_skid_num AS SheetSkidNum,
+                       ss.skid_sheet_status AS SkidSheetStatus, psi.prod_item_pieces AS Pieces,
+                       psi.prod_item_net_wt AS NetWeight, co.enduser_po AS EnduserPo,
+                       c.coil_org_num AS CoilOrgNum, c.lot_num AS LotNum, oi.enduser_part_num AS EnduserPartNum,
+                       oi.sheet_type AS SheetType, COALESCE(oi.theoretical_unit_wt, 0) AS TheoreticalUnitWt,
+                       aj.order_abc_num AS OrderAbcNum, aj.order_item_num AS OrderItemNum
+                  FROM production_sheet_item psi
+                  JOIN sheet_skid_detail ssd ON ssd.prod_item_num = psi.prod_item_num
+                  JOIN sheet_skid ss ON ss.sheet_skid_num = ssd.sheet_skid_num
+                  JOIN coil c ON c.coil_abc_num = psi.coil_abc_num
+                  JOIN ab_job aj ON aj.ab_job_num = psi.ab_job_num
+                  JOIN customer_order co ON co.order_abc_num = aj.order_abc_num
+                  JOIN order_item oi ON oi.order_abc_num = aj.order_abc_num AND oi.order_item_num = aj.order_item_num
+                 WHERE psi.ab_job_num = :j
+                   AND ss.skid_sheet_status IN (2, 4, 7, 8, 13)
+                   AND c.customer_id = :c
+                   AND NOT EXISTS (SELECT 1 FROM abis_edi_870_mark m WHERE m.mark_type = 'ITEM' AND m.ref_id = psi.prod_item_num)
+                 ORDER BY psi.prod_item_num
+                """, new { j = jobNum, c = customerId }, cancellationToken: ct))).ToList();
+
+            var items = new List<Edi870Item>();
+            foreach (var r in itemRows)
+            {
+                var thickness = await conn.ExecuteScalarAsync<decimal?>(new CommandDefinition(
+                    """
+                    SELECT MAX(c.coil_gauge) FROM coil c
+                     WHERE c.coil_abc_num IN (
+                       SELECT coil_abc_num FROM production_sheet_item
+                        WHERE prod_item_num IN (SELECT prod_item_num FROM sheet_skid_detail WHERE sheet_skid_num = :skid))
+                    """, new { skid = r.SheetSkidNum }, cancellationToken: ct));
+
+                var (length, width) = await ResolveShapeAsync(conn, r.SheetType, r.OrderAbcNum, r.OrderItemNum, ct);
+                items.Add(new Edi870Item
+                {
+                    ProdItemNum = r.ProdItemNum, SheetSkidNum = r.SheetSkidNum, SkidSheetStatus = r.SkidSheetStatus,
+                    Pieces = r.Pieces, NetWeight = r.NetWeight, EnduserPo = r.EnduserPo, CoilOrgNum = r.CoilOrgNum,
+                    LotNum = r.LotNum, EnduserPartNum = r.EnduserPartNum, CoilThickness = thickness ?? 0m,
+                    Length = length, Width = width, TheoreticalUnitWt = r.TheoreticalUnitWt,
+                });
+            }
+
+            // Scrap only for a done job (job_status 0) whose scrap hasn't been reported: process qty − end − prime.
+            var scrap = new List<Edi870Scrap>();
+            var scrapUnsent = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+                "SELECT COUNT(*) FROM abis_edi_870_mark WHERE mark_type = 'SCRAP' AND ref_id = :j",
+                new { j = jobNum }, cancellationToken: ct)) == 0;
+            if (job.JobStatus == 0 && scrapUnsent)
+            {
+                var scrapRows = await conn.QueryAsync<Edi870ScrapRow>(new CommandDefinition(
+                    """
+                    SELECT coil_abc_num AS CoilAbcNum, COALESCE(process_quantity, 0) AS ProcessQuantity,
+                           COALESCE(process_end_wt, 0) AS ProcessEndWt
+                      FROM process_coil WHERE ab_job_num = :j
+                    """, new { j = jobNum }, cancellationToken: ct));
+                foreach (var s in scrapRows)
+                {
+                    var primeNw = await conn.ExecuteScalarAsync<decimal?>(new CommandDefinition(
+                        """
+                        SELECT COALESCE(SUM(prod_item_net_wt), 0) FROM production_sheet_item
+                         WHERE ab_job_num = :j AND coil_abc_num = :coil
+                        """, new { j = jobNum, coil = s.CoilAbcNum }, cancellationToken: ct)) ?? 0m;
+                    var scrapNw = s.ProcessQuantity - s.ProcessEndWt - primeNw;
+                    if (scrapNw <= 0m) continue;
+                    var coil = await conn.QuerySingleOrDefaultAsync<(string? CoilOrgNum, string? LotNum)>(new CommandDefinition(
+                        "SELECT coil_org_num AS CoilOrgNum, lot_num AS LotNum FROM coil WHERE coil_abc_num = :coil",
+                        new { coil = s.CoilAbcNum }, cancellationToken: ct));
+                    scrap.Add(new Edi870Scrap { CoilOrgNum = coil.CoilOrgNum, LotNum = coil.LotNum, ScrapNetWeight = scrapNw });
+                }
+            }
+
+            if (items.Count == 0 && scrap.Count == 0) continue;   // nothing to report for this job
+            jobs.Add(new Edi870Job { AbJobNum = jobNum, EnduserPo = job.EnduserPo, Items = items, Scrap = scrap });
+        }
+
+        return new Edi870Batch { CustomerId = customerId, SupplierDuns = suDuns, Jobs = jobs };
+    }
+
+    private async Task<(decimal Length, decimal Width)> ResolveShapeAsync(
+        DbConnection conn, string? sheetType, long orderAbc, long orderItem, CancellationToken ct)
+    {
+        var src = ShapeSource(sheetType);
+        if (src is null) return (0m, 0m);
+        var (table, lenCol, widCol) = src.Value;
+        var dim = await conn.QuerySingleOrDefaultAsync<ShapeDim>(new CommandDefinition(
+            $"SELECT {lenCol} AS L, {widCol} AS W FROM {table} WHERE order_abc_num = :o AND order_item_num = :i",
+            new { o = orderAbc, i = orderItem }, cancellationToken: ct));
+        return (dim?.L ?? 0m, dim?.W ?? 0m);
+    }
+
+    /// <summary>Generate + persist the 870 for an assembled batch, in one transaction: build the X12
+    /// (<see cref="Edi870Generator"/>), allocate the edi_file_id (= control number), insert the tracking row +
+    /// the payload CLOB, and mark every reported item ('ITEM') and every job whose scrap was sent ('SCRAP') so
+    /// they are not reported again. <b>Never transmits.</b> Empty batch → Status "nothing" (nothing written).</summary>
+    public async Task<Edi870Result> PersistEdi870Async(Edi870Batch batch, DateTime timestamp, CancellationToken ct)
+    {
+        var itemCount = batch.Jobs.Sum(j => j.Items.Count);
+        var scrapCount = batch.Jobs.Sum(j => j.Scrap.Count);
+        if (batch.Jobs.Count == 0 || (itemCount == 0 && scrapCount == 0))
+            return new Edi870Result
+            {
+                CustomerId = batch.CustomerId, Status = "nothing", Partner = "Aleris", Transmitted = false,
+                Note = "No unsent 870 items or scrap for this customer.",
+            };
+
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var ediFileId = await NextIdAsync(conn, (DbTransaction)tx, "outbound_edi_transaction", "edi_file_id", ct);
+        var payload = Edi870Generator.Generate(batch, ediFileId, ediFileId, timestamp);
+        var fileName = Edi870Generator.FileName(ediFileId);
+        var hlCount = batch.Jobs.Count * 2 + itemCount + scrapCount;
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO outbound_edi_transaction
+                (edi_file_id, duns_from, duns_to, interchange_control_number, group_control_number,
+                 transaction_time, edi_file_name, fa_receive_status, customer_id, set_control_num, transaction_type_id)
+            VALUES (:fileId, :from, :to, :icn, :gcn, :now, :name, 0, :cust, :scn, '870')
+            """,
+            new
+            {
+                fileId = ediFileId, from = Edi870Generator.SenderDuns, to = batch.SupplierDuns ?? "",
+                icn = ediFileId, gcn = ediFileId, now = (DateTime?)timestamp, name = fileName,
+                cust = batch.CustomerId, scn = ediFileId
+            },
+            transaction: tx, cancellationToken: ct));
+
+        var payloadParams = new DynamicParameters();
+        payloadParams.Add("fileId", ediFileId);
+        payloadParams.Add("cust", batch.CustomerId);
+        payloadParams.Add("name", fileName);
+        payloadParams.Add("payload", new ClobText(payload));
+        payloadParams.Add("now", (DateTime?)timestamp);
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO abis_edi_payload
+                (edi_file_id, transaction_type, receiving_bol_id, customer_id, edi_file_name, payload, created_utc)
+            VALUES (:fileId, '870', NULL, :cust, :name, :payload, :now)
+            """,
+            payloadParams, transaction: tx, cancellationToken: ct));
+
+        foreach (var job in batch.Jobs)
+        {
+            foreach (var item in job.Items)
+                await conn.ExecuteAsync(new CommandDefinition(
+                    "INSERT INTO abis_edi_870_mark (mark_type, ref_id, edi_file_id, customer_id, sent_utc) VALUES ('ITEM', :ref, :fileId, :cust, :now)",
+                    new { @ref = item.ProdItemNum, fileId = ediFileId, cust = batch.CustomerId, now = (DateTime?)timestamp },
+                    transaction: tx, cancellationToken: ct));
+            // Only mark SCRAP when scrap was actually sent (legacy marked every processed job, which could drop
+            // scrap for a job that wasn't done yet; the modern engine reports it when the job later completes).
+            if (job.Scrap.Count > 0)
+                await conn.ExecuteAsync(new CommandDefinition(
+                    "INSERT INTO abis_edi_870_mark (mark_type, ref_id, edi_file_id, customer_id, sent_utc) VALUES ('SCRAP', :ref, :fileId, :cust, :now)",
+                    new { @ref = job.AbJobNum, fileId = ediFileId, cust = batch.CustomerId, now = (DateTime?)timestamp },
+                    transaction: tx, cancellationToken: ct));
+        }
+
+        await tx.CommitAsync(ct);
+        return new Edi870Result
+        {
+            CustomerId = batch.CustomerId, Status = "generated", Partner = "Aleris", Transmitted = false,
+            EdiFileId = ediFileId, EdiFileName = fileName, GroupControlNumber = ediFileId, SetControlNumber = ediFileId,
+            JobCount = batch.Jobs.Count, ItemCount = itemCount, ScrapCount = scrapCount, HlCount = hlCount,
+            PayloadBytes = System.Text.Encoding.UTF8.GetByteCount(payload),
+            Note = $"870 generated for Aleris ({batch.Jobs.Count} jobs, {itemCount} items, {scrapCount} scrap); stored, not transmitted.",
+        };
+    }
+
     public Task<PagedResult<EdiLogEntry>> GetEdiLogAsync(int page, int pageSize, long? customerId, string? orderBy, CancellationToken ct)
     {
         var p = new DynamicParameters();

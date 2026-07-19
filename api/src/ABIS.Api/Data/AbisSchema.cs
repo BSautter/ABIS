@@ -187,7 +187,21 @@ public static class AbisSchema
           created_utc       DATE,
           CONSTRAINT pk_abis_edi_payload PRIMARY KEY (edi_file_id, transaction_type))
         """,
-        "CREATE INDEX ix_abis_edi_payload_bol ON abis_edi_payload (receiving_bol_id, transaction_type)"
+        "CREATE INDEX ix_abis_edi_payload_bol ON abis_edi_payload (receiving_bol_id, transaction_type)",
+        // ABIS-owned 870 "sent" markers (docs/data-model/migrations/006_edi_870_mark.sql). The legacy 870 proc
+        // stamps prod_item_edi870_date / edi_file_id_870 on production_sheet_item and scrap_870_date on ab_job.
+        // Those are legacy columns the modernization does NOT alter, so the modern engine tracks 870-sent state
+        // here instead: one row per (mark_type, ref_id) — mark_type 'ITEM' → prod_item_num, 'SCRAP' → ab_job_num.
+        // The selection query excludes anything already marked, so an item/job is 870-reported at most once.
+        """
+        CREATE TABLE abis_edi_870_mark (
+          mark_type     VARCHAR2(8)   NOT NULL,
+          ref_id        NUMBER(12)    NOT NULL,
+          edi_file_id   NUMBER(12),
+          customer_id   NUMBER(10),
+          sent_utc      DATE,
+          CONSTRAINT pk_abis_edi_870_mark PRIMARY KEY (mark_type, ref_id))
+        """
     ];
 
     public static async Task EnsureOwnedTablesAsync(IDbConnectionFactory factory, ILogger logger, CancellationToken ct = default)

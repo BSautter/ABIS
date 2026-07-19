@@ -984,6 +984,21 @@ public static class ApiEndpoints
            .WithSummary("The stored X12 payload for a generated EDI transaction, as plain text. Generation only — nothing here transmits.")
            .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status404NotFound);
 
+        api.MapPost("/edi/870/generate", async (HttpContext ctx, IAbisRepository repo, CancellationToken ct, long customerId = 1980) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, "EDI", 1, ct) is { } deny) return deny;
+                // Only Aleris (1980) has an 870 body variant wired (Wise would need its own — a documented follow-up).
+                if (customerId != 1980)
+                    return Results.Problem(statusCode: StatusCodes.Status422UnprocessableEntity, title: "Not an 870 partner",
+                        detail: $"Customer {customerId} is not a configured 870 trading partner (only Aleris 1980 is wired).");
+                var batch = await repo.AssembleEdi870BatchAsync(customerId, ct);
+                var result = await repo.PersistEdi870Async(batch, DateTime.Now, ct);
+                return Results.Ok(result);
+            })
+           .WithName("GenerateEdi870").WithTags("EDI")
+           .WithSummary("Generate + persist the 870 (Order/Coil Status) batch for a customer (default Aleris 1980) — every not-yet-reported shippable item + finished-job scrap, built and stored but NEVER transmitted. Returns status 'nothing' when there's nothing to report; view the payload at /edi/transactions/{ediFileId}/payload. Marks reported items/jobs so they aren't sent twice.")
+           .Produces<Edi870Result>().Produces(StatusCodes.Status422UnprocessableEntity);
+
         api.MapGet("/edi/log", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, long? customerId = null, string? sort = null, string? dir = null) =>
             {

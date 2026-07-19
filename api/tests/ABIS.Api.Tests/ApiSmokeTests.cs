@@ -897,8 +897,8 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     public async Task List_jobs_returns_paged_envelope()
     {
         var body = await _client.GetFromJsonAsync<JsonElement>("/api/jobs");
-        Assert.Equal(3, body.GetProperty("totalCount").GetInt32());
-        Assert.Equal(3, body.GetProperty("items").GetArrayLength());
+        Assert.Equal(4, body.GetProperty("totalCount").GetInt32());   // 3 base + the Aleris 870 job (990)
+        Assert.Equal(4, body.GetProperty("items").GetArrayLength());
     }
 
     [Fact]
@@ -1328,6 +1328,31 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
 
         // A second attempt is a 409 (one 861 per BOL).
         Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync("/api/receiving-bols/5500/generate-861", null)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Generate870_builds_stores_for_aleris_and_reports_once()
+    {
+        // Not a configured 870 partner (Novelis 1153) -> 422.
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await _client.PostAsync("/api/edi/870/generate?customerId=1153", null)).StatusCode);
+
+        // Aleris (default 1980) -> generated + stored (never transmitted).
+        var resp = await _client.PostAsync("/api/edi/870/generate", null);
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("generated", body.GetProperty("status").GetString());
+        Assert.Equal("Aleris", body.GetProperty("partner").GetString());
+        Assert.False(body.GetProperty("transmitted").GetBoolean());
+        var fileId = body.GetProperty("ediFileId").GetInt64();
+
+        var payload = await _client.GetStringAsync($"/api/edi/transactions/{fileId}/payload");
+        Assert.Contains("ST*870*", payload);
+        Assert.Contains("HL*1**O*1", payload);
+
+        // Report-once: a second run has nothing new to report.
+        var resp2 = await _client.PostAsync("/api/edi/870/generate", null);
+        var body2 = await resp2.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("nothing", body2.GetProperty("status").GetString());
     }
 
     [Fact]

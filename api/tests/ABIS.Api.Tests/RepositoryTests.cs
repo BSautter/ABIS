@@ -27,8 +27,8 @@ public sealed class RepositoryTests : IDisposable
     public async Task GetJobs_returns_all_seeded_jobs()
     {
         var page = await _repo.GetJobsAsync(1, 25, status: null, completed: null, search: null, orderBy: null, CancellationToken.None);
-        Assert.Equal(3, page.TotalCount);
-        Assert.Equal(3, page.Items.Count);
+        Assert.Equal(4, page.TotalCount);   // 3 base jobs + the Aleris 870 done job (990)
+        Assert.Equal(4, page.Items.Count);
     }
 
     [Fact]
@@ -61,9 +61,9 @@ public sealed class RepositoryTests : IDisposable
     [Fact]
     public async Task GetJobs_completed_true_returns_only_done()
     {
-        // completed=true → the searchable "Completed jobs" card: job_status 0 only (1003 is Done).
+        // completed=true → the searchable "Completed jobs" card: job_status 0 (1003 + the Aleris 870 job 990).
         var page = await _repo.GetJobsAsync(1, 25, status: null, completed: true, search: null, orderBy: null, CancellationToken.None);
-        Assert.Single(page.Items);
+        Assert.Equal(2, page.Items.Count);
         Assert.All(page.Items, j => Assert.Equal(0, j.JobStatus));
         Assert.Contains(page.Items, j => j.AbJobNum == 1003);
     }
@@ -127,12 +127,12 @@ public sealed class RepositoryTests : IDisposable
     public async Task GetJobs_paginates()
     {
         var p1 = await _repo.GetJobsAsync(1, 2, status: null, completed: null, search: null, orderBy: null, CancellationToken.None);
-        Assert.Equal(3, p1.TotalCount);
+        Assert.Equal(4, p1.TotalCount);   // 3 base + the Aleris 870 job (990)
         Assert.Equal(2, p1.Items.Count);
-        Assert.Equal(2, p1.TotalPages);
+        Assert.Equal(2, p1.TotalPages);   // 4 jobs / 2 per page
 
         var p2 = await _repo.GetJobsAsync(2, 2, status: null, completed: null, search: null, orderBy: null, CancellationToken.None);
-        Assert.Single(p2.Items);
+        Assert.Equal(2, p2.Items.Count);
     }
 
     [Fact]
@@ -291,7 +291,7 @@ public sealed class RepositoryTests : IDisposable
     public async Task GetCustomers_lists_and_filters_by_name()
     {
         var all = await _repo.GetCustomersAsync(1, 25, name: null, orderBy: null, CancellationToken.None);
-        Assert.Equal(3, all.TotalCount);   // ACME + BETA + the Novelis 861 partner (1153)
+        Assert.Equal(4, all.TotalCount);   // ACME + BETA + Novelis 861 (1153) + Aleris 870 (1980)
 
         var acme = await _repo.GetCustomersAsync(1, 25, name: "ACME", orderBy: null, CancellationToken.None);
         Assert.Single(acme.Items);
@@ -904,6 +904,43 @@ public sealed class RepositoryTests : IDisposable
         Assert.Equal(1, (await _repo.GetReceivingBolAsync(5500, CancellationToken.None))!.Status);
         var existing = await _repo.GetEdi861ForBolAsync(5500, CancellationToken.None);
         Assert.Equal(result.EdiFileId, existing!.EdiFileId);
+    }
+
+    [Fact]
+    public async Task Edi870_assembles_generates_marks_and_reports_once()
+    {
+        var batch = await _repo.AssembleEdi870BatchAsync(1980, CancellationToken.None);
+        Assert.Single(batch.Jobs);
+        Assert.Equal("964790856", batch.SupplierDuns);
+        var job = batch.Jobs[0];
+        Assert.Equal(990, job.AbJobNum);
+        Assert.Single(job.Items);
+        Assert.Single(job.Scrap);
+        var item = job.Items[0];
+        Assert.Equal(2990, item.SheetSkidNum);
+        Assert.Equal(48m, item.Length);        // rectangle rt_length
+        Assert.Equal(36m, item.Width);         // rectangle rt_width
+        Assert.Equal(0.0625m, item.CoilThickness);
+        Assert.Equal(2.5m, item.TheoreticalUnitWt);
+        Assert.Equal(3000m, job.Scrap[0].ScrapNetWeight);   // 25000 process − 2000 end − 20000 prime
+
+        var result = await _repo.PersistEdi870Async(batch, new DateTime(2026, 7, 12, 9, 30, 0), CancellationToken.None);
+        Assert.Equal("generated", result.Status);
+        Assert.Equal("Aleris", result.Partner);
+        Assert.Equal(1, result.JobCount);
+        Assert.Equal(1, result.ItemCount);
+        Assert.Equal(1, result.ScrapCount);
+        Assert.False(result.Transmitted);
+
+        var payload = await _repo.GetEdiPayloadAsync(result.EdiFileId!.Value, CancellationToken.None);
+        Assert.Contains("ST*870*", payload!.Payload);
+        Assert.Contains("N1*MF**1*964790856", payload.Payload);
+        Assert.Equal("870", (await _repo.GetEdiTransactionAsync(result.EdiFileId!.Value, CancellationToken.None))!.TransactionTypeId);
+
+        // Report-once: the item + job are marked, so a second assemble finds nothing.
+        var again = await _repo.AssembleEdi870BatchAsync(1980, CancellationToken.None);
+        Assert.Empty(again.Jobs);
+        Assert.Equal("nothing", (await _repo.PersistEdi870Async(again, DateTime.Now, CancellationToken.None)).Status);
     }
 
     [Fact]
