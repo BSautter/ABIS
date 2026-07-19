@@ -706,6 +706,13 @@ public static class SqliteFixture
                 customer_type, edi_req, create_861_at_receiving, customer_duns_number_string)
             VALUES (1153, 'NOVELIS KINGSTON', 'NOVELIS', 'Kingston', 'ON', 1, 'Y', 'Y', '241003755')
             """);
+        // The other two Novelis plants that share variant 'novelis' — their names disambiguate the partner table
+        // (Kingston vs Oswego vs Guthrie), which is otherwise just "novelis" for all three.
+        conn.Execute("""
+            INSERT INTO customer (customer_id, customer_full_name, customer_short_name, customer_city, customer_state, customer_type, edi_req, customer_duns_number_string)
+            VALUES (1459, 'NOVELIS OSWEGO', 'NOVELIS', 'Oswego', 'NY', 1, 'Y', '003980216'),
+                   (2582, 'NOVELIS GUTHRIE', 'NOVELIS', 'Guthrie', 'KY', 1, 'Y', '117061565')
+            """);
         conn.Execute(
             """
             INSERT INTO receiving_bol (receiving_bol_id, bol, customer_id, created_by, created_date, received_date, status)

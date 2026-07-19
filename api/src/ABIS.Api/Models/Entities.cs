@@ -1663,6 +1663,9 @@ public sealed class EdiPartnerProfile
     public string? ItemReference { get; set; }
     public DateTime? UpdatedUtc { get; set; }
     public string? UpdatedBy { get; set; }
+    /// <summary>The customer's full name (customer.customer_full_name), resolved for display in the admin EDI
+    /// setup so the plant is clear (e.g. Novelis Kingston vs Oswego). Not stored on the profile; read-only.</summary>
+    public string? CustomerName { get; set; }
 }
 
 // ---- EDI 870 (Order/Coil Status) — the assembled input graph + result ----

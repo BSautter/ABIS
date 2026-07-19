@@ -72,9 +72,9 @@ function scaffold(): string {
           <button class="btn sm" type="submit">Save</button>
           <button class="btn sm ghost" id="pReset" type="button">Clear</button>
         </form>
-        <div style="overflow-x:auto"><table class="tbl" style="min-width:920px">
-          <thead><tr><th>Cust</th><th>Doc</th><th>On</th><th>Variant</th><th>Receiver</th><th>Comp</th><th>Suf</th><th>Ver</th><th>GS</th><th>Prefix</th><th>Item ref</th><th></th></tr></thead>
-          <tbody id="tPart"><tr><td colspan="12" class="muted">Loading…</td></tr></tbody>
+        <div style="overflow-x:auto"><table class="tbl" style="min-width:1020px">
+          <thead><tr><th>Cust</th><th>Customer</th><th>Doc</th><th>On</th><th>Variant</th><th>Receiver</th><th>Comp</th><th>Suf</th><th>Ver</th><th>GS</th><th>Prefix</th><th>Item ref</th><th></th></tr></thead>
+          <tbody id="tPart"><tr><td colspan="13" class="muted">Loading…</td></tr></tbody>
         </table></div>
       </div>
     </div>
@@ -165,14 +165,14 @@ async function loadPartners(): Promise<void> {
     partners = (await client().listEdiPartners(undefined)) ?? [];
     const chip = (on: boolean | undefined) => (on ? '<span class="chip ok">on</span>' : '<span class="chip">off</span>');
     $('#tPart').innerHTML = partners.length ? partners.map((p) => `<tr>
-      <td class="mono">${esc(p.customerId)}</td><td class="mono">${esc(p.transactionSet)}</td><td>${chip(p.enabled)}</td>
+      <td class="mono">${esc(p.customerId)}</td><td>${esc(p.customerName ?? '')}</td><td class="mono">${esc(p.transactionSet)}</td><td>${chip(p.enabled)}</td>
       <td>${esc(p.variant)}</td><td class="mono">${esc(p.receiverQualifier)}/${esc(p.receiverId)}</td>
       <td class="mono">${esc(p.componentSeparator)}</td><td class="mono">${esc(p.segmentSuffix)}</td>
       <td class="mono">${esc(p.envelopeVersion)}</td><td class="mono">${esc(p.gsFunctionalCode)}</td>
       <td class="mono">${esc(p.filePrefix)}</td><td class="mono">${esc(p.itemReference)}</td>
       <td style="white-space:nowrap"><button class="btn sm ghost pEdit" data-c="${p.customerId}" data-s="${esc(p.transactionSet)}" type="button">edit</button>
         <button class="btn sm ghost pDel" data-c="${p.customerId}" data-s="${esc(p.transactionSet)}" type="button">del</button></td></tr>`).join('')
-      : '<tr><td colspan="12" class="muted">No profiles.</td></tr>';
+      : '<tr><td colspan="13" class="muted">No profiles.</td></tr>';
     document.querySelectorAll<HTMLButtonElement>('#tPart .pEdit').forEach((b) => b.addEventListener('click', () =>
       fillPartner(partners.find((x) => String(x.customerId) === b.dataset.c && x.transactionSet === b.dataset.s))));
     document.querySelectorAll<HTMLButtonElement>('#tPart .pDel').forEach((b) => b.addEventListener('click', () =>

@@ -16308,6 +16308,7 @@ export class EdiPartnerProfile {
             this.itemReference = _data["itemReference"];
             this.updatedUtc = _data["updatedUtc"] ? new Date(_data["updatedUtc"].toString()) : undefined;
             this.updatedBy = _data["updatedBy"];
+            this.customerName = _data["customerName"];
         }
     }
     static fromJS(data) {
@@ -16334,6 +16335,7 @@ export class EdiPartnerProfile {
         data["itemReference"] = this.itemReference;
         data["updatedUtc"] = this.updatedUtc ? this.updatedUtc.toISOString() : undefined;
         data["updatedBy"] = this.updatedBy;
+        data["customerName"] = this.customerName;
         return data;
     }
 }

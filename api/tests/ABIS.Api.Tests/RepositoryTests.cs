@@ -291,7 +291,7 @@ public sealed class RepositoryTests : IDisposable
     public async Task GetCustomers_lists_and_filters_by_name()
     {
         var all = await _repo.GetCustomersAsync(1, 25, name: null, orderBy: null, CancellationToken.None);
-        Assert.Equal(4, all.TotalCount);   // ACME + BETA + Novelis 861 (1153) + Aleris 870 (1980)
+        Assert.Equal(6, all.TotalCount);   // ACME + BETA + Novelis Kingston/Oswego/Guthrie (1153/1459/2582) + Aleris (1980)
 
         var acme = await _repo.GetCustomersAsync(1, 25, name: "ACME", orderBy: null, CancellationToken.None);
         Assert.Single(acme.Items);
@@ -1085,6 +1085,10 @@ public sealed class RepositoryTests : IDisposable
         Assert.Equal("0015049350011G", nov.ReceiverId);
         Assert.Equal("", nov.ComponentSeparator);   // Novelis empty component separator round-trips
         Assert.True(nov.Enabled);
+        // The customer name is resolved for display so the plant is clear (Kingston vs Oswego, all variant 'novelis').
+        Assert.Equal("NOVELIS KINGSTON", nov.CustomerName);
+        Assert.Equal("NOVELIS OSWEGO", (await _repo.GetEdiPartnerAsync(1459, "861", CancellationToken.None))!.CustomerName);
+        Assert.Equal("NOVELIS GUTHRIE", (await _repo.GetEdiPartnerAsync(2582, "861", CancellationToken.None))!.CustomerName);
         // Golden-faithful Novelis 861 envelope: version 00401, GS SH, sender R0P7A, GS03 receiver 001504935001.
         Assert.Equal("00401", nov.EnvelopeVersion);
         Assert.Equal("SH", nov.GsFunctionalCode);

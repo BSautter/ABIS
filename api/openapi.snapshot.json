@@ -13389,6 +13389,10 @@
           "updatedBy": {
             "type": "string",
             "nullable": true
+          },
+          "customerName": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false

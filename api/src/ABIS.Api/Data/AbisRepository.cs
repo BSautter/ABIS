@@ -273,13 +273,15 @@ public sealed class AbisRepository : IAbisRepository
         """;
 
     // Oracle stores an empty component_separator / segment_suffix as NULL, so COALESCE them back to ''.
+    // Qualified with the `p` alias so the queries below can LEFT JOIN the customer table for the display name
+    // without an ambiguous customer_id.
     private const string EdiPartnerCols = """
-        customer_id AS CustomerId, transaction_set AS TransactionSet, enabled AS Enabled, variant AS Variant,
-        receiver_qualifier AS ReceiverQualifier, receiver_id AS ReceiverId,
-        COALESCE(component_separator, '') AS ComponentSeparator, COALESCE(segment_suffix, '') AS SegmentSuffix,
-        envelope_version AS EnvelopeVersion, gs_functional_code AS GsFunctionalCode, gs_sender_code AS GsSenderCode,
-        gs_receiver_code AS GsReceiverCode,
-        file_prefix AS FilePrefix, item_reference AS ItemReference, updated_utc AS UpdatedUtc, updated_by AS UpdatedBy
+        p.customer_id AS CustomerId, p.transaction_set AS TransactionSet, p.enabled AS Enabled, p.variant AS Variant,
+        p.receiver_qualifier AS ReceiverQualifier, p.receiver_id AS ReceiverId,
+        COALESCE(p.component_separator, '') AS ComponentSeparator, COALESCE(p.segment_suffix, '') AS SegmentSuffix,
+        p.envelope_version AS EnvelopeVersion, p.gs_functional_code AS GsFunctionalCode, p.gs_sender_code AS GsSenderCode,
+        p.gs_receiver_code AS GsReceiverCode,
+        p.file_prefix AS FilePrefix, p.item_reference AS ItemReference, p.updated_utc AS UpdatedUtc, p.updated_by AS UpdatedBy
         """;
 
     private const string EdiLogCols = """
@@ -3285,7 +3287,11 @@ public sealed class AbisRepository : IAbisRepository
     {
         await using var conn = await OpenAsync(ct);
         return await conn.QuerySingleOrDefaultAsync<EdiPartnerProfile>(new CommandDefinition(
-            $"SELECT {EdiPartnerCols} FROM abis_edi_partner WHERE customer_id = :c AND transaction_set = :t",
+            $"""
+            SELECT {EdiPartnerCols}, c.customer_full_name AS CustomerName
+              FROM abis_edi_partner p LEFT JOIN customer c ON c.customer_id = p.customer_id
+             WHERE p.customer_id = :c AND p.transaction_set = :t
+            """,
             new { c = customerId, t = transactionSet }, cancellationToken: ct));
     }
 
@@ -3293,9 +3299,13 @@ public sealed class AbisRepository : IAbisRepository
     public async Task<IReadOnlyList<EdiPartnerProfile>> ListEdiPartnersAsync(string? transactionSet, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
-        var where = transactionSet is null ? "" : " WHERE transaction_set = :t";
+        var where = transactionSet is null ? "" : " WHERE p.transaction_set = :t";
         return (await conn.QueryAsync<EdiPartnerProfile>(new CommandDefinition(
-            $"SELECT {EdiPartnerCols} FROM abis_edi_partner{where} ORDER BY customer_id, transaction_set",
+            $"""
+            SELECT {EdiPartnerCols}, c.customer_full_name AS CustomerName
+              FROM abis_edi_partner p LEFT JOIN customer c ON c.customer_id = p.customer_id{where}
+             ORDER BY p.customer_id, p.transaction_set
+            """,
             new { t = transactionSet }, cancellationToken: ct))).ToList();
     }
 
