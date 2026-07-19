@@ -1055,6 +1055,17 @@ public sealed class RepositoryTests : IDisposable
 
         var all861 = await _repo.ListEdiPartnersAsync("861", CancellationToken.None);
         Assert.Equal(6, all861.Count);   // Novelis 1153/1459/2582 + Aleris 1980 + Arconic 2784 + Constellium 2776
+
+        // 856 (ASN) partners — the three live ones, each mirroring its 861 envelope.
+        var all856 = await _repo.ListEdiPartnersAsync("856", CancellationToken.None);
+        Assert.Equal(5, all856.Count);   // Novelis 1153/1459/2582 + Constellium 2776 + Arconic 2784
+        var nov856 = await _repo.GetEdiPartnerAsync(1153, "856", CancellationToken.None);
+        Assert.Equal("novelis", nov856!.Variant);
+        Assert.Equal("R0P7A", nov856.GsSenderCode);
+        Assert.Equal("001504935001", nov856.GsReceiverCode);
+        Assert.Equal("S_novelis_856_", nov856.FilePrefix);
+        Assert.Equal("R0P7ATN", (await _repo.GetEdiPartnerAsync(2784, "856", CancellationToken.None))!.GsSenderCode);
+        Assert.Equal("@", (await _repo.GetEdiPartnerAsync(2776, "856", CancellationToken.None))!.ComponentSeparator);
     }
 
     [Fact]

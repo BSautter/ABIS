@@ -270,7 +270,14 @@ public static class AbisSchema
             receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, gs_sender_code, file_prefix, item_reference)
         SELECT 2776, '861', 1, 'constellium', '01', '043207177', '@', '', '00401', 'SH', NULL, 'S_constellium_861_', NULL FROM dual
          WHERE NOT EXISTS (SELECT 1 FROM abis_edi_partner WHERE customer_id = 2776 AND transaction_set = '861')
-        """
+        """,
+        // 856 (ASN) — the three live partners. Each mirrors its 861 envelope (Novelis SH/R0P7A/001504935001;
+        // Constellium SH/@/043207177; Arconic SH/R0P7ATN/961613887) with the 856 file prefix + body variant.
+        Seed856("1153", "novelis", "09", "0015049350011G", "", "R0P7A", "001504935001", "S_novelis_856_"),
+        Seed856("1459", "novelis", "09", "0015049350011G", "", "R0P7A", "001504935001", "S_novelis_856_"),
+        Seed856("2582", "novelis", "09", "0015049350011G", "", "R0P7A", "001504935001", "S_novelis_856_"),
+        Seed856("2776", "constellium", "01", "043207177", "@", "", "", "S_constellium_856_"),
+        Seed856("2784", "arconic", "01", "961613887", ">", "R0P7ATN", "", "S_arconic_856_")
     ];
 
     // An idempotent 861 partner-profile seed row (the legacy Aleris 861 used version 00200 + GS code RC).
@@ -281,6 +288,17 @@ public static class AbisSchema
             receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, file_prefix, item_reference)
         SELECT {customerId}, '861', 1, '{variant}', '{qualifier}', '{receiverId}', '{componentSep}', '', '00200', 'RC', '{filePrefix}', NULL FROM dual
          WHERE NOT EXISTS (SELECT 1 FROM abis_edi_partner WHERE customer_id = {customerId} AND transaction_set = '861')
+        """;
+
+    // An idempotent 856 (ASN) partner-profile seed row. All 856s share GS code SH + version 00401; the
+    // gs_sender/gs_receiver overrides + component separator + variant vary per partner.
+    private static string Seed856(string customerId, string variant, string qualifier, string receiverId,
+        string componentSep, string gsSender, string gsReceiver, string filePrefix) =>
+        $"""
+        INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier,
+            receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, gs_sender_code, gs_receiver_code, file_prefix, item_reference)
+        SELECT {customerId}, '856', 1, '{variant}', '{qualifier}', '{receiverId}', '{componentSep}', '', '00401', 'SH', {(gsSender.Length == 0 ? "NULL" : $"'{gsSender}'")}, {(gsReceiver.Length == 0 ? "NULL" : $"'{gsReceiver}'")}, '{filePrefix}', NULL FROM dual
+         WHERE NOT EXISTS (SELECT 1 FROM abis_edi_partner WHERE customer_id = {customerId} AND transaction_set = '856')
         """;
 
     // The Novelis 861 seed (all three plants share the envelope): SH group, GS sender R0P7A, GS03 receiver

@@ -798,7 +798,13 @@ public static class SqliteFixture
                 // Arconic 861 (customer 2784, ARCONIC-TN): its own variant + a distinct GS sender (R0P7ATN) and SH group code.
                 new { CustomerId = 2784L, TransactionSet = "861", Variant = "arconic", RecvQual = "01", RecvId = "961613887", Comp = ">", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)"R0P7ATN", GsReceiver = (string?)null, Prefix = "S_arconic_861_", ItemRef = (string?)null },
                 // Constellium 861 (customer 2776): SH group code, standard ABCo GS sender, '@' component separator.
-                new { CustomerId = 2776L, TransactionSet = "861", Variant = "constellium", RecvQual = "01", RecvId = "043207177", Comp = "@", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)null, GsReceiver = (string?)null, Prefix = "S_constellium_861_", ItemRef = (string?)null }
+                new { CustomerId = 2776L, TransactionSet = "861", Variant = "constellium", RecvQual = "01", RecvId = "043207177", Comp = "@", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)null, GsReceiver = (string?)null, Prefix = "S_constellium_861_", ItemRef = (string?)null },
+                // 856 (ASN) — the three live partners, each mirroring its 861 envelope with the 856 prefix + variant.
+                new { CustomerId = 1153L, TransactionSet = "856", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)"R0P7A", GsReceiver = (string?)"001504935001", Prefix = "S_novelis_856_", ItemRef = (string?)null },
+                new { CustomerId = 1459L, TransactionSet = "856", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)"R0P7A", GsReceiver = (string?)"001504935001", Prefix = "S_novelis_856_", ItemRef = (string?)null },
+                new { CustomerId = 2582L, TransactionSet = "856", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)"R0P7A", GsReceiver = (string?)"001504935001", Prefix = "S_novelis_856_", ItemRef = (string?)null },
+                new { CustomerId = 2776L, TransactionSet = "856", Variant = "constellium", RecvQual = "01", RecvId = "043207177", Comp = "@", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)null, GsReceiver = (string?)null, Prefix = "S_constellium_856_", ItemRef = (string?)null },
+                new { CustomerId = 2784L, TransactionSet = "856", Variant = "arconic", RecvQual = "01", RecvId = "961613887", Comp = ">", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)"R0P7ATN", GsReceiver = (string?)null, Prefix = "S_arconic_856_", ItemRef = (string?)null }
             });
 
         conn.Execute("""
