@@ -882,6 +882,12 @@ test('edi flow: generate the Aleris 870 (typed, stored not transmitted)', async 
   assert.equal(again.status, 'nothing');   // report-once
 });
 
+// EDI 856 (ASN): generate from a shipment's packing list — built + stored, never transmitted.
+test('edi flow: 856 rejects unknown + non-partner shipments (typed)', async () => {
+  await assert.rejects(() => client.generateEdi856(999999));   // no shipment for this packing list -> 404
+  await assert.rejects(() => client.generateEdi856(8801));     // shipment exists (cust 4001) but not an 856 partner -> 422
+});
+
 // Coil evaluation / QC (legacy coil_eval w_qc_sheet): QC coil picker, dimensional checks,
 // and eval scrap (upsert on the composite key).
 test('coil-eval flow: QC coils, dimension checks, eval scrap (typed)', async () => {

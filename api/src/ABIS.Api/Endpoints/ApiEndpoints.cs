@@ -1004,6 +1004,32 @@ public static class ApiEndpoints
            .WithSummary("Generate + persist the 870 (Order/Coil Status) batch for a customer (default Aleris 1980) — every not-yet-reported shippable item + finished-job scrap, built and stored but NEVER transmitted. Returns status 'nothing' when there's nothing to report; view the payload at /edi/transactions/{ediFileId}/payload. Marks reported items/jobs so they aren't sent twice.")
            .Produces<Edi870Result>().Produces(StatusCodes.Status422UnprocessableEntity);
 
+        api.MapPost("/edi/856/generate", async (HttpContext ctx, IAbisRepository repo, CancellationToken ct, long packingList = 0) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, "EDI", 1, ct) is { } deny) return deny;
+                if (packingList <= 0)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["packingList"] = ["packingList is required."] });
+                // Assemble the shipment first so we know the customer, then resolve their 856 partner profile.
+                var probe = await repo.AssembleEdi856Async(packingList, null, ct);
+                if (probe is null)
+                    return Results.NotFound();
+                var profile = probe.CustomerId is { } cid ? await repo.GetEdiPartnerAsync(cid, "856", ct) : null;
+                if (profile is null || !profile.Enabled)
+                    return Results.Problem(statusCode: StatusCodes.Status422UnprocessableEntity, title: "Not an 856 partner",
+                        detail: $"The shipment's customer has no enabled 856 trading-partner profile (configure it in the admin EDI setup).");
+                // One 856 per packing list — the stored payload is the idempotency guard.
+                if (await repo.GetEdi856ForPackingListAsync(packingList, ct) is { } existing)
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Already generated",
+                        detail: $"An 856 was already generated for packing list {packingList} (edi_file_id {existing.EdiFileId}, {existing.EdiFileName}). It is stored, not transmitted.");
+                // Re-assemble with the resolved variant (drives the Constellium per-item fields), then persist.
+                var shp = await repo.AssembleEdi856Async(packingList, profile.Variant, ct);
+                var result = await repo.PersistEdi856Async(shp!, profile, packingList, DateTime.Now, ct);
+                return Results.Ok(result);
+            })
+           .WithName("GenerateEdi856").WithTags("EDI")
+           .WithSummary("Generate + persist the 856 (Advance Ship Notice) for a shipment's packing list — the shipment header + one item per packed skid, built and stored but NEVER transmitted. 404 if the packing list has no shipment; 422 if its customer isn't an 856 partner; 409 if already generated. View the payload at /edi/transactions/{ediFileId}/payload.")
+           .Produces<Edi856Result>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status422UnprocessableEntity).Produces(StatusCodes.Status409Conflict);
+
         api.MapGet("/edi/partners", async (IAbisRepository repo, CancellationToken ct, string? transactionSet = null) =>
                 Results.Ok(await repo.ListEdiPartnersAsync(transactionSet, ct)))
            .WithName("ListEdiPartners").WithTags("EDI")

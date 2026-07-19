@@ -4291,6 +4291,70 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Generate + persist the 856 (Advance Ship Notice) for a shipment's packing list — the shipment header + one item per packed skid, built and stored but NEVER transmitted. 404 if the packing list has no shipment; 422 if its customer isn't an 856 partner; 409 if already generated. View the payload at /edi/transactions/{ediFileId}/payload.
+     * @param packingList (optional)
+     * @return OK
+     */
+    generateEdi856(packingList) {
+        let url_ = this.baseUrl + "/api/edi/856/generate?";
+        if (packingList === null)
+            throw new globalThis.Error("The parameter 'packingList' cannot be null.");
+        else if (packingList !== undefined)
+            url_ += "packingList=" + encodeURIComponent("" + packingList) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGenerateEdi856(_response);
+        });
+    }
+    processGenerateEdi856(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = Edi856Result.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status === 422) {
+            return response.text().then((_responseText) => {
+                return throwException("Unprocessable Content", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * The per-(customer, transaction set) EDI trading-partner profiles — the config backbone that lets each customer have different requirements for their 861/870/846/… documents. Optionally filter by transactionSet.
      * @param transactionSet (optional)
      * @return OK
@@ -15934,6 +15998,54 @@ export class DowntimeSegmentWrite {
         data["causeId"] = this.causeId;
         data["durationSeconds"] = this.durationSeconds;
         data["note"] = this.note;
+        return data;
+    }
+}
+export class Edi856Result {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.packingList = _data["packingList"];
+            this.customerId = _data["customerId"];
+            this.status = _data["status"];
+            this.partner = _data["partner"];
+            this.note = _data["note"];
+            this.ediFileId = _data["ediFileId"];
+            this.ediFileName = _data["ediFileName"];
+            this.groupControlNumber = _data["groupControlNumber"];
+            this.setControlNumber = _data["setControlNumber"];
+            this.skidCount = _data["skidCount"];
+            this.payloadBytes = _data["payloadBytes"];
+            this.transmitted = _data["transmitted"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new Edi856Result();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["packingList"] = this.packingList;
+        data["customerId"] = this.customerId;
+        data["status"] = this.status;
+        data["partner"] = this.partner;
+        data["note"] = this.note;
+        data["ediFileId"] = this.ediFileId;
+        data["ediFileName"] = this.ediFileName;
+        data["groupControlNumber"] = this.groupControlNumber;
+        data["setControlNumber"] = this.setControlNumber;
+        data["skidCount"] = this.skidCount;
+        data["payloadBytes"] = this.payloadBytes;
+        data["transmitted"] = this.transmitted;
         return data;
     }
 }

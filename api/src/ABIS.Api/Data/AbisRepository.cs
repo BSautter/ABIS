@@ -3723,6 +3723,171 @@ public sealed class AbisRepository : IAbisRepository
         };
     }
 
+    // ---- EDI 856 (Advance Ship Notice) — assemble the shipment, then generate + persist + mark ----
+
+    private sealed class Edi856HeaderRow
+    {
+        public long PackingList { get; set; }
+        public long? BillOfLading { get; set; }
+        public long? CustomerId { get; set; }
+        public DateTime? ShipDate { get; set; }
+        public string? Scac { get; set; }
+        public string? CarrierFullName { get; set; }
+        public string? CarrierTypeCode { get; set; }
+        public string? VehicleId { get; set; }
+        public string? SupplierName { get; set; }
+        public string? SupplierDuns { get; set; }
+        public string? ShipToName { get; set; }
+        public string? ShipToDuns { get; set; }
+    }
+
+    private sealed class Edi856SkidRow
+    {
+        public string? SkidDisplayNum { get; set; }
+        public decimal SheetNetWt { get; set; }
+        public decimal SheetTareWt { get; set; }
+        public int SkidPieces { get; set; }
+        public string? CoilOrgNum { get; set; }
+        public string? LotNum { get; set; }
+        public decimal CoilGauge { get; set; }
+        public decimal CoilWidth { get; set; }
+        public string? CoilAlloy { get; set; }
+        public string? CoilTemper { get; set; }
+        public long CoilAbcNum { get; set; }
+        public string? EnduserPart { get; set; }
+        public string? OrigCustomerPo { get; set; }
+    }
+
+    /// <summary>Assemble the 856 (ASN) shipment for a packing list: the shipment header (carrier routing, BOL,
+    /// ship-to / supplier parties) + one item per skid (via <c>sheet_packing_item</c> → sheet_skid → coil →
+    /// order). The <paramref name="variant"/> drives which per-item fields are filled (Constellium needs alloy /
+    /// temper / abc / vo). Read-only. Some 856-only fields have no clean modern source and take documented
+    /// defaults (eq type FS; carrier desc = carrier type; SAP auth = NA; ship-to name un-padded — Oracle pads it
+    /// via a CHAR column). Returns null if the packing list has no shipment row.</summary>
+    public async Task<Edi856Shipment?> AssembleEdi856Async(long packingList, string? variant, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var h = await conn.QuerySingleOrDefaultAsync<Edi856HeaderRow>(new CommandDefinition(
+            """
+            SELECT s.packing_list AS PackingList, s.bill_of_lading AS BillOfLading, s.customer_id AS CustomerId,
+                   COALESCE(s.shipment_actualed_date_time, s.date_sent, s.shipment_scheduled_date_time) AS ShipDate,
+                   car.scac AS Scac, car.carrier_full_name AS CarrierFullName, car.carrier_type_code AS CarrierTypeCode,
+                   s.vehicle_id AS VehicleId,
+                   cust.customer_short_name AS SupplierName, cust.customer_duns_number_string AS SupplierDuns,
+                   dcust.customer_short_name AS ShipToName, dcust.customer_duns_number_string AS ShipToDuns
+              FROM shipment s
+              LEFT JOIN carrier car ON car.carrier_id = s.carrier_id
+              LEFT JOIN customer cust ON cust.customer_id = s.customer_id
+              LEFT JOIN customer dcust ON dcust.customer_id = s.des_sh_cust_id
+             WHERE s.packing_list = :pl
+            """, new { pl = packingList }, cancellationToken: ct));
+        if (h is null) return null;
+
+        var rows = (await conn.QueryAsync<Edi856SkidRow>(new CommandDefinition(
+            """
+            SELECT ss.sheet_skid_display_num AS SkidDisplayNum, ss.sheet_net_wt AS SheetNetWt,
+                   ss.sheet_tare_wt AS SheetTareWt, ss.skid_pieces AS SkidPieces,
+                   c.coil_org_num AS CoilOrgNum, c.lot_num AS LotNum, c.coil_gauge AS CoilGauge, c.coil_width AS CoilWidth,
+                   c.coil_alloy2 AS CoilAlloy, c.coil_temper AS CoilTemper, c.coil_abc_num AS CoilAbcNum,
+                   oi.enduser_part_num AS EnduserPart, co.orig_customer_po AS OrigCustomerPo
+              FROM sheet_packing_item spi
+              JOIN sheet_skid ss ON ss.sheet_skid_num = spi.sheet_skid_num
+              JOIN sheet_skid_detail ssd ON ssd.sheet_skid_num = ss.sheet_skid_num
+              JOIN production_sheet_item psi ON psi.prod_item_num = ssd.prod_item_num
+              JOIN coil c ON c.coil_abc_num = psi.coil_abc_num
+              JOIN ab_job aj ON aj.ab_job_num = ss.ab_job_num
+              JOIN order_item oi ON oi.order_abc_num = aj.order_abc_num AND oi.order_item_num = aj.order_item_num
+              JOIN customer_order co ON co.order_abc_num = aj.order_abc_num
+             WHERE spi.packing_list = :pl
+             ORDER BY ss.sheet_skid_display_num
+            """, new { pl = packingList }, cancellationToken: ct))).ToList();
+
+        var constellium = string.Equals(variant, "constellium", StringComparison.OrdinalIgnoreCase);
+        var items = rows.Select(r => new Edi856Item
+        {
+            NetWeight = (int)Math.Round(r.SheetNetWt, MidpointRounding.AwayFromZero),
+            GrossWeight = (int)Math.Round(r.SheetNetWt + r.SheetTareWt, MidpointRounding.AwayFromZero),
+            Pieces = r.SkidPieces, Gauge = r.CoilGauge, Width = r.CoilWidth,
+            LotNum = r.LotNum, SkidDisplayNum = r.SkidDisplayNum, CoilOrgNum = r.CoilOrgNum,
+            // Constellium-only per-item fields (LIN/PID). Vo (LIN*JN) has no clean modern source → the coil abc num.
+            EnduserPart = r.EnduserPart, CoilAbcNum = r.CoilAbcNum.ToString(CultureInfo.InvariantCulture),
+            Vo = r.CoilAbcNum.ToString(CultureInfo.InvariantCulture), Alloy = r.CoilAlloy, Temper = r.CoilTemper,
+        }).ToList();
+
+        var first = rows.Count > 0 ? rows[0] : null;
+        return new Edi856Shipment
+        {
+            CustomerId = h.CustomerId,
+            PackingList = h.PackingList.ToString(CultureInfo.InvariantCulture),
+            BillOfLading = h.BillOfLading?.ToString(CultureInfo.InvariantCulture),
+            ShipDate = h.ShipDate ?? DateTime.Now,
+            GrossWeight = items.Sum(i => i.GrossWeight), NetWeight = items.Sum(i => i.NetWeight),
+            PalletCount = items.Count, OrderPieceCount = items.Sum(i => i.Pieces),
+            Scac = h.Scac, CarrierName = h.CarrierFullName,
+            CarrierDescCode = string.IsNullOrEmpty(h.CarrierTypeCode) ? "TL" : h.CarrierTypeCode,
+            VehicleId = h.VehicleId, EqType = "FS",
+            ShipToName = h.ShipToName, ShipToDuns = h.ShipToDuns,
+            SupplierDuns = h.SupplierDuns,
+            MfName = constellium ? h.SupplierName : null, MfDuns = constellium ? h.SupplierDuns : null,
+            EnduserPart = first?.EnduserPart, OrigCustomerPo = first?.OrigCustomerPo,
+            OrderDate = h.ShipDate ?? DateTime.Now, AuthCode = "NA",
+            Items = items,
+        };
+    }
+
+    /// <summary>Generate + persist the 856 for an assembled shipment, in one transaction: build the X12
+    /// (<see cref="Edi856Generator"/>), allocate the edi_file_id, write the tracking row + payload CLOB, and mark
+    /// the shipment 856-sent (a row in <c>abis_edi_856_mark</c>). <b>Never transmits.</b> Empty shipment (no
+    /// skids) → Status "nothing".</summary>
+    public async Task<Edi856Result> PersistEdi856Async(Edi856Shipment shp, EdiPartnerProfile profile, long packingList, DateTime timestamp, CancellationToken ct)
+    {
+        var partnerName = string.IsNullOrEmpty(profile.Variant) ? "856 partner"
+            : char.ToUpperInvariant(profile.Variant![0]) + profile.Variant!.Substring(1);
+        if (shp.Items.Count == 0)
+            return new Edi856Result
+            {
+                PackingList = packingList, CustomerId = profile.CustomerId, Status = "nothing", Partner = partnerName,
+                Transmitted = false, Note = $"Shipment {packingList} has no packed skids; nothing to advise.",
+            };
+
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        var (ediFileId, fileName, payload) = await WriteEdiTransactionAsync(
+            conn, (DbTransaction)tx, "856", shp.ShipToDuns ?? "", profile.CustomerId, null, timestamp,
+            id => Edi856Generator.Generate(shp, profile, id, id, timestamp),
+            id => Edi856Generator.FileName(profile, id), ct);
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            "INSERT INTO abis_edi_856_mark (packing_list, edi_file_id, customer_id, sent_utc) VALUES (:pl, :fileId, :cust, :now)",
+            new { pl = packingList, fileId = ediFileId, cust = profile.CustomerId, now = (DateTime?)timestamp },
+            transaction: tx, cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
+        return new Edi856Result
+        {
+            PackingList = packingList, CustomerId = profile.CustomerId, Status = "generated", Partner = partnerName,
+            Transmitted = false, EdiFileId = ediFileId, EdiFileName = fileName,
+            GroupControlNumber = ediFileId, SetControlNumber = ediFileId, SkidCount = shp.Items.Count,
+            PayloadBytes = System.Text.Encoding.UTF8.GetByteCount(payload),
+            Note = $"856 generated for {partnerName} (packing list {packingList}, {shp.Items.Count} skids); stored, not transmitted.",
+        };
+    }
+
+    /// <summary>The 856 already generated for a packing list (the idempotency guard), or null.</summary>
+    public async Task<EdiPayload?> GetEdi856ForPackingListAsync(long packingList, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.QuerySingleOrDefaultAsync<EdiPayload>(new CommandDefinition(
+            """
+            SELECT p.edi_file_id AS EdiFileId, p.edi_file_name AS EdiFileName, p.transaction_type AS TransactionType,
+                   p.customer_id AS CustomerId, p.created_utc AS CreatedUtc
+              FROM abis_edi_856_mark m JOIN abis_edi_payload p ON p.edi_file_id = m.edi_file_id
+             WHERE m.packing_list = :pl
+             ORDER BY m.edi_file_id DESC
+            """, new { pl = packingList }, cancellationToken: ct));
+    }
+
     public Task<PagedResult<EdiLogEntry>> GetEdiLogAsync(int page, int pageSize, long? customerId, string? orderBy, CancellationToken ct)
     {
         var p = new DynamicParameters();

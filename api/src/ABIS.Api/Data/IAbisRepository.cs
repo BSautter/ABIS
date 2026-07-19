@@ -237,6 +237,9 @@ public interface IAbisRepository
     Task<EdiPayload?> GetEdi861ForBolAsync(long receivingBolId, CancellationToken ct);
     Task<Edi861Result> PersistEdi861Async(ReceivingBol bol, IReadOnlyList<ReceivingBolCoil> coils, EdiPartnerProfile profile, string supplierDuns, string supplierName, DateTime timestamp, CancellationToken ct);
     Task<Edi870Batch> AssembleEdi870BatchAsync(long customerId, string? variant, CancellationToken ct);
+    Task<Edi856Shipment?> AssembleEdi856Async(long packingList, string? variant, CancellationToken ct);
+    Task<Edi856Result> PersistEdi856Async(Edi856Shipment shp, EdiPartnerProfile profile, long packingList, DateTime timestamp, CancellationToken ct);
+    Task<EdiPayload?> GetEdi856ForPackingListAsync(long packingList, CancellationToken ct);
     Task<Edi870Result> PersistEdi870Async(Edi870Batch batch, EdiPartnerProfile profile, DateTime timestamp, CancellationToken ct);
     Task<EdiPartnerProfile?> GetEdiPartnerAsync(long customerId, string transactionSet, CancellationToken ct);
     Task<IReadOnlyList<EdiPartnerProfile>> ListEdiPartnersAsync(string? transactionSet, CancellationToken ct);

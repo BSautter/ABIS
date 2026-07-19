@@ -3389,6 +3389,50 @@
         }
       }
     },
+    "/api/edi/856/generate": {
+      "post": {
+        "tags": [
+          "EDI"
+        ],
+        "summary": "Generate + persist the 856 (Advance Ship Notice) for a shipment's packing list — the shipment header + one item per packed skid, built and stored but NEVER transmitted. 404 if the packing list has no shipment; 422 if its customer isn't an 856 partner; 409 if already generated. View the payload at /edi/transactions/{ediFileId}/payload.",
+        "operationId": "GenerateEdi856",
+        "parameters": [
+          {
+            "name": "packingList",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Edi856Result"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Unprocessable Content"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/edi/partners": {
       "get": {
         "tags": [
@@ -12973,6 +13017,62 @@
           "note": {
             "type": "string",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Edi856Result": {
+        "type": "object",
+        "properties": {
+          "packingList": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "customerId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "partner": {
+            "type": "string",
+            "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "ediFileId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "ediFileName": {
+            "type": "string",
+            "nullable": true
+          },
+          "groupControlNumber": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "setControlNumber": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "skidCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "payloadBytes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "transmitted": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false

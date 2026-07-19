@@ -1774,6 +1774,8 @@ public sealed class Edi870FileResult
 /// concern, so the generator is a pure, byte-faithful projection of this shape).</summary>
 public sealed class Edi856Shipment
 {
+    /// <summary>The shipping customer's id — used to resolve the 856 trading-partner profile (not emitted).</summary>
+    public long? CustomerId { get; set; }
     /// <summary>shipment.packing_list — BSN02 + REF*BM/REF*PK.</summary>
     public string PackingList { get; set; } = "";
     /// <summary>shipment.bill_of_lading — REF*MB.</summary>
@@ -1843,6 +1845,24 @@ public sealed class Edi856Item
     public string? Temper { get; set; }
     /// <summary>lineal feed — Constellium MEA*PD*LN.</summary>
     public decimal LinealFeed { get; set; }
+}
+
+/// <summary>Result of an 856 (ASN) generation: built + stored + marked, but <b>never transmitted</b>. Status is
+/// "generated", "nothing" (no skids on the shipment), or "notpartner"/"exists" handled at the endpoint.</summary>
+public sealed class Edi856Result
+{
+    public long PackingList { get; set; }
+    public long CustomerId { get; set; }
+    public string Status { get; set; } = "generated";
+    public string? Partner { get; set; }
+    public string? Note { get; set; }
+    public long? EdiFileId { get; set; }
+    public string? EdiFileName { get; set; }
+    public long? GroupControlNumber { get; set; }
+    public long? SetControlNumber { get; set; }
+    public int SkidCount { get; set; }
+    public int PayloadBytes { get; set; }
+    public bool Transmitted { get; set; }
 }
 
 /// <summary>Request for the admin "send a test email" diagnostic. All fields optional (sensible defaults).</summary>

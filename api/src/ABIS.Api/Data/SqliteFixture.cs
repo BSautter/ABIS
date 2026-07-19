@@ -73,6 +73,7 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS outbound_edi_transaction;
             DROP TABLE IF EXISTS abis_edi_payload;
             DROP TABLE IF EXISTS abis_edi_870_mark;
+            DROP TABLE IF EXISTS abis_edi_856_mark;
             DROP TABLE IF EXISTS abis_edi_partner;
             DROP TABLE IF EXISTS edi_log;
             DROP TABLE IF EXISTS edi_type;
@@ -100,6 +101,7 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS abis_user_credential;
             DROP TABLE IF EXISTS abis_truck_appointment;
             DROP TABLE IF EXISTS sheet_skid_detail;
+            DROP TABLE IF EXISTS sheet_packing_item;
             DROP TABLE IF EXISTS recovery_scrap_worksheet;
             DROP TABLE IF EXISTS quality_scrap_worksheet;
             DROP TABLE IF EXISTS job_efolder_notes;
@@ -400,6 +402,9 @@ public static class SqliteFixture
             CREATE TABLE abis_edi_870_mark (
                 mark_type TEXT, ref_id INTEGER, edi_file_id INTEGER, customer_id INTEGER, sent_utc TEXT,
                 PRIMARY KEY (mark_type, ref_id));
+            CREATE TABLE abis_edi_856_mark (
+                packing_list INTEGER, edi_file_id INTEGER, customer_id INTEGER, sent_utc TEXT,
+                PRIMARY KEY (packing_list, edi_file_id));
 
             -- ABIS-owned EDI trading-partner profiles (mirrors AbisSchema.abis_edi_partner): one row per
             -- (customer, transaction set), so each customer's 861/870/846/… can differ. Envelope + enablement
@@ -442,6 +447,10 @@ public static class SqliteFixture
             CREATE TABLE sheet_skid_detail (
                 sheet_skid_num INTEGER, prod_item_num INTEGER,
                 PRIMARY KEY (sheet_skid_num, prod_item_num));
+            -- Links a shipment (packing_list) to the skids it carries — the legacy 856 ASN's skid source.
+            CREATE TABLE sheet_packing_item (
+                sh_packing_item INTEGER, packing_list INTEGER, sheet_skid_num INTEGER, sheet_packaging_ticket INTEGER,
+                PRIMARY KEY (sh_packing_item, packing_list));
             -- Per (coil, job) scrap the recovery clerk booked (legacy recovery_scrap_worksheet); the
             -- recovery scrap-weight = SUM(scrap_item_net_wt). Falls back to quality_scrap_worksheet
             -- (the quality clerk's booking) when the recovery worksheet has none.

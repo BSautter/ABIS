@@ -202,6 +202,15 @@ public static class AbisSchema
           sent_utc      DATE,
           CONSTRAINT pk_abis_edi_870_mark PRIMARY KEY (mark_type, ref_id))
         """,
+        // ABIS-owned 856 "sent" marker — one row per (packing_list) ASN generated (the report-once + dup guard).
+        """
+        CREATE TABLE abis_edi_856_mark (
+          packing_list  NUMBER(12)    NOT NULL,
+          edi_file_id   NUMBER(12)    NOT NULL,
+          customer_id   NUMBER(10),
+          sent_utc      DATE,
+          CONSTRAINT pk_abis_edi_856_mark PRIMARY KEY (packing_list, edi_file_id))
+        """,
         // ABIS-owned EDI trading-partner profiles (docs/data-model/migrations/007_edi_partner.sql). One row per
         // (customer, transaction set) so each customer can have different requirements for their 861/870/846/…:
         // enablement + the envelope (partner identity, separators, version, GS code, file prefix) as data, plus

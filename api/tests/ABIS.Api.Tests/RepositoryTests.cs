@@ -1014,6 +1014,69 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task Edi856_assembles_a_shipment_generates_persists_and_guards_duplicates()
+    {
+        // A Novelis (1153) shipment with one packed skid, inserted locally (keeps shared counts stable).
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO customer (customer_id, customer_full_name, customer_short_name, customer_city, customer_state, customer_type, edi_req, customer_duns_number_string) VALUES (7800, 'WAYNE INDUSTRIES', 'WAYNE IND', 'Wayne', 'MI', 1, 'Y', '074212689');
+                INSERT INTO carrier (carrier_id, scac, carrier_full_name, carrier_type_code, status) VALUES (1250, 'AGGP', 'AGGRESSIVE', 'TL', 1);
+                INSERT INTO shipment (packing_list, bill_of_lading, carrier_id, customer_id, des_sh_cust_id, vehicle_id, shipment_status, shipment_actualed_date_time) VALUES (8850, 138850, 1250, 1153, 7800, '1706', 1, '2026-01-05 07:51:00');
+                INSERT INTO customer_order (order_abc_num, orig_customer_id, orig_customer_po) VALUES (7800, 1153, '4390398984');
+                INSERT INTO order_item (order_item_num, order_abc_num, enduser_part_num, item_status) VALUES (1, 7800, '55369455-1', 1);
+                INSERT INTO coil (coil_abc_num, coil_org_num, coil_gauge, coil_width, coil_status, customer_id, lot_num, net_wt, net_wt_balance, coil_alloy2, coil_temper) VALUES (7801, '1865493', 0.0374, 54, 13, 1153, '1638411201', 4180, 0, '5052', 'T4');
+                INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num, job_status) VALUES (7802, 7800, 1, 0);
+                INSERT INTO production_sheet_item (prod_item_num, coil_abc_num, ab_job_num, prod_item_status, prod_item_pieces, prod_item_net_wt) VALUES (7803, 7801, 7802, 1, 300, 4180);
+                INSERT INTO sheet_skid (sheet_skid_num, ab_job_num, sheet_skid_display_num, sheet_net_wt, sheet_tare_wt, skid_pieces, skid_sheet_status) VALUES (7804, 7802, 'T1837203', 4180, 130, 300, 2);
+                INSERT INTO sheet_skid_detail (sheet_skid_num, prod_item_num) VALUES (7804, 7803);
+                INSERT INTO sheet_packing_item (sh_packing_item, packing_list, sheet_skid_num, sheet_packaging_ticket) VALUES (1, 8850, 7804, 1);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+
+        var profile = await _repo.GetEdiPartnerAsync(1153, "856", CancellationToken.None);
+        Assert.Equal("novelis", profile!.Variant);
+
+        var shp = await _repo.AssembleEdi856Async(8850, profile.Variant, CancellationToken.None);
+        Assert.NotNull(shp);
+        Assert.Equal(1153, shp!.CustomerId);
+        Assert.Single(shp.Items);
+        Assert.Equal(300, shp.OrderPieceCount);
+        Assert.Equal(1, shp.PalletCount);
+        Assert.Equal(4310, shp.GrossWeight);        // 4180 net + 130 tare
+        Assert.Equal("AGGRESSIVE", shp.CarrierName);
+        Assert.Equal("074212689", shp.ShipToDuns);
+        var item = shp.Items[0];
+        Assert.Equal(4310, item.GrossWeight);
+        Assert.Equal("T1837203", item.SkidDisplayNum);
+        Assert.Equal("1865493", item.CoilOrgNum);
+
+        var result = await _repo.PersistEdi856Async(shp, profile, 8850, new DateTime(2026, 1, 5, 7, 51, 0), CancellationToken.None);
+        Assert.Equal("generated", result.Status);
+        Assert.Equal("Novelis", result.Partner);
+        Assert.Equal(1, result.SkidCount);
+        Assert.False(result.Transmitted);
+
+        var payload = await _repo.GetEdiPayloadAsync(result.EdiFileId!.Value, CancellationToken.None);
+        Assert.Contains("ST*856*", payload!.Payload);
+        Assert.Contains("GS*SH*R0P7A*001504935001*", payload.Payload);   // Novelis 856 envelope
+        Assert.Contains("BSN*00*8850*", payload.Payload);
+        Assert.Contains("N1*SU**1*241003755", payload.Payload);          // Novelis (1153) DUNS
+        Assert.Contains("HL*01**S", payload.Payload);
+        Assert.Contains("REF*SE*T1837203", payload.Payload);
+        Assert.Contains("MEA*WT*G*4310*01", payload.Payload);
+        Assert.Equal("856", (await _repo.GetEdiTransactionAsync(result.EdiFileId!.Value, CancellationToken.None))!.TransactionTypeId);
+
+        // Report-once: the packing list is marked, so the dup guard now finds it.
+        var existing = await _repo.GetEdi856ForPackingListAsync(8850, CancellationToken.None);
+        Assert.NotNull(existing);
+        Assert.Equal(result.EdiFileId, existing!.EdiFileId);
+    }
+
+    [Fact]
     public async Task EdiPartner_profiles_are_seeded_and_readable()
     {
         var nov = await _repo.GetEdiPartnerAsync(1153, "861", CancellationToken.None);
