@@ -1014,6 +1014,73 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task Edi870_constellium_assembles_per_coil_generates_marks_and_reports_once()
+    {
+        // A Constellium (customer 2776) job with one ready skid + coil scrap, inserted locally (keeps shared counts
+        // stable). Exercises the per-(job, coil) constellium body variant: @ separator, ~ terminator, O→I→F.
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO customer (customer_id, customer_full_name, customer_short_name, customer_city, customer_state, customer_type, edi_req, customer_duns_number_string) VALUES (2776, 'CONSTELLIUM - BOWLING GREEN', 'CONSTELLIUM - BG', 'Bowling Green', 'KY', 1, 'Y', '043207177');
+                INSERT INTO customer_order (order_abc_num, orig_customer_id, orig_customer_po, enduser_po, created_date) VALUES (8800, 2776, 'CST-EPO', 'CST-EPO', '2026-07-01');
+                INSERT INTO order_item (order_item_num, order_abc_num, enduser_part_num, finished_goods_material_num, sheet_type, item_status) VALUES (1, 8800, 'IPART', 'FG-1', 'RECTANGLE', 1);
+                INSERT INTO rectangle (order_item_num, order_abc_num, rt_length, rt_width) VALUES (1, 8800, 48, 36);
+                INSERT INTO coil (coil_abc_num, coil_org_num, coil_gauge, coil_status, customer_id, lot_num, net_wt, net_wt_balance, vo) VALUES (8801, 'CO-8801', 0.05, 2, 2776, 'HEAT-7', 25000, 0, 'AB-1234');
+                INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num, job_status) VALUES (8802, 8800, 1, 0);
+                INSERT INTO production_sheet_item (prod_item_num, coil_abc_num, ab_job_num, prod_item_status, prod_item_pieces, prod_item_net_wt) VALUES (8803, 8801, 8802, 1, 100, 20000);
+                INSERT INTO sheet_skid (sheet_skid_num, ab_job_num, sheet_skid_display_num, sheet_net_wt, sheet_tare_wt, skid_pieces, skid_sheet_status) VALUES (8804, 8802, 'SKD-88', 20000, 200, 100, 2);
+                INSERT INTO sheet_skid_detail (sheet_skid_num, prod_item_num) VALUES (8804, 8803);
+                INSERT INTO process_coil (ab_job_num, coil_abc_num, process_coil_status, process_end_wt, process_quantity) VALUES (8802, 8801, 2, 2000, 25000);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+
+        var profile = await _repo.GetEdiPartnerAsync(2776, "870", CancellationToken.None);
+        Assert.Equal("constellium", profile!.Variant);
+
+        var batch = await _repo.AssembleEdi870ConstBatchAsync(2776, CancellationToken.None);
+        Assert.Equal("043207177", batch.SupplierDuns);
+        Assert.Single(batch.Units);
+        var unit = batch.Units[0];
+        Assert.Equal(8802, unit.AbJobNum);
+        Assert.Equal(8801, unit.CoilAbcNum);
+        Assert.Equal("20260701", unit.CreatedDate);
+        Assert.Equal("AB-1234", unit.Vo);
+        Assert.Equal(36m, unit.PartWidth);
+        Assert.Equal(48m, unit.PartLength);
+        Assert.Single(unit.Items);
+        Assert.Single(unit.Scrap);
+        Assert.Equal(3000m, unit.Scrap[0].ScrapNetWeight);   // 25000 qty − 2000 end − 20000 prime
+        Assert.Null(unit.Reject);                            // coil_status 2 ⇒ no reject/reband block
+
+        var result = await _repo.PersistEdi870ConstAsync(batch, profile, new DateTime(2026, 7, 12, 9, 30, 0), CancellationToken.None);
+        Assert.Equal("generated", result.Status);
+        Assert.Equal("Constellium", result.Partner);
+        Assert.Single(result.Files);
+        var file = result.Files[0];
+        Assert.Equal(8802, file.AbJobNum);
+        Assert.Equal(8801, file.CoilAbcNum);
+        Assert.StartsWith("S_const_870_", file.EdiFileName);
+        Assert.EndsWith("_Job-8802.edi", file.EdiFileName);
+
+        var payload = await _repo.GetEdiPayloadAsync(file.EdiFileId, CancellationToken.None);
+        Assert.Contains("BSR*2*PA*", payload!.Payload);
+        Assert.Contains("N1*MF**1*043207177~", payload.Payload);
+        Assert.Contains("N1*OU*ALUMINUM BLANKING COMPANY*1*039630926~", payload.Payload);
+        Assert.Contains("HL*2*1*I*1~", payload.Payload);
+        Assert.Contains("REF*RV*8801~", payload.Payload);
+        Assert.Contains("MEA*PD*WD*36*ED~", payload.Payload);
+        Assert.Contains("MEA*PD*TH*.05*ED~", payload.Payload);
+        Assert.Contains("MEA*WT*WT*3000*01~", payload.Payload);   // the scrap line
+
+        // Report-once: the item + coil scrap are marked, so a second assemble finds nothing.
+        var again = await _repo.AssembleEdi870ConstBatchAsync(2776, CancellationToken.None);
+        Assert.Empty(again.Units);
+    }
+
+    [Fact]
     public async Task Edi856_assembles_a_shipment_generates_persists_and_guards_duplicates()
     {
         // A Novelis (1153) shipment with one packed skid, inserted locally (keeps shared counts stable).

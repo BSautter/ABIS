@@ -3733,6 +3733,269 @@ public sealed class AbisRepository : IAbisRepository
         };
     }
 
+    // ---- EDI 870 Constellium (customer 2776, F_EDI_CONSTELLIUM_BG_870_4JOB) — per-(job, coil) assemble/persist ----
+
+    private sealed class ConstHeaderRow
+    {
+        public string? EnduserPo { get; set; }
+        public string? OrigCustomerPo { get; set; }
+        public string? FinishedGoodsMaterialNum { get; set; }
+        public string? EnduserPart { get; set; }
+        public string? SheetType { get; set; }
+        public long OrderAbcNum { get; set; }
+        public long OrderItemNum { get; set; }
+    }
+
+    private sealed class ConstCoilRow
+    {
+        public string? CoilOrgNum { get; set; }
+        public string? LotNum { get; set; }
+        public string? Vo { get; set; }
+        public decimal CoilGauge { get; set; }
+        public int CoilStatus { get; set; }
+        public decimal NetWtBalance { get; set; }
+        public decimal Lfeed { get; set; }
+        public decimal NetWt { get; set; }
+    }
+
+    private sealed class ConstItemRow
+    {
+        public long ProdItemNum { get; set; }
+        public long SheetSkidNum { get; set; }
+        public int SkidSheetStatus { get; set; }
+        public int Pieces { get; set; }
+        public decimal NetWeight { get; set; }
+    }
+
+    private sealed class ConstProcRow
+    {
+        public int Status { get; set; }
+        public decimal Quantity { get; set; }
+        public decimal EndWt { get; set; }
+    }
+
+    /// <summary>Assemble the Constellium 870 (customer 2776) as one unit per (job, coil) — the granularity of the
+    /// legacy <c>F_EDI_CONSTELLIUM_BG_870_4JOB</c>, which is invoked per coil and emits one interchange each. Each
+    /// unit carries the coil's shippable skids, its scrap lines, and an optional rejected/rebanded-coil block.
+    /// Read-only. Documented modern data sources where the legacy proc used Oracle-only functions / side-effects:
+    /// part width/length come from the shape tables (legacy <c>f_get_part_*_per_job</c>); the split-skid REF*SE
+    /// suffix is READ from <c>split_skid</c> but never written (legacy inserted a letter row); the F-level part
+    /// number comes from the coil's latest inbound BOL, falling back to <c>order_item</c>. Flag for plant confirmation.</summary>
+    public async Task<Edi870ConstBatch> AssembleEdi870ConstBatchAsync(long customerId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var suDuns = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
+            "SELECT customer_duns_number_string FROM customer WHERE customer_id = :c",
+            new { c = customerId }, cancellationToken: ct));
+
+        // The reportable skid statuses (legacy const_870_item_cur): ready/on-hold/partial/sample/hold-for-cert.
+        const string reportable = "0, 2, 4, 7, 13, 12, 16";
+
+        // Candidate (job, coil) pairs: a coil with at least one not-yet-reported reportable skid.
+        var pairs = (await conn.QueryAsync<(long AbJobNum, long CoilAbcNum)>(new CommandDefinition(
+            $"""
+            SELECT DISTINCT psi.ab_job_num AS AbJobNum, psi.coil_abc_num AS CoilAbcNum
+              FROM production_sheet_item psi
+              JOIN sheet_skid_detail ssd ON ssd.prod_item_num = psi.prod_item_num
+              JOIN sheet_skid ss ON ss.sheet_skid_num = ssd.sheet_skid_num
+              JOIN coil c ON c.coil_abc_num = psi.coil_abc_num
+             WHERE ss.skid_sheet_status IN ({reportable})
+               AND c.customer_id = :c
+               AND NOT EXISTS (SELECT 1 FROM abis_edi_870_mark m WHERE m.mark_type = 'ITEM' AND m.ref_id = psi.prod_item_num)
+             ORDER BY psi.ab_job_num, psi.coil_abc_num
+            """, new { c = customerId }, cancellationToken: ct))).ToList();
+
+        var units = new List<Edi870ConstUnit>();
+        foreach (var (jobNum, coilAbc) in pairs)
+        {
+            var hdr = await conn.QuerySingleOrDefaultAsync<ConstHeaderRow>(new CommandDefinition(
+                """
+                SELECT co.enduser_po AS EnduserPo, co.orig_customer_po AS OrigCustomerPo,
+                       COALESCE(oi.finished_goods_material_num, 'NA') AS FinishedGoodsMaterialNum,
+                       oi.enduser_part_num AS EnduserPart, oi.sheet_type AS SheetType,
+                       aj.order_abc_num AS OrderAbcNum, aj.order_item_num AS OrderItemNum
+                  FROM ab_job aj
+                  JOIN customer_order co ON co.order_abc_num = aj.order_abc_num
+                  JOIN order_item oi ON oi.order_abc_num = aj.order_abc_num AND oi.order_item_num = aj.order_item_num
+                 WHERE aj.ab_job_num = :j
+                """, new { j = jobNum }, cancellationToken: ct));
+            if (hdr is null) continue;
+
+            // Legacy: TO_CHAR(MAX(created_date),'YYYYMMDD') for orders whose orig_customer_po = the enduser PO.
+            var createdDt = await conn.ExecuteScalarAsync<DateTime?>(new CommandDefinition(
+                "SELECT MAX(created_date) FROM customer_order WHERE orig_customer_po = :po",
+                new { po = hdr.EnduserPo }, cancellationToken: ct));
+            var created = createdDt?.ToString("yyyyMMdd", CultureInfo.InvariantCulture) ?? "";
+
+            var coil = await conn.QuerySingleOrDefaultAsync<ConstCoilRow>(new CommandDefinition(
+                """
+                SELECT coil_org_num AS CoilOrgNum, lot_num AS LotNum, vo AS Vo, COALESCE(coil_gauge, 0) AS CoilGauge,
+                       COALESCE(coil_status, 0) AS CoilStatus, COALESCE(net_wt_balance, 0) AS NetWtBalance,
+                       COALESCE(lfeed, 0) AS Lfeed, COALESCE(net_wt, 0) AS NetWt
+                  FROM coil WHERE coil_abc_num = :coil
+                """, new { coil = coilAbc }, cancellationToken: ct));
+            if (coil is null) continue;
+
+            var (length, width) = await ResolveShapeAsync(conn, hdr.SheetType, hdr.OrderAbcNum, hdr.OrderItemNum, ct);
+
+            var itemRows = (await conn.QueryAsync<ConstItemRow>(new CommandDefinition(
+                $"""
+                SELECT psi.prod_item_num AS ProdItemNum, ss.sheet_skid_num AS SheetSkidNum,
+                       ss.skid_sheet_status AS SkidSheetStatus, psi.prod_item_pieces AS Pieces, psi.prod_item_net_wt AS NetWeight
+                  FROM production_sheet_item psi
+                  JOIN sheet_skid_detail ssd ON ssd.prod_item_num = psi.prod_item_num
+                  JOIN sheet_skid ss ON ss.sheet_skid_num = ssd.sheet_skid_num
+                 WHERE psi.ab_job_num = :j AND psi.coil_abc_num = :coil
+                   AND ss.skid_sheet_status IN ({reportable})
+                   AND NOT EXISTS (SELECT 1 FROM abis_edi_870_mark m WHERE m.mark_type = 'ITEM' AND m.ref_id = psi.prod_item_num)
+                 ORDER BY ss.sheet_skid_num
+                """, new { j = jobNum, coil = coilAbc }, cancellationToken: ct))).ToList();
+
+            var items = new List<Edi870ConstItem>();
+            foreach (var r in itemRows)
+            {
+                // Partial-skid suffix — READ ONLY (the modern engine never writes split_skid). Empty ⇒ no letter.
+                var suffix = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
+                    "SELECT MAX(suffix) FROM split_skid WHERE ab_job_num = :j AND coil_abc_num = :coil AND sheet_skid_num = :skid",
+                    new { j = jobNum, coil = coilAbc, skid = r.SheetSkidNum }, cancellationToken: ct));
+                // F-level part number from the coil's latest inbound BOL (falls back to the order item's part).
+                var inboundPart = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
+                    """
+                    SELECT ic.part_num FROM inbound_coil ic
+                      JOIN coil c ON c.coil_org_num = ic.coil_number
+                     WHERE c.coil_abc_num = :coil
+                       AND ic.edi_file_id = (SELECT MAX(ic2.edi_file_id) FROM inbound_coil ic2
+                                               JOIN coil c2 ON c2.coil_org_num = ic2.coil_number WHERE c2.coil_abc_num = :coil)
+                    """, new { coil = coilAbc }, cancellationToken: ct));
+                items.Add(new Edi870ConstItem
+                {
+                    ProdItemNum = r.ProdItemNum, SheetSkidNum = r.SheetSkidNum, SplitSuffix = suffix,
+                    SkidSheetStatus = r.SkidSheetStatus, Pieces = r.Pieces, NetWeight = r.NetWeight,
+                    EnduserPart = string.IsNullOrEmpty(inboundPart) ? hdr.EnduserPart : inboundPart,
+                });
+            }
+
+            var scrap = new List<Edi870ConstScrapLine>();
+            Edi870ConstReject? reject = null;
+            var scrapMarked = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+                "SELECT COUNT(*) FROM abis_edi_870_mark WHERE mark_type = 'SCRAP' AND ref_id = :coil AND customer_id = :c",
+                new { coil = coilAbc, c = customerId }, cancellationToken: ct)) > 0;
+            if (!scrapMarked)
+            {
+                var sheetCount = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+                    "SELECT COUNT(*) FROM production_sheet_item WHERE ab_job_num = :j AND coil_abc_num = :coil",
+                    new { j = jobNum, coil = coilAbc }, cancellationToken: ct));
+                var prime = await conn.ExecuteScalarAsync<decimal?>(new CommandDefinition(
+                    "SELECT COALESCE(SUM(prod_item_net_wt), 0) FROM production_sheet_item WHERE ab_job_num = :j AND coil_abc_num = :coil",
+                    new { j = jobNum, coil = coilAbc }, cancellationToken: ct)) ?? 0m;
+                var procRows = await conn.QueryAsync<ConstProcRow>(new CommandDefinition(
+                    """
+                    SELECT COALESCE(process_coil_status, 0) AS Status, COALESCE(process_quantity, 0) AS Quantity,
+                           COALESCE(process_end_wt, 0) AS EndWt
+                      FROM process_coil WHERE ab_job_num = :j AND coil_abc_num = :coil
+                    """, new { j = jobNum, coil = coilAbc }, cancellationToken: ct));
+                foreach (var pr in procRows)
+                {
+                    // The legacy scrap_net_wt CASE (per process_coil_status). For the common single-row case this
+                    // equals the grouped-sum form: reject(3) with no sheets → qty−end; else qty−prime−end.
+                    var scrapNw = pr.Status switch
+                    {
+                        3 => sheetCount == 0 ? pr.Quantity - pr.EndWt : pr.Quantity - pr.EndWt - prime,
+                        _ => pr.Quantity - prime - pr.EndWt,
+                    };
+                    if (scrapNw <= 0m) continue;
+                    // A fully-scrapped rejected coil (no sheets) goes in a separate reject 870 we don't build.
+                    if (coil.CoilStatus == 3 && sheetCount == 0) continue;
+                    scrap.Add(new Edi870ConstScrapLine { ScrapNetWeight = scrapNw });
+                }
+                // Rejected(3)/rebanded(7) coil that still carried good material → the trailing reject block. The
+                // legacy ll_coil_length_left is NUMBER(10) (integer), so Oracle rounds net_wt_balance/net_wt*lfeed
+                // to a whole number before emitting — round here to match (else MEA*PD*LN carries stray decimals).
+                if ((coil.CoilStatus == 3 || coil.CoilStatus == 7) && sheetCount > 0)
+                {
+                    var lengthLeft = coil.NetWt != 0m
+                        ? Math.Round(coil.NetWtBalance / coil.NetWt * coil.Lfeed, 0, MidpointRounding.AwayFromZero)
+                        : 0m;
+                    reject = new Edi870ConstReject { CoilStatus = coil.CoilStatus, CoilLengthLeft = lengthLeft, NetWtBalance = coil.NetWtBalance };
+                }
+            }
+
+            if (items.Count == 0 && scrap.Count == 0 && reject is null) continue;   // nothing to report for this coil
+            units.Add(new Edi870ConstUnit
+            {
+                AbJobNum = jobNum, CoilAbcNum = coilAbc, EnduserPo = hdr.EnduserPo, CreatedDate = created,
+                CoilOrgNum = coil.CoilOrgNum, LotNum = coil.LotNum, Vo = coil.Vo, EnduserPart = hdr.EnduserPart,
+                CoilGauge = coil.CoilGauge, PartWidth = width, PartLength = length,
+                FinishedGoodsMaterialNum = hdr.FinishedGoodsMaterialNum, OrigCustomerPo = hdr.OrigCustomerPo,
+                Items = items, Scrap = scrap, Reject = reject,
+            });
+        }
+
+        return new Edi870ConstBatch { CustomerId = customerId, SupplierDuns = suDuns, Units = units };
+    }
+
+    /// <summary>Generate + persist the Constellium 870: ONE interchange/file per (job, coil) unit
+    /// (S_const_870_{id}_Job-{job}.edi), each stored via the shared EDI sink, then mark the unit's reported items
+    /// ('ITEM' → prod_item_num) and, when scrap/reject was sent, the coil ('SCRAP' → coil_abc_num) so it is not
+    /// reported again. <b>Never transmits.</b> Empty batch → Status "nothing".</summary>
+    public async Task<Edi870Result> PersistEdi870ConstAsync(Edi870ConstBatch batch, EdiPartnerProfile profile, DateTime timestamp, CancellationToken ct)
+    {
+        const string partnerName = "Constellium";
+        var itemCount = batch.Units.Sum(u => u.Items.Count);
+        var extraCount = batch.Units.Sum(u => u.Scrap.Count + (u.Reject is null ? 0 : 1));
+        if (batch.Units.Count == 0 || (itemCount == 0 && extraCount == 0))
+            return new Edi870Result
+            {
+                CustomerId = batch.CustomerId, Status = "nothing", Partner = partnerName, Transmitted = false,
+                Note = "No unsent 870 items or scrap for this customer.",
+            };
+
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        var files = new List<Edi870FileResult>();
+        foreach (var unit in batch.Units)
+        {
+            var unitExtra = unit.Scrap.Count + (unit.Reject is null ? 0 : 1);
+            var (fileId, name, payload) = await WriteEdiTransactionAsync(
+                conn, (DbTransaction)tx, "870", batch.SupplierDuns ?? "", batch.CustomerId, null, timestamp,
+                id => Edi870Generator.GenerateConstellium(unit, batch.SupplierDuns, profile, id, id, timestamp),
+                id => Edi870Generator.ConstelliumFileName(profile, id, unit.AbJobNum), ct);
+
+            foreach (var item in unit.Items)
+                await conn.ExecuteAsync(new CommandDefinition(
+                    "INSERT INTO abis_edi_870_mark (mark_type, ref_id, edi_file_id, customer_id, sent_utc) VALUES ('ITEM', :ref, :fileId, :cust, :now)",
+                    new { @ref = item.ProdItemNum, fileId, cust = batch.CustomerId, now = (DateTime?)timestamp },
+                    transaction: tx, cancellationToken: ct));
+            // Constellium marks scrap per COIL (ref_id = coil_abc_num), matching its per-coil proc.
+            if (unitExtra > 0)
+                await conn.ExecuteAsync(new CommandDefinition(
+                    "INSERT INTO abis_edi_870_mark (mark_type, ref_id, edi_file_id, customer_id, sent_utc) VALUES ('SCRAP', :ref, :fileId, :cust, :now)",
+                    new { @ref = unit.CoilAbcNum, fileId, cust = batch.CustomerId, now = (DateTime?)timestamp },
+                    transaction: tx, cancellationToken: ct));
+
+            files.Add(new Edi870FileResult
+            {
+                EdiFileId = fileId, EdiFileName = name, AbJobNum = unit.AbJobNum, CoilAbcNum = unit.CoilAbcNum,
+                ItemCount = unit.Items.Count, ScrapCount = unitExtra,
+                HlCount = 2 + unit.Items.Count + unitExtra,   // O + I + each F (item / scrap / reject)
+                PayloadBytes = System.Text.Encoding.UTF8.GetByteCount(payload),
+            });
+        }
+
+        await tx.CommitAsync(ct);
+        var first = files[0];
+        return new Edi870Result
+        {
+            CustomerId = batch.CustomerId, Status = "generated", Partner = partnerName, Transmitted = false,
+            EdiFileId = first.EdiFileId, EdiFileName = first.EdiFileName,
+            GroupControlNumber = first.EdiFileId, SetControlNumber = first.EdiFileId,
+            JobCount = batch.Units.Select(u => u.AbJobNum).Distinct().Count(), ItemCount = itemCount, ScrapCount = extraCount,
+            HlCount = files.Sum(f => f.HlCount), PayloadBytes = files.Sum(f => f.PayloadBytes), Files = files,
+            Note = $"870 generated for {partnerName} ({files.Count} per-coil files, {itemCount} items, {extraCount} scrap/reject); stored, not transmitted.",
+        };
+    }
+
     // ---- EDI 856 (Advance Ship Notice) — assemble the shipment, then generate + persist + mark ----
 
     private sealed class Edi856HeaderRow

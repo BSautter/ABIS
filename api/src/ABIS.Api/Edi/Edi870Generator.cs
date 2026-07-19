@@ -187,6 +187,135 @@ public static class Edi870Generator
         return w.Close();
     }
 
+    /// <summary>Constellium (customer 2776) names each per-coil file <c>{prefix}{ediFileId}_Job-{jobNum}.edi</c>
+    /// (legacy <c>edi_file_prefix || edi_file_id || '_Job-' || ab_job_num || '.edi'</c>, prefix <c>S_const_870_</c>).</summary>
+    public static string ConstelliumFileName(EdiPartnerProfile profile, long ediFileId, long jobNum)
+    {
+        var prefix = string.IsNullOrEmpty(profile.FilePrefix) ? "S_const_870_" : profile.FilePrefix!;
+        return $"{prefix}{ediFileId.ToString(CultureInfo.InvariantCulture)}_Job-{jobNum.ToString(CultureInfo.InvariantCulture)}.edi";
+    }
+
+    /// <summary>Build ONE Constellium 870 interchange for a single (job, coil) <paramref name="unit"/> — the
+    /// faithful port of <c>F_EDI_CONSTELLIUM_BG_870_4JOB</c> (invoked per coil). The envelope (@ component
+    /// separator, ~ segment terminator, receiver 01/043207177, version 00401) comes from the profile via
+    /// <see cref="EdiInterchange.Open"/>; the body is the order (O) → coil (I) → detail (F) HL hierarchy with a
+    /// distinct header (BSR02=PA, N1*MF then N1*OU). The F level is each shippable skid, then each scrap line,
+    /// then the optional rejected/rebanded-coil block. CTT01 = the legacy <c>li_hl01 - 1</c>. Never transmits.</summary>
+    public static string GenerateConstellium(
+        Edi870ConstUnit unit, string? supplierDuns, EdiPartnerProfile profile,
+        long groupControl, long setControl, DateTime timestamp)
+    {
+        var w = EdiInterchange.Open(profile, "870", "RS", "00401", groupControl, setControl, timestamp);
+        var st = setControl.ToString(CultureInfo.InvariantCulture);
+        var today = timestamp.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+        var now = timestamp.ToString("HHmm", CultureInfo.InvariantCulture);
+        var suDuns = supplierDuns ?? "";
+        var po = unit.EnduserPo ?? "";
+        var created = unit.CreatedDate ?? "";
+        var coil = unit.CoilAbcNum.ToString(CultureInfo.InvariantCulture);
+
+        w.Segment("BSR", "2", "PA", st, today, "", "", now, "", "", "", "", "");
+        w.Segment("DTM", "009", today, now, "ED");
+        w.Segment("N1", "MF", "", "1", suDuns);
+        w.Segment("N1", "OU", "ALUMINUM BLANKING COMPANY", "1", EdiInterchange.SenderParty);
+
+        var hl = 0;   // li_hl01 — the running HL counter (CTT01 = hl - 1)
+
+        // Order (O) level.
+        hl++;
+        w.Segment("HL", hl.ToString(CultureInfo.InvariantCulture), "", "O", "1");
+        var parentPo = hl;
+        w.Segment("PRF", po, "0", "0", created);
+
+        // Coil (I) level.
+        hl++;
+        w.Segment("HL", hl.ToString(CultureInfo.InvariantCulture), parentPo.ToString(CultureInfo.InvariantCulture), "I", "1");
+        var parentCoil = hl;
+        w.Segment("REF", "RV", coil);
+        var jn = JnPrefix(unit.Vo, po);
+        w.Segment("PO1", "", "1", "UN", "", "", "VO", po, "SN", unit.CoilOrgNum, "HN", unit.LotNum, "JN", jn, "PN", unit.EnduserPart);
+
+        // Detail (F) — each shippable skid.
+        foreach (var item in unit.Items)
+        {
+            hl++;
+            w.Segment("HL", hl.ToString(CultureInfo.InvariantCulture), parentCoil.ToString(CultureInfo.InvariantCulture), "F");
+            w.Segment("PRF", po, "", "", created);
+            w.Segment("REF", "SE", item.SheetSkidNum.ToString(CultureInfo.InvariantCulture) + (item.SplitSuffix ?? ""));
+            w.Segment("DTM", "009", today, now, "ED");
+            w.Segment("DTM", "206", today, now, "ED");
+            w.Segment("PO1", "", "1", "UN", "", "", "VO", po, "SN", unit.CoilOrgNum, "HN", unit.LotNum, "JN", jn, "PN", item.EnduserPart);
+            w.Segment("PID", "S", "MA", "ST", ConstSkidStatus(item.SkidSheetStatus), "", "", "70");
+            w.Segment("PID", "S", "MAC", "ST", "01", "", "", "67");
+            w.Segment("PID", "S", "PR", "ST", "19", "", "", "66A");
+            w.Segment("MEA", "PD", "TH", OraNum(unit.CoilGauge), "ED");
+            w.Segment("MEA", "PD", "WD", OraNum(unit.PartWidth), "ED");
+            w.Segment("MEA", "PD", "LN", OraNum(unit.PartLength), "ED");
+            w.Segment("MEA", "WT", "WT", OraNum(item.NetWeight), "01");
+            w.Segment("MEA", "CT", "NA", item.Pieces.ToString(CultureInfo.InvariantCulture), "PC");
+        }
+
+        // Scrap (F) — one block per scrap line with net weight > 0. The scrap JN uses enduser_po's own first '-'.
+        var scrapJn = JnPrefix(po, po);
+        var emitScrapPrf = (unit.OrigCustomerPo ?? "") != (unit.FinishedGoodsMaterialNum ?? "") && (unit.OrigCustomerPo ?? "") != "NA";
+        foreach (var scrap in unit.Scrap)
+        {
+            hl++;
+            w.Segment("HL", hl.ToString(CultureInfo.InvariantCulture), parentCoil.ToString(CultureInfo.InvariantCulture), "F");
+            if (emitScrapPrf) w.Segment("PRF", po, "", "", created);
+            w.Segment("DTM", "009", today, now, "ED");
+            w.Segment("DTM", "206", today, now, "ED");
+            w.Segment("PO1", "", "1", "UN", "", "", "VO", po, "SN", unit.CoilOrgNum, "HN", unit.LotNum, "JN", scrapJn);
+            w.Segment("PID", "S", "MA", "ST", "S", "", "", "70");
+            w.Segment("PID", "S", "MAC", "ST", "05", "", "", "67");
+            w.Segment("PID", "S", "PR", "ST", "14", "", "", "66A");
+            w.Segment("PID", "S", "DAC", "ST", "263", "", "", "73");
+            w.Segment("PID", "S", "DAF", "ST", "1", "", "", "72");
+            w.Segment("MEA", "WT", "WT", OraNum(scrap.ScrapNetWeight), "01");
+        }
+
+        // Rejected (status 3) / rebanded (7) coil that still carried good material — one trailing F block.
+        if (unit.Reject is { } rej)
+        {
+            hl++;
+            w.Segment("HL", hl.ToString(CultureInfo.InvariantCulture), parentCoil.ToString(CultureInfo.InvariantCulture), "F");
+            w.Segment("PRF", po, "", "", created);
+            w.Segment("REF", "SE", coil);
+            w.Segment("DTM", "009", today, now, "ED");
+            w.Segment("DTM", "206", today, now, "ED");
+            w.Segment("PO1", "", "1", "UN", "", "", "VO", po, "SN", unit.CoilOrgNum, "HN", unit.LotNum, "JN", scrapJn, "PN", unit.EnduserPart);
+            w.Segment("PID", "S", "MA", "ST", "7", "", "", "68");
+            w.Segment("PID", "S", "MAC", "ST", "01", "", "", "67");
+            w.Segment("PID", "S", "PR", "ST", "19", "", "", "66A");
+            w.Segment("MEA", "PD", "TH", OraNum(unit.CoilGauge), "ED");
+            w.Segment("MEA", "PD", "WD", OraNum(unit.PartWidth), "ED");
+            w.Segment("MEA", "PD", "LN", OraNum(rej.CoilLengthLeft), "LF");
+            w.Segment("MEA", "WT", "WT", OraNum(rej.NetWtBalance), "01");
+        }
+
+        w.Segment("CTT", (hl - 1).ToString(CultureInfo.InvariantCulture));   // legacy CTT01 = li_hl01 - 1
+        return w.Close();
+    }
+
+    // Constellium skid_sheet_status → PID*S*MA status element (legacy: 2→1, 4→3, 13→1, else→4).
+    private static string ConstSkidStatus(int skidSheetStatus) => skidSheetStatus switch
+    {
+        2 => "1",
+        4 => "3",
+        13 => "1",
+        _ => "4",
+    };
+
+    // The legacy JN element: SUBSTR(po, 1, INSTR(src, '-') - 1) — the PO truncated at the first '-' in src.
+    // Oracle INSTR returns 0 when not found → SUBSTR(po, 1, -1) → '' (so no '-' ⇒ empty JN).
+    private static string JnPrefix(string? src, string? po)
+    {
+        var p = (src ?? "").IndexOf('-');            // 0-based; Oracle INSTR-1 equivalent
+        if (p <= 0) return "";                        // not found (INSTR 0) or leading '-' (INSTR 1) → empty
+        var s = po ?? "";
+        return s.Length <= p ? s : s.Substring(0, p);
+    }
+
     // Novelis skid_sheet_status → PID*S*MA status element (legacy: 2→1, 4→3, 13→8, else→4).
     private static string NovelisSkidStatus(int skidSheetStatus) => skidSheetStatus switch
     {

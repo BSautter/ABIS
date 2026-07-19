@@ -326,6 +326,15 @@ public static class AbisSchema
         SELECT 2776, '861', 1, 'constellium', '01', '043207177', '@', '', '00401', 'SH', NULL, 'S_constellium_861_', NULL FROM dual
          WHERE NOT EXISTS (SELECT 1 FROM abis_edi_partner WHERE customer_id = 2776 AND transaction_set = '861')
         """,
+        // Constellium 870 (customer 2776, F_EDI_CONSTELLIUM_BG_870_4JOB): per-COIL variant. Same '@' component
+        // separator as its 861, but the 870 proc terminates every segment with '~' (segment_suffix); GS code RS,
+        // envelope version 00401, receiver 043207177 qual 01, file prefix S_const_870_.
+        """
+        INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier,
+            receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, gs_sender_code, file_prefix, item_reference)
+        SELECT 2776, '870', 1, 'constellium', '01', '043207177', '@', '~', '00401', 'RS', NULL, 'S_const_870_', NULL FROM dual
+         WHERE NOT EXISTS (SELECT 1 FROM abis_edi_partner WHERE customer_id = 2776 AND transaction_set = '870')
+        """,
         // 856 (ASN) — the three live partners. Each mirrors its 861 envelope (Novelis SH/R0P7A/001504935001;
         // Constellium SH/@/043207177; Arconic SH/R0P7ATN/961613887) with the 856 file prefix + body variant.
         Seed856("1153", "novelis", "09", "0015049350011G", "", "R0P7A", "001504935001", "S_novelis_856_"),

@@ -1881,17 +1881,102 @@ public sealed class Edi870Result
     public IReadOnlyList<Edi870FileResult> Files { get; set; } = [];
 }
 
-/// <summary>One generated 870 file within a run — the batch (Aleris) or a single job's file (Novelis).</summary>
+/// <summary>One generated 870 file within a run — the batch (Aleris), a single job's file (Novelis), or a
+/// single (job, coil) unit's file (Constellium).</summary>
 public sealed class Edi870FileResult
 {
     public long EdiFileId { get; set; }
     public string? EdiFileName { get; set; }
-    /// <summary>The job this file reports (Novelis per-job); null for the Aleris whole-customer batch.</summary>
+    /// <summary>The job this file reports (Novelis per-job / Constellium per-coil); null for the Aleris batch.</summary>
     public long? AbJobNum { get; set; }
+    /// <summary>The coil this file reports (Constellium per-coil only); null otherwise.</summary>
+    public long? CoilAbcNum { get; set; }
     public int ItemCount { get; set; }
     public int ScrapCount { get; set; }
     public int HlCount { get; set; }
     public int PayloadBytes { get; set; }
+}
+
+// ---- EDI 870 Constellium (customer 2776, F_EDI_CONSTELLIUM_BG_870_4JOB) — the per-(job, coil) variant ----
+// Constellium's legacy proc is invoked once per coil and emits ONE interchange for that coil: an order (O) →
+// coil (I) → detail (F) HL hierarchy, where the F level is each of the coil's shippable skids, then its scrap,
+// then an optional rejected/rebanded-coil block. The envelope differs from Aleris/Novelis (@ component
+// separator, ~ segment terminator, BSR02=PA, N1*MF+N1*OU header). These DTOs are the assembled equivalent;
+// Edi870Generator.GenerateConstellium renders one unit. Generation only — never transmitted.
+
+/// <summary>A Constellium 870 batch: every not-yet-reported (job, coil) unit for the customer. Each unit
+/// becomes its own interchange/file (S_const_870_{id}_Job-{job}.edi), mirroring the legacy per-coil proc.</summary>
+public sealed class Edi870ConstBatch
+{
+    public long CustomerId { get; set; }
+    /// <summary>The customer's DUNS (customer_duns_number_string) — the N1*MF party (043207177).</summary>
+    public string? SupplierDuns { get; set; }
+    public IReadOnlyList<Edi870ConstUnit> Units { get; set; } = [];
+}
+
+/// <summary>One Constellium 870 unit = one (job, coil). Carries the coil-level values shared across the I level
+/// and every F block, plus the coil's shippable items, its scrap lines, and an optional reject/reband block.</summary>
+public sealed class Edi870ConstUnit
+{
+    public long AbJobNum { get; set; }
+    /// <summary>coil.coil_abc_num — REF*RV (I level) + REF*SE (reject block) + the per-coil file identity.</summary>
+    public long CoilAbcNum { get; set; }
+    /// <summary>customer_order.enduser_po — the PRF reference + PO1 VO across every level.</summary>
+    public string? EnduserPo { get; set; }
+    /// <summary>MAX(customer_order.created_date) for the PO, as yyyymmdd — the PRF date element.</summary>
+    public string? CreatedDate { get; set; }
+    public string? CoilOrgNum { get; set; }
+    public string? LotNum { get; set; }
+    /// <summary>coil.vo — the source of the JN element (enduser_po truncated at vo's first '-').</summary>
+    public string? Vo { get; set; }
+    /// <summary>order_item.enduser_part_num — the I-level PO1 PN.</summary>
+    public string? EnduserPart { get; set; }
+    public decimal CoilGauge { get; set; }
+    /// <summary>f_get_part_width_per_job (modern: resolved from the shape tables) — MEA*PD*WD.</summary>
+    public decimal PartWidth { get; set; }
+    /// <summary>f_get_part_length_per_job (modern: resolved from the shape tables) — MEA*PD*LN.</summary>
+    public decimal PartLength { get; set; }
+    /// <summary>order_item.finished_goods_material_num — the scrap PRF-suppression compare.</summary>
+    public string? FinishedGoodsMaterialNum { get; set; }
+    /// <summary>customer_order.orig_customer_po — the scrap PRF-suppression compare (ls_po).</summary>
+    public string? OrigCustomerPo { get; set; }
+    public IReadOnlyList<Edi870ConstItem> Items { get; set; } = [];
+    public IReadOnlyList<Edi870ConstScrapLine> Scrap { get; set; } = [];
+    /// <summary>The rejected/rebanded-coil detail block (coil_status 3 or 7 with good material); null otherwise.</summary>
+    public Edi870ConstReject? Reject { get; set; }
+}
+
+/// <summary>One shippable skid (F-level detail) in a Constellium 870 coil unit.</summary>
+public sealed class Edi870ConstItem
+{
+    public long ProdItemNum { get; set; }
+    public long SheetSkidNum { get; set; }
+    /// <summary>The partial-skid suffix from split_skid (read-only; the modern engine does not write split_skid).
+    /// Appended to sheet_skid_num in REF*SE. Empty for a full skid or a partial not yet lettered.</summary>
+    public string? SplitSuffix { get; set; }
+    /// <summary>skid_sheet_status → PID*S*MA status (2→1, 4→3, 13→1, else→4).</summary>
+    public int SkidSheetStatus { get; set; }
+    public int Pieces { get; set; }
+    public decimal NetWeight { get; set; }
+    /// <summary>inbound_coil.part_num from the coil's latest inbound BOL (falls back to order_item) — the F-level PN.</summary>
+    public string? EnduserPart { get; set; }
+}
+
+/// <summary>One scrap line (F-level) in a Constellium 870 coil unit — coil-level identity comes from the unit.</summary>
+public sealed class Edi870ConstScrapLine
+{
+    public decimal ScrapNetWeight { get; set; }
+}
+
+/// <summary>The rejected (coil_status 3) / rebanded (7) coil block appended after the scrap loop when the coil
+/// still carried good material. Uses the coil's remaining length + balance weight.</summary>
+public sealed class Edi870ConstReject
+{
+    public int CoilStatus { get; set; }
+    /// <summary>net_wt_balance / net_wt * lfeed — MEA*PD*LN (LF).</summary>
+    public decimal CoilLengthLeft { get; set; }
+    /// <summary>coil.net_wt_balance — MEA*WT*WT (01).</summary>
+    public decimal NetWtBalance { get; set; }
 }
 
 /// <summary>The typed input to the 856 (Advance Ship Notice / DESADV) generator: one shipment against one

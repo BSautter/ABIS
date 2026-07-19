@@ -79,6 +79,8 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS abis_scrap_status_x12;
             DROP TABLE IF EXISTS abis_scrap_type_x12;
             DROP TABLE IF EXISTS abis_edi_partner;
+            DROP TABLE IF EXISTS split_skid;
+            DROP TABLE IF EXISTS inbound_coil;
             DROP TABLE IF EXISTS edi_log;
             DROP TABLE IF EXISTS edi_type;
             DROP TABLE IF EXISTS customer_edi;
@@ -124,7 +126,18 @@ public static class SqliteFixture
                 coil_org_num TEXT NOT NULL, coil_status INTEGER, coil_notes TEXT, coil_entry_date TEXT,
                 customer_id INTEGER, coil_from_cust_id INTEGER, date_received TEXT, icra TEXT,
                 lot_num TEXT NOT NULL, net_wt REAL NOT NULL, net_wt_balance REAL NOT NULL, pieces_per_case INTEGER,
-                consumed_coil_num TEXT, vo TEXT, customer_po TEXT, production_desc_code TEXT);
+                consumed_coil_num TEXT, vo TEXT, customer_po TEXT, production_desc_code TEXT, lfeed REAL);
+
+            -- Partial-skid suffix ledger (legacy split_skid) — the Constellium 870 reads a skid's letter from here.
+            -- Empty in the fixture; the modern engine reads but never writes it (REF*SE suffix falls back to none).
+            CREATE TABLE split_skid (
+                ab_job_num INTEGER, coil_abc_num INTEGER, sheet_skid_num INTEGER, sheet_skid_display_num TEXT,
+                coil_org_num TEXT, prod_item_net_wt REAL, prod_item_pieces INTEGER, suffix TEXT);
+
+            -- Inbound coil detail off a receiving BOL (legacy inbound_coil) — the Constellium 870 takes the F-level
+            -- part number from the latest inbound BOL. Empty in the fixture (F-level part falls back to order_item).
+            CREATE TABLE inbound_coil (
+                coil_number TEXT, part_num TEXT, edi_file_id INTEGER);
 
             CREATE TABLE process_coil (
                 ab_job_num INTEGER, coil_abc_num INTEGER, process_coil_status INTEGER,
@@ -849,6 +862,9 @@ public static class SqliteFixture
                 new { CustomerId = 2784L, TransactionSet = "861", Variant = "arconic", RecvQual = "01", RecvId = "961613887", Comp = ">", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)"R0P7ATN", GsReceiver = (string?)null, Prefix = "S_arconic_861_", ItemRef = (string?)null },
                 // Constellium 861 (customer 2776): SH group code, standard ABCo GS sender, '@' component separator.
                 new { CustomerId = 2776L, TransactionSet = "861", Variant = "constellium", RecvQual = "01", RecvId = "043207177", Comp = "@", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)null, GsReceiver = (string?)null, Prefix = "S_constellium_861_", ItemRef = (string?)null },
+                // Constellium 870 (customer 2776): per-COIL variant. Same '@' component separator as its 861, but
+                // the 870 proc terminates every segment with '~' (segment_suffix), GS code RS, prefix S_const_870_.
+                new { CustomerId = 2776L, TransactionSet = "870", Variant = "constellium", RecvQual = "01", RecvId = "043207177", Comp = "@", Suffix = "~", Ver = "00401", Gs = "RS", GsSender = (string?)null, GsReceiver = (string?)null, Prefix = "S_const_870_", ItemRef = (string?)null },
                 // 856 (ASN) — the three live partners, each mirroring its 861 envelope with the 856 prefix + variant.
                 new { CustomerId = 1153L, TransactionSet = "856", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)"R0P7A", GsReceiver = (string?)"001504935001", Prefix = "S_novelis_856_", ItemRef = (string?)null },
                 new { CustomerId = 1459L, TransactionSet = "856", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)"R0P7A", GsReceiver = (string?)"001504935001", Prefix = "S_novelis_856_", ItemRef = (string?)null },

@@ -996,6 +996,12 @@ public static class ApiEndpoints
                 if (profile is null || !profile.Enabled)
                     return Results.Problem(statusCode: StatusCodes.Status422UnprocessableEntity, title: "Not an 870 partner",
                         detail: $"Customer {customerId} has no enabled 870 trading-partner profile (configure it in the admin EDI setup).");
+                // Constellium (customer 2776) is per-COIL: one interchange/file per (job, coil), its own assemble/persist.
+                if (string.Equals(profile.Variant, "constellium", StringComparison.OrdinalIgnoreCase))
+                {
+                    var cbatch = await repo.AssembleEdi870ConstBatchAsync(customerId, ct);
+                    return Results.Ok(await repo.PersistEdi870ConstAsync(cbatch, profile, DateTime.Now, ct));
+                }
                 var batch = await repo.AssembleEdi870BatchAsync(customerId, profile.Variant, ct);
                 var result = await repo.PersistEdi870Async(batch, profile, DateTime.Now, ct);
                 return Results.Ok(result);

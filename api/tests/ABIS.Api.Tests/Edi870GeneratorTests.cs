@@ -295,4 +295,118 @@ public class Edi870GeneratorTests
         Assert.Contains("PO1**1*UN*******SN*GC-1***VP*FG-G", lines);
         Assert.Equal("S_novelis_870_9007_Job-700100.edi", Edi870Generator.NovelisFileName(GuthrieProfile(), 9007, 700100));
     }
+
+    // ---- Constellium 870 variant (legacy F_EDI_CONSTELLIUM_BG_870_4JOB) — per-coil O→I→F hierarchy, @ component
+    // separator, ~ segment terminator, BSR02=PA, N1*MF then N1*OU. Every line here carries a trailing '~'. ----
+
+    private static EdiPartnerProfile ConstProfile() => new()
+    {
+        CustomerId = 2776, TransactionSet = "870", Enabled = true, Variant = "constellium",
+        ReceiverQualifier = "01", ReceiverId = "043207177", ComponentSeparator = "@", SegmentSuffix = "~",
+        EnvelopeVersion = "00401", GsFunctionalCode = "RS", FilePrefix = "S_const_870_", ItemReference = null,
+    };
+
+    private static Edi870ConstUnit ConstUnit(bool withScrap = false, string? suffix = null, Edi870ConstReject? reject = null) => new()
+    {
+        AbJobNum = 101143, CoilAbcNum = 55501, EnduserPo = "CST-PO-9", CreatedDate = "20260701",
+        CoilOrgNum = "CO-1", LotNum = "HEAT-7", Vo = "AB-1234", EnduserPart = "IPART",
+        CoilGauge = 0.05m, PartWidth = 36m, PartLength = 48m,
+        FinishedGoodsMaterialNum = "FG-1", OrigCustomerPo = "OPO-1",
+        Items = new[] { new Edi870ConstItem { ProdItemNum = 900, SheetSkidNum = 7001, SplitSuffix = suffix, SkidSheetStatus = 2, Pieces = 120, NetWeight = 15000m, EnduserPart = "FPART" } },
+        Scrap = withScrap ? new[] { new Edi870ConstScrapLine { ScrapNetWeight = 800m } } : Array.Empty<Edi870ConstScrapLine>(),
+        Reject = reject,
+    };
+
+    [Fact]
+    public void Constellium_envelope_is_the_per_coil_frame_with_at_component_sep_and_tilde_terminator()
+    {
+        var lines = Lines(Edi870Generator.GenerateConstellium(ConstUnit(), "043207177", ConstProfile(), Ctrl, Ctrl, Now));
+        Assert.StartsWith("ISA*00*", lines[0]);
+        Assert.EndsWith("*0*P*@~", lines[0]);                       // ISA16 = '@' component separator, '~' terminator
+        Assert.Contains("*01*043207177      *", lines[0]);          // receiver id padded to 15
+        Assert.Equal("GS*RS*039630926T*043207177*20260712*0930*5000*X*004010~", lines[1]);
+        Assert.Equal("ST*870*5000~", lines[2]);
+        Assert.Equal("BSR*2*PA*5000*20260712***0930*****~", lines[3]);   // BSR02 = PA (not PP)
+        Assert.Equal("DTM*009*20260712*0930*ED~", lines[4]);
+        Assert.Equal("N1*MF**1*043207177~", lines[5]);              // N1*MF (the customer DUNS) comes first
+        Assert.Equal("N1*OU*ALUMINUM BLANKING COMPANY*1*039630926~", lines[6]);
+    }
+
+    [Fact]
+    public void Constellium_body_is_the_order_coil_item_hierarchy()
+    {
+        var lines = Lines(Edi870Generator.GenerateConstellium(ConstUnit(), "043207177", ConstProfile(), Ctrl, Ctrl, Now));
+        Assert.Contains("HL*1**O*1~", lines);                       // order
+        Assert.Contains("PRF*CST-PO-9*0*0*20260701~", lines);       // order PRF (enduser PO + created date)
+        Assert.Contains("HL*2*1*I*1~", lines);                      // coil, parented to the order
+        Assert.Contains("REF*RV*55501~", lines);                    // REF*RV = the coil abc num
+        // I-level PO1: JN = enduser_po truncated at vo's first '-' ("AB-1234" → index 2 → "CS").
+        Assert.Contains("PO1**1*UN***VO*CST-PO-9*SN*CO-1*HN*HEAT-7*JN*CS*PN*IPART~", lines);
+        Assert.Contains("HL*3*2*F~", lines);                        // detail, parented to the coil
+        Assert.Contains("REF*SE*7001~", lines);                     // skid num, no split suffix
+        Assert.Contains("PO1**1*UN***VO*CST-PO-9*SN*CO-1*HN*HEAT-7*JN*CS*PN*FPART~", lines);   // F-level part
+        Assert.Contains("PID*S*MA*ST*1***70~", lines);              // skid status 2 → 1
+        Assert.Contains("PID*S*MAC*ST*01***67~", lines);
+        Assert.Contains("PID*S*PR*ST*19***66A~", lines);
+        Assert.Contains("MEA*PD*TH*.05*ED~", lines);                // coil gauge (Oracle to_char, leading zero dropped)
+        Assert.Contains("MEA*PD*WD*36*ED~", lines);
+        Assert.Contains("MEA*PD*LN*48*ED~", lines);
+        Assert.Contains("MEA*WT*WT*15000*01~", lines);
+        Assert.Contains("MEA*CT*NA*120*PC~", lines);
+        Assert.Contains("CTT*2~", lines);                           // li_hl01 (3) − 1
+    }
+
+    [Fact]
+    public void Constellium_split_suffix_is_appended_to_ref_se()
+    {
+        var lines = Lines(Edi870Generator.GenerateConstellium(ConstUnit(suffix: "A"), "043207177", ConstProfile(), Ctrl, Ctrl, Now));
+        Assert.Contains("REF*SE*7001A~", lines);
+    }
+
+    [Fact]
+    public void Constellium_scrap_block_carries_the_scrap_pids_and_weight()
+    {
+        var lines = Lines(Edi870Generator.GenerateConstellium(ConstUnit(withScrap: true), "043207177", ConstProfile(), Ctrl, Ctrl, Now));
+        Assert.Contains("HL*4*2*F~", lines);                        // scrap detail parented to the coil
+        Assert.Contains("PRF*CST-PO-9***20260701~", lines);         // scrap PRF (po != fg and != 'NA')
+        // Scrap JN uses enduser_po's own first '-' ("CST-PO-9" → index 3 → "CST"); no PN element.
+        Assert.Contains("PO1**1*UN***VO*CST-PO-9*SN*CO-1*HN*HEAT-7*JN*CST~", lines);
+        Assert.Contains("PID*S*MA*ST*S***70~", lines);
+        Assert.Contains("PID*S*MAC*ST*05***67~", lines);
+        Assert.Contains("PID*S*PR*ST*14***66A~", lines);
+        Assert.Contains("PID*S*DAC*ST*263***73~", lines);
+        Assert.Contains("PID*S*DAF*ST*1***72~", lines);
+        Assert.Contains("MEA*WT*WT*800*01~", lines);
+        Assert.Contains("CTT*3~", lines);                           // O + I + item + scrap = 4 HL − 1
+    }
+
+    [Fact]
+    public void Constellium_scrap_prf_is_suppressed_when_po_matches_fg_or_is_na()
+    {
+        var u = ConstUnit(withScrap: true);
+        u.OrigCustomerPo = "FG-1";   // == finished goods → suppress scrap PRF
+        var lines = Lines(Edi870Generator.GenerateConstellium(u, "043207177", ConstProfile(), Ctrl, Ctrl, Now));
+        var hl4 = Array.FindIndex(lines, l => l == "HL*4*2*F~");
+        Assert.True(hl4 >= 0);
+        Assert.StartsWith("DTM*009", lines[hl4 + 1]);               // no PRF between the scrap HL and its DTM
+    }
+
+    [Fact]
+    public void Constellium_reject_block_uses_the_remaining_length_and_balance_weight()
+    {
+        var reject = new Edi870ConstReject { CoilStatus = 3, CoilLengthLeft = 7764m, NetWtBalance = 2500m };
+        var lines = Lines(Edi870Generator.GenerateConstellium(ConstUnit(reject: reject), "043207177", ConstProfile(), Ctrl, Ctrl, Now));
+        Assert.Contains("HL*4*2*F~", lines);
+        Assert.Contains("REF*SE*55501~", lines);                    // REF*SE = the coil abc num
+        Assert.Contains("PID*S*MA*ST*7***68~", lines);              // rejected/rebanded material status
+        Assert.Contains("MEA*PD*LN*7764*LF~", lines);               // remaining length (LF)
+        Assert.Contains("MEA*WT*WT*2500*01~", lines);               // net weight balance
+        Assert.Contains("CTT*3~", lines);
+    }
+
+    [Fact]
+    public void Constellium_file_name_carries_the_job_number()
+    {
+        Assert.Equal("S_const_870_9007_Job-101143.edi", Edi870Generator.ConstelliumFileName(ConstProfile(), 9007, 101143));
+    }
 }

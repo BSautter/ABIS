@@ -245,6 +245,8 @@ public interface IAbisRepository
     /// <summary>Generate + persist the 846 from an inventory snapshot. Never transmits.</summary>
     Task<Edi846Result> PersistEdi846Async(Edi846Snapshot snap, EdiPartnerProfile profile, DateTime timestamp, CancellationToken ct);
     Task<Edi870Result> PersistEdi870Async(Edi870Batch batch, EdiPartnerProfile profile, DateTime timestamp, CancellationToken ct);
+    Task<Edi870ConstBatch> AssembleEdi870ConstBatchAsync(long customerId, CancellationToken ct);
+    Task<Edi870Result> PersistEdi870ConstAsync(Edi870ConstBatch batch, EdiPartnerProfile profile, DateTime timestamp, CancellationToken ct);
     Task<EdiPartnerProfile?> GetEdiPartnerAsync(long customerId, string transactionSet, CancellationToken ct);
     Task<IReadOnlyList<EdiPartnerProfile>> ListEdiPartnersAsync(string? transactionSet, CancellationToken ct);
     Task<EdiPartnerProfile> UpsertEdiPartnerAsync(EdiPartnerProfile profile, CancellationToken ct);

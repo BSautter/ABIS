@@ -13318,6 +13318,11 @@
             "format": "int64",
             "nullable": true
           },
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
           "itemCount": {
             "type": "integer",
             "format": "int32"

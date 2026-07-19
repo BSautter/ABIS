@@ -29,7 +29,7 @@ off-repo (maintainer's Desktop). The 846 / 856 / 863 / 997 goldens there are the
 |---|---|---|
 | Aleris | EDI_ALERIS_870 / F_EDI_ALERIS_870_PER_JOB | ✅ #187 |
 | **Novelis / Alcan** (Kingston 1153 / Oswego 1459 / Guthrie 2950) (+ scrap) | EDI_ALCAN_870 / F_EDI_NOVELIS_870_4JOB / P_EDI_NOVELIS_SCRAP_870 | ✅ #195 (variant `novelis`, per-job; GS03 override); Guthrie 2950 seeded (shared proc; only N1*SU DUNS differs) |
-| Constellium (+ reject) | F_EDI_CONST_870_PER_JOB / F_EDI_CONSTELLIUM_BG_870_4JOB / F_EDI_CONST_870_REJECT_4JOB | ⬜ |
+| Constellium (2776) (+ reject) | F_EDI_CONSTELLIUM_BG_870_4JOB / F_EDI_CONST_870_REJECT_4JOB | ✅ variant `constellium`, per-COIL (O→I→F, @ sep, ~ terminator, BSR02=PA); fully-scrapped reject 870 still deferred |
 | Arconic | EDI_ARCONIC_870 | ⬜ |
 | Wise | F_EDI_WISE_870 / F_EDI_WISE_870_BY_COIL / P_EDI_WISE_870 | ⬜ |
 | MISA | F_EDI_MISA_870_4JOB | ⬜ |
