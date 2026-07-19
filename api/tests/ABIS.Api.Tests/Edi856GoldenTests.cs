@@ -83,4 +83,34 @@ public class Edi856GoldenTests
 
         Assert.Equal(Golden("constellium_856.edi"), Segments(Edi856Generator.Generate(shp, profile, 12345, 12345, new DateTime(2026, 1, 2, 9, 37, 0))));
     }
+
+    [Fact]
+    public void Arconic_856_matches_the_redacted_golden()
+    {
+        // Arconic's 856 body is identical to Novelis's — only the envelope differs (GS sender R0P7ATN,
+        // receiver 961613887, '>' separator), so it's config-only (variant 'arconic' → the default body).
+        var profile = new EdiPartnerProfile
+        {
+            CustomerId = 2784, TransactionSet = "856", Enabled = true, Variant = "arconic",
+            ReceiverQualifier = "01", ReceiverId = "961613887", ComponentSeparator = ">",
+            EnvelopeVersion = "00401", GsFunctionalCode = "SH", GsSenderCode = "R0P7ATN", FilePrefix = "S_arconic_856_",
+        };
+        Edi856Item Skid(int gross, string se, string ls) => new()
+        {
+            NetWeight = 4705, Pieces = 350, GrossWeight = gross, Gauge = 0.038m, Width = 69.094m,
+            LotNum = "LOT-0001", SkidDisplayNum = se, CoilOrgNum = ls,
+        };
+        var shp = new Edi856Shipment
+        {
+            PackingList = "PL-0001", BillOfLading = "PL-0001", ShipDate = new DateTime(2026, 1, 2, 0, 0, 0),
+            GrossWeight = 34045, NetWeight = 33070, PalletCount = 3,
+            Scac = "AGGP", CarrierName = "       AGGRESSIVE", CarrierDescCode = "TL", VehicleId = "1708", EqType = "FS",
+            ShipToName = "SHIPTO-0001       ", ShipToDuns = "074212689", SupplierDuns = "961613887",
+            EnduserPart = "PART-0001", OrderPieceCount = 1050, OrigCustomerPo = "PO-0001",
+            OrderDate = new DateTime(2025, 11, 3, 0, 0, 0), AuthCode = "NA",
+            Items = new[] { Skid(4885, "SKID-0001", "COIL-0001"), Skid(4880, "SKID-0002", "COIL-0001"), Skid(4885, "SKID-0003", "COIL-0002") },
+        };
+
+        Assert.Equal(Golden("arconic_856.edi"), Segments(Edi856Generator.Generate(shp, profile, 12345, 12345, new DateTime(2026, 1, 2, 8, 31, 0))));
+    }
 }

@@ -36,6 +36,8 @@ public static class Edi856Generator
         var variant = (profile.Variant ?? "").Trim().ToLowerInvariant();
         if (variant == "constellium")
             return ConstelliumBody(w, shp, timestamp);
+        // Arconic's 856 body is identical to Novelis's — it differs only in the envelope (GS sender R0P7ATN,
+        // receiver 961613887, '>' separator), so variant 'arconic' falls through to the shared body below.
 
         var today = timestamp.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
         var now = timestamp.ToString("HHmm", CultureInfo.InvariantCulture);

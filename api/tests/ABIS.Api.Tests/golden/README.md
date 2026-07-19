@@ -21,3 +21,4 @@ generator's output equals the fixture segment-for-segment (line-ending-agnostic)
 | `aleris_870.edi` | 870 | Aleris | O→I→F HL hierarchy; `PRF*RV*300578504`; scrap block (note the load-bearing trailing space in the scrap `PO1 …*BP* `) |
 | `novelis_856.edi` | 856 | Novelis | shipment→order→item HL hierarchy; `TD5*B*2` (production, not the proc's stale `B*02`); `CTT01` = HL count, `CTT02` = item count + order qty; **load-bearing** DB padding on the ship-to name (`N1*ST …       `) + carrier field (`TD5 …*M*       …`) |
 | `constellium_856.edi` | 856 | Constellium | distinct body: `@` sep → `*P*@`; weights in dual `TD1`; trimmed carrier + `*CC`; `N1*SF/MF/ST/MA`; rich per-item `LIN*1*BP*SN*HN*LS*JN` + `PID*S*55/16`; `MEA*PD*TH*0.0000` (leading zero kept, unlike Novelis) |
+| `arconic_856.edi` | 856 | Arconic | **body identical to Novelis** — config-only: GS sender `R0P7ATN`, receiver `961613887`, `>` separator (variant `arconic` → the shared body) |
