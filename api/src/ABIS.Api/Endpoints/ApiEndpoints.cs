@@ -1030,6 +1030,21 @@ public static class ApiEndpoints
            .WithSummary("Generate + persist the 856 (Advance Ship Notice) for a shipment's packing list — the shipment header + one item per packed skid, built and stored but NEVER transmitted. 404 if the packing list has no shipment; 422 if its customer isn't an 856 partner; 409 if already generated. View the payload at /edi/transactions/{ediFileId}/payload.")
            .Produces<Edi856Result>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status422UnprocessableEntity).Produces(StatusCodes.Status409Conflict);
 
+        api.MapPost("/edi/846/generate", async (HttpContext ctx, IAbisRepository repo, CancellationToken ct, long customerId = 3061) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, "EDI", 1, ct) is { } deny) return deny;
+                var profile = await repo.GetEdiPartnerAsync(customerId, "846", ct);
+                if (profile is null || !profile.Enabled)
+                    return Results.Problem(statusCode: StatusCodes.Status422UnprocessableEntity, title: "Not an 846 partner",
+                        detail: $"Customer {customerId} has no enabled 846 trading-partner profile (configure it in the admin EDI setup).");
+                var snap = await repo.AssembleEdi846Async(customerId, ct);
+                var result = await repo.PersistEdi846Async(snap, profile, DateTime.Now, ct);
+                return Results.Ok(result);
+            })
+           .WithName("GenerateEdi846").WithTags("EDI")
+           .WithSummary("Generate + persist the 846 (Inventory Advice) for a customer (default Cleveland-Cliffs 3061) — a full on-hand inventory snapshot (skids + coils), built and stored but NEVER transmitted. Returns status 'nothing' when there's no on-hand inventory; view the payload at /edi/transactions/{ediFileId}/payload. 422 if the customer isn't a configured 846 partner. The 846 is a snapshot — it may be regenerated (no dedup guard).")
+           .Produces<Edi846Result>().Produces(StatusCodes.Status422UnprocessableEntity);
+
         api.MapGet("/edi/partners", async (IAbisRepository repo, CancellationToken ct, string? transactionSet = null) =>
                 Results.Ok(await repo.ListEdiPartnersAsync(transactionSet, ct)))
            .WithName("ListEdiPartners").WithTags("EDI")

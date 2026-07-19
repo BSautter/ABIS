@@ -3433,6 +3433,44 @@
         }
       }
     },
+    "/api/edi/846/generate": {
+      "post": {
+        "tags": [
+          "EDI"
+        ],
+        "summary": "Generate + persist the 846 (Inventory Advice) for a customer (default Cleveland-Cliffs 3061) — a full on-hand inventory snapshot (skids + coils), built and stored but NEVER transmitted. Returns status 'nothing' when there's no on-hand inventory; view the payload at /edi/transactions/{ediFileId}/payload. 422 if the customer isn't a configured 846 partner. The 846 is a snapshot — it may be regenerated (no dedup guard).",
+        "operationId": "GenerateEdi846",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "default": 3061
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Edi846Result"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/edi/partners": {
       "get": {
         "tags": [
@@ -13113,6 +13151,40 @@
           "note": {
             "type": "string",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Edi846Result": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "partner": {
+            "type": "string",
+            "nullable": true
+          },
+          "ediFileId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "ediFileName": {
+            "type": "string",
+            "nullable": true
+          },
+          "skidCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "coilCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "transmitted": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false

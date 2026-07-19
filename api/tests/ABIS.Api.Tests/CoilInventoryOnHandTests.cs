@@ -43,7 +43,7 @@ public sealed class CoilInventoryOnHandTests
     {
         using var f = new Factory();
         var body = await Client(f).GetFromJsonAsync<JsonElement>("/api/coils?pageSize=100");
-        Assert.Equal(4, body.GetProperty("totalCount").GetInt32());   // 5001–5004 on hand; 5005–5008 excluded
+        Assert.Equal(5, body.GetProperty("totalCount").GetInt32());   // 5001–5004 + the Cliffs 846 coil (4962) on hand; 5005–5008 excluded
 
         var ids = body.GetProperty("items").EnumerateArray().Select(c => c.GetProperty("coilAbcNum").GetInt64()).ToHashSet();
         Assert.Contains(5001L, ids);
@@ -68,8 +68,9 @@ public sealed class CoilInventoryOnHandTests
         using var f = new Factory();
         var groups = await Client(f).GetFromJsonAsync<JsonElement>("/api/coils/summary?groupBy=alloy");
         // On hand: 3003 = {5001,5002}, 5052 = {5003,5004}. The excluded 5005/5007 (3003) and
-        // 5006/5008 (5052) must NOT inflate these.
-        foreach (var g in groups.EnumerateArray())
-            Assert.Equal(2, g.GetProperty("count").GetInt32());
+        // 5006/5008 (5052) must NOT inflate these. (The Cliffs 846 coil 4962 is its own alloy group, ignored here.)
+        var counts = groups.EnumerateArray().ToDictionary(g => g.GetProperty("key").GetString() ?? "", g => g.GetProperty("count").GetInt32());
+        Assert.Equal(2, counts["3003"]);
+        Assert.Equal(2, counts["5052"]);
     }
 }

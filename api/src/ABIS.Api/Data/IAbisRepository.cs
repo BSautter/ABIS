@@ -240,6 +240,10 @@ public interface IAbisRepository
     Task<Edi856Shipment?> AssembleEdi856Async(long packingList, string? variant, CancellationToken ct);
     Task<Edi856Result> PersistEdi856Async(Edi856Shipment shp, EdiPartnerProfile profile, long packingList, DateTime timestamp, CancellationToken ct);
     Task<EdiPayload?> GetEdi856ForPackingListAsync(long packingList, CancellationToken ct);
+    /// <summary>Assemble a customer's on-hand inventory snapshot (skids + coils) for an 846.</summary>
+    Task<Edi846Snapshot> AssembleEdi846Async(long customerId, CancellationToken ct);
+    /// <summary>Generate + persist the 846 from an inventory snapshot. Never transmits.</summary>
+    Task<Edi846Result> PersistEdi846Async(Edi846Snapshot snap, EdiPartnerProfile profile, DateTime timestamp, CancellationToken ct);
     Task<Edi870Result> PersistEdi870Async(Edi870Batch batch, EdiPartnerProfile profile, DateTime timestamp, CancellationToken ct);
     Task<EdiPartnerProfile?> GetEdiPartnerAsync(long customerId, string transactionSet, CancellationToken ct);
     Task<IReadOnlyList<EdiPartnerProfile>> ListEdiPartnersAsync(string? transactionSet, CancellationToken ct);

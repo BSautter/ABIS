@@ -4355,6 +4355,60 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Generate + persist the 846 (Inventory Advice) for a customer (default Cleveland-Cliffs 3061) — a full on-hand inventory snapshot (skids + coils), built and stored but NEVER transmitted. Returns status 'nothing' when there's no on-hand inventory; view the payload at /edi/transactions/{ediFileId}/payload. 422 if the customer isn't a configured 846 partner. The 846 is a snapshot — it may be regenerated (no dedup guard).
+     * @param customerId (optional)
+     * @return OK
+     */
+    generateEdi846(customerId) {
+        let url_ = this.baseUrl + "/api/edi/846/generate?";
+        if (customerId === null)
+            throw new globalThis.Error("The parameter 'customerId' cannot be null.");
+        else if (customerId !== undefined)
+            url_ += "customerId=" + encodeURIComponent("" + customerId) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGenerateEdi846(_response);
+        });
+    }
+    processGenerateEdi846(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = Edi846Result.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 422) {
+            return response.text().then((_responseText) => {
+                return throwException("Unprocessable Content", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * The per-(customer, transaction set) EDI trading-partner profiles — the config backbone that lets each customer have different requirements for their 861/870/846/… documents. Optionally filter by transactionSet.
      * @param transactionSet (optional)
      * @return OK
@@ -16112,6 +16166,44 @@ export class DowntimeSegmentWrite {
         data["causeId"] = this.causeId;
         data["durationSeconds"] = this.durationSeconds;
         data["note"] = this.note;
+        return data;
+    }
+}
+export class Edi846Result {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.status = _data["status"];
+            this.partner = _data["partner"];
+            this.ediFileId = _data["ediFileId"];
+            this.ediFileName = _data["ediFileName"];
+            this.skidCount = _data["skidCount"];
+            this.coilCount = _data["coilCount"];
+            this.transmitted = _data["transmitted"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new Edi846Result();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["status"] = this.status;
+        data["partner"] = this.partner;
+        data["ediFileId"] = this.ediFileId;
+        data["ediFileName"] = this.ediFileName;
+        data["skidCount"] = this.skidCount;
+        data["coilCount"] = this.coilCount;
+        data["transmitted"] = this.transmitted;
         return data;
     }
 }

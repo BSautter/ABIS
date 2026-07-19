@@ -57,7 +57,7 @@ const client = new AbisClient(base, {
 
 test('listCoils returns typed, server-sorted results', async () => {
   const page = await client.listCoils(1, 50, undefined, undefined, undefined, undefined, 'netWt', 'asc');
-  assert.equal(page.totalCount, 4);
+  assert.equal(page.totalCount, 5); // 5001–5004 + the Cliffs 846 on-hand coil (4962)
   assert.equal(page.items[0].coilAbcNum, 5003); // lowest net_wt first
 });
 

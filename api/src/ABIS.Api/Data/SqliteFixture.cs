@@ -809,6 +809,23 @@ public static class SqliteFixture
             VALUES (990, 4990, 2, 2000, 25000)
             """);
 
+        // Cleveland-Cliffs (customer 3061) on-hand inventory for the 846 coil snapshot: one standalone on-hand coil
+        // (status 12, Ready for Ownership Transfer). The skid-path assembly is covered by the endpoint + first real
+        // run; the skid *segment* output is unit-tested via a synthetic snapshot in Edi846GeneratorTests. (A full
+        // Cliffs job/skid chain here would shift several unrelated job/skid count fixtures.)
+        conn.Execute(
+            """
+            INSERT INTO customer (customer_id, customer_full_name, customer_short_name, customer_city, customer_state,
+                customer_type, edi_req, customer_duns_number_string)
+            VALUES (3061, 'CLIFFS STEEL-CLEVELAND', 'CLIFFS-CLE', 'Cleveland', 'OH', 1, 'Y', '606072130')
+            """);
+        conn.Execute(
+            """
+            INSERT INTO coil (coil_abc_num, coil_org_num, coil_gauge, coil_width, coil_status, customer_id, lot_num,
+                coil_alloy2, net_wt, net_wt_balance, vo, customer_po, production_desc_code)
+            VALUES (4962, 'CLF-COIL-B', 0.06, 52, 12, 3061, 'CLF-LOT-B', 'CLF6061', 10000, 9500, 'VO-B', 'PO-B', '01')
+            """);
+
         // EDI trading-partner profiles (the config backbone) seeded from the legacy per-customer procs:
         // Novelis (1153/1459/2582) + Aleris (1980) 861s, and the Aleris 870. Each customer's envelope +
         // enablement live here; `variant` selects the generator body path.

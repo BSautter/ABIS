@@ -3898,6 +3898,63 @@ public sealed class AbisRepository : IAbisRepository
             """, new { pl = packingList }, cancellationToken: ct));
     }
 
+    /// <summary>Assemble a customer's full on-hand inventory snapshot for an 846 (Cleveland-Cliffs). Two sources,
+    /// mirroring the live proc's cursors: on-hand sheet skids (sheet_skid ⋈ detail ⋈ production_sheet_item ⋈ coil ⋈
+    /// job/order ⋈ the skid-status code map) and on-hand coils (coil ⋈ the coil-status code map), both filtered to
+    /// the customer + the on-hand status sets. The proc's scrap cursor is dead code, so no scrap.</summary>
+    public async Task<Edi846Snapshot> AssembleEdi846Async(long customerId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var skids = (await conn.QueryAsync<Edi846SkidItem>(new CommandDefinition(
+            """
+            SELECT s.sheet_skid_num AS SheetSkidNum, c.vo AS Vo, c.customer_po AS CustomerPo, c.coil_org_num AS CoilOrgNum,
+                   x.table67_material_class AS Table67, x.table70_material_status_op AS Table70, psi.prod_item_net_wt AS NetWt
+              FROM sheet_skid s
+              JOIN sheet_skid_detail d ON d.sheet_skid_num = s.sheet_skid_num
+              JOIN production_sheet_item psi ON psi.prod_item_num = d.prod_item_num
+              JOIN coil c ON c.coil_abc_num = psi.coil_abc_num
+              JOIN ab_job j ON j.ab_job_num = s.ab_job_num
+              JOIN customer_order o ON o.order_abc_num = j.order_abc_num
+              JOIN order_item oi ON oi.order_abc_num = j.order_abc_num AND oi.order_item_num = j.order_item_num
+              LEFT JOIN abis_x12_skid x ON x.abis_skid_status = s.skid_sheet_status
+             WHERE c.customer_id = :cust
+               AND s.skid_sheet_status IN (16, 1, 4, 7, 13, 5, 2, 12, 8, 15, 10)
+             ORDER BY s.sheet_skid_num
+            """, new { cust = customerId }, cancellationToken: ct))).AsList();
+        var coils = (await conn.QueryAsync<Edi846CoilItem>(new CommandDefinition(
+            """
+            SELECT c.coil_abc_num AS CoilAbcNum, c.vo AS Vo, c.customer_po AS CustomerPo, c.coil_org_num AS CoilOrgNum,
+                   c.production_desc_code AS ProductionDescCode, x.table70_material_status_op AS Table70, c.net_wt_balance AS NetWtBalance
+              FROM coil c
+              LEFT JOIN abis_x12_coil x ON x.abis_coil_status = c.coil_status
+             WHERE c.customer_id = :cust
+               AND c.coil_status IN (1, 2, 4, 11, 12, 7, 3, 8, 6, 14)
+             ORDER BY c.coil_abc_num
+            """, new { cust = customerId }, cancellationToken: ct))).AsList();
+        return new Edi846Snapshot { CustomerId = customerId, Skids = skids, Coils = coils };
+    }
+
+    /// <summary>Generate + persist the 846 for an inventory snapshot via the shared EDI sink (tracking row + payload
+    /// CLOB). The 846 is a point-in-time snapshot with no report-once marker (it can be regenerated). Never transmits.</summary>
+    public async Task<Edi846Result> PersistEdi846Async(Edi846Snapshot snap, EdiPartnerProfile profile, DateTime timestamp, CancellationToken ct)
+    {
+        if (snap.ItemCount == 0)
+            return new Edi846Result { Status = "nothing", Partner = "Cleveland-Cliffs", Transmitted = false };
+
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var (ediFileId, fileName, payload) = await WriteEdiTransactionAsync(
+            conn, (DbTransaction)tx, "846", profile.ReceiverId ?? "606072130", profile.CustomerId, null, timestamp,
+            id => Edi846Generator.Generate(snap, profile, id, id, timestamp),
+            id => Edi846Generator.FileName(profile, id), ct);
+        await tx.CommitAsync(ct);
+        return new Edi846Result
+        {
+            Status = "generated", Partner = "Cleveland-Cliffs", Transmitted = false, EdiFileId = ediFileId,
+            EdiFileName = fileName, SkidCount = snap.Skids.Count, CoilCount = snap.Coils.Count,
+        };
+    }
+
     public Task<PagedResult<EdiLogEntry>> GetEdiLogAsync(int page, int pageSize, long? customerId, string? orderBy, CancellationToken ct)
     {
         var p = new DynamicParameters();

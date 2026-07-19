@@ -111,9 +111,12 @@ Version `004010` for the SQL sets (861/870/846/863); `002002`/`002040` for the P
    proc's **scrap cursor is dead code** → skids + coils only. The **`ABIS_X12_COIL/SKID` + scrap AISI code maps are
    seeded** (schema + fixture) from the live .230 data ([[abis-edi-846-codemaps]]); the Cliffs 846 partner profile
    is seeded too. **No byte-golden** (archived Cliffs 846s are the empty "Nothing to report." placeholder) → validated
-   by proc-fidelity + a structural test; confirm the first real output with the plant. **Still to wire (next slice):**
+   by proc-fidelity + a structural test; confirm the first real output with the plant. **Wired ✅:**
    `AssembleEdi846Async` (the on-hand inventory query: sheet_skid ⋈ … ⋈ coil ⋈ code-map for customer 3061 + the coil
-   snapshot) + `POST /edi/846/generate` + `outbound_edi_transaction` persistence (legacy commented its insert — re-enable).
+   snapshot with the status filters) + `POST /edi/846/generate?customerId=3061` (EDI-gated, 422 if not a partner,
+   status 'nothing' when empty) + `outbound_edi_transaction` persistence via the shared sink (the 846 is a snapshot,
+   so no report-once marker — it may be regenerated). The coil path is repo-tested; the skid path's query is
+   exercised at first real run (its segment output is unit-tested via a synthetic snapshot).
 4. **856 ASN** — event-driven at shipment dispatch; partners Alcan→GM, Alcan→Ford (dual customer + Alcan-hub file);
    writes `edi_log` + `edi_out_file` (not `outbound_edi_transaction` today).
 5. **863 Test Cert** — operator-driven (lab Instron results); writes `edi_file_863` (full payload) + `outbound_edi_transaction`.

@@ -291,7 +291,7 @@ public sealed class RepositoryTests : IDisposable
     public async Task GetCustomers_lists_and_filters_by_name()
     {
         var all = await _repo.GetCustomersAsync(1, 25, name: null, orderBy: null, CancellationToken.None);
-        Assert.Equal(6, all.TotalCount);   // ACME + BETA + Novelis Kingston/Oswego/Guthrie (1153/1459/2582) + Aleris (1980)
+        Assert.Equal(7, all.TotalCount);   // ACME + BETA + Novelis Kingston/Oswego/Guthrie (1153/1459/2582) + Aleris (1980) + Cliffs (3061)
 
         var acme = await _repo.GetCustomersAsync(1, 25, name: "ACME", orderBy: null, CancellationToken.None);
         Assert.Single(acme.Items);
@@ -1074,6 +1074,35 @@ public sealed class RepositoryTests : IDisposable
         var existing = await _repo.GetEdi856ForPackingListAsync(8850, CancellationToken.None);
         Assert.NotNull(existing);
         Assert.Equal(result.EdiFileId, existing!.EdiFileId);
+    }
+
+    [Fact]
+    public async Task Edi846_assembles_cliffs_inventory_and_generates()
+    {
+        // Cleveland-Cliffs (3061) on-hand inventory: one standalone on-hand coil (4962, status 12) → one coil line.
+        var snap = await _repo.AssembleEdi846Async(3061, CancellationToken.None);
+        Assert.Empty(snap.Skids);
+        var coil = Assert.Single(snap.Coils);
+        Assert.Equal(4962, coil.CoilAbcNum);
+        Assert.Equal("01", coil.ProductionDescCode);
+        Assert.Equal("0", coil.Table70);    // coil status 12 (ready for ownership transfer) → table70 '0'
+        Assert.Equal(9500m, coil.NetWtBalance);
+
+        var profile = await _repo.GetEdiPartnerAsync(3061, "846", CancellationToken.None);
+        Assert.NotNull(profile);
+        var result = await _repo.PersistEdi846Async(snap, profile!, new DateTime(2026, 7, 11, 14, 30, 0), CancellationToken.None);
+        Assert.Equal("generated", result.Status);
+        Assert.Equal(0, result.SkidCount);
+        Assert.Equal(1, result.CoilCount);
+
+        var payload = await _repo.GetEdiPayloadAsync(result.EdiFileId!.Value, CancellationToken.None);
+        Assert.NotNull(payload);
+        Assert.Contains("ST*846*", payload!.Payload);
+        Assert.Contains("N1*SU**1*606072130", payload.Payload);   // Cliffs = material owner
+        Assert.Contains("LIN*1*VO*VO-B*PO*PO-B*SN*CLF-COIL-B", payload.Payload);   // the coil line
+        Assert.Contains("PID*S*MA*ST*0", payload.Payload);        // coil status 12 → table70 '0'
+        Assert.Contains("CTT*1", payload.Payload);
+        Assert.Equal("846", (await _repo.GetEdiTransactionAsync(result.EdiFileId!.Value, CancellationToken.None))!.TransactionTypeId);
     }
 
     [Fact]
