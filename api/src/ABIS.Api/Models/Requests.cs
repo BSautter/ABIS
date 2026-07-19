@@ -832,6 +832,7 @@ public sealed class EdiPartnerWrite
     public string? SegmentSuffix { get; set; }
     public string? EnvelopeVersion { get; set; }
     public string? GsFunctionalCode { get; set; }
+    public string? GsSenderCode { get; set; }
     public string? FilePrefix { get; set; }
     public string? ItemReference { get; set; }
 }

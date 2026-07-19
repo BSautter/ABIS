@@ -13223,6 +13223,10 @@
             "type": "string",
             "nullable": true
           },
+          "gsSenderCode": {
+            "type": "string",
+            "nullable": true
+          },
           "filePrefix": {
             "type": "string",
             "nullable": true
@@ -13274,6 +13278,10 @@
             "nullable": true
           },
           "gsFunctionalCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "gsSenderCode": {
             "type": "string",
             "nullable": true
           },

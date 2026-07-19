@@ -277,8 +277,8 @@ public sealed class AbisRepository : IAbisRepository
         customer_id AS CustomerId, transaction_set AS TransactionSet, enabled AS Enabled, variant AS Variant,
         receiver_qualifier AS ReceiverQualifier, receiver_id AS ReceiverId,
         COALESCE(component_separator, '') AS ComponentSeparator, COALESCE(segment_suffix, '') AS SegmentSuffix,
-        envelope_version AS EnvelopeVersion, gs_functional_code AS GsFunctionalCode, file_prefix AS FilePrefix,
-        item_reference AS ItemReference, updated_utc AS UpdatedUtc, updated_by AS UpdatedBy
+        envelope_version AS EnvelopeVersion, gs_functional_code AS GsFunctionalCode, gs_sender_code AS GsSenderCode,
+        file_prefix AS FilePrefix, item_reference AS ItemReference, updated_utc AS UpdatedUtc, updated_by AS UpdatedBy
         """;
 
     private const string EdiLogCols = """
@@ -3307,23 +3307,24 @@ public sealed class AbisRepository : IAbisRepository
         {
             cust = p.CustomerId, set = p.TransactionSet, enabled = p.Enabled ? 1 : 0, variant = p.Variant,
             rq = p.ReceiverQualifier, rid = p.ReceiverId, comp = p.ComponentSeparator, suffix = p.SegmentSuffix,
-            ver = p.EnvelopeVersion, gs = p.GsFunctionalCode, prefix = p.FilePrefix, itemRef = p.ItemReference,
-            now = (DateTime?)DateTime.UtcNow, by = p.UpdatedBy
+            ver = p.EnvelopeVersion, gs = p.GsFunctionalCode, gsSender = p.GsSenderCode, prefix = p.FilePrefix,
+            itemRef = p.ItemReference, now = (DateTime?)DateTime.UtcNow, by = p.UpdatedBy
         };
         var n = await conn.ExecuteAsync(new CommandDefinition(
             """
             UPDATE abis_edi_partner SET enabled = :enabled, variant = :variant, receiver_qualifier = :rq,
                 receiver_id = :rid, component_separator = :comp, segment_suffix = :suffix, envelope_version = :ver,
-                gs_functional_code = :gs, file_prefix = :prefix, item_reference = :itemRef, updated_utc = :now, updated_by = :by
+                gs_functional_code = :gs, gs_sender_code = :gsSender, file_prefix = :prefix, item_reference = :itemRef,
+                updated_utc = :now, updated_by = :by
              WHERE customer_id = :cust AND transaction_set = :set
             """, args, cancellationToken: ct));
         if (n == 0)
             await conn.ExecuteAsync(new CommandDefinition(
                 """
                 INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier,
-                    receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, file_prefix,
-                    item_reference, updated_utc, updated_by)
-                VALUES (:cust, :set, :enabled, :variant, :rq, :rid, :comp, :suffix, :ver, :gs, :prefix, :itemRef, :now, :by)
+                    receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, gs_sender_code,
+                    file_prefix, item_reference, updated_utc, updated_by)
+                VALUES (:cust, :set, :enabled, :variant, :rq, :rid, :comp, :suffix, :ver, :gs, :gsSender, :prefix, :itemRef, :now, :by)
                 """, args, cancellationToken: ct));
         return (await GetEdiPartnerAsync(p.CustomerId, p.TransactionSet, ct))!;
     }

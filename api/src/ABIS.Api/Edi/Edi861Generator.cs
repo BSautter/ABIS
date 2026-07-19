@@ -49,14 +49,25 @@ public static class Edi861Generator
         ReceivingBol bol, IReadOnlyList<ReceivingBolCoil> coils, EdiPartnerProfile profile, string supplierDuns,
         long groupControl, long setControl, DateTime timestamp)
     {
-        // Body flavour from the profile variant (envelope itself is data, applied by EdiInterchange.Open).
-        var (linStyle, headerRefBm, mfName, coilRefBm, netWtQual) = profile.Variant?.Trim().ToLowerInvariant() switch
+        var variant = profile.Variant?.Trim().ToLowerInvariant();
+        var w = EdiInterchange.Open(profile, "861", "RC", "00200", groupControl, setControl, timestamp);
+
+        // Arconic (customer 2784) is a structurally distinct body (REF*MA, RCD**1*UN, LIN VO/VN/SN/HN, no
+        // PID*QAS/REF*BM/REF*RV/PRF, MEA*WT** + MEA*PD*..*ED + MEA*PD*LN) — its own path. See f_edi_arconic_861.
+        if (variant == "arconic")
+        {
+            ArconicBody(w, bol, coils, supplierDuns, timestamp);
+            w.Segment("CTT", coils.Count.ToString(CultureInfo.InvariantCulture));
+            return w.Close();
+        }
+
+        // ---- novelis/aleris body flavour (envelope itself is data, applied by EdiInterchange.Open) ----
+        var (linStyle, headerRefBm, mfName, coilRefBm, netWtQual) = variant switch
         {
             "aleris" => (Edi861LinStyle.Aleris, true, (string?)"Aleris", false, "WT"),
             _ => (Edi861LinStyle.Novelis, false, (string?)null, true, ""),
         };
 
-        var w = EdiInterchange.Open(profile, "861", "RC", "00200", groupControl, setControl, timestamp);
         var bolNum = bol.Bol ?? "";
         var yyyyMMdd = timestamp.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
         var hhmm = timestamp.ToString("HHmm", CultureInfo.InvariantCulture);
@@ -108,9 +119,53 @@ public static class Edi861Generator
         return w.Close();
     }
 
+    /// <summary>The Arconic 861 body (legacy <c>f_edi_arconic_861</c>): a <c>REF*MA</c> header with N1 MF/OU/SU,
+    /// and a per-coil layout distinct from Novelis/Aleris — <c>RCD**1*UN</c>, <c>LIN**VO*{vo}*VN*01*SN*{coil}*HN*{lot}</c>,
+    /// two PIDs, <c>REF*SE</c> + <c>DTM*206</c>, unqualified <c>MEA*WT**</c> weights, and <c>MEA*PD*..*ED</c> +
+    /// <c>MEA*PD*LN</c> dimensions. N1*MF uses the customer's own DUNS. Never transmits.</summary>
+    private static void ArconicBody(X12Writer w, ReceivingBol bol, IReadOnlyList<ReceivingBolCoil> coils,
+        string supplierDuns, DateTime timestamp)
+    {
+        var bolNum = bol.Bol ?? "";
+        var received = bol.ReceivedDate ?? timestamp;
+        var yyyyMMdd = timestamp.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+        var hhmm = timestamp.ToString("HHmm", CultureInfo.InvariantCulture);
+
+        w.Segment("BRA", bolNum, yyyyMMdd, "00", "1", hhmm);
+        w.Segment("REF", "MA", bolNum);
+        // DTM*050 uses a 2-digit-year received date + time (legacy 'yymmdd*hh24mi').
+        w.Segment("DTM", "050", received.ToString("yyMMdd", CultureInfo.InvariantCulture),
+            received.ToString("HHmm", CultureInfo.InvariantCulture), "ED");
+        w.Segment("N1", "MF", "", "1", supplierDuns);
+        w.Segment("N1", "OU", "", "1", EdiInterchange.SenderParty);
+        w.Segment("N1", "SU", "", "1", supplierDuns);
+
+        var receivedDate8 = received.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+        foreach (var c in coils)
+        {
+            w.Segment("RCD", "", "1", "UN");
+            w.Segment("LIN", "", "VO", c.PurchaseOrderNum ?? "", "VN", "01", "SN", c.CoilOrgNum, "HN", c.Lot);
+            w.Segment("PID", "S", "MAC", "ST", "01", "", "", "67");
+            w.Segment("PID", "S", "MA", "ST", "7", "", "", "70");
+            w.Segment("REF", "SE", (c.CoilAbcNum ?? 0).ToString(CultureInfo.InvariantCulture));
+            w.Segment("DTM", "206", receivedDate8);
+            w.Segment("MEA", "WT", "", Int(c.NetWeight), "01");
+            w.Segment("MEA", "WT", "", Int(c.GrossWeight), "24");
+            w.Segment("MEA", "PD", "TH", Dec4(c.CoilGauge), "ED");
+            w.Segment("MEA", "PD", "WD", Dec4(c.CoilWidth), "ED");
+            w.Segment("MEA", "PD", "LN", DecTrim(c.LinealFeed), "LF");
+        }
+    }
+
     /// <summary>The partner display name for a profile variant (for the result note).</summary>
-    public static string DisplayName(EdiPartnerProfile profile) =>
-        profile.Variant?.Trim().ToLowerInvariant() == "aleris" ? "Aleris" : "Novelis";
+    public static string DisplayName(EdiPartnerProfile profile) => profile.Variant?.Trim().ToLowerInvariant() switch
+    {
+        "aleris" => "Aleris",
+        "arconic" => "Arconic",
+        "constellium" => "Constellium",
+        "commonwealth" => "Commonwealth",
+        _ => "Novelis",
+    };
 
     private static string Int(int? v) => (v ?? 0).ToString(CultureInfo.InvariantCulture);
     // Legacy FM90.0000 / FM99990.0000 — four decimals, at least one leading digit, no padding blanks.

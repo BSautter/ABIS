@@ -39,6 +39,8 @@ public static class EdiInterchange
         var receiverId = string.IsNullOrEmpty(profile.ReceiverId) ? "" : profile.ReceiverId!;
         var version = string.IsNullOrEmpty(profile.EnvelopeVersion) ? versionDefault : profile.EnvelopeVersion!;
         var gsFunc = string.IsNullOrEmpty(profile.GsFunctionalCode) ? gsFunctionalDefault : profile.GsFunctionalCode!;
+        // GS02 usually equals the ISA sender id; some partners assign their own (e.g. Arconic 861 = R0P7ATN).
+        var gsSender = string.IsNullOrEmpty(profile.GsSenderCode) ? SenderId : profile.GsSenderCode!;
 
         var gs = groupControl.ToString(CultureInfo.InvariantCulture);
         var yyMMdd = timestamp.ToString("yyMMdd", CultureInfo.InvariantCulture);
@@ -47,7 +49,7 @@ public static class EdiInterchange
 
         w.Isa("00", "", "00", "", SenderQualifier, SenderId, receiverQualifier, receiverId,
             yyMMdd, hhmm, "U", version, gs, "0", "P");
-        w.Gs(gsFunc, SenderId, receiverId, yyyyMMdd, hhmm, gs, "X", "004010");
+        w.Gs(gsFunc, gsSender, receiverId, yyyyMMdd, hhmm, gs, "X", "004010");
         w.St(setId, setControl.ToString(CultureInfo.InvariantCulture));
         return w;
     }

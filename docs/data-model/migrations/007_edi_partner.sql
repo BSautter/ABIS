@@ -25,16 +25,20 @@ CREATE TABLE abis_edi_partner (
   segment_suffix       VARCHAR2(2),              -- '' or '~'
   envelope_version     VARCHAR2(6),              -- ISA12
   gs_functional_code   VARCHAR2(4),              -- GS01
+  gs_sender_code       VARCHAR2(20),             -- GS02 override when ≠ the ISA sender (e.g. Arconic R0P7ATN)
   file_prefix          VARCHAR2(40),
   item_reference       VARCHAR2(40),             -- per-partner magic body constant
   updated_utc          DATE,
   updated_by           VARCHAR2(64),
   CONSTRAINT pk_abis_edi_partner PRIMARY KEY (customer_id, transaction_set));
+-- Additive column for tables provisioned before gs_sender_code existed (skip if it already exists):
+-- ALTER TABLE abis_edi_partner ADD (gs_sender_code VARCHAR2(20));
 
 -- Seed the partners visible in the legacy procs (adjust/extend from each partner's EDI implementation guide):
-INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier, receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, file_prefix, item_reference) VALUES (1153, '861', 1, 'novelis', '09', '0015049350011G', '', '', '00200', 'RC', 'S_Novelis_', NULL);
-INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier, receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, file_prefix, item_reference) VALUES (1459, '861', 1, 'novelis', '09', '0015049350011G', '', '', '00200', 'RC', 'S_Novelis_', NULL);
-INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier, receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, file_prefix, item_reference) VALUES (2582, '861', 1, 'novelis', '09', '0015049350011G', '', '', '00200', 'RC', 'S_Novelis_', NULL);
-INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier, receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, file_prefix, item_reference) VALUES (1980, '861', 1, 'aleris', 'ZZ', '964790856', '>', '', '00200', 'RC', 'S_edi_', NULL);
-INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier, receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, file_prefix, item_reference) VALUES (1980, '870', 1, 'aleris', 'ZZ', '964790856', '>', '', '00401', 'RS', 'S_aleris_', '300578504');
+INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier, receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, gs_sender_code, file_prefix, item_reference) VALUES (1153, '861', 1, 'novelis', '09', '0015049350011G', '', '', '00200', 'RC', NULL, 'S_Novelis_', NULL);
+INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier, receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, gs_sender_code, file_prefix, item_reference) VALUES (1459, '861', 1, 'novelis', '09', '0015049350011G', '', '', '00200', 'RC', NULL, 'S_Novelis_', NULL);
+INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier, receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, gs_sender_code, file_prefix, item_reference) VALUES (2582, '861', 1, 'novelis', '09', '0015049350011G', '', '', '00200', 'RC', NULL, 'S_Novelis_', NULL);
+INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier, receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, gs_sender_code, file_prefix, item_reference) VALUES (1980, '861', 1, 'aleris', 'ZZ', '964790856', '>', '', '00200', 'RC', NULL, 'S_edi_', NULL);
+INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier, receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, gs_sender_code, file_prefix, item_reference) VALUES (1980, '870', 1, 'aleris', 'ZZ', '964790856', '>', '', '00401', 'RS', NULL, 'S_aleris_', '300578504');
+INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier, receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, gs_sender_code, file_prefix, item_reference) VALUES (2784, '861', 1, 'arconic', '01', '961613887', '>', '', '00401', 'SH', 'R0P7ATN', 'S_arconic_861_', NULL);
 COMMIT;

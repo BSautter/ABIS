@@ -1917,7 +1917,8 @@ public static class ApiEndpoints
                     ReceiverQualifier = body.ReceiverQualifier, ReceiverId = body.ReceiverId,
                     ComponentSeparator = body.ComponentSeparator, SegmentSuffix = body.SegmentSuffix,
                     EnvelopeVersion = body.EnvelopeVersion, GsFunctionalCode = body.GsFunctionalCode,
-                    FilePrefix = body.FilePrefix, ItemReference = body.ItemReference, UpdatedBy = login,
+                    GsSenderCode = body.GsSenderCode, FilePrefix = body.FilePrefix, ItemReference = body.ItemReference,
+                    UpdatedBy = login,
                 }, ct);
                 return Results.Ok(saved);
             })

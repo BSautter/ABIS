@@ -16142,6 +16142,7 @@ export class EdiPartnerProfile {
             this.segmentSuffix = _data["segmentSuffix"];
             this.envelopeVersion = _data["envelopeVersion"];
             this.gsFunctionalCode = _data["gsFunctionalCode"];
+            this.gsSenderCode = _data["gsSenderCode"];
             this.filePrefix = _data["filePrefix"];
             this.itemReference = _data["itemReference"];
             this.updatedUtc = _data["updatedUtc"] ? new Date(_data["updatedUtc"].toString()) : undefined;
@@ -16166,6 +16167,7 @@ export class EdiPartnerProfile {
         data["segmentSuffix"] = this.segmentSuffix;
         data["envelopeVersion"] = this.envelopeVersion;
         data["gsFunctionalCode"] = this.gsFunctionalCode;
+        data["gsSenderCode"] = this.gsSenderCode;
         data["filePrefix"] = this.filePrefix;
         data["itemReference"] = this.itemReference;
         data["updatedUtc"] = this.updatedUtc ? this.updatedUtc.toISOString() : undefined;
@@ -16192,6 +16194,7 @@ export class EdiPartnerWrite {
             this.segmentSuffix = _data["segmentSuffix"];
             this.envelopeVersion = _data["envelopeVersion"];
             this.gsFunctionalCode = _data["gsFunctionalCode"];
+            this.gsSenderCode = _data["gsSenderCode"];
             this.filePrefix = _data["filePrefix"];
             this.itemReference = _data["itemReference"];
         }
@@ -16212,6 +16215,7 @@ export class EdiPartnerWrite {
         data["segmentSuffix"] = this.segmentSuffix;
         data["envelopeVersion"] = this.envelopeVersion;
         data["gsFunctionalCode"] = this.gsFunctionalCode;
+        data["gsSenderCode"] = this.gsSenderCode;
         data["filePrefix"] = this.filePrefix;
         data["itemReference"] = this.itemReference;
         return data;

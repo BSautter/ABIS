@@ -39,6 +39,42 @@ public class Edi861GeneratorTests
         CustomerId = 1980, TransactionSet = "861", Enabled = true, Variant = "aleris",
         ReceiverQualifier = "ZZ", ReceiverId = "964790856", ComponentSeparator = ">", FilePrefix = "S_edi_",
     };
+    private static EdiPartnerProfile ArconicProfile() => new()
+    {
+        CustomerId = 2784, TransactionSet = "861", Enabled = true, Variant = "arconic",
+        ReceiverQualifier = "01", ReceiverId = "961613887", ComponentSeparator = ">",
+        EnvelopeVersion = "00401", GsFunctionalCode = "SH", GsSenderCode = "R0P7ATN", FilePrefix = "S_arconic_861_",
+    };
+
+    [Fact]
+    public void Arconic_861_uses_its_distinct_envelope_and_body()
+    {
+        var coils = new[] { Coil("AC-9", 800001, 12000, 12100) };
+        var lines = Lines(Edi861Generator.Generate(Bol(2784), coils, ArconicProfile(), "961613999", Ctrl, Ctrl, Now));
+
+        // Envelope — receiver 01/961613887, version 00401, GS group code SH with the R0P7ATN sender override.
+        var isa = lines[0].Split('*');
+        Assert.Equal("01", isa[7]);
+        Assert.Equal("961613887".PadRight(15), isa[8]);
+        Assert.Equal("00401", isa[12]);
+        Assert.Equal(">", isa[16]);
+        Assert.Equal("GS*SH*R0P7ATN*961613887*20260711*1430*1234*X*004010", lines[1]);
+
+        // Header — REF*MA + N1 MF/OU/SU (MF = the customer's own DUNS).
+        Assert.Contains("REF*MA*BOL-NOV-500", lines);
+        Assert.Contains("N1*MF**1*961613999", lines);
+        Assert.Contains("N1*OU**1*039630926", lines);
+        Assert.Contains("N1*SU**1*961613999", lines);
+
+        // Coil block — RCD**1*UN, LIN VO/VN/SN/HN, unqualified MEA*WT**, MEA*PD*..*ED + MEA*PD*LN, no PID*QAS.
+        Assert.Contains("RCD**1*UN", lines);
+        Assert.Contains("LIN**VO*PO-55*VN*01*SN*AC-9*HN*HL-77", lines);
+        Assert.Contains("PID*S*MAC*ST*01***67", lines);
+        Assert.Contains("MEA*WT**12000*01", lines);
+        Assert.Contains("MEA*PD*TH*0.0400*ED", lines);
+        Assert.Contains("MEA*PD*LN*3500.5*LF", lines);
+        Assert.DoesNotContain(lines, l => l.StartsWith("PID*S*QAS"));
+    }
 
     [Fact]
     public void Novelis_861_has_the_expected_envelope_and_body()

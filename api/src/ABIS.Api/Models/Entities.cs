@@ -1649,8 +1649,11 @@ public sealed class EdiPartnerProfile
     public string? SegmentSuffix { get; set; }
     /// <summary>ISA12 envelope version ("00200" for 861, "00401" for 870/846).</summary>
     public string? EnvelopeVersion { get; set; }
-    /// <summary>GS01 functional identifier code ("RC" 861, "RS" 870, "IB" 846, …).</summary>
+    /// <summary>GS01 functional identifier code ("RC" 861, "RS" 870, "IB" 846, "SH" Arconic/Constellium 861).</summary>
     public string? GsFunctionalCode { get; set; }
+    /// <summary>GS02 sender code, when it differs from the ISA sender id (e.g. Arconic 861 uses <c>R0P7ATN</c>).
+    /// Null → the standard ABCo sender (<c>039630926T</c>).</summary>
+    public string? GsSenderCode { get; set; }
     /// <summary>Output file-name prefix (legacy <c>edi_file_prefix</c>).</summary>
     public string? FilePrefix { get; set; }
     /// <summary>A per-partner magic reference used in the body (e.g. the Aleris 870 <c>PRF*RV</c> value).</summary>

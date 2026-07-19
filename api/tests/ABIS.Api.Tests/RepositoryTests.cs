@@ -961,10 +961,16 @@ public sealed class RepositoryTests : IDisposable
         Assert.Equal("00401", ale870.EnvelopeVersion);
         Assert.Equal("RS", ale870.GsFunctionalCode);
 
+        // Arconic 861 — its distinct GS sender override round-trips.
+        var arc = await _repo.GetEdiPartnerAsync(2784, "861", CancellationToken.None);
+        Assert.Equal("arconic", arc!.Variant);
+        Assert.Equal("R0P7ATN", arc.GsSenderCode);
+        Assert.Equal("SH", arc.GsFunctionalCode);
+
         Assert.Null(await _repo.GetEdiPartnerAsync(4001, "861", CancellationToken.None));   // not a configured partner
 
         var all861 = await _repo.ListEdiPartnersAsync("861", CancellationToken.None);
-        Assert.Equal(4, all861.Count);   // Novelis 1153/1459/2582 + Aleris 1980
+        Assert.Equal(5, all861.Count);   // Novelis 1153/1459/2582 + Aleris 1980 + Arconic 2784
     }
 
     [Fact]

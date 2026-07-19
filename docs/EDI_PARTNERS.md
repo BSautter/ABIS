@@ -15,9 +15,9 @@ row in `abis_edi_partner` (envelope/enablement as data) + a body **variant** in 
 |---|---|---|---|
 | Novelis (Kingston/Oswego/…) | 1153 / 1459 / 2582 | P_CREATE_EDI_861_FOR_ALL / F_EDI_NOVELIS_861 | ✅ #185 |
 | Aleris | 1980 | P_CREATE_EDI_861_FOR_ALERIS / F_EDI_ALERIS_861 | ✅ #185 |
-| Constellium | ? | F_EDI_CONSTELLIUM_861 / P_CREATE_EDI_861_4CONSTELLIUM | 🔶 #59 |
-| Arconic (TN) | 2784 | F_EDI_ARCONIC_861 / EDI_ARCONIC_861_TEST | 🔶 #59 |
-| Commonwealth (= former Aleris) | ? | F_EDI_COMMONWEALTH_861 | 🔶 #59 |
+| Arconic (TN) | 2784 | F_EDI_ARCONIC_861 / EDI_ARCONIC_861_TEST | ✅ #193 (variant `arconic`) |
+| Constellium | **?** | F_EDI_CONSTELLIUM_861 (GS SH, receiver 043207177) | 🔶 #59 — variant ready in source; needs customer_id |
+| Commonwealth (= former Aleris) | **?** | F_EDI_COMMONWEALTH_861 (≈ aleris, receiver 964790856, N1*MF*Commonwealth*1*117791081) | 🔶 #59 — needs customer_id |
 
 ## 870 — Order/Coil Status  ⚠️ only Aleris is built; Novelis + 6 others are missing
 | Partner | Source proc | Status |

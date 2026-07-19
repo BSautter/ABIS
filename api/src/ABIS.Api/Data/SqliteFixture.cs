@@ -406,7 +406,7 @@ public static class SqliteFixture
             CREATE TABLE abis_edi_partner (
                 customer_id INTEGER, transaction_set TEXT, enabled INTEGER, variant TEXT,
                 receiver_qualifier TEXT, receiver_id TEXT, component_separator TEXT, segment_suffix TEXT,
-                envelope_version TEXT, gs_functional_code TEXT, file_prefix TEXT, item_reference TEXT,
+                envelope_version TEXT, gs_functional_code TEXT, gs_sender_code TEXT, file_prefix TEXT, item_reference TEXT,
                 updated_utc TEXT, updated_by TEXT,
                 PRIMARY KEY (customer_id, transaction_set));
 
@@ -781,16 +781,18 @@ public static class SqliteFixture
         conn.Execute(
             """
             INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier,
-                receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, file_prefix, item_reference)
-            VALUES (:CustomerId, :TransactionSet, 1, :Variant, :RecvQual, :RecvId, :Comp, :Suffix, :Ver, :Gs, :Prefix, :ItemRef)
+                receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, gs_sender_code, file_prefix, item_reference)
+            VALUES (:CustomerId, :TransactionSet, 1, :Variant, :RecvQual, :RecvId, :Comp, :Suffix, :Ver, :Gs, :GsSender, :Prefix, :ItemRef)
             """,
             new[]
             {
-                new { CustomerId = 1153L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00200", Gs = "RC", Prefix = "S_Novelis_", ItemRef = (string?)null },
-                new { CustomerId = 1459L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00200", Gs = "RC", Prefix = "S_Novelis_", ItemRef = (string?)null },
-                new { CustomerId = 2582L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00200", Gs = "RC", Prefix = "S_Novelis_", ItemRef = (string?)null },
-                new { CustomerId = 1980L, TransactionSet = "861", Variant = "aleris", RecvQual = "ZZ", RecvId = "964790856", Comp = ">", Suffix = "", Ver = "00200", Gs = "RC", Prefix = "S_edi_", ItemRef = (string?)null },
-                new { CustomerId = 1980L, TransactionSet = "870", Variant = "aleris", RecvQual = "ZZ", RecvId = "964790856", Comp = ">", Suffix = "", Ver = "00401", Gs = "RS", Prefix = "S_aleris_", ItemRef = (string?)"300578504" }
+                new { CustomerId = 1153L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00200", Gs = "RC", GsSender = (string?)null, Prefix = "S_Novelis_", ItemRef = (string?)null },
+                new { CustomerId = 1459L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00200", Gs = "RC", GsSender = (string?)null, Prefix = "S_Novelis_", ItemRef = (string?)null },
+                new { CustomerId = 2582L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00200", Gs = "RC", GsSender = (string?)null, Prefix = "S_Novelis_", ItemRef = (string?)null },
+                new { CustomerId = 1980L, TransactionSet = "861", Variant = "aleris", RecvQual = "ZZ", RecvId = "964790856", Comp = ">", Suffix = "", Ver = "00200", Gs = "RC", GsSender = (string?)null, Prefix = "S_edi_", ItemRef = (string?)null },
+                new { CustomerId = 1980L, TransactionSet = "870", Variant = "aleris", RecvQual = "ZZ", RecvId = "964790856", Comp = ">", Suffix = "", Ver = "00401", Gs = "RS", GsSender = (string?)null, Prefix = "S_aleris_", ItemRef = (string?)"300578504" },
+                // Arconic 861 (customer 2784, ARCONIC-TN): its own variant + a distinct GS sender (R0P7ATN) and SH group code.
+                new { CustomerId = 2784L, TransactionSet = "861", Variant = "arconic", RecvQual = "01", RecvId = "961613887", Comp = ">", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)"R0P7ATN", Prefix = "S_arconic_861_", ItemRef = (string?)null }
             });
 
         conn.Execute("""
