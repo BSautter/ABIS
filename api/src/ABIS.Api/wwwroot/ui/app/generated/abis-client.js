@@ -1045,6 +1045,117 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Create or update a customer's EDI trading-partner profile for a document (861/870/846/856/863). Config only — sets how the document is framed; generates/sends nothing.
+     * @return OK
+     */
+    upsertEdiPartner(customerId, transactionSet, body) {
+        let url_ = this.baseUrl + "/api/admin/edi/partners/{customerId}/{transactionSet}";
+        if (customerId === undefined || customerId === null)
+            throw new globalThis.Error("The parameter 'customerId' must be defined.");
+        url_ = url_.replace("{customerId}", encodeURIComponent("" + customerId));
+        if (transactionSet === undefined || transactionSet === null)
+            throw new globalThis.Error("The parameter 'transactionSet' must be defined.");
+        url_ = url_.replace("{transactionSet}", encodeURIComponent("" + transactionSet));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processUpsertEdiPartner(_response);
+        });
+    }
+    processUpsertEdiPartner(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = EdiPartnerProfile.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Remove a customer's EDI trading-partner profile for a document.
+     * @return No Content
+     */
+    deleteEdiPartner(customerId, transactionSet) {
+        let url_ = this.baseUrl + "/api/admin/edi/partners/{customerId}/{transactionSet}";
+        if (customerId === undefined || customerId === null)
+            throw new globalThis.Error("The parameter 'customerId' must be defined.");
+        url_ = url_.replace("{customerId}", encodeURIComponent("" + customerId));
+        if (transactionSet === undefined || transactionSet === null)
+            throw new globalThis.Error("The parameter 'transactionSet' must be defined.");
+        url_ = url_.replace("{transactionSet}", encodeURIComponent("" + transactionSet));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeleteEdiPartner(_response);
+        });
+    }
+    processDeleteEdiPartner(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Send a test email — verifies SMTP + the global test-recipient override (all mail → Email:OverrideRecipient).
      * @return OK
      */
@@ -16059,6 +16170,50 @@ export class EdiPartnerProfile {
         data["itemReference"] = this.itemReference;
         data["updatedUtc"] = this.updatedUtc ? this.updatedUtc.toISOString() : undefined;
         data["updatedBy"] = this.updatedBy;
+        return data;
+    }
+}
+export class EdiPartnerWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.enabled = _data["enabled"];
+            this.variant = _data["variant"];
+            this.receiverQualifier = _data["receiverQualifier"];
+            this.receiverId = _data["receiverId"];
+            this.componentSeparator = _data["componentSeparator"];
+            this.segmentSuffix = _data["segmentSuffix"];
+            this.envelopeVersion = _data["envelopeVersion"];
+            this.gsFunctionalCode = _data["gsFunctionalCode"];
+            this.filePrefix = _data["filePrefix"];
+            this.itemReference = _data["itemReference"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new EdiPartnerWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["enabled"] = this.enabled;
+        data["variant"] = this.variant;
+        data["receiverQualifier"] = this.receiverQualifier;
+        data["receiverId"] = this.receiverId;
+        data["componentSeparator"] = this.componentSeparator;
+        data["segmentSuffix"] = this.segmentSuffix;
+        data["envelopeVersion"] = this.envelopeVersion;
+        data["gsFunctionalCode"] = this.gsFunctionalCode;
+        data["filePrefix"] = this.filePrefix;
+        data["itemReference"] = this.itemReference;
         return data;
     }
 }

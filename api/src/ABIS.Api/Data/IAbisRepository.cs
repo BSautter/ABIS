@@ -240,6 +240,8 @@ public interface IAbisRepository
     Task<Edi870Result> PersistEdi870Async(Edi870Batch batch, EdiPartnerProfile profile, DateTime timestamp, CancellationToken ct);
     Task<EdiPartnerProfile?> GetEdiPartnerAsync(long customerId, string transactionSet, CancellationToken ct);
     Task<IReadOnlyList<EdiPartnerProfile>> ListEdiPartnersAsync(string? transactionSet, CancellationToken ct);
+    Task<EdiPartnerProfile> UpsertEdiPartnerAsync(EdiPartnerProfile profile, CancellationToken ct);
+    Task<bool> DeleteEdiPartnerAsync(long customerId, string transactionSet, CancellationToken ct);
     Task<PagedResult<EdiLogEntry>> GetEdiLogAsync(int page, int pageSize, long? customerId, string? orderBy, CancellationToken ct);
     Task<IReadOnlyList<EdiType>> GetEdiTypesAsync(CancellationToken ct);
     Task<IReadOnlyList<CustomerEdi>> GetCustomerEdiAsync(CancellationToken ct);

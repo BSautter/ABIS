@@ -1356,6 +1356,33 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task EdiPartner_admin_upserts_lists_and_deletes()
+    {
+        // Upsert a new 846 profile (Cleveland-Cliffs) — the admin EDI setup.
+        var put = await _client.PutAsJsonAsync("/api/admin/edi/partners/3061/846", new
+        {
+            enabled = true, variant = "cleveland_cliffs", receiverQualifier = "01", receiverId = "606072130",
+            componentSeparator = "|", segmentSuffix = "~", envelopeVersion = "00401", gsFunctionalCode = "IB",
+            filePrefix = "s_cliffs_ccsc_846_"
+        });
+        Assert.Equal(HttpStatusCode.OK, put.StatusCode);
+        var body = await put.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("cleveland_cliffs", body.GetProperty("variant").GetString());
+        Assert.Equal("|", body.GetProperty("componentSeparator").GetString());
+
+        // It appears in the (public) profile list filtered to 846.
+        var list = await _client.GetFromJsonAsync<JsonElement>("/api/edi/partners?transactionSet=846");
+        Assert.Contains(list.EnumerateArray(), p => p.GetProperty("customerId").GetInt64() == 3061);
+
+        // An unknown transaction set is rejected.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PutAsJsonAsync("/api/admin/edi/partners/3061/999", new { enabled = true })).StatusCode);
+
+        // Delete it (idempotent 404 on the second delete).
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync("/api/admin/edi/partners/3061/846")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.DeleteAsync("/api/admin/edi/partners/3061/846")).StatusCode);
+    }
+
+    [Fact]
     public async Task Dimension_check_absolute_bounds_enforced()
     {
         const string url = "/api/coil-eval/skids/3001/dimension-checks";

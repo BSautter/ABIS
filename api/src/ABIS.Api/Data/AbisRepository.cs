@@ -3298,6 +3298,46 @@ public sealed class AbisRepository : IAbisRepository
             new { t = transactionSet }, cancellationToken: ct))).ToList();
     }
 
+    /// <summary>Insert or update an EDI trading-partner profile (the admin EDI setup). Config only — never
+    /// generates or transmits. Keyed by (customer_id, transaction_set).</summary>
+    public async Task<EdiPartnerProfile> UpsertEdiPartnerAsync(EdiPartnerProfile p, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var args = new
+        {
+            cust = p.CustomerId, set = p.TransactionSet, enabled = p.Enabled ? 1 : 0, variant = p.Variant,
+            rq = p.ReceiverQualifier, rid = p.ReceiverId, comp = p.ComponentSeparator, suffix = p.SegmentSuffix,
+            ver = p.EnvelopeVersion, gs = p.GsFunctionalCode, prefix = p.FilePrefix, itemRef = p.ItemReference,
+            now = (DateTime?)DateTime.UtcNow, by = p.UpdatedBy
+        };
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE abis_edi_partner SET enabled = :enabled, variant = :variant, receiver_qualifier = :rq,
+                receiver_id = :rid, component_separator = :comp, segment_suffix = :suffix, envelope_version = :ver,
+                gs_functional_code = :gs, file_prefix = :prefix, item_reference = :itemRef, updated_utc = :now, updated_by = :by
+             WHERE customer_id = :cust AND transaction_set = :set
+            """, args, cancellationToken: ct));
+        if (n == 0)
+            await conn.ExecuteAsync(new CommandDefinition(
+                """
+                INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier,
+                    receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, file_prefix,
+                    item_reference, updated_utc, updated_by)
+                VALUES (:cust, :set, :enabled, :variant, :rq, :rid, :comp, :suffix, :ver, :gs, :prefix, :itemRef, :now, :by)
+                """, args, cancellationToken: ct));
+        return (await GetEdiPartnerAsync(p.CustomerId, p.TransactionSet, ct))!;
+    }
+
+    /// <summary>Remove an EDI trading-partner profile. Returns false if it didn't exist.</summary>
+    public async Task<bool> DeleteEdiPartnerAsync(long customerId, string transactionSet, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM abis_edi_partner WHERE customer_id = :c AND transaction_set = :t",
+            new { c = customerId, t = transactionSet }, cancellationToken: ct));
+        return n > 0;
+    }
+
     /// <summary>The 861 already generated for a receiving BOL (the idempotency guard), or null.</summary>
     public async Task<EdiPayload?> GetEdi861ForBolAsync(long receivingBolId, CancellationToken ct)
     {

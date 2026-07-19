@@ -820,6 +820,22 @@ public sealed class Customer861FlagWrite
     public string? Create861AtReceiving { get; set; }
 }
 
+/// <summary>Editable fields of an EDI trading-partner profile (<c>abis_edi_partner</c>) — the customer_id +
+/// transaction_set are the path keys. Config only: what a customer's document looks like; generates/sends nothing.</summary>
+public sealed class EdiPartnerWrite
+{
+    public bool Enabled { get; set; } = true;
+    public string? Variant { get; set; }
+    public string? ReceiverQualifier { get; set; }
+    public string? ReceiverId { get; set; }
+    public string? ComponentSeparator { get; set; }
+    public string? SegmentSuffix { get; set; }
+    public string? EnvelopeVersion { get; set; }
+    public string? GsFunctionalCode { get; set; }
+    public string? FilePrefix { get; set; }
+    public string? ItemReference { get; set; }
+}
+
 /// <summary>Body for POST /auth/login — an ABIS user sign-in validated against
 /// <c>security_user</c>. <see cref="Password"/> is verified against the ABIS credential store
 /// (<c>abis_user_credential</c>) when the user has one; users with no credential still sign in

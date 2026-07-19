@@ -810,6 +810,106 @@
         }
       }
     },
+    "/api/admin/edi/partners/{customerId}/{transactionSet}": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Create or update a customer's EDI trading-partner profile for a document (861/870/846/856/863). Config only — sets how the document is framed; generates/sends nothing.",
+        "operationId": "UpsertEdiPartner",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "transactionSet",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EdiPartnerWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EdiPartnerProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Remove a customer's EDI trading-partner profile for a document.",
+        "operationId": "DeleteEdiPartner",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "transactionSet",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/admin/email/test": {
       "post": {
         "tags": [
@@ -13137,6 +13237,51 @@
             "nullable": true
           },
           "updatedBy": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "EdiPartnerWrite": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "variant": {
+            "type": "string",
+            "nullable": true
+          },
+          "receiverQualifier": {
+            "type": "string",
+            "nullable": true
+          },
+          "receiverId": {
+            "type": "string",
+            "nullable": true
+          },
+          "componentSeparator": {
+            "type": "string",
+            "nullable": true
+          },
+          "segmentSuffix": {
+            "type": "string",
+            "nullable": true
+          },
+          "envelopeVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "gsFunctionalCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "filePrefix": {
+            "type": "string",
+            "nullable": true
+          },
+          "itemReference": {
             "type": "string",
             "nullable": true
           }

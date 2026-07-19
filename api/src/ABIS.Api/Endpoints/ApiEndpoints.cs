@@ -1903,6 +1903,37 @@ public static class ApiEndpoints
            .WithSummary("Set a customer's 'create 861 at receiving' flag (Y/N). Config only — generates no EDI.")
            .Produces(StatusCodes.Status200OK).ProducesValidationProblem().Produces(StatusCodes.Status404NotFound);
 
+        // ---- EDI trading-partner profiles (abis_edi_partner) — the per-(customer, document) config backbone ----
+        api.MapPut("/admin/edi/partners/{customerId:long}/{transactionSet}", async (long customerId, string transactionSet, EdiPartnerWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, EdiFeature, 1, ct) is { } deny) return deny;
+                var set = transactionSet.Trim();
+                if (set is not ("861" or "870" or "846" or "856" or "863"))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["transactionSet"] = ["transactionSet must be one of 861/870/846/856/863."] });
+                var login = ResolveLogin(ctx);
+                var saved = await repo.UpsertEdiPartnerAsync(new EdiPartnerProfile
+                {
+                    CustomerId = customerId, TransactionSet = set, Enabled = body.Enabled, Variant = body.Variant,
+                    ReceiverQualifier = body.ReceiverQualifier, ReceiverId = body.ReceiverId,
+                    ComponentSeparator = body.ComponentSeparator, SegmentSuffix = body.SegmentSuffix,
+                    EnvelopeVersion = body.EnvelopeVersion, GsFunctionalCode = body.GsFunctionalCode,
+                    FilePrefix = body.FilePrefix, ItemReference = body.ItemReference, UpdatedBy = login,
+                }, ct);
+                return Results.Ok(saved);
+            })
+           .WithName("UpsertEdiPartner").WithTags("Admin")
+           .WithSummary("Create or update a customer's EDI trading-partner profile for a document (861/870/846/856/863). Config only — sets how the document is framed; generates/sends nothing.")
+           .Produces<EdiPartnerProfile>().ProducesValidationProblem();
+
+        api.MapDelete("/admin/edi/partners/{customerId:long}/{transactionSet}", async (long customerId, string transactionSet, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, EdiFeature, 1, ct) is { } deny) return deny;
+                return await repo.DeleteEdiPartnerAsync(customerId, transactionSet.Trim(), ct) ? Results.NoContent() : Results.NotFound();
+            })
+           .WithName("DeleteEdiPartner").WithTags("Admin")
+           .WithSummary("Remove a customer's EDI trading-partner profile for a document.")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
+
         // Diagnostic: send a test email to confirm the SMTP path AND the test-recipient override. During the
         // test phase Email:OverrideRecipient redirects every email to one inbox, so ActualRecipients on the
         // response shows where it really went regardless of the To you pass.

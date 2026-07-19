@@ -3,7 +3,7 @@
 // (+ detail), the processing log, the per-customer EDI setup, and the transaction-type lookup.
 //
 // Compiled by tsc to wwwroot/ui/app/edi.js; served at /ui/edi.html.
-import { AbisClient } from './generated/abis-client.js';
+import { AbisClient, EdiPartnerWrite } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
 const $ = (sel) => document.querySelector(sel);
@@ -21,7 +21,7 @@ function scaffold() {
     <div class="page-head"><div><div class="eyebrow">EDI · Monitor</div><h1>EDI operations</h1></div></div>
     <div id="err" class="err" style="margin-bottom:12px"></div>
 
-    <div class="tabs">${tab('tx', 'Transactions')}${tab('log', 'Processing log')}${tab('cust', 'Customer setup')}${tab('types', 'Types')}</div>
+    <div class="tabs">${tab('tx', 'Transactions')}${tab('log', 'Processing log')}${tab('partners', 'Partner profiles')}${tab('cust', 'Customer setup')}${tab('types', 'Types')}</div>
 
     <div id="pane-tx" class="grid">
       <div class="stack"><div class="card">
@@ -45,6 +45,32 @@ function scaffold() {
         <thead><tr><th>When</th><th>Cust</th><th>EDI name</th><th>Flag</th><th>File</th><th>Contents</th></tr></thead>
         <tbody id="tLog"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
       </table></div>
+    </div>
+
+    <div id="pane-partners" class="card" style="display:none">
+      <header><h2>Trading-partner profiles</h2><span class="sub">Per customer + document — how each customer's EDI is framed. Config only; generates/sends nothing.</span></header>
+      <div class="body">
+        <form id="partForm" class="frow" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <div class="fld"><label>Customer id</label><input id="pCust" inputmode="numeric" style="width:90px" required /></div>
+          <div class="fld"><label>Document</label><select id="pSet"><option>861</option><option>870</option><option>846</option><option>856</option><option>863</option></select></div>
+          <div class="fld"><label>Variant</label><input id="pVariant" style="width:130px" placeholder="novelis / aleris / …" /></div>
+          <div class="fld"><label>Recv qual</label><input id="pRq" style="width:56px" placeholder="09" /></div>
+          <div class="fld"><label>Receiver id (DUNS)</label><input id="pRid" style="width:150px" /></div>
+          <div class="fld"><label>Comp sep</label><input id="pComp" style="width:50px" /></div>
+          <div class="fld"><label>Suffix</label><input id="pSuffix" style="width:50px" placeholder="~" /></div>
+          <div class="fld"><label>Version</label><input id="pVer" style="width:66px" placeholder="00401" /></div>
+          <div class="fld"><label>GS code</label><input id="pGs" style="width:56px" placeholder="RC" /></div>
+          <div class="fld"><label>File prefix</label><input id="pPrefix" style="width:140px" /></div>
+          <div class="fld"><label>Item ref</label><input id="pItemRef" style="width:110px" /></div>
+          <div class="fld"><label>Enabled</label><input id="pEnabled" type="checkbox" checked /></div>
+          <button class="btn sm" type="submit">Save</button>
+          <button class="btn sm ghost" id="pReset" type="button">Clear</button>
+        </form>
+        <div style="overflow-x:auto"><table class="tbl" style="min-width:920px">
+          <thead><tr><th>Cust</th><th>Doc</th><th>On</th><th>Variant</th><th>Receiver</th><th>Comp</th><th>Suf</th><th>Ver</th><th>GS</th><th>Prefix</th><th>Item ref</th><th></th></tr></thead>
+          <tbody id="tPart"><tr><td colspan="12" class="muted">Loading…</td></tr></tbody>
+        </table></div>
+      </div>
     </div>
 
     <div id="pane-cust" class="card" style="display:none">
@@ -136,8 +162,96 @@ async function loadTypes() {
         setErr(`Types load failed: ${e.message}`);
     }
 }
+let partners = [];
+async function loadPartners() {
+    try {
+        partners = (await client().listEdiPartners(undefined)) ?? [];
+        const chip = (on) => (on ? '<span class="chip ok">on</span>' : '<span class="chip">off</span>');
+        $('#tPart').innerHTML = partners.length ? partners.map((p) => `<tr>
+      <td class="mono">${esc(p.customerId)}</td><td class="mono">${esc(p.transactionSet)}</td><td>${chip(p.enabled)}</td>
+      <td>${esc(p.variant)}</td><td class="mono">${esc(p.receiverQualifier)}/${esc(p.receiverId)}</td>
+      <td class="mono">${esc(p.componentSeparator)}</td><td class="mono">${esc(p.segmentSuffix)}</td>
+      <td class="mono">${esc(p.envelopeVersion)}</td><td class="mono">${esc(p.gsFunctionalCode)}</td>
+      <td class="mono">${esc(p.filePrefix)}</td><td class="mono">${esc(p.itemReference)}</td>
+      <td style="white-space:nowrap"><button class="btn sm ghost pEdit" data-c="${p.customerId}" data-s="${esc(p.transactionSet)}" type="button">edit</button>
+        <button class="btn sm ghost pDel" data-c="${p.customerId}" data-s="${esc(p.transactionSet)}" type="button">del</button></td></tr>`).join('')
+            : '<tr><td colspan="12" class="muted">No profiles.</td></tr>';
+        document.querySelectorAll('#tPart .pEdit').forEach((b) => b.addEventListener('click', () => fillPartner(partners.find((x) => String(x.customerId) === b.dataset.c && x.transactionSet === b.dataset.s))));
+        document.querySelectorAll('#tPart .pDel').forEach((b) => b.addEventListener('click', () => void deletePartner(Number(b.dataset.c), b.dataset.s ?? '')));
+    }
+    catch (e) {
+        setErr(`Partner profiles load failed: ${e.message}`);
+    }
+}
+function fillPartner(p) {
+    if (!p)
+        return;
+    $('#pCust').value = String(p.customerId ?? '');
+    $('#pSet').value = p.transactionSet ?? '861';
+    $('#pVariant').value = p.variant ?? '';
+    $('#pRq').value = p.receiverQualifier ?? '';
+    $('#pRid').value = p.receiverId ?? '';
+    $('#pComp').value = p.componentSeparator ?? '';
+    $('#pSuffix').value = p.segmentSuffix ?? '';
+    $('#pVer').value = p.envelopeVersion ?? '';
+    $('#pGs').value = p.gsFunctionalCode ?? '';
+    $('#pPrefix').value = p.filePrefix ?? '';
+    $('#pItemRef').value = p.itemReference ?? '';
+    $('#pEnabled').checked = p.enabled !== false;
+}
+function clearPartner() {
+    ['#pCust', '#pVariant', '#pRq', '#pRid', '#pComp', '#pSuffix', '#pVer', '#pGs', '#pPrefix', '#pItemRef']
+        .forEach((id) => { $(id).value = ''; });
+    $('#pEnabled').checked = true;
+}
+async function savePartner() {
+    setErr('');
+    const customerId = Number(val('#pCust'));
+    const set = $('#pSet').value;
+    if (!customerId) {
+        setErr('Customer id is required.');
+        return;
+    }
+    const opt = (id) => { const v = val(id); return v === '' ? undefined : v; };
+    setBusy(true);
+    try {
+        await client().upsertEdiPartner(customerId, set, new EdiPartnerWrite({
+            enabled: $('#pEnabled').checked, variant: opt('#pVariant'),
+            receiverQualifier: opt('#pRq'), receiverId: opt('#pRid'), componentSeparator: opt('#pComp'),
+            segmentSuffix: opt('#pSuffix'), envelopeVersion: opt('#pVer'), gsFunctionalCode: opt('#pGs'),
+            filePrefix: opt('#pPrefix'), itemReference: opt('#pItemRef'),
+        }));
+        await loadPartners();
+    }
+    catch (e) {
+        setErr(`Save failed: ${ediErr(e)}`);
+    }
+    finally {
+        setBusy(false);
+    }
+}
+// Surface a 403 from the feature gate clearly (the generated client's default message is unhelpful).
+function ediErr(e) {
+    const ex = e;
+    return ex?.status === 403 ? 'you need the EDI permission for this action.' : (ex?.message ?? String(e));
+}
+async function deletePartner(customerId, set) {
+    if (!confirm(`Remove the ${set} profile for customer ${customerId}?`))
+        return;
+    setBusy(true);
+    try {
+        await client().deleteEdiPartner(customerId, set);
+        await loadPartners();
+    }
+    catch (e) {
+        setErr(`Delete failed: ${ediErr(e)}`);
+    }
+    finally {
+        setBusy(false);
+    }
+}
 function showTab(name) {
-    ['tx', 'log', 'cust', 'types'].forEach((t) => {
+    ['tx', 'log', 'partners', 'cust', 'types'].forEach((t) => {
         $(`#pane-${t}`).style.display = t === name ? '' : 'none';
         $(`#tab-${t}`).classList.toggle('active', t === name);
     });
@@ -145,9 +259,11 @@ function showTab(name) {
 (async () => {
     const main = await initShell({ active: 'edi' });
     main.innerHTML = scaffold();
-    ['tx', 'log', 'cust', 'types'].forEach((t) => $(`#tab-${t}`).addEventListener('click', () => showTab(t)));
+    ['tx', 'log', 'partners', 'cust', 'types'].forEach((t) => $(`#tab-${t}`).addEventListener('click', () => showTab(t)));
     $('#txForm').addEventListener('submit', (e) => { e.preventDefault(); void loadTransactions(); });
     $('#logForm').addEventListener('submit', (e) => { e.preventDefault(); void loadLog(); });
+    $('#partForm').addEventListener('submit', (e) => { e.preventDefault(); void savePartner(); });
+    $('#pReset').addEventListener('click', () => clearPartner());
     showTab('tx');
-    await Promise.all([loadTransactions(), loadLog(), loadCustomers(), loadTypes()]);
+    await Promise.all([loadTransactions(), loadLog(), loadPartners(), loadCustomers(), loadTypes()]);
 })();
