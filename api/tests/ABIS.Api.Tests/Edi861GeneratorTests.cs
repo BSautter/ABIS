@@ -55,6 +55,13 @@ public class Edi861GeneratorTests
         EnvelopeVersion = "00401", GsFunctionalCode = "SH", FilePrefix = "S_constellium_861_",
     };
 
+    private static EdiPartnerProfile CommonwealthProfile() => new()
+    {
+        CustomerId = 1980, TransactionSet = "861", Enabled = true, Variant = "commonwealth",
+        ReceiverQualifier = "ZZ", ReceiverId = "964790856", ComponentSeparator = ">",
+        EnvelopeVersion = "00401", GsFunctionalCode = "RC", FilePrefix = "S_Commonwealth_861_",
+    };
+
     [Fact]
     public void Constellium_861_uses_its_at_separator_and_body()
     {
@@ -94,6 +101,48 @@ public class Edi861GeneratorTests
         Assert.Equal(2, lines.Count(l => l.StartsWith("MEA*CT*")));
         Assert.Equal("MEA*CT**1*PC", lines[Array.IndexOf(lines, "MEA*PD*LN*3500.5*LF") + 1]);
         Assert.Contains("CTT*2", lines);
+    }
+
+    [Fact]
+    public void Commonwealth_861_uses_its_body_and_00401_envelope()
+    {
+        var coils = new[] { Coil("CW-9", 900001, 12000, 12100) };
+        var lines = Lines(Edi861Generator.Generate(Bol(1980), coils, CommonwealthProfile(), "964790856", "COMMONWEALTH", Ctrl, Ctrl, Now));
+
+        // Envelope — receiver ZZ/964790856, '>' component sep, version 00401, GS RC (matches the live F_EDI_COMMONWEALTH_861).
+        var isa = lines[0].Split('*');
+        Assert.Equal("ZZ", isa[7]);
+        Assert.Equal("964790856".PadRight(15), isa[8]);
+        Assert.Equal("00401", isa[12]);
+        Assert.Equal(">", isa[16]);
+        Assert.Equal("GS*RC*039630926T*964790856*20260711*1430*1234*X*004010", lines[1]);
+        Assert.Contains("ST*861*1234", lines);
+
+        // Header — BRA / REF*BM / DTM*050*…*ET (from the BOL received date), then N1*OU / N1*MF*Commonwealth / N1*SU.
+        Assert.Contains("BRA*BOL-NOV-500*20260711*00*1*1430", lines);
+        Assert.Contains("REF*BM*BOL-NOV-500", lines);
+        Assert.Contains("DTM*050*20260710*0815*ET", lines);
+        Assert.Contains("N1*OU**1*039630926", lines);
+        Assert.Contains("N1*MF*Commonwealth*1*117791081", lines);   // hardcoded manufacturer DUNS
+        Assert.Contains("N1*SU**1*964790856", lines);
+
+        // Per coil — RCD, LIN with SN = the ASN pack id (PK-1), fixed PIDs incl. QAS*ST*2, REF*RV/SE, DTM*206, PRF,
+        // qualified MEA*WT*WT net(01)/gross(24), MEA*PD dims (IN), MEA*CT*NL*1*PC.
+        Assert.Contains("RCD**1*CX", lines);
+        Assert.Contains("LIN**VO*PO-55*BP*P-100*HN*HL-77*SN*PK-1", lines);
+        Assert.Contains("PID*S*MAC*ST*01", lines);
+        Assert.Contains("PID*S*MA*ST*7", lines);
+        Assert.Contains("PID*S*QAS*ST*2", lines);
+        Assert.Contains("REF*RV*CW-9", lines);
+        Assert.Contains("REF*SE*900001", lines);
+        Assert.Contains("DTM*206*20260710*0815*ET", lines);
+        Assert.Contains("PRF*PO-55", lines);
+        Assert.Contains("MEA*WT*WT*12000*01", lines);
+        Assert.Contains("MEA*WT*WT*12100*24", lines);
+        Assert.Contains("MEA*PD*TH*0.0400*IN", lines);
+        Assert.Contains("MEA*PD*WD*60.0000*IN", lines);
+        Assert.Contains("MEA*CT*NL*1*PC", lines);
+        Assert.Contains("CTT*1", lines);
     }
 
     [Fact]

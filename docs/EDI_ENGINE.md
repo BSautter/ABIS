@@ -63,14 +63,20 @@ Shared pieces live in `Edi/EdiInterchange.cs` (sender identity + envelope opener
 - **Orchestrator** — replicate `ediprocess.sh` selection order + readiness gates. Generation only.
 - **`Edi997Monitor`** — the watchdog query (unsent txns with no FA, 2h–1d old) → alert list.
 
-## More 861 partners to build out (source vendored, not yet ported)
-The seed covers **Novelis + Aleris** only. The plant also exchanges 861 (and 870) with **Constellium**,
-**Arconic**, and **Commonwealth** (the former Aleris, rebranded) — the legacy has a per-customer proc for each
-in `docs/data-model/oracle_ddl.sql` / `oracle_plsql_current.sql`: `EDI_ARCONIC_861_TEST` (customer **2784**,
-ARCONIC-TN, prefix `s_arconic_861_`), `F_EDI_CONSTELLIUM_861`, `F_EDI_COMMONWEALTH_861`, plus `EDI_ARCONIC_870`
-(job-scoped). To add each: port its body onto the standard pattern (a new `Edi861Generator` variant if the
-layout diverges from novelis/aleris), add its `EdiPartnerProfile` seed row, and confirm the customer_ids +
-whether Commonwealth is just the existing `aleris` variant under a new name. Tracked as its own task.
+## 861 partners — all live variants built
+861 variants now cover **Novelis** (1153/1459/2582), **Arconic** (2784), **Constellium** (2776), and
+**Commonwealth** (1980). Commonwealth was resolved off the live .230 DB: **customer 1980 = "COMMONWEALTH ROLLED
+PRODUCTS"** (formerly Aleris — the rolled-products business rebranded), so it is NOT a separate customer. The
+authoritative body came from the live **`F_EDI_COMMONWEALTH_861`** function (pulled via `all_source`): prefix
+`S_Commonwealth_861_`, envelope **00401**, `BRA`/`REF*BM`/`DTM*050*…*ET` header, `N1*OU`/
+`N1*MF*Commonwealth*1*117791081`/`N1*SU`, and a per-coil `RCD**1*CX` + `LIN**VO*{po}*BP*{part}*HN*{lot}*SN*{packId}`
+(SN echoes the Commonwealth skid # that came in on their 856) with fixed PIDs, `REF*RV`/`SE`, `DTM*206`, `PRF`,
+`MEA*WT*WT` net(01)/gross(24), `MEA*PD` (IN), `MEA*CT*NL*1*PC`. The 1980/861 seed was flipped `aleris`→
+`commonwealth` (the pre-transition `aleris` body stays in `Edi861Generator` for reference); on an existing DB the
+idempotent seed is a no-op, so flip the 1980/861 profile in the admin EDI setup. No byte-golden exists (payloads
+are LONG RAW / on the DB-host disk), so it's validated by proc-fidelity + a structural test.
+Still deferred: the `_870` variants for the other partners (task #60) and the 846 (task #53 — code-maps now in
+hand off .230, see [[abis-edi-846-codemaps]]).
 
 ## Party constants (sender = Aluminum Blanking Co.)
 | Party | ID | Qual |

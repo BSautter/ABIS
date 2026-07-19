@@ -248,7 +248,11 @@ public static class AbisSchema
         Seed861Novelis("1153"),
         Seed861Novelis("1459"),
         Seed861Novelis("2582"),
-        Seed861("1980", "aleris", "ZZ", "964790856", ">", "S_edi_"),
+        // Customer 1980 = Commonwealth Rolled Products (formerly Aleris). Live 861 = F_EDI_COMMONWEALTH_861:
+        // variant commonwealth, prefix S_Commonwealth_861_, envelope 00401 (the pre-transition Aleris variant is
+        // kept in code for reference). On an existing DB this INSERT is a no-op — flip the 1980/861 profile in the
+        // admin EDI setup (variant→commonwealth, prefix→S_Commonwealth_861_, version→00401).
+        Seed861("1980", "commonwealth", "ZZ", "964790856", ">", "S_Commonwealth_861_", "00401"),
         // Correct any Novelis 861 rows seeded before the golden-file fidelity fix (still at the old 00200/RC
         // defaults), without clobbering admin edits (guard on the stale values). One-shot: a no-op once corrected.
         """
@@ -289,13 +293,14 @@ public static class AbisSchema
         Seed856("2784", "arconic", "01", "961613887", ">", "R0P7ATN", "", "S_arconic_856_")
     ];
 
-    // An idempotent 861 partner-profile seed row (the legacy Aleris 861 used version 00200 + GS code RC).
+    // An idempotent 861 partner-profile seed row (GS code RC; envelope version per partner — the pre-transition
+    // Aleris 861 used 00200, the live Commonwealth 861 uses 00401).
     private static string Seed861(string customerId, string variant, string qualifier, string receiverId,
-        string componentSep, string filePrefix) =>
+        string componentSep, string filePrefix, string version) =>
         $"""
         INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier,
             receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, file_prefix, item_reference)
-        SELECT {customerId}, '861', 1, '{variant}', '{qualifier}', '{receiverId}', '{componentSep}', '', '00200', 'RC', '{filePrefix}', NULL FROM dual
+        SELECT {customerId}, '861', 1, '{variant}', '{qualifier}', '{receiverId}', '{componentSep}', '', '{version}', 'RC', '{filePrefix}', NULL FROM dual
          WHERE NOT EXISTS (SELECT 1 FROM abis_edi_partner WHERE customer_id = {customerId} AND transaction_set = '861')
         """;
 

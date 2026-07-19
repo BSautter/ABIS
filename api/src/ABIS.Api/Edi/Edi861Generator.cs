@@ -47,8 +47,13 @@ public static class Edi861Generator
         // component sep '@', *ET dates, no N1*SU, a PID*S*QAS, LIN**VO*{po}***SN*{coil}*HN, MEA*WT*WT weights.
         else if (variant == "constellium")
             ConstelliumBody(w, bol, coils, supplierDuns, timestamp);
-        // Aleris (customer 1980, dormant since the Commonwealth transition) — REF*BM + N1*MF in the header,
-        // LIN VO/BP/HN/SN, PID*S*QAS, PRF, MEA*WT*WT net. Unvalidated (no recent golden); kept as-was.
+        // Commonwealth (customer 1980, live — Aleris rolled products became Commonwealth Rolled Products) — the
+        // current 1980 861. BRA/REF*BM/DTM*050 header, N1*OU/N1*MF*Commonwealth*117791081/N1*SU, per-coil RCD/LIN
+        // (SN = the ASN skid #), fixed PIDs, REF*RV/SE, DTM*206, PRF, MEA weights + dims, MEA*CT. See f_edi_commonwealth_861.
+        else if (variant == "commonwealth")
+            CommonwealthBody(w, bol, coils, supplierDuns, timestamp);
+        // Aleris (customer 1980, the PRE-transition proc — superseded by commonwealth above; kept for reference) —
+        // REF*BM + N1*MF in the header, LIN VO/BP/HN/SN, PID*S*QAS, PRF, MEA*WT*WT net. Unvalidated (no golden).
         else if (variant == "aleris")
             AlerisBody(w, bol, coils, supplierDuns, profile.ReceiverId ?? "", timestamp);
         // Novelis (customers 1153/1459/2582) — the default. Faithful to P_CREATE_EDI_861_FOR_ALL.
@@ -152,6 +157,60 @@ public static class Edi861Generator
             w.Segment("MEA", "PD", "TH", Dec4(c.CoilGauge), "IN");
             w.Segment("MEA", "PD", "WD", Dec4(c.CoilWidth), "IN");
             w.Segment("MEA", "CT", "", DecTrim(c.LinealFeed), "LF");
+        }
+    }
+
+    /// <summary>Commonwealth's manufacturer DUNS — the constant <c>N1*MF*Commonwealth*1*117791081</c> in the live
+    /// proc (distinct from the ISA/GS receiver 964790856, which is the Commonwealth EDI hub).</summary>
+    private const string CommonwealthMfDuns = "117791081";
+
+    /// <summary>The Commonwealth 861 body (live <c>F_EDI_COMMONWEALTH_861</c>, customer 1980 — Aleris rolled
+    /// products became Commonwealth Rolled Products, so this supersedes <see cref="AlerisBody"/> for 1980).
+    /// Header <c>BRA</c> / <c>REF*BM</c> / <c>DTM*050*…*ET</c>, then <c>N1*OU**1*039630926</c> /
+    /// <c>N1*MF*Commonwealth*1*117791081</c> / <c>N1*SU</c>; per coil <c>RCD**1*CX</c>,
+    /// <c>LIN**VO*{po}*BP*{part}*HN*{lot}*SN*{packId}</c> (SN = the Commonwealth skid number that came in on their
+    /// 856, echoed back), fixed <c>PID*S*MAC*ST*01</c>/<c>MA*ST*7</c>/<c>QAS*ST*2</c> (+ DAC/DAF when damaged),
+    /// <c>REF*RV</c>/<c>REF*SE</c>, <c>DTM*206*…*ET</c>, <c>PRF</c>, <c>MEA*WT*WT</c> net(01)/gross(24),
+    /// <c>MEA*PD*TH</c>/<c>WD</c> (IN), and <c>MEA*CT*NL*1*PC</c>. Ported from the live proc off .230; no golden to
+    /// byte-validate, so N1*SU uses the receiving-BOL <paramref name="supplierDuns"/>. Never transmits.</summary>
+    private static void CommonwealthBody(X12Writer w, ReceivingBol bol, IReadOnlyList<ReceivingBolCoil> coils,
+        string supplierDuns, DateTime timestamp)
+    {
+        var bolNum = bol.Bol ?? "";
+        var received = bol.ReceivedDate ?? timestamp;
+        var yyyyMMdd = timestamp.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+        var hhmm = timestamp.ToString("HHmm", CultureInfo.InvariantCulture);
+        var recvDate = received.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+        var recvTime = received.ToString("HHmm", CultureInfo.InvariantCulture);
+
+        w.Segment("BRA", bolNum, yyyyMMdd, "00", "1", hhmm);
+        w.Segment("REF", "BM", bolNum);
+        w.Segment("DTM", "050", recvDate, recvTime, "ET");
+        w.Segment("N1", "OU", "", "1", EdiInterchange.SenderParty);
+        w.Segment("N1", "MF", "Commonwealth", "1", CommonwealthMfDuns);
+        w.Segment("N1", "SU", "", "1", supplierDuns);
+
+        foreach (var c in coils)
+        {
+            var po = c.PurchaseOrderNum ?? "";
+            w.Segment("RCD", "", "1", "CX");
+            w.Segment("LIN", "", "VO", po, "BP", c.PartNum, "HN", c.Lot, "SN", c.PackId);
+            w.Segment("PID", "S", "MAC", "ST", "01");
+            w.Segment("PID", "S", "MA", "ST", "7");
+            if ((c.DamagedCode ?? 0) != 0)
+                w.Segment("PID", "S", "DAC", "ST", c.DamagedCode!.Value.ToString(CultureInfo.InvariantCulture));
+            if ((c.DamagedFault ?? 0) != 0)
+                w.Segment("PID", "S", "DAF", "ST", c.DamagedFault!.Value.ToString(CultureInfo.InvariantCulture));
+            w.Segment("PID", "S", "QAS", "ST", "2");
+            w.Segment("REF", "RV", c.CoilOrgNum);
+            w.Segment("REF", "SE", (c.CoilAbcNum ?? 0).ToString(CultureInfo.InvariantCulture));
+            w.Segment("DTM", "206", recvDate, recvTime, "ET");
+            w.Segment("PRF", po);
+            w.Segment("MEA", "WT", "WT", Int(c.NetWeight), "01");
+            w.Segment("MEA", "WT", "WT", Int(c.GrossWeight), "24");
+            w.Segment("MEA", "PD", "TH", Dec4(c.CoilGauge), "IN");
+            w.Segment("MEA", "PD", "WD", Dec4(c.CoilWidth), "IN");
+            w.Segment("MEA", "CT", "NL", "1", "PC");
         }
     }
 
