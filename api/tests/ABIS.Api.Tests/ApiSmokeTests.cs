@@ -1333,8 +1333,14 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     [Fact]
     public async Task Generate870_builds_stores_for_aleris_and_reports_once()
     {
-        // Not a configured 870 partner (Novelis 1153) -> 422.
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await _client.PostAsync("/api/edi/870/generate?customerId=1153", null)).StatusCode);
+        // Not a configured 870 partner (Novelis 2582 has only an 861 profile) -> 422.
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await _client.PostAsync("/api/edi/870/generate?customerId=2582", null)).StatusCode);
+
+        // Novelis 1153 IS a configured 870 partner but has no unsent production items in the base fixture,
+        // so the profile is wired yet there's nothing to report -> 200 "nothing".
+        var nov = await _client.PostAsync("/api/edi/870/generate?customerId=1153", null);
+        Assert.Equal(HttpStatusCode.OK, nov.StatusCode);
+        Assert.Equal("nothing", (await nov.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("status").GetString());
 
         // Aleris (default 1980) -> generated + stored (never transmitted).
         var resp = await _client.PostAsync("/api/edi/870/generate", null);

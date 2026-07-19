@@ -117,7 +117,8 @@ public static class SqliteFixture
                 coil_width REAL, coil_line_num INTEGER, coil_location TEXT, coil_mid_num TEXT,
                 coil_org_num TEXT NOT NULL, coil_status INTEGER, coil_notes TEXT, coil_entry_date TEXT,
                 customer_id INTEGER, coil_from_cust_id INTEGER, date_received TEXT, icra TEXT,
-                lot_num TEXT NOT NULL, net_wt REAL NOT NULL, net_wt_balance REAL NOT NULL, pieces_per_case INTEGER);
+                lot_num TEXT NOT NULL, net_wt REAL NOT NULL, net_wt_balance REAL NOT NULL, pieces_per_case INTEGER,
+                consumed_coil_num TEXT);
 
             CREATE TABLE process_coil (
                 ab_job_num INTEGER, coil_abc_num INTEGER, process_coil_status INTEGER,
@@ -406,7 +407,8 @@ public static class SqliteFixture
             CREATE TABLE abis_edi_partner (
                 customer_id INTEGER, transaction_set TEXT, enabled INTEGER, variant TEXT,
                 receiver_qualifier TEXT, receiver_id TEXT, component_separator TEXT, segment_suffix TEXT,
-                envelope_version TEXT, gs_functional_code TEXT, gs_sender_code TEXT, file_prefix TEXT, item_reference TEXT,
+                envelope_version TEXT, gs_functional_code TEXT, gs_sender_code TEXT, gs_receiver_code TEXT,
+                file_prefix TEXT, item_reference TEXT,
                 updated_utc TEXT, updated_by TEXT,
                 PRIMARY KEY (customer_id, transaction_set));
 
@@ -781,20 +783,22 @@ public static class SqliteFixture
         conn.Execute(
             """
             INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier,
-                receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, gs_sender_code, file_prefix, item_reference)
-            VALUES (:CustomerId, :TransactionSet, 1, :Variant, :RecvQual, :RecvId, :Comp, :Suffix, :Ver, :Gs, :GsSender, :Prefix, :ItemRef)
+                receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, gs_sender_code, gs_receiver_code, file_prefix, item_reference)
+            VALUES (:CustomerId, :TransactionSet, 1, :Variant, :RecvQual, :RecvId, :Comp, :Suffix, :Ver, :Gs, :GsSender, :GsReceiver, :Prefix, :ItemRef)
             """,
             new[]
             {
-                new { CustomerId = 1153L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00200", Gs = "RC", GsSender = (string?)null, Prefix = "S_Novelis_", ItemRef = (string?)null },
-                new { CustomerId = 1459L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00200", Gs = "RC", GsSender = (string?)null, Prefix = "S_Novelis_", ItemRef = (string?)null },
-                new { CustomerId = 2582L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00200", Gs = "RC", GsSender = (string?)null, Prefix = "S_Novelis_", ItemRef = (string?)null },
-                new { CustomerId = 1980L, TransactionSet = "861", Variant = "aleris", RecvQual = "ZZ", RecvId = "964790856", Comp = ">", Suffix = "", Ver = "00200", Gs = "RC", GsSender = (string?)null, Prefix = "S_edi_", ItemRef = (string?)null },
-                new { CustomerId = 1980L, TransactionSet = "870", Variant = "aleris", RecvQual = "ZZ", RecvId = "964790856", Comp = ">", Suffix = "", Ver = "00401", Gs = "RS", GsSender = (string?)null, Prefix = "S_aleris_", ItemRef = (string?)"300578504" },
+                new { CustomerId = 1153L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00200", Gs = "RC", GsSender = (string?)null, GsReceiver = (string?)null, Prefix = "S_Novelis_", ItemRef = (string?)null },
+                new { CustomerId = 1459L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00200", Gs = "RC", GsSender = (string?)null, GsReceiver = (string?)null, Prefix = "S_Novelis_", ItemRef = (string?)null },
+                new { CustomerId = 2582L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00200", Gs = "RC", GsSender = (string?)null, GsReceiver = (string?)null, Prefix = "S_Novelis_", ItemRef = (string?)null },
+                new { CustomerId = 1980L, TransactionSet = "861", Variant = "aleris", RecvQual = "ZZ", RecvId = "964790856", Comp = ">", Suffix = "", Ver = "00200", Gs = "RC", GsSender = (string?)null, GsReceiver = (string?)null, Prefix = "S_edi_", ItemRef = (string?)null },
+                new { CustomerId = 1980L, TransactionSet = "870", Variant = "aleris", RecvQual = "ZZ", RecvId = "964790856", Comp = ">", Suffix = "", Ver = "00401", Gs = "RS", GsSender = (string?)null, GsReceiver = (string?)null, Prefix = "S_aleris_", ItemRef = (string?)"300578504" },
+                // Novelis 870 (customer 1153 Kingston): per-job variant; GS03 receiver (001504935001) ≠ ISA08 (0015049350011G).
+                new { CustomerId = 1153L, TransactionSet = "870", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00401", Gs = "RS", GsSender = (string?)null, GsReceiver = (string?)"001504935001", Prefix = "S_novelis_870_", ItemRef = (string?)null },
                 // Arconic 861 (customer 2784, ARCONIC-TN): its own variant + a distinct GS sender (R0P7ATN) and SH group code.
-                new { CustomerId = 2784L, TransactionSet = "861", Variant = "arconic", RecvQual = "01", RecvId = "961613887", Comp = ">", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)"R0P7ATN", Prefix = "S_arconic_861_", ItemRef = (string?)null },
+                new { CustomerId = 2784L, TransactionSet = "861", Variant = "arconic", RecvQual = "01", RecvId = "961613887", Comp = ">", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)"R0P7ATN", GsReceiver = (string?)null, Prefix = "S_arconic_861_", ItemRef = (string?)null },
                 // Constellium 861 (customer 2776): SH group code, standard ABCo GS sender, '@' component separator.
-                new { CustomerId = 2776L, TransactionSet = "861", Variant = "constellium", RecvQual = "01", RecvId = "043207177", Comp = "@", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)null, Prefix = "S_constellium_861_", ItemRef = (string?)null }
+                new { CustomerId = 2776L, TransactionSet = "861", Variant = "constellium", RecvQual = "01", RecvId = "043207177", Comp = "@", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)null, GsReceiver = (string?)null, Prefix = "S_constellium_861_", ItemRef = (string?)null }
             });
 
         conn.Execute("""

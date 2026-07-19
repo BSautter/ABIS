@@ -110,7 +110,7 @@ Version `004010` for the SQL sets (861/870/846/863); `002002`/`002040` for the P
 ## Open decisions (will confirm with the plant as each set lands)
 - 846: re-enable the `outbound_edi_transaction` insert (recommended yes).
 - 863: is it actually transmitted (`.863` suffix vs GXS's `S*.edi` glob)? affects where the payload goes.
-- 870 scope: Aleris only, or also Wise (needs the missing function body)?
+- 870 scope: Aleris + Novelis are built; remaining Wise / MISA / Constellium / Arconic / Kaiser / Reynolds still need their body variants.
 - 856 scope: Alcan→GM/Ford only (Reynolds/Kaiser commented); confirm the dual customer+hub emission + old versions.
 - Magic constants (Aleris `PRF*RV*300578504`, Ford `R0P7A`, GM plant 18231/18024, issuer 88120) → a partner-config table.
 - Byte-fidelity: the fixed ISA spacing + empty component separators are load-bearing for the VAN parser; add

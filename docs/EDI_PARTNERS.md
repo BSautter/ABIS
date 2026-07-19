@@ -19,11 +19,11 @@ row in `abis_edi_partner` (envelope/enablement as data) + a body **variant** in 
 | Constellium | 2776 | F_EDI_CONSTELLIUM_861 (GS SH, receiver 043207177, `@` comp sep) | ✅ #194 (variant `constellium`) |
 | Commonwealth (= former Aleris) | **?** | F_EDI_COMMONWEALTH_861 (≈ aleris, receiver 964790856, N1*MF*Commonwealth*1*117791081) | 🔶 #59 — needs customer_id |
 
-## 870 — Order/Coil Status  ⚠️ only Aleris is built; Novelis + 6 others are missing
+## 870 — Order/Coil Status  ⚠️ Aleris + Novelis built; 5 others are missing
 | Partner | Source proc | Status |
 |---|---|---|
 | Aleris | EDI_ALERIS_870 / F_EDI_ALERIS_870_PER_JOB | ✅ #187 |
-| **Novelis / Alcan** (+ scrap) | EDI_ALCAN_870 / F_EDI_NOVELIS_870_4JOB / P_EDI_NOVELIS_SCRAP_870 | ⬜ |
+| **Novelis / Alcan** (+ scrap) | EDI_ALCAN_870 / F_EDI_NOVELIS_870_4JOB / P_EDI_NOVELIS_SCRAP_870 | ✅ #195 (variant `novelis`, per-job; GS03 override) |
 | Constellium (+ reject) | F_EDI_CONST_870_PER_JOB / F_EDI_CONSTELLIUM_BG_870_4JOB / F_EDI_CONST_870_REJECT_4JOB | ⬜ |
 | Arconic | EDI_ARCONIC_870 | ⬜ |
 | Wise | F_EDI_WISE_870 / F_EDI_WISE_870_BY_COIL / P_EDI_WISE_870 | ⬜ |
@@ -57,7 +57,7 @@ Per-customer: `F_CUSTOMER_863` resolves the customer from the skid, then `F_CREA
 
 ---
 ## Bottom line for 0.5.0 scope
-"EDI engine complete" is **~30+ partner-documents**, not 5. Built: 861 (Novelis+Aleris), 870 (Aleris). The
+"EDI engine complete" is **~30+ partner-documents**, not 5. Built: 861 (Novelis+Aleris+Arconic+Constellium), 870 (Aleris+Novelis). The
 backbone (#188) + standard pattern (#189) make each remaining one *a profile row + a variant*, but 856 alone
 is ~16 and 870 is ~8 partners. **Re-estimate 0.5.0** = at minimum the live partners per set; the long tail of
 low-volume 856 destinations may be a fast-follow. Confirm with the plant which partners are still active before

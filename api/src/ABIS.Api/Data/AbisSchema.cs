@@ -220,14 +220,16 @@ public static class AbisSchema
           envelope_version     VARCHAR2(6),
           gs_functional_code   VARCHAR2(4),
           gs_sender_code       VARCHAR2(20),
+          gs_receiver_code     VARCHAR2(20),
           file_prefix          VARCHAR2(40),
           item_reference       VARCHAR2(40),
           updated_utc          DATE,
           updated_by           VARCHAR2(64),
           CONSTRAINT pk_abis_edi_partner PRIMARY KEY (customer_id, transaction_set))
         """,
-        // Additive column for tables provisioned before gs_sender_code existed (idempotent — ORA-01430 swallowed).
+        // Additive columns for tables provisioned before these existed (idempotent — ORA-01430 swallowed).
         "ALTER TABLE abis_edi_partner ADD (gs_sender_code VARCHAR2(20))",
+        "ALTER TABLE abis_edi_partner ADD (gs_receiver_code VARCHAR2(20))",
         // Idempotent config-default seed of the known legacy partners (matches the SQLite fixture), so a fresh
         // deploy is turnkey and generate-861/870 work without hand-entry. INSERT ... WHERE NOT EXISTS makes each
         // a no-op once present, so admin edits in the EDI setup are preserved (not clobbered on restart). Config
@@ -242,6 +244,10 @@ public static class AbisSchema
         SELECT 1980, '870', 1, 'aleris', 'ZZ', '964790856', '>', '', '00401', 'RS', 'S_aleris_', '300578504' FROM dual
          WHERE NOT EXISTS (SELECT 1 FROM abis_edi_partner WHERE customer_id = 1980 AND transaction_set = '870')
         """,
+        // Novelis 870 (customers 1153 Kingston + 1459 Oswego): per-job variant. GS03 receiver (001504935001)
+        // differs from the ISA08 receiver id (0015049350011G), so gs_receiver_code overrides it.
+        Seed870Novelis("1153"),
+        Seed870Novelis("1459"),
         // Arconic 861 (customer 2784, ARCONIC-TN): its own body variant + a distinct GS sender (R0P7ATN) and SH code.
         """
         INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier,
@@ -266,6 +272,15 @@ public static class AbisSchema
             receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, file_prefix, item_reference)
         SELECT {customerId}, '861', 1, '{variant}', '{qualifier}', '{receiverId}', '{componentSep}', '', '00200', 'RC', '{filePrefix}', NULL FROM dual
          WHERE NOT EXISTS (SELECT 1 FROM abis_edi_partner WHERE customer_id = {customerId} AND transaction_set = '861')
+        """;
+
+    // An idempotent Novelis 870 partner-profile seed (ISA receiver 0015049350011G / GS03 receiver 001504935001).
+    private static string Seed870Novelis(string customerId) =>
+        $"""
+        INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier,
+            receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, gs_receiver_code, file_prefix, item_reference)
+        SELECT {customerId}, '870', 1, 'novelis', '09', '0015049350011G', '', '', '00401', 'RS', '001504935001', 'S_novelis_870_', NULL FROM dual
+         WHERE NOT EXISTS (SELECT 1 FROM abis_edi_partner WHERE customer_id = {customerId} AND transaction_set = '870')
         """;
 
     public static async Task EnsureOwnedTablesAsync(IDbConnectionFactory factory, ILogger logger, CancellationToken ct = default)

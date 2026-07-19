@@ -910,7 +910,7 @@ public sealed class RepositoryTests : IDisposable
     [Fact]
     public async Task Edi870_assembles_generates_marks_and_reports_once()
     {
-        var batch = await _repo.AssembleEdi870BatchAsync(1980, CancellationToken.None);
+        var batch = await _repo.AssembleEdi870BatchAsync(1980, "aleris", CancellationToken.None);
         Assert.Single(batch.Jobs);
         Assert.Equal("964790856", batch.SupplierDuns);
         var job = batch.Jobs[0];
@@ -941,9 +941,72 @@ public sealed class RepositoryTests : IDisposable
         Assert.Equal("870", (await _repo.GetEdiTransactionAsync(result.EdiFileId!.Value, CancellationToken.None))!.TransactionTypeId);
 
         // Report-once: the item + job are marked, so a second assemble finds nothing.
-        var again = await _repo.AssembleEdi870BatchAsync(1980, CancellationToken.None);
+        var again = await _repo.AssembleEdi870BatchAsync(1980, "aleris", CancellationToken.None);
         Assert.Empty(again.Jobs);
         Assert.Equal("nothing", (await _repo.PersistEdi870Async(again, profile!, DateTime.Now, CancellationToken.None)).Status);
+    }
+
+    [Fact]
+    public async Task Edi870_novelis_generates_one_file_per_job_with_gs03_override()
+    {
+        // A done Novelis (customer 1153) job with a ready skid + a scrap coil, inserted locally so the shared
+        // job/coil counts stay stable. Exercises the novelis body variant + per-job file + GS03 override.
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO customer_order (order_abc_num, orig_customer_id, orig_customer_po, enduser_po) VALUES (7700, 1153, 'CPO-77', 'EPO-77');
+                INSERT INTO order_item (order_item_num, order_abc_num, enduser_part_num, cust_prod_line_id, finished_goods_material_num, item_status) VALUES (1, 7700, 'NPART', 'PL-77', 'FG-77', 1);
+                INSERT INTO coil (coil_abc_num, coil_org_num, coil_gauge, coil_status, customer_id, lot_num, net_wt, net_wt_balance, consumed_coil_num) VALUES (7701, 'NC-7701', 0.04, 13, 1153, 'NLOT', 25000, 0, 'CC-7701');
+                INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num, job_status) VALUES (7702, 7700, 1, 0);
+                INSERT INTO production_sheet_item (prod_item_num, coil_abc_num, ab_job_num, prod_item_status, prod_item_pieces, prod_item_net_wt) VALUES (7703, 7701, 7702, 1, 100, 20000);
+                INSERT INTO sheet_skid (sheet_skid_num, ab_job_num, sheet_skid_display_num, sheet_net_wt, sheet_tare_wt, skid_pieces, skid_sheet_status) VALUES (7704, 7702, 'SKD-77', 20000, 200, 100, 2);
+                INSERT INTO sheet_skid_detail (sheet_skid_num, prod_item_num) VALUES (7704, 7703);
+                INSERT INTO process_coil (ab_job_num, coil_abc_num, process_coil_status, process_end_wt, process_quantity) VALUES (7702, 7701, 2, 2000, 25000);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+
+        var profile = await _repo.GetEdiPartnerAsync(1153, "870", CancellationToken.None);
+        Assert.Equal("novelis", profile!.Variant);
+
+        var batch = await _repo.AssembleEdi870BatchAsync(1153, profile.Variant, CancellationToken.None);
+        Assert.Single(batch.Jobs);
+        var job = batch.Jobs[0];
+        Assert.Equal(7702, job.AbJobNum);
+        Assert.Single(job.Items);
+        var item = job.Items[0];
+        Assert.Equal(20200m, item.GrossWeight);              // 20000 net + 200 tare
+        Assert.Equal("CPO-77", item.OrigCustomerPo);
+        Assert.Equal("PL-77", item.CustProdLine);
+        Assert.Equal("FG-77", item.FinishedGoodsMaterialNum);
+        Assert.Equal("CC-7701", item.ConsumedCoil);
+        Assert.Equal("SKD-77", item.SheetSkidDisplayNum);
+        Assert.Single(job.Scrap);
+        Assert.Equal(3000m, job.Scrap[0].ScrapNetWeight);    // 25000 − 2000 end − 20000 prime
+
+        var result = await _repo.PersistEdi870Async(batch, profile, new DateTime(2026, 7, 12, 9, 30, 0), CancellationToken.None);
+        Assert.Equal("generated", result.Status);
+        Assert.Equal("Novelis", result.Partner);
+        Assert.Equal(1, result.JobCount);
+        Assert.Single(result.Files);
+        var file = result.Files[0];
+        Assert.Equal(7702, file.AbJobNum);
+        Assert.StartsWith("S_novelis_870_", file.EdiFileName);
+        Assert.EndsWith("_Job-7702.edi", file.EdiFileName);
+
+        var payload = await _repo.GetEdiPayloadAsync(file.EdiFileId, CancellationToken.None);
+        Assert.Contains("ST*870*", payload!.Payload);
+        Assert.Contains("GS*RS*039630926T*001504935001*", payload.Payload);   // GS03 override ≠ ISA receiver
+        Assert.Contains("N1*SU**1*241003755", payload.Payload);               // supplier DUNS
+        Assert.DoesNotContain("N1*MF", payload.Payload);                      // Novelis has no N1*MF
+        Assert.Contains("HL*1**I", payload.Payload);                          // flat HL
+        Assert.Contains("PID*S*MA*ST*1*SKD-77", payload.Payload);
+
+        // Report-once: the item + job are marked, so a second assemble finds nothing.
+        var again = await _repo.AssembleEdi870BatchAsync(1153, profile.Variant, CancellationToken.None);
+        Assert.Empty(again.Jobs);
     }
 
     [Fact]
@@ -960,6 +1023,13 @@ public sealed class RepositoryTests : IDisposable
         Assert.Equal("300578504", ale870!.ItemReference);
         Assert.Equal("00401", ale870.EnvelopeVersion);
         Assert.Equal("RS", ale870.GsFunctionalCode);
+
+        // Novelis 870 — the GS03 receiver override (≠ ISA receiver id) round-trips.
+        var nov870 = await _repo.GetEdiPartnerAsync(1153, "870", CancellationToken.None);
+        Assert.Equal("novelis", nov870!.Variant);
+        Assert.Equal("0015049350011G", nov870.ReceiverId);
+        Assert.Equal("001504935001", nov870.GsReceiverCode);
+        Assert.Equal("S_novelis_870_", nov870.FilePrefix);
 
         // Arconic 861 — its distinct GS sender override round-trips.
         var arc = await _repo.GetEdiPartnerAsync(2784, "861", CancellationToken.None);

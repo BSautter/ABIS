@@ -870,7 +870,9 @@ test('receiving flow: mint coil inventory + real 861 (typed)', async () => {
 // EDI 870 (Order/Coil Status): batch every unsent Aleris item + finished-job scrap into one X12 — built and
 // stored, never transmitted. Non-partner customers are rejected; a second run has nothing new to report.
 test('edi flow: generate the Aleris 870 (typed, stored not transmitted)', async () => {
-  await assert.rejects(() => client.generateEdi870(1153));   // Novelis isn't a configured 870 partner
+  await assert.rejects(() => client.generateEdi870(2582));    // Novelis 2582 has only an 861 profile → 422
+  const nov = await client.generateEdi870(1153);              // Novelis 1153 IS a configured 870 partner
+  assert.equal(nov.status, 'nothing');                        // wired, but no unsent items in the seed
   const r = await client.generateEdi870(1980);
   assert.equal(r.status, 'generated');
   assert.equal(r.partner, 'Aleris');

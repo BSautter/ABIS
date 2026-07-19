@@ -61,6 +61,7 @@ function scaffold() {
           <div class="fld"><label>Version</label><input id="pVer" style="width:66px" placeholder="00401" /></div>
           <div class="fld"><label>GS code</label><input id="pGs" style="width:56px" placeholder="RC" /></div>
           <div class="fld"><label>GS sender</label><input id="pGsSender" style="width:90px" placeholder="(ABCo)" /></div>
+          <div class="fld"><label>GS receiver</label><input id="pGsReceiver" style="width:110px" placeholder="(= receiver id)" /></div>
           <div class="fld"><label>File prefix</label><input id="pPrefix" style="width:140px" /></div>
           <div class="fld"><label>Item ref</label><input id="pItemRef" style="width:110px" /></div>
           <div class="fld"><label>Enabled</label><input id="pEnabled" type="checkbox" checked /></div>
@@ -197,12 +198,13 @@ function fillPartner(p) {
     $('#pVer').value = p.envelopeVersion ?? '';
     $('#pGs').value = p.gsFunctionalCode ?? '';
     $('#pGsSender').value = p.gsSenderCode ?? '';
+    $('#pGsReceiver').value = p.gsReceiverCode ?? '';
     $('#pPrefix').value = p.filePrefix ?? '';
     $('#pItemRef').value = p.itemReference ?? '';
     $('#pEnabled').checked = p.enabled !== false;
 }
 function clearPartner() {
-    ['#pCust', '#pVariant', '#pRq', '#pRid', '#pComp', '#pSuffix', '#pVer', '#pGs', '#pGsSender', '#pPrefix', '#pItemRef']
+    ['#pCust', '#pVariant', '#pRq', '#pRid', '#pComp', '#pSuffix', '#pVer', '#pGs', '#pGsSender', '#pGsReceiver', '#pPrefix', '#pItemRef']
         .forEach((id) => { $(id).value = ''; });
     $('#pEnabled').checked = true;
 }
@@ -221,7 +223,8 @@ async function savePartner() {
             enabled: $('#pEnabled').checked, variant: opt('#pVariant'),
             receiverQualifier: opt('#pRq'), receiverId: opt('#pRid'), componentSeparator: opt('#pComp'),
             segmentSuffix: opt('#pSuffix'), envelopeVersion: opt('#pVer'), gsFunctionalCode: opt('#pGs'),
-            gsSenderCode: opt('#pGsSender'), filePrefix: opt('#pPrefix'), itemReference: opt('#pItemRef'),
+            gsSenderCode: opt('#pGsSender'), gsReceiverCode: opt('#pGsReceiver'),
+            filePrefix: opt('#pPrefix'), itemReference: opt('#pItemRef'),
         }));
         await loadPartners();
     }

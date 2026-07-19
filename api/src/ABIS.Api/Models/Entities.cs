@@ -1654,6 +1654,9 @@ public sealed class EdiPartnerProfile
     /// <summary>GS02 sender code, when it differs from the ISA sender id (e.g. Arconic 861 uses <c>R0P7ATN</c>).
     /// Null → the standard ABCo sender (<c>039630926T</c>).</summary>
     public string? GsSenderCode { get; set; }
+    /// <summary>GS03 receiver code, when it differs from the ISA receiver id (e.g. the Novelis 870's GS03 is
+    /// <c>001504935001</c> while ISA08 is <c>0015049350011G</c>). Null → the same as <see cref="ReceiverId"/>.</summary>
+    public string? GsReceiverCode { get; set; }
     /// <summary>Output file-name prefix (legacy <c>edi_file_prefix</c>).</summary>
     public string? FilePrefix { get; set; }
     /// <summary>A per-partner magic reference used in the body (e.g. the Aleris 870 <c>PRF*RV</c> value).</summary>
@@ -1700,11 +1703,24 @@ public sealed class Edi870Item
     public string? CoilOrgNum { get; set; }
     public string? LotNum { get; set; }
     public string? EnduserPartNum { get; set; }
-    /// <summary>MAX(coil_gauge) across the coils feeding this skid — the MEA*PD*TH thickness.</summary>
+    /// <summary>MAX(coil_gauge) across the coils feeding this skid — the MEA*PD*TH thickness (Aleris variant).</summary>
     public decimal CoilThickness { get; set; }
     public decimal Length { get; set; }
     public decimal Width { get; set; }
     public decimal TheoreticalUnitWt { get; set; }
+    // ---- Novelis-variant fields (null/0 for Aleris) ----
+    /// <summary>Skid gross weight (sheet_net_wt + sheet_tare_wt) — the Novelis MEA*WT*G.</summary>
+    public decimal GrossWeight { get; set; }
+    /// <summary>customer_order.orig_customer_po — the Novelis PRF reference (emitted only when it differs from FG).</summary>
+    public string? OrigCustomerPo { get; set; }
+    /// <summary>order_item.cust_prod_line_id — the Novelis PRF component.</summary>
+    public string? CustProdLine { get; set; }
+    /// <summary>order_item.finished_goods_material_num — the Novelis PO1 VP + the PRF-suppression compare.</summary>
+    public string? FinishedGoodsMaterialNum { get; set; }
+    /// <summary>coil.consumed_coil_num — the Novelis REF*IX.</summary>
+    public string? ConsumedCoil { get; set; }
+    /// <summary>sheet_skid.sheet_skid_display_num — the Novelis PID*S*MA status element.</summary>
+    public string? SheetSkidDisplayNum { get; set; }
 }
 
 /// <summary>One scrap line in an 870 (finished-job coil scrap = process qty − end wt − prime shipped).</summary>
@@ -1733,6 +1749,23 @@ public sealed class Edi870Result
     public int HlCount { get; set; }
     public int PayloadBytes { get; set; }
     public bool Transmitted { get; set; }
+    /// <summary>The individual EDI files produced. Aleris batches everything into ONE file (a single entry);
+    /// Novelis produces ONE file per job (S_novelis_870_{id}_Job-{job}.edi). The top-level
+    /// <see cref="EdiFileId"/> etc. summarise the first file / the whole run.</summary>
+    public IReadOnlyList<Edi870FileResult> Files { get; set; } = [];
+}
+
+/// <summary>One generated 870 file within a run — the batch (Aleris) or a single job's file (Novelis).</summary>
+public sealed class Edi870FileResult
+{
+    public long EdiFileId { get; set; }
+    public string? EdiFileName { get; set; }
+    /// <summary>The job this file reports (Novelis per-job); null for the Aleris whole-customer batch.</summary>
+    public long? AbJobNum { get; set; }
+    public int ItemCount { get; set; }
+    public int ScrapCount { get; set; }
+    public int HlCount { get; set; }
+    public int PayloadBytes { get; set; }
 }
 
 /// <summary>Request for the admin "send a test email" diagnostic. All fields optional (sensible defaults).</summary>

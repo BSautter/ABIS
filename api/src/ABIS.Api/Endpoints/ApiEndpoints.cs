@@ -989,12 +989,13 @@ public static class ApiEndpoints
             {
                 if (await RequireFeatureAsync(ctx, repo, "EDI", 1, ct) is { } deny) return deny;
                 // Resolve the customer's 870 trading-partner profile (the config backbone). No enabled 870
-                // profile → 422. (Only the "aleris" body variant is wired today; Wise would add its own.)
+                // profile → 422. The body layout is chosen by profile.Variant (aleris batches everything into
+                // one file; novelis produces one file per job).
                 var profile = await repo.GetEdiPartnerAsync(customerId, "870", ct);
                 if (profile is null || !profile.Enabled)
                     return Results.Problem(statusCode: StatusCodes.Status422UnprocessableEntity, title: "Not an 870 partner",
                         detail: $"Customer {customerId} has no enabled 870 trading-partner profile (configure it in the admin EDI setup).");
-                var batch = await repo.AssembleEdi870BatchAsync(customerId, ct);
+                var batch = await repo.AssembleEdi870BatchAsync(customerId, profile.Variant, ct);
                 var result = await repo.PersistEdi870Async(batch, profile, DateTime.Now, ct);
                 return Results.Ok(result);
             })
@@ -1917,7 +1918,8 @@ public static class ApiEndpoints
                     ReceiverQualifier = body.ReceiverQualifier, ReceiverId = body.ReceiverId,
                     ComponentSeparator = body.ComponentSeparator, SegmentSuffix = body.SegmentSuffix,
                     EnvelopeVersion = body.EnvelopeVersion, GsFunctionalCode = body.GsFunctionalCode,
-                    GsSenderCode = body.GsSenderCode, FilePrefix = body.FilePrefix, ItemReference = body.ItemReference,
+                    GsSenderCode = body.GsSenderCode, GsReceiverCode = body.GsReceiverCode,
+                    FilePrefix = body.FilePrefix, ItemReference = body.ItemReference,
                     UpdatedBy = login,
                 }, ct);
                 return Results.Ok(saved);

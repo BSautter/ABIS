@@ -15985,6 +15985,44 @@ export class Edi861Result {
         return data;
     }
 }
+export class Edi870FileResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.ediFileId = _data["ediFileId"];
+            this.ediFileName = _data["ediFileName"];
+            this.abJobNum = _data["abJobNum"];
+            this.itemCount = _data["itemCount"];
+            this.scrapCount = _data["scrapCount"];
+            this.hlCount = _data["hlCount"];
+            this.payloadBytes = _data["payloadBytes"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new Edi870FileResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["ediFileId"] = this.ediFileId;
+        data["ediFileName"] = this.ediFileName;
+        data["abJobNum"] = this.abJobNum;
+        data["itemCount"] = this.itemCount;
+        data["scrapCount"] = this.scrapCount;
+        data["hlCount"] = this.hlCount;
+        data["payloadBytes"] = this.payloadBytes;
+        return data;
+    }
+}
 export class Edi870Result {
     constructor(data) {
         if (data) {
@@ -16010,6 +16048,11 @@ export class Edi870Result {
             this.hlCount = _data["hlCount"];
             this.payloadBytes = _data["payloadBytes"];
             this.transmitted = _data["transmitted"];
+            if (Array.isArray(_data["files"])) {
+                this.files = [];
+                for (let item of _data["files"])
+                    this.files.push(Edi870FileResult.fromJS(item));
+            }
         }
     }
     static fromJS(data) {
@@ -16034,6 +16077,11 @@ export class Edi870Result {
         data["hlCount"] = this.hlCount;
         data["payloadBytes"] = this.payloadBytes;
         data["transmitted"] = this.transmitted;
+        if (Array.isArray(this.files)) {
+            data["files"] = [];
+            for (let item of this.files)
+                data["files"].push(item ? item.toJSON() : undefined);
+        }
         return data;
     }
 }
@@ -16143,6 +16191,7 @@ export class EdiPartnerProfile {
             this.envelopeVersion = _data["envelopeVersion"];
             this.gsFunctionalCode = _data["gsFunctionalCode"];
             this.gsSenderCode = _data["gsSenderCode"];
+            this.gsReceiverCode = _data["gsReceiverCode"];
             this.filePrefix = _data["filePrefix"];
             this.itemReference = _data["itemReference"];
             this.updatedUtc = _data["updatedUtc"] ? new Date(_data["updatedUtc"].toString()) : undefined;
@@ -16168,6 +16217,7 @@ export class EdiPartnerProfile {
         data["envelopeVersion"] = this.envelopeVersion;
         data["gsFunctionalCode"] = this.gsFunctionalCode;
         data["gsSenderCode"] = this.gsSenderCode;
+        data["gsReceiverCode"] = this.gsReceiverCode;
         data["filePrefix"] = this.filePrefix;
         data["itemReference"] = this.itemReference;
         data["updatedUtc"] = this.updatedUtc ? this.updatedUtc.toISOString() : undefined;
@@ -16195,6 +16245,7 @@ export class EdiPartnerWrite {
             this.envelopeVersion = _data["envelopeVersion"];
             this.gsFunctionalCode = _data["gsFunctionalCode"];
             this.gsSenderCode = _data["gsSenderCode"];
+            this.gsReceiverCode = _data["gsReceiverCode"];
             this.filePrefix = _data["filePrefix"];
             this.itemReference = _data["itemReference"];
         }
@@ -16216,6 +16267,7 @@ export class EdiPartnerWrite {
         data["envelopeVersion"] = this.envelopeVersion;
         data["gsFunctionalCode"] = this.gsFunctionalCode;
         data["gsSenderCode"] = this.gsSenderCode;
+        data["gsReceiverCode"] = this.gsReceiverCode;
         data["filePrefix"] = this.filePrefix;
         data["itemReference"] = this.itemReference;
         return data;

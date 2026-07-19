@@ -833,6 +833,8 @@ public sealed class EdiPartnerWrite
     public string? EnvelopeVersion { get; set; }
     public string? GsFunctionalCode { get; set; }
     public string? GsSenderCode { get; set; }
+    /// <summary>GS03 receiver override when it differs from the ISA receiver id (e.g. the Novelis 870).</summary>
+    public string? GsReceiverCode { get; set; }
     public string? FilePrefix { get; set; }
     public string? ItemReference { get; set; }
 }

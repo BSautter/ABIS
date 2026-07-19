@@ -278,6 +278,7 @@ public sealed class AbisRepository : IAbisRepository
         receiver_qualifier AS ReceiverQualifier, receiver_id AS ReceiverId,
         COALESCE(component_separator, '') AS ComponentSeparator, COALESCE(segment_suffix, '') AS SegmentSuffix,
         envelope_version AS EnvelopeVersion, gs_functional_code AS GsFunctionalCode, gs_sender_code AS GsSenderCode,
+        gs_receiver_code AS GsReceiverCode,
         file_prefix AS FilePrefix, item_reference AS ItemReference, updated_utc AS UpdatedUtc, updated_by AS UpdatedBy
         """;
 
@@ -3307,15 +3308,15 @@ public sealed class AbisRepository : IAbisRepository
         {
             cust = p.CustomerId, set = p.TransactionSet, enabled = p.Enabled ? 1 : 0, variant = p.Variant,
             rq = p.ReceiverQualifier, rid = p.ReceiverId, comp = p.ComponentSeparator, suffix = p.SegmentSuffix,
-            ver = p.EnvelopeVersion, gs = p.GsFunctionalCode, gsSender = p.GsSenderCode, prefix = p.FilePrefix,
-            itemRef = p.ItemReference, now = (DateTime?)DateTime.UtcNow, by = p.UpdatedBy
+            ver = p.EnvelopeVersion, gs = p.GsFunctionalCode, gsSender = p.GsSenderCode, gsReceiver = p.GsReceiverCode,
+            prefix = p.FilePrefix, itemRef = p.ItemReference, now = (DateTime?)DateTime.UtcNow, by = p.UpdatedBy
         };
         var n = await conn.ExecuteAsync(new CommandDefinition(
             """
             UPDATE abis_edi_partner SET enabled = :enabled, variant = :variant, receiver_qualifier = :rq,
                 receiver_id = :rid, component_separator = :comp, segment_suffix = :suffix, envelope_version = :ver,
-                gs_functional_code = :gs, gs_sender_code = :gsSender, file_prefix = :prefix, item_reference = :itemRef,
-                updated_utc = :now, updated_by = :by
+                gs_functional_code = :gs, gs_sender_code = :gsSender, gs_receiver_code = :gsReceiver,
+                file_prefix = :prefix, item_reference = :itemRef, updated_utc = :now, updated_by = :by
              WHERE customer_id = :cust AND transaction_set = :set
             """, args, cancellationToken: ct));
         if (n == 0)
@@ -3323,8 +3324,8 @@ public sealed class AbisRepository : IAbisRepository
                 """
                 INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier,
                     receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, gs_sender_code,
-                    file_prefix, item_reference, updated_utc, updated_by)
-                VALUES (:cust, :set, :enabled, :variant, :rq, :rid, :comp, :suffix, :ver, :gs, :gsSender, :prefix, :itemRef, :now, :by)
+                    gs_receiver_code, file_prefix, item_reference, updated_utc, updated_by)
+                VALUES (:cust, :set, :enabled, :variant, :rq, :rid, :comp, :suffix, :ver, :gs, :gsSender, :gsReceiver, :prefix, :itemRef, :now, :by)
                 """, args, cancellationToken: ct));
         return (await GetEdiPartnerAsync(p.CustomerId, p.TransactionSet, ct))!;
     }
@@ -3444,6 +3445,13 @@ public sealed class AbisRepository : IAbisRepository
         public decimal TheoreticalUnitWt { get; set; }
         public long OrderAbcNum { get; set; }
         public long OrderItemNum { get; set; }
+        // Novelis-variant fields (harmless extra columns for Aleris).
+        public decimal GrossWeight { get; set; }
+        public string? OrigCustomerPo { get; set; }
+        public string? CustProdLine { get; set; }
+        public string? FinishedGoodsMaterialNum { get; set; }
+        public string? ConsumedCoil { get; set; }
+        public string? SheetSkidDisplayNum { get; set; }
     }
 
     private sealed class ShapeDim { public decimal? L { get; set; } public decimal? W { get; set; } }
@@ -3477,22 +3485,29 @@ public sealed class AbisRepository : IAbisRepository
     /// item on a ready/on-hold/warehouse skid, plus finished-job coil scrap. Mirrors the legacy
     /// <c>edi_aleris_870</c> selection, resolving the order/shape via <c>ab_job.order_abc_num/order_item_num</c>
     /// (the modern <c>sheet_skid</c> has no <c>ref_order_abc_num</c>). Read-only — no state is changed here.</summary>
-    public async Task<Edi870Batch> AssembleEdi870BatchAsync(long customerId, CancellationToken ct)
+    public async Task<Edi870Batch> AssembleEdi870BatchAsync(long customerId, string? variant, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
         var suDuns = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
             "SELECT customer_duns_number_string FROM customer WHERE customer_id = :c",
             new { c = customerId }, cancellationToken: ct));
 
-        // Candidate jobs: (A) unsent items on ready/warehouse skids, or (B) done jobs with unsent scrap.
+        // The reportable skid statuses differ by partner: Aleris ships ready/warehouse skids (legacy
+        // edi_aleris_870), Novelis ships the wider set from F_EDI_NOVELIS_870_4JOB. Both lists are fixed
+        // internal constants — safe to interpolate.
+        var novelis = string.Equals(variant, "novelis", StringComparison.OrdinalIgnoreCase);
+        var candidateStatuses = novelis ? "0, 2, 4, 12, 13, 16" : "2, 8";
+        var itemStatuses = novelis ? "0, 2, 4, 12, 13, 16" : "2, 4, 7, 8, 13";
+
+        // Candidate jobs: (A) unsent items on a reportable skid, or (B) done jobs with unsent scrap.
         var jobNums = (await conn.QueryAsync<long>(new CommandDefinition(
-            """
+            $"""
             SELECT DISTINCT psi.ab_job_num
               FROM production_sheet_item psi
               JOIN sheet_skid_detail ssd ON ssd.prod_item_num = psi.prod_item_num
               JOIN sheet_skid ss ON ss.sheet_skid_num = ssd.sheet_skid_num
               JOIN coil c ON c.coil_abc_num = psi.coil_abc_num
-             WHERE ss.skid_sheet_status IN (2, 8)
+             WHERE ss.skid_sheet_status IN ({candidateStatuses})
                AND c.customer_id = :c
                AND NOT EXISTS (SELECT 1 FROM abis_edi_870_mark m WHERE m.mark_type = 'ITEM' AND m.ref_id = psi.prod_item_num)
             UNION
@@ -3515,13 +3530,19 @@ public sealed class AbisRepository : IAbisRepository
                 """, new { j = jobNum }, cancellationToken: ct));
 
             var itemRows = (await conn.QueryAsync<Edi870ItemRow>(new CommandDefinition(
-                """
+                $"""
                 SELECT psi.prod_item_num AS ProdItemNum, ss.sheet_skid_num AS SheetSkidNum,
                        ss.skid_sheet_status AS SkidSheetStatus, psi.prod_item_pieces AS Pieces,
                        psi.prod_item_net_wt AS NetWeight, co.enduser_po AS EnduserPo,
                        c.coil_org_num AS CoilOrgNum, c.lot_num AS LotNum, oi.enduser_part_num AS EnduserPartNum,
                        oi.sheet_type AS SheetType, COALESCE(oi.theoretical_unit_wt, 0) AS TheoreticalUnitWt,
-                       aj.order_abc_num AS OrderAbcNum, aj.order_item_num AS OrderItemNum
+                       aj.order_abc_num AS OrderAbcNum, aj.order_item_num AS OrderItemNum,
+                       (ss.sheet_net_wt + ss.sheet_tare_wt) AS GrossWeight,
+                       COALESCE(co.orig_customer_po, 'NA') AS OrigCustomerPo,
+                       COALESCE(oi.cust_prod_line_id, 'NA') AS CustProdLine,
+                       COALESCE(oi.finished_goods_material_num, 'NA') AS FinishedGoodsMaterialNum,
+                       COALESCE(c.consumed_coil_num, ' ') AS ConsumedCoil,
+                       ss.sheet_skid_display_num AS SheetSkidDisplayNum
                   FROM production_sheet_item psi
                   JOIN sheet_skid_detail ssd ON ssd.prod_item_num = psi.prod_item_num
                   JOIN sheet_skid ss ON ss.sheet_skid_num = ssd.sheet_skid_num
@@ -3530,7 +3551,7 @@ public sealed class AbisRepository : IAbisRepository
                   JOIN customer_order co ON co.order_abc_num = aj.order_abc_num
                   JOIN order_item oi ON oi.order_abc_num = aj.order_abc_num AND oi.order_item_num = aj.order_item_num
                  WHERE psi.ab_job_num = :j
-                   AND ss.skid_sheet_status IN (2, 4, 7, 8, 13)
+                   AND ss.skid_sheet_status IN ({itemStatuses})
                    AND c.customer_id = :c
                    AND NOT EXISTS (SELECT 1 FROM abis_edi_870_mark m WHERE m.mark_type = 'ITEM' AND m.ref_id = psi.prod_item_num)
                  ORDER BY psi.prod_item_num
@@ -3554,6 +3575,9 @@ public sealed class AbisRepository : IAbisRepository
                     Pieces = r.Pieces, NetWeight = r.NetWeight, EnduserPo = r.EnduserPo, CoilOrgNum = r.CoilOrgNum,
                     LotNum = r.LotNum, EnduserPartNum = r.EnduserPartNum, CoilThickness = thickness ?? 0m,
                     Length = length, Width = width, TheoreticalUnitWt = r.TheoreticalUnitWt,
+                    GrossWeight = r.GrossWeight, OrigCustomerPo = r.OrigCustomerPo, CustProdLine = r.CustProdLine,
+                    FinishedGoodsMaterialNum = r.FinishedGoodsMaterialNum, ConsumedCoil = r.ConsumedCoil,
+                    SheetSkidDisplayNum = r.SheetSkidDisplayNum,
                 });
             }
 
@@ -3608,7 +3632,9 @@ public sealed class AbisRepository : IAbisRepository
     /// <summary>Generate + persist the 870 for an assembled batch, in one transaction: build the X12
     /// (<see cref="Edi870Generator"/>), allocate the edi_file_id (= control number), insert the tracking row +
     /// the payload CLOB, and mark every reported item ('ITEM') and every job whose scrap was sent ('SCRAP') so
-    /// they are not reported again. <b>Never transmits.</b> Empty batch → Status "nothing" (nothing written).</summary>
+    /// they are not reported again. The <b>aleris</b> variant batches the whole customer into ONE file; the
+    /// <b>novelis</b> variant produces ONE file per job (S_novelis_870_{id}_Job-{job}.edi) — every file lands
+    /// in <see cref="Edi870Result.Files"/>. <b>Never transmits.</b> Empty batch → Status "nothing".</summary>
     public async Task<Edi870Result> PersistEdi870Async(Edi870Batch batch, EdiPartnerProfile profile, DateTime timestamp, CancellationToken ct)
     {
         var partnerName = string.IsNullOrEmpty(profile.Variant) ? "870 partner"
@@ -3622,39 +3648,78 @@ public sealed class AbisRepository : IAbisRepository
                 Note = "No unsent 870 items or scrap for this customer.",
             };
 
+        var novelis = string.Equals(profile.Variant, "novelis", StringComparison.OrdinalIgnoreCase);
+
         await using var conn = await OpenAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
 
-        var (ediFileId, fileName, payload) = await WriteEdiTransactionAsync(
-            conn, (DbTransaction)tx, "870", batch.SupplierDuns ?? "", batch.CustomerId, null, timestamp,
-            id => Edi870Generator.Generate(batch, profile, id, id, timestamp),
-            id => Edi870Generator.FileName(profile, id), ct);
-        var hlCount = batch.Jobs.Count * 2 + itemCount + scrapCount;
-
-        foreach (var job in batch.Jobs)
+        // Mark a job's reported items + (when present) its sent scrap against the file that carried them.
+        async Task MarkJobAsync(Edi870Job job, long fileId)
         {
             foreach (var item in job.Items)
                 await conn.ExecuteAsync(new CommandDefinition(
                     "INSERT INTO abis_edi_870_mark (mark_type, ref_id, edi_file_id, customer_id, sent_utc) VALUES ('ITEM', :ref, :fileId, :cust, :now)",
-                    new { @ref = item.ProdItemNum, fileId = ediFileId, cust = batch.CustomerId, now = (DateTime?)timestamp },
+                    new { @ref = item.ProdItemNum, fileId, cust = batch.CustomerId, now = (DateTime?)timestamp },
                     transaction: tx, cancellationToken: ct));
             // Only mark SCRAP when scrap was actually sent (legacy marked every processed job, which could drop
             // scrap for a job that wasn't done yet; the modern engine reports it when the job later completes).
             if (job.Scrap.Count > 0)
                 await conn.ExecuteAsync(new CommandDefinition(
                     "INSERT INTO abis_edi_870_mark (mark_type, ref_id, edi_file_id, customer_id, sent_utc) VALUES ('SCRAP', :ref, :fileId, :cust, :now)",
-                    new { @ref = job.AbJobNum, fileId = ediFileId, cust = batch.CustomerId, now = (DateTime?)timestamp },
+                    new { @ref = job.AbJobNum, fileId, cust = batch.CustomerId, now = (DateTime?)timestamp },
                     transaction: tx, cancellationToken: ct));
         }
 
+        var files = new List<Edi870FileResult>();
+        if (novelis)
+        {
+            // One interchange per job — the faithful F_EDI_NOVELIS_870_4JOB shape.
+            foreach (var job in batch.Jobs)
+            {
+                var single = new Edi870Batch { CustomerId = batch.CustomerId, SupplierDuns = batch.SupplierDuns, Jobs = [job] };
+                var (fileId, name, payload) = await WriteEdiTransactionAsync(
+                    conn, (DbTransaction)tx, "870", batch.SupplierDuns ?? "", batch.CustomerId, null, timestamp,
+                    id => Edi870Generator.Generate(single, profile, id, id, timestamp),
+                    id => Edi870Generator.NovelisFileName(profile, id, job.AbJobNum), ct);
+                await MarkJobAsync(job, fileId);
+                files.Add(new Edi870FileResult
+                {
+                    EdiFileId = fileId, EdiFileName = name, AbJobNum = job.AbJobNum,
+                    ItemCount = job.Items.Count, ScrapCount = job.Scrap.Count,
+                    HlCount = job.Items.Count + job.Scrap.Count,
+                    PayloadBytes = System.Text.Encoding.UTF8.GetByteCount(payload),
+                });
+            }
+        }
+        else
+        {
+            // Aleris (and any batch variant): the whole customer in one interchange.
+            var (fileId, name, payload) = await WriteEdiTransactionAsync(
+                conn, (DbTransaction)tx, "870", batch.SupplierDuns ?? "", batch.CustomerId, null, timestamp,
+                id => Edi870Generator.Generate(batch, profile, id, id, timestamp),
+                id => Edi870Generator.FileName(profile, id), ct);
+            foreach (var job in batch.Jobs) await MarkJobAsync(job, fileId);
+            files.Add(new Edi870FileResult
+            {
+                EdiFileId = fileId, EdiFileName = name, AbJobNum = null,
+                ItemCount = itemCount, ScrapCount = scrapCount,
+                HlCount = batch.Jobs.Count * 2 + itemCount + scrapCount,
+                PayloadBytes = System.Text.Encoding.UTF8.GetByteCount(payload),
+            });
+        }
+
         await tx.CommitAsync(ct);
+        var first = files[0];
         return new Edi870Result
         {
             CustomerId = batch.CustomerId, Status = "generated", Partner = partnerName, Transmitted = false,
-            EdiFileId = ediFileId, EdiFileName = fileName, GroupControlNumber = ediFileId, SetControlNumber = ediFileId,
-            JobCount = batch.Jobs.Count, ItemCount = itemCount, ScrapCount = scrapCount, HlCount = hlCount,
-            PayloadBytes = System.Text.Encoding.UTF8.GetByteCount(payload),
-            Note = $"870 generated for {partnerName} ({batch.Jobs.Count} jobs, {itemCount} items, {scrapCount} scrap); stored, not transmitted.",
+            EdiFileId = first.EdiFileId, EdiFileName = first.EdiFileName,
+            GroupControlNumber = first.EdiFileId, SetControlNumber = first.EdiFileId,
+            JobCount = batch.Jobs.Count, ItemCount = itemCount, ScrapCount = scrapCount,
+            HlCount = files.Sum(f => f.HlCount), PayloadBytes = files.Sum(f => f.PayloadBytes), Files = files,
+            Note = novelis
+                ? $"870 generated for {partnerName} ({files.Count} per-job files, {itemCount} items, {scrapCount} scrap); stored, not transmitted."
+                : $"870 generated for {partnerName} ({batch.Jobs.Count} jobs, {itemCount} items, {scrapCount} scrap); stored, not transmitted.",
         };
     }
 

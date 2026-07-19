@@ -13034,6 +13034,41 @@
         },
         "additionalProperties": false
       },
+      "Edi870FileResult": {
+        "type": "object",
+        "properties": {
+          "ediFileId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "ediFileName": {
+            "type": "string",
+            "nullable": true
+          },
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "itemCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "scrapCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "hlCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "payloadBytes": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
       "Edi870Result": {
         "type": "object",
         "properties": {
@@ -13094,6 +13129,13 @@
           },
           "transmitted": {
             "type": "boolean"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Edi870FileResult"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -13227,6 +13269,10 @@
             "type": "string",
             "nullable": true
           },
+          "gsReceiverCode": {
+            "type": "string",
+            "nullable": true
+          },
           "filePrefix": {
             "type": "string",
             "nullable": true
@@ -13282,6 +13328,10 @@
             "nullable": true
           },
           "gsSenderCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "gsReceiverCode": {
             "type": "string",
             "nullable": true
           },
