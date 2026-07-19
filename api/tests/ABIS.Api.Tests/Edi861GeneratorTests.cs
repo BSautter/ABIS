@@ -58,7 +58,8 @@ public class Edi861GeneratorTests
     [Fact]
     public void Constellium_861_uses_its_at_separator_and_body()
     {
-        var coils = new[] { Coil("CN-3", 700003, 9000, 9100) };
+        // Two coils so the per-coil MEA*CT running count (1, 2) is exercised.
+        var coils = new[] { Coil("CN-3", 700003, 9000, 9100), Coil("CN-4", 700004, 8000, 8100) };
         var lines = Lines(Edi861Generator.Generate(Bol(2776), coils, ConstelliumProfile(), "043207177", "CONSTELLIUM - BG", Ctrl, Ctrl, Now));
 
         // Envelope — receiver 01/043207177, '@' component separator, GS SH with the standard ABCo sender (no override).
@@ -80,6 +81,14 @@ public class Edi861GeneratorTests
         Assert.Contains("PID*S*QAS*ST*1***68", lines);
         Assert.Contains("MEA*WT*WT*9000*01", lines);
         Assert.Contains("MEA*PD*WD*60*IN", lines);
+
+        // Per-coil trailing MEA*CT**{n}*PC running count (legacy f_edi_constellium_861 coil_count) —
+        // 1-based, one per coil, ending at the CTT total. Each closes its own coil block (right after MEA*PD*LN).
+        Assert.Contains("MEA*CT**1*PC", lines);
+        Assert.Contains("MEA*CT**2*PC", lines);
+        Assert.Equal(2, lines.Count(l => l.StartsWith("MEA*CT*")));
+        Assert.Equal("MEA*CT**1*PC", lines[Array.IndexOf(lines, "MEA*PD*LN*3500.5*LF") + 1]);
+        Assert.Contains("CTT*2", lines);
     }
 
     [Fact]

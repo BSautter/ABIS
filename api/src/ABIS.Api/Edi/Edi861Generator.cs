@@ -196,8 +196,9 @@ public static class Edi861Generator
     /// <summary>The Constellium 861 body (legacy <c>f_edi_constellium_861</c>): a <c>REF*MA</c> header with
     /// <c>N1*MF</c>/<c>N1*OU</c> (no N1*SU), <c>*ET</c> date qualifiers, and a per-coil block of
     /// <c>RCD**1*UN</c>, <c>LIN**VO*{po}***SN*{coil}*HN*{lot}</c>, three PIDs (incl. <c>PID*S*QAS*ST*1</c>),
-    /// <c>REF*SE</c> + <c>DTM*206</c>, qualified <c>MEA*WT*WT</c> weights, and <c>MEA*PD*..</c> dimensions
-    /// (thickness *ED, width/length *IN/*LF). The interchange uses the <c>@</c> component separator. Never transmits.</summary>
+    /// <c>REF*SE</c> + <c>DTM*206</c>, qualified <c>MEA*WT*WT</c> weights, <c>MEA*PD*..</c> dimensions
+    /// (thickness *ED, width/length *IN/*LF), and a closing per-coil <c>MEA*CT**{n}*PC</c> running count.
+    /// The interchange uses the <c>@</c> component separator. Never transmits.</summary>
     private static void ConstelliumBody(X12Writer w, ReceivingBol bol, IReadOnlyList<ReceivingBolCoil> coils,
         string supplierDuns, DateTime timestamp)
     {
@@ -214,6 +215,7 @@ public static class Edi861Generator
         w.Segment("N1", "OU", "", "1", EdiInterchange.SenderParty);
 
         var received206 = received.ToString("yyyyMMdd HHmm", CultureInfo.InvariantCulture);   // legacy 'yyyymmdd hhmi'
+        var coilCount = 0;
         foreach (var c in coils)
         {
             w.Segment("RCD", "", "1", "UN");
@@ -228,6 +230,10 @@ public static class Edi861Generator
             w.Segment("MEA", "PD", "TH", Dec4(c.CoilGauge), "ED");
             w.Segment("MEA", "PD", "WD", DecTrim(c.CoilWidth), "IN");
             w.Segment("MEA", "PD", "LN", DecTrim(c.LinealFeed), "LF");
+            // Legacy running coil count (f_edi_constellium_861: coil_count := coil_count + 1) — a per-coil
+            // MEA*CT**{n}*PC where n is the 1-based coil index (the final value equals the CTT count).
+            coilCount++;
+            w.Segment("MEA", "CT", "", coilCount.ToString(CultureInfo.InvariantCulture), "PC");
         }
     }
 
