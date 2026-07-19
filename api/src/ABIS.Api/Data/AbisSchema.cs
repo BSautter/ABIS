@@ -224,8 +224,32 @@ public static class AbisSchema
           updated_utc          DATE,
           updated_by           VARCHAR2(64),
           CONSTRAINT pk_abis_edi_partner PRIMARY KEY (customer_id, transaction_set))
+        """,
+        // Idempotent config-default seed of the known legacy partners (matches the SQLite fixture), so a fresh
+        // deploy is turnkey and generate-861/870 work without hand-entry. INSERT ... WHERE NOT EXISTS makes each
+        // a no-op once present, so admin edits in the EDI setup are preserved (not clobbered on restart). Config
+        // only. (Component separator / segment suffix '' stores as NULL on Oracle; readers COALESCE to '.')
+        Seed861("1153", "novelis", "09", "0015049350011G", "", "S_Novelis_"),
+        Seed861("1459", "novelis", "09", "0015049350011G", "", "S_Novelis_"),
+        Seed861("2582", "novelis", "09", "0015049350011G", "", "S_Novelis_"),
+        Seed861("1980", "aleris", "ZZ", "964790856", ">", "S_edi_"),
+        """
+        INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier,
+            receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, file_prefix, item_reference)
+        SELECT 1980, '870', 1, 'aleris', 'ZZ', '964790856', '>', '', '00401', 'RS', 'S_aleris_', '300578504' FROM dual
+         WHERE NOT EXISTS (SELECT 1 FROM abis_edi_partner WHERE customer_id = 1980 AND transaction_set = '870')
         """
     ];
+
+    // An idempotent 861 partner-profile seed row (all 861s share version 00200 + GS code RC).
+    private static string Seed861(string customerId, string variant, string qualifier, string receiverId,
+        string componentSep, string filePrefix) =>
+        $"""
+        INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier,
+            receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, file_prefix, item_reference)
+        SELECT {customerId}, '861', 1, '{variant}', '{qualifier}', '{receiverId}', '{componentSep}', '', '00200', 'RC', '{filePrefix}', NULL FROM dual
+         WHERE NOT EXISTS (SELECT 1 FROM abis_edi_partner WHERE customer_id = {customerId} AND transaction_set = '861')
+        """;
 
     public static async Task EnsureOwnedTablesAsync(IDbConnectionFactory factory, ILogger logger, CancellationToken ct = default)
     {
@@ -250,6 +274,9 @@ public static class AbisSchema
                 """;
             await conn.ExecuteAsync(new CommandDefinition(block, cancellationToken: ct));
         }
+        // Commit the config-default seed rows (CREATE/ALTER auto-commit on Oracle, but the partner-profile
+        // INSERTs are DML and would otherwise roll back when the connection closes).
+        await conn.ExecuteAsync(new CommandDefinition("BEGIN COMMIT; END;", cancellationToken: ct));
         logger.LogInformation("ABIS-owned schema ensured ({Count} DDL statements applied idempotently).", OwnedDdl.Length);
     }
 }
