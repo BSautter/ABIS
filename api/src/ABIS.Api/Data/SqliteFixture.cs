@@ -788,9 +788,9 @@ public static class SqliteFixture
             """,
             new[]
             {
-                new { CustomerId = 1153L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00200", Gs = "RC", GsSender = (string?)null, GsReceiver = (string?)null, Prefix = "S_Novelis_", ItemRef = (string?)null },
-                new { CustomerId = 1459L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00200", Gs = "RC", GsSender = (string?)null, GsReceiver = (string?)null, Prefix = "S_Novelis_", ItemRef = (string?)null },
-                new { CustomerId = 2582L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00200", Gs = "RC", GsSender = (string?)null, GsReceiver = (string?)null, Prefix = "S_Novelis_", ItemRef = (string?)null },
+                new { CustomerId = 1153L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)"R0P7A", GsReceiver = (string?)"001504935001", Prefix = "S_Novelis_", ItemRef = (string?)null },
+                new { CustomerId = 1459L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)"R0P7A", GsReceiver = (string?)"001504935001", Prefix = "S_Novelis_", ItemRef = (string?)null },
+                new { CustomerId = 2582L, TransactionSet = "861", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)"R0P7A", GsReceiver = (string?)"001504935001", Prefix = "S_Novelis_", ItemRef = (string?)null },
                 new { CustomerId = 1980L, TransactionSet = "861", Variant = "aleris", RecvQual = "ZZ", RecvId = "964790856", Comp = ">", Suffix = "", Ver = "00200", Gs = "RC", GsSender = (string?)null, GsReceiver = (string?)null, Prefix = "S_edi_", ItemRef = (string?)null },
                 new { CustomerId = 1980L, TransactionSet = "870", Variant = "aleris", RecvQual = "ZZ", RecvId = "964790856", Comp = ">", Suffix = "", Ver = "00401", Gs = "RS", GsSender = (string?)null, GsReceiver = (string?)null, Prefix = "S_aleris_", ItemRef = (string?)"300578504" },
                 // Novelis 870 (customer 1153 Kingston): per-job variant; GS03 receiver (001504935001) ≠ ISA08 (0015049350011G).

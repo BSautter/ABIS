@@ -234,10 +234,19 @@ public static class AbisSchema
         // deploy is turnkey and generate-861/870 work without hand-entry. INSERT ... WHERE NOT EXISTS makes each
         // a no-op once present, so admin edits in the EDI setup are preserved (not clobbered on restart). Config
         // only. (Component separator / segment suffix '' stores as NULL on Oracle; readers COALESCE to '.')
-        Seed861("1153", "novelis", "09", "0015049350011G", "", "S_Novelis_"),
-        Seed861("1459", "novelis", "09", "0015049350011G", "", "S_Novelis_"),
-        Seed861("2582", "novelis", "09", "0015049350011G", "", "S_Novelis_"),
+        // Novelis 861 (Kingston 1153 / Oswego 1459 / 2582): SH group, GS sender R0P7A, GS03 receiver
+        // 001504935001 (≠ the ISA08 receiver), envelope version 00401 — verified against a production golden.
+        Seed861Novelis("1153"),
+        Seed861Novelis("1459"),
+        Seed861Novelis("2582"),
         Seed861("1980", "aleris", "ZZ", "964790856", ">", "S_edi_"),
+        // Correct any Novelis 861 rows seeded before the golden-file fidelity fix (still at the old 00200/RC
+        // defaults), without clobbering admin edits (guard on the stale values). One-shot: a no-op once corrected.
+        """
+        UPDATE abis_edi_partner
+           SET envelope_version = '00401', gs_functional_code = 'SH', gs_sender_code = 'R0P7A', gs_receiver_code = '001504935001'
+         WHERE transaction_set = '861' AND variant = 'novelis' AND envelope_version = '00200' AND gs_functional_code = 'RC'
+        """,
         """
         INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier,
             receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, file_prefix, item_reference)
@@ -264,13 +273,23 @@ public static class AbisSchema
         """
     ];
 
-    // An idempotent 861 partner-profile seed row (all 861s share version 00200 + GS code RC).
+    // An idempotent 861 partner-profile seed row (the legacy Aleris 861 used version 00200 + GS code RC).
     private static string Seed861(string customerId, string variant, string qualifier, string receiverId,
         string componentSep, string filePrefix) =>
         $"""
         INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier,
             receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, file_prefix, item_reference)
         SELECT {customerId}, '861', 1, '{variant}', '{qualifier}', '{receiverId}', '{componentSep}', '', '00200', 'RC', '{filePrefix}', NULL FROM dual
+         WHERE NOT EXISTS (SELECT 1 FROM abis_edi_partner WHERE customer_id = {customerId} AND transaction_set = '861')
+        """;
+
+    // The Novelis 861 seed (all three plants share the envelope): SH group, GS sender R0P7A, GS03 receiver
+    // 001504935001, ISA receiver 0015049350011G qual 09, empty component separator, version 00401.
+    private static string Seed861Novelis(string customerId) =>
+        $"""
+        INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier,
+            receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, gs_sender_code, gs_receiver_code, file_prefix, item_reference)
+        SELECT {customerId}, '861', 1, 'novelis', '09', '0015049350011G', '', '', '00401', 'SH', 'R0P7A', '001504935001', 'S_Novelis_', NULL FROM dual
          WHERE NOT EXISTS (SELECT 1 FROM abis_edi_partner WHERE customer_id = {customerId} AND transaction_set = '861')
         """;
 

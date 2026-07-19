@@ -52,13 +52,17 @@ public sealed class X12Writer
         string ackRequested, string usageIndicator)
     {
         _isaControl = controlNumber;
-        var isa = new[]
+        var isa = new List<string>
         {
             "ISA", authQual, authInfo.PadRight(10), secQual, secInfo.PadRight(10),
             senderQual, senderId.PadRight(15), receiverQual, receiverId.PadRight(15),
             date6, time4, standardsId, versionNum, controlNumber.PadLeft(9, '0'),
             ackRequested, usageIndicator, _opt.ComponentSeparator,
         };
+        // Legacy ISA16 quirk: partners with an empty component separator (Novelis 861/870) emit ISA16 as an
+        // empty element FOLLOWED by a trailing element separator — production files end "*P**", not "*P*".
+        // Reproduce it byte-for-byte (verified against archived .edi goldens off the .9 server).
+        if (_opt.ComponentSeparator.Length == 0) isa.Add("");
         _segments.Add(string.Join(_opt.ElementSeparator, isa));
         return this;
     }

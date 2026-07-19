@@ -20,8 +20,10 @@ public class EdiX12WriterTests
     public void Isa_is_fixed_width_and_element_separated()
     {
         var isa = Sample(new X12Options()).Split('\n')[0];
-        // sender id padded to 15, receiver id padded to 15, control number zero-padded to 9, component sep last.
-        Assert.Equal("ISA*00*          *00*          *01*039630926T     *09*0015049350011G *260711*1430*U*00200*000356660*0*P*", isa);
+        // sender id padded to 15, receiver id padded to 15, control number zero-padded to 9. An empty component
+        // separator (ISA16) is emitted as an empty element + a trailing separator ('*P**'), matching the legacy
+        // Novelis ISA byte-for-byte (verified against production .edi goldens).
+        Assert.Equal("ISA*00*          *00*          *01*039630926T     *09*0015049350011G *260711*1430*U*00200*000356660*0*P**", isa);
     }
 
     [Fact]

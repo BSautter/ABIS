@@ -3,20 +3,6 @@ using Abis.Api.Models;
 
 namespace Abis.Api.Edi;
 
-/// <summary>The two structural flavours of the 861 body. Novelis and Aleris differ in the <c>LIN</c> element
-/// order and which reference/measurement qualifiers are used, so the generator branches on this — selected by
-/// the partner profile's <see cref="EdiPartnerProfile.Variant"/>.</summary>
-public enum Edi861LinStyle
-{
-    /// <summary>Novelis/Alcan: <c>LIN**VO*{po}*SN*{coil}*HN*{lot}*PK*{pack}</c>, <c>REF*BM</c> per coil,
-    /// net weight <c>MEA*WT**{net}*01</c>.</summary>
-    Novelis,
-
-    /// <summary>Aleris: <c>LIN**VO*{po}*BP*{part}*HN*{lot}*SN*{coil}</c>, <c>REF*BM</c> + <c>N1*MF</c> in the
-    /// header (not per coil), net weight <c>MEA*WT*WT*{net}*01</c>.</summary>
-    Aleris,
-}
-
 /// <summary>
 /// Builds the X12 861 (Receiving Advice) interchange for one received BOL, faithfully porting the legacy Oracle
 /// procs (<c>legacy/cron/edi-procs/p_create_edi_861_for_*.sql</c>) onto the shared <see cref="EdiInterchange"/>
@@ -27,9 +13,9 @@ public enum Edi861LinStyle
 /// <para><b>Generation only — this never transmits.</b> Persisting the tracking row + payload and applying the
 /// "sent" marker is the repository's job (one transaction; the shared EDI sink). See docs/EDI_ENGINE.md.</para>
 ///
-/// <para>The ISA envelope is regenerated to standard form; the legacy Novelis proc emits a trailing empty ISA16
-/// element (<c>…*P**</c>) which the writer normalises to <c>…*P*</c> — cosmetic in a stored-not-transmitted
-/// payload. Reconcile against an archived <c>.edi</c> sample before any eventual transmit.</para>
+/// <para>Validated byte-for-byte against production <c>.edi</c> goldens (Novelis / Arconic / Constellium): the
+/// <see cref="X12Writer"/> reproduces the legacy ISA16 trailing-separator quirk for empty component separators
+/// (<c>…*P**</c>). The Novelis envelope (SH / R0P7A / 001504935001 / version 00401) comes from its profile.</para>
 /// </summary>
 public static class Edi861Generator
 {
@@ -41,13 +27,14 @@ public static class Edi861Generator
         EdiInterchange.FileName(profile, ediFileId, "S_Novelis_");
 
     /// <summary>Build the 861 payload for a received BOL + its coils. The envelope comes from the partner
-    /// <paramref name="profile"/> (via <see cref="EdiInterchange.Open"/>); the body flavour from its
-    /// <c>Variant</c> ("aleris" vs the "novelis" default); <paramref name="supplierDuns"/> is the receiving
-    /// customer's own DUNS (N1*SU). <paramref name="groupControl"/> = ISA13/GS06, <paramref name="setControl"/>
-    /// = ST02 (both the new edi_file_id). The DTM*050 received date-time comes from the BOL.</summary>
+    /// <paramref name="profile"/> (via <see cref="EdiInterchange.Open"/>); the body from its <c>Variant</c>
+    /// (novelis / aleris / arconic / constellium). <paramref name="supplierDuns"/> is the receiving customer's
+    /// own DUNS (N1*SU/N1*MF) and <paramref name="supplierName"/> its short name (the N1*MF/N1*SU party name,
+    /// Novelis only). <paramref name="groupControl"/> = ISA13/GS06, <paramref name="setControl"/> = ST02 (both
+    /// the new edi_file_id). The DTM*050 received date-time comes from the BOL.</summary>
     public static string Generate(
         ReceivingBol bol, IReadOnlyList<ReceivingBolCoil> coils, EdiPartnerProfile profile, string supplierDuns,
-        long groupControl, long setControl, DateTime timestamp)
+        string supplierName, long groupControl, long setControl, DateTime timestamp)
     {
         var variant = profile.Variant?.Trim().ToLowerInvariant();
         var w = EdiInterchange.Open(profile, "861", "RC", "00200", groupControl, setControl, timestamp);
@@ -55,56 +42,101 @@ public static class Edi861Generator
         // Arconic (customer 2784) is a structurally distinct body (REF*MA, RCD**1*UN, LIN VO/VN/SN/HN, no
         // PID*QAS/REF*BM/REF*RV/PRF, MEA*WT** + MEA*PD*..*ED + MEA*PD*LN) — its own path. See f_edi_arconic_861.
         if (variant == "arconic")
-        {
             ArconicBody(w, bol, coils, supplierDuns, timestamp);
-            w.Segment("CTT", coils.Count.ToString(CultureInfo.InvariantCulture));
-            return w.Close();
-        }
         // Constellium (customer 2776) — like Arconic (REF*MA, RCD**1*UN, N1 MF/OU) but its own body:
         // component sep '@', *ET dates, no N1*SU, a PID*S*QAS, LIN**VO*{po}***SN*{coil}*HN, MEA*WT*WT weights.
-        if (variant == "constellium")
-        {
+        else if (variant == "constellium")
             ConstelliumBody(w, bol, coils, supplierDuns, timestamp);
-            w.Segment("CTT", coils.Count.ToString(CultureInfo.InvariantCulture));
-            return w.Close();
-        }
+        // Aleris (customer 1980, dormant since the Commonwealth transition) — REF*BM + N1*MF in the header,
+        // LIN VO/BP/HN/SN, PID*S*QAS, PRF, MEA*WT*WT net. Unvalidated (no recent golden); kept as-was.
+        else if (variant == "aleris")
+            AlerisBody(w, bol, coils, supplierDuns, profile.ReceiverId ?? "", timestamp);
+        // Novelis (customers 1153/1459/2582) — the default. Faithful to P_CREATE_EDI_861_FOR_ALL.
+        else
+            NovelisBody(w, bol, coils, supplierName, supplierDuns, timestamp);
 
-        // ---- novelis/aleris body flavour (envelope itself is data, applied by EdiInterchange.Open) ----
-        var (linStyle, headerRefBm, mfName, coilRefBm, netWtQual) = variant switch
-        {
-            "aleris" => (Edi861LinStyle.Aleris, true, (string?)"Aleris", false, "WT"),
-            _ => (Edi861LinStyle.Novelis, false, (string?)null, true, ""),
-        };
+        w.Segment("CTT", coils.Count.ToString(CultureInfo.InvariantCulture));
+        return w.Close();
+    }
 
+    /// <summary>The Novelis 861 body (legacy <c>P_CREATE_EDI_861_FOR_ALL</c>): header <c>REF*BM</c>, then
+    /// <c>N1*MF</c>/<c>N1*SU</c> naming the receiving plant (its short name + DUNS) around a constant
+    /// <c>N1*OU*ALUMINUM BLANKING CO., INC.</c>; per coil <c>RCD**1*CX</c>, <c>LIN**VO*{po}*SN*{coil}*HN*{lot}</c>
+    /// (PO truncated at the first '-' for Novelis SAP), <c>PID*S*MAC*ST*01***67</c> + <c>PID*S*MA*ST*7***70</c>
+    /// (+ DAC/DAF only when damaged), <c>REF*SE</c> + <c>REF*RV</c>, <c>MEA*WT*N</c>/<c>MEA*WT*G</c> weights, and
+    /// <c>MEA*PD*TH</c>/<c>WD</c> (+ <c>MEA*PD*LN</c> when lineal feed is present). Validated byte-for-byte
+    /// against a production golden. Never transmits.</summary>
+    private static void NovelisBody(X12Writer w, ReceivingBol bol, IReadOnlyList<ReceivingBolCoil> coils,
+        string supplierName, string supplierDuns, DateTime timestamp)
+    {
         var bolNum = bol.Bol ?? "";
+        var received = bol.ReceivedDate ?? timestamp;
         var yyyyMMdd = timestamp.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
         var hhmm = timestamp.ToString("HHmm", CultureInfo.InvariantCulture);
 
-        // ---- header ----
         w.Segment("BRA", bolNum, yyyyMMdd, "00", "1", hhmm);
-        if (headerRefBm) w.Segment("REF", "BM", bolNum);
-        var received = bol.ReceivedDate ?? timestamp;
-        w.Segment("DTM", "050",
-            received.ToString("yyyyMMdd", CultureInfo.InvariantCulture),
+        w.Segment("REF", "BM", bolNum);
+        w.Segment("DTM", "050", received.ToString("yyyyMMdd", CultureInfo.InvariantCulture),
             received.ToString("HHmm", CultureInfo.InvariantCulture), "ED");
-        w.Segment("N1", "OU", "", "1", EdiInterchange.SenderParty);
-        if (mfName is not null)
-            w.Segment("N1", "MF", mfName, "1", profile.ReceiverId ?? "");
-        w.Segment("N1", "SU", "", "1", supplierDuns);
+        w.Segment("N1", "MF", supplierName, "1", supplierDuns);
+        w.Segment("N1", "OU", "ALUMINUM BLANKING CO., INC.", "1", EdiInterchange.SenderParty);
+        w.Segment("N1", "SU", supplierName, "1", supplierDuns);
 
-        // ---- one item block per coil ----
         foreach (var c in coils)
         {
             var po = c.PurchaseOrderNum ?? "";
-            // ps_coil_number in the legacy proc: the producer's coil serial, defaulting to the coil number
-            // when absent. Mapped to consumed_coil_num here; confirm with the plant (docs/EDI_ENGINE.md).
+            var dash = po.IndexOf('-');
+            if (dash > 0) po = po[..dash];   // Novelis SAP PO carries a '-' suffix; the 861 truncates it.
+            var coilOrg = c.CoilOrgNum ?? "";
+            // ps_coil_number in the proc: the producer's coil serial, defaulting to the coil number when absent.
+            var psCoil = !string.IsNullOrEmpty(c.ConsumedCoilNum) ? c.ConsumedCoilNum! : coilOrg;
+
+            w.Segment("RCD", "", "1", "CX");
+            w.Segment("LIN", "", "VO", po, "SN", coilOrg, "HN", c.Lot);
+            w.Segment("PID", "S", "MAC", "ST", "01", "", "", "67");
+            w.Segment("PID", "S", "MA", "ST", "7", "", "", "70");
+            if ((c.DamagedCode ?? 0) != 0)
+                w.Segment("PID", "S", "DAC", "ST", c.DamagedCode!.Value.ToString(CultureInfo.InvariantCulture));
+            if ((c.DamagedFault ?? 0) != 0)
+                w.Segment("PID", "S", "DAF", "ST", c.DamagedFault!.Value.ToString(CultureInfo.InvariantCulture));
+            w.Segment("REF", "SE", (c.CoilAbcNum ?? 0).ToString(CultureInfo.InvariantCulture));
+            w.Segment("REF", "RV", psCoil);
+            w.Segment("MEA", "WT", "N", Int(c.NetWeight), "01");
+            w.Segment("MEA", "WT", "G", Int(c.GrossWeight), "24");
+            w.Segment("MEA", "PD", "TH", Dec4(c.CoilGauge), "IN");
+            w.Segment("MEA", "PD", "WD", Dec4(c.CoilWidth), "IN");
+            if (c.LinealFeed is not null)
+                w.Segment("MEA", "PD", "LN", DecTrim(c.LinealFeed), "LF");
+        }
+    }
+
+    /// <summary>The Aleris 861 body (legacy shared novelis/aleris path, aleris flavour): header <c>REF*BM</c> +
+    /// <c>N1*MF*Aleris*1*{hubDuns}</c>, LIN <c>VO*{po}*BP*{part}*HN*{lot}*SN*{coil}</c>, a <c>PID*S*QAS</c>, a
+    /// <c>PRF</c>, and qualified <c>MEA*WT*WT</c> net weight. Dormant (Aleris → Commonwealth); no recent golden
+    /// to validate against, so preserved unchanged. Never transmits.</summary>
+    private static void AlerisBody(X12Writer w, ReceivingBol bol, IReadOnlyList<ReceivingBolCoil> coils,
+        string supplierDuns, string hubDuns, DateTime timestamp)
+    {
+        var bolNum = bol.Bol ?? "";
+        var received = bol.ReceivedDate ?? timestamp;
+        var yyyyMMdd = timestamp.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+        var hhmm = timestamp.ToString("HHmm", CultureInfo.InvariantCulture);
+
+        w.Segment("BRA", bolNum, yyyyMMdd, "00", "1", hhmm);
+        w.Segment("REF", "BM", bolNum);
+        w.Segment("DTM", "050", received.ToString("yyyyMMdd", CultureInfo.InvariantCulture),
+            received.ToString("HHmm", CultureInfo.InvariantCulture), "ED");
+        w.Segment("N1", "OU", "", "1", EdiInterchange.SenderParty);
+        w.Segment("N1", "MF", "Aleris", "1", hubDuns);
+        w.Segment("N1", "SU", "", "1", supplierDuns);
+
+        foreach (var c in coils)
+        {
+            var po = c.PurchaseOrderNum ?? "";
             var psCoil = !string.IsNullOrEmpty(c.ConsumedCoilNum) ? c.ConsumedCoilNum! : (c.CoilOrgNum ?? "");
 
             w.Segment("RCD", "", "1", "CX");
-            if (linStyle == Edi861LinStyle.Novelis)
-                w.Segment("LIN", "", "VO", po, "SN", c.CoilOrgNum, "HN", c.Lot, "PK", c.PackId);
-            else
-                w.Segment("LIN", "", "VO", po, "BP", c.PartNum, "HN", c.Lot, "SN", c.CoilOrgNum);
+            w.Segment("LIN", "", "VO", po, "BP", c.PartNum, "HN", c.Lot, "SN", c.CoilOrgNum);
             w.Segment("PID", "S", "MAC", "ST", "01");
             w.Segment("PID", "S", "MA", "ST", "7");
             if ((c.DamagedCode ?? 0) != 0)
@@ -113,18 +145,14 @@ public static class Edi861Generator
                 w.Segment("PID", "S", "DAF", "ST", c.DamagedFault!.Value.ToString(CultureInfo.InvariantCulture));
             w.Segment("PID", "S", "QAS", "ST", "2");
             w.Segment("REF", "SE", (c.CoilAbcNum ?? 0).ToString(CultureInfo.InvariantCulture));
-            if (coilRefBm) w.Segment("REF", "BM", bolNum);
             w.Segment("REF", "RV", psCoil);
             w.Segment("PRF", po);
-            w.Segment("MEA", "WT", netWtQual, Int(c.NetWeight), "01");
+            w.Segment("MEA", "WT", "WT", Int(c.NetWeight), "01");
             w.Segment("MEA", "WT", "", Int(c.GrossWeight), "24");
             w.Segment("MEA", "PD", "TH", Dec4(c.CoilGauge), "IN");
             w.Segment("MEA", "PD", "WD", Dec4(c.CoilWidth), "IN");
             w.Segment("MEA", "CT", "", DecTrim(c.LinealFeed), "LF");
         }
-
-        w.Segment("CTT", coils.Count.ToString(CultureInfo.InvariantCulture));
-        return w.Close();
     }
 
     /// <summary>The Arconic 861 body (legacy <c>f_edi_arconic_861</c>): a <c>REF*MA</c> header with N1 MF/OU/SU,

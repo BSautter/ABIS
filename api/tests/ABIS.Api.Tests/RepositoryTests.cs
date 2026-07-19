@@ -885,7 +885,7 @@ public sealed class RepositoryTests : IDisposable
         var profile = await _repo.GetEdiPartnerAsync(bol!.CustomerId!.Value, "861", CancellationToken.None);
         Assert.NotNull(profile);
 
-        var result = await _repo.PersistEdi861Async(bol, coils, profile!, "241003755", new DateTime(2026, 7, 11, 14, 30, 0), CancellationToken.None);
+        var result = await _repo.PersistEdi861Async(bol, coils, profile!, "241003755", "NOVELIS", new DateTime(2026, 7, 11, 14, 30, 0), CancellationToken.None);
         Assert.Equal("generated", result.Status);
         Assert.Equal("Novelis", result.Partner);
         Assert.False(result.Transmitted);            // built + stored, never transmitted
@@ -897,6 +897,10 @@ public sealed class RepositoryTests : IDisposable
         Assert.NotNull(payload);
         Assert.Contains("ST*861*", payload!.Payload);
         Assert.Contains("CTT*2", payload.Payload);
+        // The corrected Novelis 861 envelope + body (golden-faithful).
+        Assert.Contains("GS*SH*R0P7A*001504935001*", payload.Payload);
+        Assert.Contains("N1*MF*NOVELIS*1*241003755", payload.Payload);
+        Assert.Contains("N1*OU*ALUMINUM BLANKING CO., INC.*1*039630926", payload.Payload);
         var tx = await _repo.GetEdiTransactionAsync(result.EdiFileId!.Value, CancellationToken.None);
         Assert.Equal("861", tx!.TransactionTypeId);
         Assert.Equal("039630926", tx.DunsFrom);
@@ -1018,6 +1022,11 @@ public sealed class RepositoryTests : IDisposable
         Assert.Equal("0015049350011G", nov.ReceiverId);
         Assert.Equal("", nov.ComponentSeparator);   // Novelis empty component separator round-trips
         Assert.True(nov.Enabled);
+        // Golden-faithful Novelis 861 envelope: version 00401, GS SH, sender R0P7A, GS03 receiver 001504935001.
+        Assert.Equal("00401", nov.EnvelopeVersion);
+        Assert.Equal("SH", nov.GsFunctionalCode);
+        Assert.Equal("R0P7A", nov.GsSenderCode);
+        Assert.Equal("001504935001", nov.GsReceiverCode);
 
         var ale870 = await _repo.GetEdiPartnerAsync(1980, "870", CancellationToken.None);
         Assert.Equal("300578504", ale870!.ItemReference);

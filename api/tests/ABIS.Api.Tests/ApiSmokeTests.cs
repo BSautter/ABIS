@@ -1321,10 +1321,11 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
         Assert.False(body.GetProperty("transmitted").GetBoolean());
         var fileId = body.GetProperty("ediFileId").GetInt64();
 
-        // The payload endpoint returns the X12 text.
+        // The payload endpoint returns the X12 text (Novelis 861: named N1*SU + the SH/R0P7A envelope).
         var payload = await _client.GetStringAsync($"/api/edi/transactions/{fileId}/payload");
         Assert.Contains("ST*861*", payload);
-        Assert.Contains("N1*SU**1*241003755", payload);
+        Assert.Contains("GS*SH*R0P7A*001504935001*", payload);
+        Assert.Contains("N1*SU*NOVELIS*1*241003755", payload);
 
         // A second attempt is a 409 (one 861 per BOL).
         Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync("/api/receiving-bols/5500/generate-861", null)).StatusCode);

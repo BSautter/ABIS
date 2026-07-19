@@ -3399,14 +3399,14 @@ public sealed class AbisRepository : IAbisRepository
     /// (<c>status = 1</c>). <b>Never transmits.</b> The caller has resolved the profile + guarded duplicates.</summary>
     public async Task<Edi861Result> PersistEdi861Async(
         ReceivingBol bol, IReadOnlyList<ReceivingBolCoil> coils, EdiPartnerProfile profile, string supplierDuns,
-        DateTime timestamp, CancellationToken ct)
+        string supplierName, DateTime timestamp, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
 
         var (ediFileId, fileName, payload) = await WriteEdiTransactionAsync(
             conn, (DbTransaction)tx, "861", supplierDuns, bol.CustomerId, bol.ReceivingBolId, timestamp,
-            id => Edi861Generator.Generate(bol, coils, profile, supplierDuns, id, id, timestamp),
+            id => Edi861Generator.Generate(bol, coils, profile, supplierDuns, supplierName, id, id, timestamp),
             id => Edi861Generator.FileName(profile, id), ct);
 
         // Mark the BOL 861-generated (legacy inbound_shipment_status.status = 1). The payload row is the

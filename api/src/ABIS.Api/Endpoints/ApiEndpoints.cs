@@ -840,6 +840,7 @@ public static class ApiEndpoints
                     return Results.Problem(statusCode: StatusCodes.Status422UnprocessableEntity, title: "Not an 861 partner",
                         detail: $"Customer {bol.CustomerId} has no enabled 861 trading-partner profile (configure it in the admin EDI setup).");
                 var supplierDuns = customer?.CustomerDunsNumberString ?? "";
+                var supplierName = (customer?.CustomerShortName ?? "").Trim();   // N1*MF/N1*SU party name (Novelis)
 
                 // One 861 per BOL — the stored payload is the idempotency guard.
                 if (await repo.GetEdi861ForBolAsync(receivingBolId, ct) is { } existing)
@@ -847,7 +848,7 @@ public static class ApiEndpoints
                         detail: $"An 861 was already generated for BOL {receivingBolId} (edi_file_id {existing.EdiFileId}, {existing.EdiFileName}). It is stored, not transmitted.");
 
                 // Build + persist the X12 + tracking row and mark the BOL 861-generated. Never transmits.
-                var result = await repo.PersistEdi861Async(bol, coils, profile, supplierDuns, DateTime.Now, ct);
+                var result = await repo.PersistEdi861Async(bol, coils, profile, supplierDuns, supplierName, DateTime.Now, ct);
                 return Results.Ok(result);
             })
            .WithName("GenerateReceiving861").WithTags("Receiving")

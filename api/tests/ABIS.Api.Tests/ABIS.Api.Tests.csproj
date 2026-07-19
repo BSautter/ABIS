@@ -16,4 +16,9 @@
     <ProjectReference Include="..\..\src\ABIS.Api\ABIS.Api.csproj" />
   </ItemGroup>
 
+  <!-- Redacted EDI golden fixtures, copied next to the test dll so the byte-equality tests can read them. -->
+  <ItemGroup>
+    <None Include="golden\*.edi" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
