@@ -1768,6 +1768,64 @@ public sealed class Edi870FileResult
     public int PayloadBytes { get; set; }
 }
 
+/// <summary>The typed input to the 856 (Advance Ship Notice / DESADV) generator: one shipment against one
+/// order, with its skid line items. Mirrors the legacy Novelis 856 proc's shipment→order→item HL hierarchy.
+/// The <see cref="Items"/> weights/dims are already the DB values (padding + rounding are the assembler's
+/// concern, so the generator is a pure, byte-faithful projection of this shape).</summary>
+public sealed class Edi856Shipment
+{
+    /// <summary>shipment.packing_list — BSN02 + REF*BM/REF*PK.</summary>
+    public string PackingList { get; set; } = "";
+    /// <summary>shipment.bill_of_lading — REF*MB.</summary>
+    public string? BillOfLading { get; set; }
+    /// <summary>The actual ship date/time — DTM*011 (shipped) + DTM*017 (delivery est.).</summary>
+    public DateTime ShipDate { get; set; }
+    public int GrossWeight { get; set; }
+    public int NetWeight { get; set; }
+    /// <summary>Pallet/skid count — TD1*PLT90 and the CTT02 hash component.</summary>
+    public int PalletCount { get; set; }
+    /// <summary>Carrier SCAC (TD5/TD3), full name (TD5), description code + vehicle id (TD3), equipment type (REF*EQ).</summary>
+    public string? Scac { get; set; }
+    public string? CarrierName { get; set; }
+    public string? CarrierDescCode { get; set; }
+    public string? VehicleId { get; set; }
+    public string? EqType { get; set; }
+    /// <summary>Ship-to customer name + DUNS — N1*ST (name comes DB-padded).</summary>
+    public string? ShipToName { get; set; }
+    public string? ShipToDuns { get; set; }
+    /// <summary>The receiving customer's own DUNS — N1*SU.</summary>
+    public string? SupplierDuns { get; set; }
+    /// <summary>order_item.enduser_part_num — LIN*BP.</summary>
+    public string? EnduserPart { get; set; }
+    /// <summary>The order-level piece count — SN1 and the CTT02 hash component.</summary>
+    public int OrderPieceCount { get; set; }
+    /// <summary>customer_order.orig_customer_po — PRF.</summary>
+    public string? OrigCustomerPo { get; set; }
+    /// <summary>The order date — the PRF date component.</summary>
+    public DateTime OrderDate { get; set; }
+    /// <summary>The Novelis SAP order/authorization number — REF*IL.</summary>
+    public string? AuthCode { get; set; }
+    public IReadOnlyList<Edi856Item> Items { get; set; } = [];
+}
+
+/// <summary>One skid line item (I-level HL) in an 856 — net/pieces/gross + gauge/width + the three references.</summary>
+public sealed class Edi856Item
+{
+    public int NetWeight { get; set; }
+    public int Pieces { get; set; }
+    public int GrossWeight { get; set; }
+    /// <summary>coil.coil_gauge — MEA*PD*GG (Oracle default number format, e.g. .0374).</summary>
+    public decimal Gauge { get; set; }
+    /// <summary>coil.coil_width — MEA*PD*WD.</summary>
+    public decimal Width { get; set; }
+    /// <summary>coil.lot_num — REF*BT.</summary>
+    public string? LotNum { get; set; }
+    /// <summary>sheet_skid.sheet_skid_display_num — REF*SE.</summary>
+    public string? SkidDisplayNum { get; set; }
+    /// <summary>coil.coil_org_num — REF*LS.</summary>
+    public string? CoilOrgNum { get; set; }
+}
+
 /// <summary>Request for the admin "send a test email" diagnostic. All fields optional (sensible defaults).</summary>
 public sealed class EmailTestRequest
 {

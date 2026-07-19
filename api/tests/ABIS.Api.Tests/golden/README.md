@@ -19,3 +19,4 @@ generator's output equals the fixture segment-for-segment (line-ending-agnostic)
 | `novelis_861.edi` | 861 | Novelis | SH / R0P7A / 001504935001 envelope, ver 00401; `N1*MF/N1*SU` named; empty ISA16 → `*P**` |
 | `novelis_870.edi` | 870 | Novelis | per-job flat `HL*n**I`; GS03 override 001504935001; `CTT = hl−1`; empty ISA16 → `*P**` |
 | `aleris_870.edi` | 870 | Aleris | O→I→F HL hierarchy; `PRF*RV*300578504`; scrap block (note the load-bearing trailing space in the scrap `PO1 …*BP* `) |
+| `novelis_856.edi` | 856 | Novelis | shipment→order→item HL hierarchy; `TD5*B*2` (production, not the proc's stale `B*02`); `CTT01` = HL count, `CTT02` = pallets + order qty; **load-bearing** DB padding on the ship-to name (`N1*ST …       `) + carrier field (`TD5 …*M*       …`) |
