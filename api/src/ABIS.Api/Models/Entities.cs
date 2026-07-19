@@ -1276,6 +1276,60 @@ public sealed class ReceivingBolDetail
     public IReadOnlyList<ReceivingBolCoil> Coils { get; set; } = [];
 }
 
+// ---- EDI 846 (Inventory Advice) — full on-hand snapshot of a customer's material at ABCo (legacy
+//      F_846_CLEVELAND_CLIFF_CCSC). One skid line per on-hand sheet skid + one coil line per on-hand coil.
+/// <summary>One on-hand finished/sheet skid in an 846 inventory snapshot.</summary>
+public sealed class Edi846SkidItem
+{
+    public long SheetSkidNum { get; set; }
+    public string? Vo { get; set; }
+    public string? CustomerPo { get; set; }
+    public string? CoilOrgNum { get; set; }
+    /// <summary>AISI table 67 material class (abis_x12_skid by skid status) — the PID*S*MAC value.</summary>
+    public string? Table67 { get; set; }
+    /// <summary>AISI table 70 material status (abis_x12_skid) — the PID*S*MA value.</summary>
+    public string? Table70 { get; set; }
+    public decimal? NetWt { get; set; }
+}
+
+/// <summary>One on-hand coil in an 846 inventory snapshot.</summary>
+public sealed class Edi846CoilItem
+{
+    public long CoilAbcNum { get; set; }
+    public string? Vo { get; set; }
+    public string? CustomerPo { get; set; }
+    public string? CoilOrgNum { get; set; }
+    /// <summary>The coil's production description code — the PID*S*MAC value for coils (a coil attribute, NOT the
+    /// code-map, per the live proc).</summary>
+    public string? ProductionDescCode { get; set; }
+    /// <summary>AISI table 70 material status (abis_x12_coil by coil status) — the PID*S*MA value.</summary>
+    public string? Table70 { get; set; }
+    public decimal? NetWtBalance { get; set; }
+}
+
+/// <summary>A customer's full on-hand inventory snapshot for an 846 (skids + coils; the legacy proc's scrap loop is
+/// dead code, so scrap is excluded). Assembled at generate time — the 846 is a point-in-time snapshot, not tied to
+/// a BOL/shipment.</summary>
+public sealed class Edi846Snapshot
+{
+    public long CustomerId { get; set; }
+    public IReadOnlyList<Edi846SkidItem> Skids { get; set; } = Array.Empty<Edi846SkidItem>();
+    public IReadOnlyList<Edi846CoilItem> Coils { get; set; } = Array.Empty<Edi846CoilItem>();
+    public int ItemCount => Skids.Count + Coils.Count;
+}
+
+/// <summary>The outcome of generating + persisting an 846 (built + stored, never transmitted).</summary>
+public sealed class Edi846Result
+{
+    public string Status { get; set; } = "";
+    public string Partner { get; set; } = "";
+    public long? EdiFileId { get; set; }
+    public string? EdiFileName { get; set; }
+    public int SkidCount { get; set; }
+    public int CoilCount { get; set; }
+    public bool Transmitted { get; set; }
+}
+
 // ---- Production reporting (legacy daily_prod / silverdome3 w_report_production_*) ----
 // The legacy reports are shift-based; the greenfield equivalents aggregate the same
 // metrics from ab_job / process_coil / dt_instance / line (no shift table in the model).

@@ -74,6 +74,10 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS abis_edi_payload;
             DROP TABLE IF EXISTS abis_edi_870_mark;
             DROP TABLE IF EXISTS abis_edi_856_mark;
+            DROP TABLE IF EXISTS abis_x12_coil;
+            DROP TABLE IF EXISTS abis_x12_skid;
+            DROP TABLE IF EXISTS abis_scrap_status_x12;
+            DROP TABLE IF EXISTS abis_scrap_type_x12;
             DROP TABLE IF EXISTS abis_edi_partner;
             DROP TABLE IF EXISTS edi_log;
             DROP TABLE IF EXISTS edi_type;
@@ -120,7 +124,7 @@ public static class SqliteFixture
                 coil_org_num TEXT NOT NULL, coil_status INTEGER, coil_notes TEXT, coil_entry_date TEXT,
                 customer_id INTEGER, coil_from_cust_id INTEGER, date_received TEXT, icra TEXT,
                 lot_num TEXT NOT NULL, net_wt REAL NOT NULL, net_wt_balance REAL NOT NULL, pieces_per_case INTEGER,
-                consumed_coil_num TEXT);
+                consumed_coil_num TEXT, vo TEXT, customer_po TEXT, production_desc_code TEXT);
 
             CREATE TABLE process_coil (
                 ab_job_num INTEGER, coil_abc_num INTEGER, process_coil_status INTEGER,
@@ -405,6 +409,18 @@ public static class SqliteFixture
             CREATE TABLE abis_edi_856_mark (
                 packing_list INTEGER, edi_file_id INTEGER, customer_id INTEGER, sent_utc TEXT,
                 PRIMARY KEY (packing_list, edi_file_id));
+
+            -- 846 AISI status→code maps (mirror AbisSchema.abis_x12_*): coil/skid/scrap status → table67 class / table70 status.
+            CREATE TABLE abis_x12_coil (abis_coil_status INTEGER PRIMARY KEY, table67_material_class TEXT, table70_material_status_op TEXT, table68_material_status_qa TEXT);
+            CREATE TABLE abis_x12_skid (abis_skid_status INTEGER PRIMARY KEY, table67_material_class TEXT, table70_material_status_op TEXT, table68_material_status_qa TEXT);
+            CREATE TABLE abis_scrap_status_x12 (abis_scrap_status INTEGER PRIMARY KEY, table70_material_status_op TEXT);
+            CREATE TABLE abis_scrap_type_x12 (abis_scrap_type INTEGER PRIMARY KEY, table67_material_class TEXT);
+            INSERT INTO abis_x12_coil (abis_coil_status, table67_material_class, table70_material_status_op) VALUES
+                (1,'01','7'),(3,'02','E'),(4,'01','E'),(6,'90','M'),(7,'14','K'),(8,'14','K'),(11,'01','E'),(12,'01','0'),(14,'06','S');
+            INSERT INTO abis_x12_skid (abis_skid_status, table67_material_class, table70_material_status_op) VALUES
+                (1,'01','7'),(2,'01','1'),(4,'01','E'),(5,'01','7'),(7,'01','8'),(8,'01','1'),(10,'16','F'),(12,'NA','NA'),(13,'01','8'),(15,'NA','NA'),(16,'01','T');
+            INSERT INTO abis_scrap_status_x12 (abis_scrap_status, table70_material_status_op) VALUES (1,'7'),(2,'1'),(4,'E');
+            INSERT INTO abis_scrap_type_x12 (abis_scrap_type, table67_material_class) VALUES (1,'06'),(3,'06'),(5,'05'),(6,'NA'),(7,'06'),(8,'13'),(10,'06'),(11,'13');
 
             -- ABIS-owned EDI trading-partner profiles (mirrors AbisSchema.abis_edi_partner): one row per
             -- (customer, transaction set), so each customer's 861/870/846/… can differ. Envelope + enablement
@@ -820,7 +836,8 @@ public static class SqliteFixture
                 new { CustomerId = 1459L, TransactionSet = "856", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)"R0P7A", GsReceiver = (string?)"001504935001", Prefix = "S_novelis_856_", ItemRef = (string?)null },
                 new { CustomerId = 2582L, TransactionSet = "856", Variant = "novelis", RecvQual = "09", RecvId = "0015049350011G", Comp = "", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)"R0P7A", GsReceiver = (string?)"001504935001", Prefix = "S_novelis_856_", ItemRef = (string?)null },
                 new { CustomerId = 2776L, TransactionSet = "856", Variant = "constellium", RecvQual = "01", RecvId = "043207177", Comp = "@", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)null, GsReceiver = (string?)null, Prefix = "S_constellium_856_", ItemRef = (string?)null },
-                new { CustomerId = 2784L, TransactionSet = "856", Variant = "arconic", RecvQual = "01", RecvId = "961613887", Comp = ">", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)"R0P7ATN", GsReceiver = (string?)null, Prefix = "S_arconic_856_", ItemRef = (string?)null }
+                new { CustomerId = 2784L, TransactionSet = "856", Variant = "arconic", RecvQual = "01", RecvId = "961613887", Comp = ">", Suffix = "", Ver = "00401", Gs = "SH", GsSender = (string?)"R0P7ATN", GsReceiver = (string?)null, Prefix = "S_arconic_856_", ItemRef = (string?)null },
+                new { CustomerId = 3061L, TransactionSet = "846", Variant = "cliffs", RecvQual = "01", RecvId = "606072130", Comp = "|", Suffix = "~", Ver = "00401", Gs = "IB", GsSender = (string?)null, GsReceiver = (string?)null, Prefix = "s_cliffs_ccsc_846_", ItemRef = (string?)null }
             });
 
         conn.Execute("""

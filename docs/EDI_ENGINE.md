@@ -103,8 +103,17 @@ Version `004010` for the SQL sets (861/870/846/863); `002002`/`002040` for the P
    Order/shape resolved via `ab_job.order_abc_num/order_item_num` (modern `sheet_skid` has no `ref_order_abc_num`).
    Wise 870 stays deferred (needs its own `_by_coil` body). One deliberate fix vs legacy: SCRAP is marked only
    when actually sent (legacy marked every processed job, which could drop a not-yet-done job's scrap).
-3. **846 Inventory Advice** (Cleveland-Cliffs) — full snapshot; `ABIS_X12_COIL/SKID` status→AISI code maps; `~` suffix.
-   Note: legacy commented out its `outbound_edi_transaction` insert — **re-enable** in the port.
+3. **846 Inventory Advice** (Cleveland-Cliffs, customer 3061) — **generator ✅** (`Edi/Edi846Generator`, ported
+   literally from the live `F_846_CLEVELAND_CLIFF_CCSC` off .230). Full on-hand snapshot: ISA/GS`IB`/ST/BIA/DTM*184/
+   N1*SU(Cliffs owner)/N1*OU(ABCo), then a skid line per on-hand sheet skid (LIN/PID*S*MAC[table67]/MA[table70]/
+   MEA*WT/DTM*206/REF*SE) + a coil line per on-hand coil (coil MAC = the coil's `production_desc_code`, MA = table70),
+   then CTT. Envelope: receiver 01/606072130, component sep `|`, **segment suffix `~`**, version 00401. The live
+   proc's **scrap cursor is dead code** → skids + coils only. The **`ABIS_X12_COIL/SKID` + scrap AISI code maps are
+   seeded** (schema + fixture) from the live .230 data ([[abis-edi-846-codemaps]]); the Cliffs 846 partner profile
+   is seeded too. **No byte-golden** (archived Cliffs 846s are the empty "Nothing to report." placeholder) → validated
+   by proc-fidelity + a structural test; confirm the first real output with the plant. **Still to wire (next slice):**
+   `AssembleEdi846Async` (the on-hand inventory query: sheet_skid ⋈ … ⋈ coil ⋈ code-map for customer 3061 + the coil
+   snapshot) + `POST /edi/846/generate` + `outbound_edi_transaction` persistence (legacy commented its insert — re-enable).
 4. **856 ASN** — event-driven at shipment dispatch; partners Alcan→GM, Alcan→Ford (dual customer + Alcan-hub file);
    writes `edi_log` + `edi_out_file` (not `outbound_edi_transaction` today).
 5. **863 Test Cert** — operator-driven (lab Instron results); writes `edi_file_863` (full payload) + `outbound_edi_transaction`.

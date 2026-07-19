@@ -211,6 +211,37 @@ public static class AbisSchema
           sent_utc      DATE,
           CONSTRAINT pk_abis_edi_856_mark PRIMARY KEY (packing_list, edi_file_id))
         """,
+        // AISI status→code maps for the 846 (Inventory Advice): ABIS coil/skid/scrap status → AISI table 67
+        // material class + table 70 material status-op. These are legacy ABIS-owned reference tables (they already
+        // exist on the live Oracle); recreated here so a fresh deploy has them. Seeded below from the live .230 data.
+        """
+        CREATE TABLE abis_x12_coil (
+          abis_coil_status            NUMBER(6)   NOT NULL,
+          table67_material_class      VARCHAR2(4),
+          table70_material_status_op  VARCHAR2(4),
+          table68_material_status_qa  VARCHAR2(4),
+          CONSTRAINT pk_abis_x12_coil PRIMARY KEY (abis_coil_status))
+        """,
+        """
+        CREATE TABLE abis_x12_skid (
+          abis_skid_status            NUMBER(6)   NOT NULL,
+          table67_material_class      VARCHAR2(4),
+          table70_material_status_op  VARCHAR2(4),
+          table68_material_status_qa  VARCHAR2(4),
+          CONSTRAINT pk_abis_x12_skid PRIMARY KEY (abis_skid_status))
+        """,
+        """
+        CREATE TABLE abis_scrap_status_x12 (
+          abis_scrap_status           NUMBER(6)   NOT NULL,
+          table70_material_status_op  VARCHAR2(4),
+          CONSTRAINT pk_abis_scrap_status_x12 PRIMARY KEY (abis_scrap_status))
+        """,
+        """
+        CREATE TABLE abis_scrap_type_x12 (
+          abis_scrap_type             NUMBER(6)   NOT NULL,
+          table67_material_class      VARCHAR2(4),
+          CONSTRAINT pk_abis_scrap_type_x12 PRIMARY KEY (abis_scrap_type))
+        """,
         // ABIS-owned EDI trading-partner profiles (docs/data-model/migrations/007_edi_partner.sql). One row per
         // (customer, transaction set) so each customer can have different requirements for their 861/870/846/…:
         // enablement + the envelope (partner identity, separators, version, GS code, file prefix) as data, plus
@@ -290,8 +321,39 @@ public static class AbisSchema
         Seed856("1459", "novelis", "09", "0015049350011G", "", "R0P7A", "001504935001", "S_novelis_856_"),
         Seed856("2582", "novelis", "09", "0015049350011G", "", "R0P7A", "001504935001", "S_novelis_856_"),
         Seed856("2776", "constellium", "01", "043207177", "@", "", "", "S_constellium_856_"),
-        Seed856("2784", "arconic", "01", "961613887", ">", "R0P7ATN", "", "S_arconic_856_")
+        Seed856("2784", "arconic", "01", "961613887", ">", "R0P7ATN", "", "S_arconic_856_"),
+        // Cleveland-Cliffs 846 (customer 3061 = CLIFFS STEEL-CLEVELAND, DUNS 606072130): GS functional IB, receiver
+        // 01/606072130, component separator '|', segment suffix '~', version 00401. Variant 'cliffs' selects the 846 body.
+        """
+        INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier,
+            receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, file_prefix, item_reference)
+        SELECT 3061, '846', 1, 'cliffs', '01', '606072130', '|', '~', '00401', 'IB', 's_cliffs_ccsc_846_', NULL FROM dual
+         WHERE NOT EXISTS (SELECT 1 FROM abis_edi_partner WHERE customer_id = 3061 AND transaction_set = '846')
+        """,
+        // The 846 AISI code-map rows (from the live .230 DB) — idempotent, no-op once present.
+        .. Edi846CodeMapSeeds()
     ];
+
+    // The 846 AISI status→code maps, verbatim from the live .230 DB (see abis-edi-846-codemaps). One idempotent
+    // INSERT per row (no-op once present, so live rows are never clobbered).
+    private static readonly (int Key, string T67, string T70)[] X12Coil =
+        [(1, "01", "7"), (3, "02", "E"), (4, "01", "E"), (6, "90", "M"), (7, "14", "K"), (8, "14", "K"), (11, "01", "E"), (12, "01", "0"), (14, "06", "S")];
+    private static readonly (int Key, string T67, string T70)[] X12Skid =
+        [(1, "01", "7"), (2, "01", "1"), (4, "01", "E"), (5, "01", "7"), (7, "01", "8"), (8, "01", "1"), (10, "16", "F"), (12, "NA", "NA"), (13, "01", "8"), (15, "NA", "NA"), (16, "01", "T")];
+    private static readonly (int Key, string T70)[] ScrapStatus = [(1, "7"), (2, "1"), (4, "E")];
+    private static readonly (int Key, string T67)[] ScrapType = [(1, "06"), (3, "06"), (5, "05"), (6, "NA"), (7, "06"), (8, "13"), (10, "06"), (11, "13")];
+
+    private static IEnumerable<string> Edi846CodeMapSeeds()
+    {
+        foreach (var (k, t67, t70) in X12Coil)
+            yield return $"INSERT INTO abis_x12_coil (abis_coil_status, table67_material_class, table70_material_status_op) SELECT {k}, '{t67}', '{t70}' FROM dual WHERE NOT EXISTS (SELECT 1 FROM abis_x12_coil WHERE abis_coil_status = {k})";
+        foreach (var (k, t67, t70) in X12Skid)
+            yield return $"INSERT INTO abis_x12_skid (abis_skid_status, table67_material_class, table70_material_status_op) SELECT {k}, '{t67}', '{t70}' FROM dual WHERE NOT EXISTS (SELECT 1 FROM abis_x12_skid WHERE abis_skid_status = {k})";
+        foreach (var (k, t70) in ScrapStatus)
+            yield return $"INSERT INTO abis_scrap_status_x12 (abis_scrap_status, table70_material_status_op) SELECT {k}, '{t70}' FROM dual WHERE NOT EXISTS (SELECT 1 FROM abis_scrap_status_x12 WHERE abis_scrap_status = {k})";
+        foreach (var (k, t67) in ScrapType)
+            yield return $"INSERT INTO abis_scrap_type_x12 (abis_scrap_type, table67_material_class) SELECT {k}, '{t67}' FROM dual WHERE NOT EXISTS (SELECT 1 FROM abis_scrap_type_x12 WHERE abis_scrap_type = {k})";
+    }
 
     // An idempotent 861 partner-profile seed row (GS code RC; envelope version per partner — the pre-transition
     // Aleris 861 used 00200, the live Commonwealth 861 uses 00401).
