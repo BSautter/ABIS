@@ -877,7 +877,8 @@ public sealed class Edi997WaitingReport
     public long TotalWaiting { get; set; }
     public int Page { get; set; }
     public int PageSize { get; set; }
-    /// <summary>Counts over the returned page.</summary>
+    /// <summary>Bucket counts over the whole un-acknowledged population (not just the returned page), so a
+    /// caller — e.g. the notification bell — can key off the actionable <see cref="WaitingCount"/>. Sum = TotalWaiting.</summary>
     public int FreshCount { get; set; }
     public int WaitingCount { get; set; }
     public int OverdueCount { get; set; }

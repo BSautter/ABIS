@@ -42,16 +42,20 @@ public sealed class Edi997MonitorTests : IDisposable
         var fresh = await _repo.GetEdi997WaitingAsync(1, 200, null, t.AddMinutes(30), CancellationToken.None);
         Assert.Equal("fresh", fresh.Items.Single(i => i.EdiFileId == 9002).Bucket);
 
-        // 2–24h: what legacy chased → "waiting".
+        // 2–24h: what legacy chased → "waiting". Population counts (not just the page) put it in WaitingCount.
         var waiting = await _repo.GetEdi997WaitingAsync(1, 200, null, t.AddHours(5), CancellationToken.None);
         var w = waiting.Items.Single(i => i.EdiFileId == 9002);
         Assert.Equal("waiting", w.Bucket);
         Assert.Equal("870", w.TransactionTypeId);
         Assert.Equal(5.0, w.AgeHours, 2);
+        Assert.Equal(1, waiting.WaitingCount);
+        Assert.Equal(0, waiting.OverdueCount);
 
-        // > 24h: past the window → "overdue".
+        // > 24h: past the window → "overdue" (and it falls out of the fresh/waiting scan).
         var overdue = await _repo.GetEdi997WaitingAsync(1, 200, null, t.AddHours(30), CancellationToken.None);
         Assert.Equal("overdue", overdue.Items.Single(i => i.EdiFileId == 9002).Bucket);
+        Assert.Equal(0, overdue.WaitingCount);
+        Assert.Equal(1, overdue.OverdueCount);
 
         // The seeded already-acked transaction (9001) is never listed as waiting.
         Assert.DoesNotContain(fresh.Items, i => i.EdiFileId == 9001);

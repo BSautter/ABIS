@@ -3922,23 +3922,41 @@ public sealed class AbisRepository : IAbisRepository
         var paged = await PageAsync<EdiTransaction>(EdiTransactionCols, "outbound_edi_transaction",
             "transaction_time ASC, edi_file_id ASC", where, p, page, pageSize, ct);
 
+        // Mirrors P_CHECK_997's window: < 2h the ack may still be in flight; 2–24h is what it emailed; > 24h is
+        // past the window it chased.
+        static string Bucket(double h) => h < 2 ? "fresh" : h <= 24 ? "waiting" : "overdue";
         var items = new List<Edi997WaitingItem>(paged.Items.Count);
-        int fresh = 0, waiting = 0, overdue = 0;
         foreach (var t in paged.Items)
         {
             var ageHours = t.TransactionTime is { } tt ? Math.Max(0, (asOf - tt).TotalHours) : 0;
-            // Mirrors P_CHECK_997's window: < 2h the ack may still be in flight; 2–24h is what it emailed; > 24h
-            // is past the window it chased.
-            var bucket = ageHours < 2 ? "fresh" : ageHours <= 24 ? "waiting" : "overdue";
-            if (bucket == "fresh") fresh++; else if (bucket == "waiting") waiting++; else overdue++;
             items.Add(new Edi997WaitingItem
             {
                 EdiFileId = t.EdiFileId, TransactionTypeId = t.TransactionTypeId, CustomerId = t.CustomerId,
                 CustomerSentTo = t.CustomerSentTo, GroupControlNumber = t.GroupControlNumber,
                 TransactionTime = t.TransactionTime, EdiFileName = t.EdiFileName,
-                AgeHours = Math.Round(ageHours, 2), Bucket = bucket
+                AgeHours = Math.Round(ageHours, 2), Bucket = Bucket(ageHours)
             });
         }
+
+        // Bucket counts are population-wide (not just this page) so the notification bell can key off the
+        // actionable WaitingCount. Only rows younger than 24h can be fresh/waiting, so scan just those (bounded —
+        // a rolling day's output) and treat the rest of the un-acked total as overdue.
+        var rp = new DynamicParameters();
+        if (customerId is not null) rp.Add("customerId", customerId);
+        rp.Add("cut", (DateTime?)asOf.AddHours(-24));
+        await using var conn = await OpenAsync(ct);
+        var recent = await conn.QueryAsync<DateTime?>(new CommandDefinition(
+            $"SELECT transaction_time FROM outbound_edi_transaction WHERE {where} AND transaction_time >= :cut",
+            rp, cancellationToken: ct));
+        int fresh = 0, waiting = 0;
+        foreach (var tt in recent)
+        {
+            if (tt is not { } d) continue;
+            var a = Math.Max(0, (asOf - d).TotalHours);
+            if (a < 2) fresh++; else if (a <= 24) waiting++;
+        }
+        var overdue = (int)Math.Max(0, paged.TotalCount - fresh - waiting);
+
         return new Edi997WaitingReport
         {
             AsOf = asOf, TotalWaiting = paged.TotalCount, Page = paged.Page, PageSize = paged.PageSize,

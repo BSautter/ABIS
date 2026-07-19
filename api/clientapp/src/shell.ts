@@ -274,10 +274,14 @@ async function fetchNotifications(): Promise<Notif[]> {
     const hold = await client().getOnHoldCoils();
     if (hold?.length) items.push({ label: `${hold.length} coil${hold.length === 1 ? '' : 's'} on hold`, href: '/ui/coil-inventory.html' });
   } catch { /* non-fatal — a missing signal just doesn't show */ }
+  // EDI awaiting a 997 functional ack — only the actionable 2–24h window (what legacy check_997.sh emailed),
+  // not every un-acked transaction, so a no-transmit engine's ever-growing backlog can't drown the bell. The
+  // count is population-wide, so a pageSize of 1 is enough.
   try {
-    const edi = await client().listEdiTransactions(1, 50, undefined, undefined, undefined, undefined);
-    const awaiting = (edi.items ?? []).filter((x) => (x.faReceiveStatus ?? 0) < 1).length;
-    if (awaiting) items.push({ label: `${awaiting} EDI transaction${awaiting === 1 ? '' : 's'} awaiting FA`, href: '/ui/edi.html' });
+    const w = await client().edi997Waiting(1, 1, undefined);
+    if (w.waitingCount) {
+      items.push({ label: `${w.waitingCount} EDI transaction${w.waitingCount === 1 ? '' : 's'} awaiting a 997 (2–24h)`, tone: 'warn', href: '/ui/edi.html' });
+    }
   } catch { /* non-fatal */ }
   return items;
 }
