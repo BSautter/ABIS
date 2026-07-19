@@ -41,29 +41,10 @@ public class Edi861GeneratorTests
     };
 
     [Fact]
-    public void PartnerFromProfile_maps_the_variant_to_body_flags()
-    {
-        var nov = Edi861Generator.PartnerFromProfile(NovelisProfile(), "d");
-        Assert.Equal("Novelis", nov.Name);
-        Assert.Equal(Edi861LinStyle.Novelis, nov.LinStyle);
-        Assert.True(nov.CoilRefBm);
-        Assert.Null(nov.ManufacturerName);
-        Assert.Equal("09", nov.ReceiverQualifier);      // envelope carried straight from the profile data
-
-        var ale = Edi861Generator.PartnerFromProfile(AlerisProfile(), "d");
-        Assert.Equal("Aleris", ale.Name);
-        Assert.Equal(Edi861LinStyle.Aleris, ale.LinStyle);
-        Assert.Equal("Aleris", ale.ManufacturerName);
-        Assert.Equal("WT", ale.NetWeightQualifier);
-        Assert.Equal(">", ale.ComponentSeparator);
-    }
-
-    [Fact]
     public void Novelis_861_has_the_expected_envelope_and_body()
     {
-        var partner = Edi861Generator.PartnerFromProfile(NovelisProfile(), "241003755");
         var coils = new[] { Coil("NC-1001", 900001, 20000, 20200), Coil("NC-1002", 900002, 18000, 18150) };
-        var lines = Lines(Edi861Generator.Generate(Bol(1153), coils, partner, Ctrl, Ctrl, Now));
+        var lines = Lines(Edi861Generator.Generate(Bol(1153), coils, NovelisProfile(), "241003755", Ctrl, Ctrl, Now));
 
         // Envelope — Novelis receiver 09/0015049350011G, fixed-width ISA, empty ISA16 component separator.
         var isa = lines[0].Split('*');
@@ -105,9 +86,8 @@ public class Edi861GeneratorTests
     [Fact]
     public void Aleris_861_uses_its_receiver_component_sep_and_body_variant()
     {
-        var partner = Edi861Generator.PartnerFromProfile(AlerisProfile(), "964790111");
         var coils = new[] { Coil("AC-1", 700001, 15000, 15100) };
-        var lines = Lines(Edi861Generator.Generate(Bol(1980), coils, partner, Ctrl, Ctrl, Now));
+        var lines = Lines(Edi861Generator.Generate(Bol(1980), coils, AlerisProfile(), "964790111", Ctrl, Ctrl, Now));
 
         // Envelope — Aleris receiver ZZ/964790856, component separator '>'.
         var isa = lines[0].Split('*');
@@ -127,9 +107,8 @@ public class Edi861GeneratorTests
     [Fact]
     public void Damaged_coil_adds_the_DAC_and_DAF_segments()
     {
-        var partner = Edi861Generator.PartnerFromProfile(NovelisProfile(), "d");
-        var clean = Lines(Edi861Generator.Generate(Bol(1153), new[] { Coil("A", 1, 100, 110) }, partner, Ctrl, Ctrl, Now));
-        var damaged = Lines(Edi861Generator.Generate(Bol(1153), new[] { Coil("A", 1, 100, 110, dmgCode: 5, dmgFault: 1) }, partner, Ctrl, Ctrl, Now));
+        var clean = Lines(Edi861Generator.Generate(Bol(1153), new[] { Coil("A", 1, 100, 110) }, NovelisProfile(), "d", Ctrl, Ctrl, Now));
+        var damaged = Lines(Edi861Generator.Generate(Bol(1153), new[] { Coil("A", 1, 100, 110, dmgCode: 5, dmgFault: 1) }, NovelisProfile(), "d", Ctrl, Ctrl, Now));
 
         Assert.DoesNotContain(clean, l => l.StartsWith("PID*S*DAC"));
         Assert.Contains("PID*S*DAC*ST*5", damaged);
@@ -139,9 +118,8 @@ public class Edi861GeneratorTests
     [Fact]
     public void SE_count_matches_the_segments_from_ST_through_SE()
     {
-        var partner = Edi861Generator.PartnerFromProfile(NovelisProfile(), "d");
         var coils = new[] { Coil("A", 1, 100, 110), Coil("B", 2, 200, 210) };
-        var lines = Lines(Edi861Generator.Generate(Bol(1153), coils, partner, Ctrl, Ctrl, Now));
+        var lines = Lines(Edi861Generator.Generate(Bol(1153), coils, NovelisProfile(), "d", Ctrl, Ctrl, Now));
 
         var stIndex = Array.FindIndex(lines, l => l.StartsWith("ST*"));
         var seIndex = Array.FindIndex(lines, l => l.StartsWith("SE*"));

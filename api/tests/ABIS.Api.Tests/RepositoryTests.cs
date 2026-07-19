@@ -883,9 +883,9 @@ public sealed class RepositoryTests : IDisposable
         var coils = await _repo.GetReceivingBolCoilsAsync(5500, CancellationToken.None);
         Assert.Equal(2, coils.Count);
         var profile = await _repo.GetEdiPartnerAsync(bol!.CustomerId!.Value, "861", CancellationToken.None);
-        var partner = Abis.Api.Edi.Edi861Generator.PartnerFromProfile(profile!, "241003755");
+        Assert.NotNull(profile);
 
-        var result = await _repo.PersistEdi861Async(bol, coils, partner, new DateTime(2026, 7, 11, 14, 30, 0), CancellationToken.None);
+        var result = await _repo.PersistEdi861Async(bol, coils, profile!, "241003755", new DateTime(2026, 7, 11, 14, 30, 0), CancellationToken.None);
         Assert.Equal("generated", result.Status);
         Assert.Equal("Novelis", result.Partner);
         Assert.False(result.Transmitted);            // built + stored, never transmitted

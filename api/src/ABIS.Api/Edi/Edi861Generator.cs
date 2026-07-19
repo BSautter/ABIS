@@ -3,9 +3,9 @@ using Abis.Api.Models;
 
 namespace Abis.Api.Edi;
 
-/// <summary>The two structural flavours of the 861 body. Novelis and Aleris differ in the
-/// <c>LIN</c> element order and which reference/measurement qualifiers are used, so the
-/// generator branches on this — see <see cref="Edi861Partner"/>.</summary>
+/// <summary>The two structural flavours of the 861 body. Novelis and Aleris differ in the <c>LIN</c> element
+/// order and which reference/measurement qualifiers are used, so the generator branches on this — selected by
+/// the partner profile's <see cref="EdiPartnerProfile.Variant"/>.</summary>
 public enum Edi861LinStyle
 {
     /// <summary>Novelis/Alcan: <c>LIN**VO*{po}*SN*{coil}*HN*{lot}*PK*{pack}</c>, <c>REF*BM</c> per coil,
@@ -17,126 +17,61 @@ public enum Edi861LinStyle
     Aleris,
 }
 
-/// <summary>The per-trading-partner knobs for an 861 (Receiving Advice) — the values that vary between
-/// Novelis (customers 1153/1459/2582) and Aleris (customer 1980) in the legacy procs
-/// <c>p_create_edi_861_for_all</c> / <c>p_create_edi_861_for_aleris</c>. The sender is always Aluminum
-/// Blanking Co. (<c>039630926</c>). <see cref="SupplierDuns"/> is the receiving customer's own DUNS
-/// (<c>customer.customer_duns_number_string</c>), resolved per BOL at generation time.</summary>
-public sealed record Edi861Partner
-{
-    public required string Name { get; init; }
-    /// <summary>ISA07 / (implicitly GS) receiver qualifier — <c>09</c> Novelis, <c>ZZ</c> Aleris.</summary>
-    public required string ReceiverQualifier { get; init; }
-    /// <summary>ISA08 + GS03 receiver id (the trading-partner hub DUNS) — <c>0015049350011G</c> / <c>964790856</c>.</summary>
-    public required string ReceiverId { get; init; }
-    /// <summary>ISA16 component separator — <c>""</c> Novelis, <c>&gt;</c> Aleris.</summary>
-    public required string ComponentSeparator { get; init; }
-    /// <summary>Output file-name prefix — <c>S_Novelis_</c> / <c>S_edi_</c> (legacy <c>edi_file_prefix</c>).</summary>
-    public required string FilePrefix { get; init; }
-    public required Edi861LinStyle LinStyle { get; init; }
-    /// <summary>Aleris emits <c>REF*BM*{bol}</c> once in the header; Novelis does not.</summary>
-    public bool HeaderRefBm { get; init; }
-    /// <summary>Aleris emits <c>N1*MF*{name}*1*{ReceiverId}</c> (manufacturer); null omits it (Novelis).</summary>
-    public string? ManufacturerName { get; init; }
-    /// <summary>Novelis emits <c>REF*BM*{bol}</c> on every coil; Aleris keeps it in the header instead.</summary>
-    public bool CoilRefBm { get; init; }
-    /// <summary>Net-weight <c>MEA</c> qualifier (MEA02): <c>""</c> Novelis (<c>MEA*WT**</c>), <c>WT</c> Aleris (<c>MEA*WT*WT*</c>).</summary>
-    public required string NetWeightQualifier { get; init; }
-    /// <summary>N1*SU id — the receiving customer's DUNS. Resolved from the DB per BOL.</summary>
-    public required string SupplierDuns { get; init; }
-}
-
 /// <summary>
-/// Builds the X12 861 (Receiving Advice) interchange for one received BOL, faithfully porting the legacy
-/// Oracle procs (<c>legacy/cron/edi-procs/p_create_edi_861_for_*.sql</c>) segment-for-segment onto the
-/// tested <see cref="X12Writer"/> framing. Pure and deterministic — it takes the BOL, its coils, the resolved
-/// partner profile, the control numbers, and a timestamp, and returns the payload string.
+/// Builds the X12 861 (Receiving Advice) interchange for one received BOL, faithfully porting the legacy Oracle
+/// procs (<c>legacy/cron/edi-procs/p_create_edi_861_for_*.sql</c>) onto the shared <see cref="EdiInterchange"/>
+/// envelope + <see cref="X12Writer"/> framing. Conforms to the standard EDI-document pattern: the envelope comes
+/// from the trading-partner <see cref="EdiPartnerProfile"/>, the body differences from its <c>Variant</c>, and
+/// the receiving customer's own DUNS (N1*SU) is passed alongside.
 ///
 /// <para><b>Generation only — this never transmits.</b> Persisting the tracking row + payload and applying the
-/// "sent" marker is the repository's job (one transaction); the VAN SFTP stays the legacy owner. See
-/// <c>docs/EDI_ENGINE.md</c> and the no-live-firing guardrail.</para>
+/// "sent" marker is the repository's job (one transaction; the shared EDI sink). See docs/EDI_ENGINE.md.</para>
 ///
-/// <para>Sender is Aluminum Blanking Co. (interchange <c>01/039630926T</c>, party <c>039630926</c>). The ISA
-/// envelope is regenerated to standard form; the legacy Novelis proc emits a trailing empty ISA16 element
-/// (<c>…*P**</c>) which this writer normalises to <c>…*P*</c> — a cosmetic difference in a payload that is
-/// stored for review, not transmitted. Reconcile against an archived <c>.edi</c> sample before any eventual
-/// transmit (there is none vendored today).</para>
+/// <para>The ISA envelope is regenerated to standard form; the legacy Novelis proc emits a trailing empty ISA16
+/// element (<c>…*P**</c>) which the writer normalises to <c>…*P*</c> — cosmetic in a stored-not-transmitted
+/// payload. Reconcile against an archived <c>.edi</c> sample before any eventual transmit.</para>
 /// </summary>
 public static class Edi861Generator
 {
-    // Sender = Aluminum Blanking Co. (ABCo). Constant across every 861 partner.
-    private const string SenderQualifier = "01";
-    private const string SenderId = "039630926T";  // ISA06 + GS02
-    private const string SenderParty = "039630926"; // N1*OU id + outbound_edi_transaction.duns_from
-
     /// <summary>The trading-partner id for <c>outbound_edi_transaction.duns_from</c> / the N1*OU party.</summary>
-    public static string SenderDuns => SenderParty;
+    public static string SenderDuns => EdiInterchange.SenderParty;
 
-    /// <summary>Build the resolved 861 partner from its configured <see cref="EdiPartnerProfile"/> (the backbone)
-    /// + the receiving customer's own DUNS (<paramref name="supplierDuns"/>, N1*SU). The envelope (qualifier,
-    /// receiver id, component separator, file prefix) comes straight from the profile <em>data</em>; the body
-    /// differences are driven by <see cref="EdiPartnerProfile.Variant"/> — "aleris" vs the "novelis" default
-    /// (LIN order, REF*BM placement, N1*MF, and the net-weight MEA qualifier).</summary>
-    public static Edi861Partner PartnerFromProfile(EdiPartnerProfile profile, string supplierDuns)
-    {
-        var (linStyle, headerRefBm, mfName, coilRefBm, netWtQual, name) =
-            profile.Variant?.Trim().ToLowerInvariant() switch
-            {
-                "aleris" => (Edi861LinStyle.Aleris, true, (string?)"Aleris", false, "WT", "Aleris"),
-                _ => (Edi861LinStyle.Novelis, false, (string?)null, true, "", "Novelis"),
-            };
-        return new Edi861Partner
-        {
-            Name = name,
-            ReceiverQualifier = profile.ReceiverQualifier ?? "",
-            ReceiverId = profile.ReceiverId ?? "",
-            ComponentSeparator = profile.ComponentSeparator ?? "",
-            FilePrefix = string.IsNullOrEmpty(profile.FilePrefix) ? "S_" : profile.FilePrefix!,
-            LinStyle = linStyle,
-            HeaderRefBm = headerRefBm,
-            ManufacturerName = mfName,
-            CoilRefBm = coilRefBm,
-            NetWeightQualifier = netWtQual,
-            SupplierDuns = supplierDuns,
-        };
-    }
+    /// <summary>The output EDI file name for a generated 861 (profile prefix, legacy default <c>S_Novelis_</c>).</summary>
+    public static string FileName(EdiPartnerProfile profile, long ediFileId) =>
+        EdiInterchange.FileName(profile, ediFileId, "S_Novelis_");
 
-    /// <summary>The output EDI file name for a generated 861 (legacy <c>edi_file_prefix || id || '.edi'</c>).</summary>
-    public static string FileName(Edi861Partner partner, long ediFileId) =>
-        $"{partner.FilePrefix}{ediFileId.ToString(CultureInfo.InvariantCulture)}.edi";
-
-    /// <summary>Build the 861 payload. <paramref name="groupControl"/> is ISA13 = GS06 (one value feeds both,
-    /// per the legacy <c>edi_gs_log</c>); <paramref name="setControl"/> is ST02 = SE02. The modern engine sets
-    /// both to the new <c>edi_file_id</c>. <paramref name="timestamp"/> stamps the BRA/ISA/GS date-time
-    /// (legacy SYSDATE, local); the received date-time in DTM*050 comes from the BOL (falling back to it).</summary>
+    /// <summary>Build the 861 payload for a received BOL + its coils. The envelope comes from the partner
+    /// <paramref name="profile"/> (via <see cref="EdiInterchange.Open"/>); the body flavour from its
+    /// <c>Variant</c> ("aleris" vs the "novelis" default); <paramref name="supplierDuns"/> is the receiving
+    /// customer's own DUNS (N1*SU). <paramref name="groupControl"/> = ISA13/GS06, <paramref name="setControl"/>
+    /// = ST02 (both the new edi_file_id). The DTM*050 received date-time comes from the BOL.</summary>
     public static string Generate(
-        ReceivingBol bol, IReadOnlyList<ReceivingBolCoil> coils, Edi861Partner partner,
+        ReceivingBol bol, IReadOnlyList<ReceivingBolCoil> coils, EdiPartnerProfile profile, string supplierDuns,
         long groupControl, long setControl, DateTime timestamp)
     {
-        var w = new X12Writer(new X12Options { ComponentSeparator = partner.ComponentSeparator });
-        var gs = groupControl.ToString(CultureInfo.InvariantCulture);
-        var st = setControl.ToString(CultureInfo.InvariantCulture);
+        // Body flavour from the profile variant (envelope itself is data, applied by EdiInterchange.Open).
+        var (linStyle, headerRefBm, mfName, coilRefBm, netWtQual) = profile.Variant?.Trim().ToLowerInvariant() switch
+        {
+            "aleris" => (Edi861LinStyle.Aleris, true, (string?)"Aleris", false, "WT"),
+            _ => (Edi861LinStyle.Novelis, false, (string?)null, true, ""),
+        };
+
+        var w = EdiInterchange.Open(profile, "861", "RC", "00200", groupControl, setControl, timestamp);
         var bolNum = bol.Bol ?? "";
-        var yyMMdd = timestamp.ToString("yyMMdd", CultureInfo.InvariantCulture);
         var yyyyMMdd = timestamp.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
         var hhmm = timestamp.ToString("HHmm", CultureInfo.InvariantCulture);
 
-        w.Isa("00", "", "00", "", SenderQualifier, SenderId, partner.ReceiverQualifier, partner.ReceiverId,
-            yyMMdd, hhmm, "U", "00200", gs, "0", "P");
-        w.Gs("RC", SenderId, partner.ReceiverId, yyyyMMdd, hhmm, gs, "X", "004010");
-        w.St("861", st);
-
         // ---- header ----
         w.Segment("BRA", bolNum, yyyyMMdd, "00", "1", hhmm);
-        if (partner.HeaderRefBm) w.Segment("REF", "BM", bolNum);
+        if (headerRefBm) w.Segment("REF", "BM", bolNum);
         var received = bol.ReceivedDate ?? timestamp;
         w.Segment("DTM", "050",
             received.ToString("yyyyMMdd", CultureInfo.InvariantCulture),
             received.ToString("HHmm", CultureInfo.InvariantCulture), "ED");
-        w.Segment("N1", "OU", "", "1", SenderParty);
-        if (partner.ManufacturerName is not null)
-            w.Segment("N1", "MF", partner.ManufacturerName, "1", partner.ReceiverId);
-        w.Segment("N1", "SU", "", "1", partner.SupplierDuns);
+        w.Segment("N1", "OU", "", "1", EdiInterchange.SenderParty);
+        if (mfName is not null)
+            w.Segment("N1", "MF", mfName, "1", profile.ReceiverId ?? "");
+        w.Segment("N1", "SU", "", "1", supplierDuns);
 
         // ---- one item block per coil ----
         foreach (var c in coils)
@@ -147,7 +82,7 @@ public static class Edi861Generator
             var psCoil = !string.IsNullOrEmpty(c.ConsumedCoilNum) ? c.ConsumedCoilNum! : (c.CoilOrgNum ?? "");
 
             w.Segment("RCD", "", "1", "CX");
-            if (partner.LinStyle == Edi861LinStyle.Novelis)
+            if (linStyle == Edi861LinStyle.Novelis)
                 w.Segment("LIN", "", "VO", po, "SN", c.CoilOrgNum, "HN", c.Lot, "PK", c.PackId);
             else
                 w.Segment("LIN", "", "VO", po, "BP", c.PartNum, "HN", c.Lot, "SN", c.CoilOrgNum);
@@ -159,10 +94,10 @@ public static class Edi861Generator
                 w.Segment("PID", "S", "DAF", "ST", c.DamagedFault!.Value.ToString(CultureInfo.InvariantCulture));
             w.Segment("PID", "S", "QAS", "ST", "2");
             w.Segment("REF", "SE", (c.CoilAbcNum ?? 0).ToString(CultureInfo.InvariantCulture));
-            if (partner.CoilRefBm) w.Segment("REF", "BM", bolNum);
+            if (coilRefBm) w.Segment("REF", "BM", bolNum);
             w.Segment("REF", "RV", psCoil);
             w.Segment("PRF", po);
-            w.Segment("MEA", "WT", partner.NetWeightQualifier, Int(c.NetWeight), "01");
+            w.Segment("MEA", "WT", netWtQual, Int(c.NetWeight), "01");
             w.Segment("MEA", "WT", "", Int(c.GrossWeight), "24");
             w.Segment("MEA", "PD", "TH", Dec4(c.CoilGauge), "IN");
             w.Segment("MEA", "PD", "WD", Dec4(c.CoilWidth), "IN");
@@ -172,6 +107,10 @@ public static class Edi861Generator
         w.Segment("CTT", coils.Count.ToString(CultureInfo.InvariantCulture));
         return w.Close();
     }
+
+    /// <summary>The partner display name for a profile variant (for the result note).</summary>
+    public static string DisplayName(EdiPartnerProfile profile) =>
+        profile.Variant?.Trim().ToLowerInvariant() == "aleris" ? "Aleris" : "Novelis";
 
     private static string Int(int? v) => (v ?? 0).ToString(CultureInfo.InvariantCulture);
     // Legacy FM90.0000 / FM99990.0000 — four decimals, at least one leading digit, no padding blanks.

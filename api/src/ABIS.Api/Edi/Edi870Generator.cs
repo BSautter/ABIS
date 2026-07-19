@@ -19,43 +19,29 @@ namespace Abis.Api.Edi;
 /// </summary>
 public static class Edi870Generator
 {
-    private const string SenderQualifier = "01";
-    private const string SenderId = "039630926T";   // ISA06 + GS02
-    private const string SenderParty = "039630926";  // outbound_edi_transaction.duns_from
-
     /// <summary>The trading-partner id for <c>outbound_edi_transaction.duns_from</c>.</summary>
-    public static string SenderDuns => SenderParty;
-    /// <summary>Output file name from the partner profile's prefix (legacy <c>edi_file_prefix</c>).</summary>
+    public static string SenderDuns => EdiInterchange.SenderParty;
+    /// <summary>Output file name from the partner profile's prefix (legacy default <c>S_aleris_</c>).</summary>
     public static string FileName(EdiPartnerProfile profile, long ediFileId) =>
-        $"{(string.IsNullOrEmpty(profile.FilePrefix) ? "S_aleris_" : profile.FilePrefix)}{ediFileId.ToString(CultureInfo.InvariantCulture)}.edi";
+        EdiInterchange.FileName(profile, ediFileId, "S_aleris_");
 
-    /// <summary>Build the 870 payload for a batch, taking the envelope (receiver identity, component separator,
-    /// envelope version, GS code, item reference) from the partner <paramref name="profile"/> — so a different
-    /// customer's 870 is configuration, not a fork. <paramref name="groupControl"/> is ISA13 = GS06;
-    /// <paramref name="setControl"/> is ST02. The body below is the Aleris variant (the only live 870 today).</summary>
+    /// <summary>Build the 870 payload for a batch. The envelope (receiver identity, component separator,
+    /// envelope version, GS code) comes from the partner <paramref name="profile"/> via
+    /// <see cref="EdiInterchange.Open"/>, and the item reference from <c>profile.ItemReference</c> — so a
+    /// different customer's 870 is configuration, not a fork. <paramref name="groupControl"/> = ISA13/GS06;
+    /// <paramref name="setControl"/> = ST02. The body below is the Aleris variant (the only live 870 today).</summary>
     public static string Generate(Edi870Batch batch, EdiPartnerProfile profile, long groupControl, long setControl, DateTime timestamp)
     {
-        var compSep = profile.ComponentSeparator ?? ">";
-        var recvQual = string.IsNullOrEmpty(profile.ReceiverQualifier) ? "ZZ" : profile.ReceiverQualifier!;
-        var recvId = string.IsNullOrEmpty(profile.ReceiverId) ? "964790856" : profile.ReceiverId!;
-        var version = string.IsNullOrEmpty(profile.EnvelopeVersion) ? "00401" : profile.EnvelopeVersion!;
-        var gsFunc = string.IsNullOrEmpty(profile.GsFunctionalCode) ? "RS" : profile.GsFunctionalCode!;
         var itemRef = string.IsNullOrEmpty(profile.ItemReference) ? "300578504" : profile.ItemReference!;
 
-        var w = new X12Writer(new X12Options { ComponentSeparator = compSep });
-        var gs = groupControl.ToString(CultureInfo.InvariantCulture);
+        var w = EdiInterchange.Open(profile, "870", "RS", "00401", groupControl, setControl, timestamp);
         var st = setControl.ToString(CultureInfo.InvariantCulture);
-        var yyMMdd = timestamp.ToString("yyMMdd", CultureInfo.InvariantCulture);
         var yyyyMMdd = timestamp.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
         var hhmm = timestamp.ToString("HHmm", CultureInfo.InvariantCulture);
         var suDuns = batch.SupplierDuns ?? "";
 
-        w.Isa("00", "", "00", "", SenderQualifier, SenderId, recvQual, recvId,
-            yyMMdd, hhmm, "U", version, gs, "0", "P");
-        w.Gs(gsFunc, SenderId, recvId, yyyyMMdd, hhmm, gs, "X", "004010");
-        w.St("870", st);
         w.Segment("BSR", "2", "PP", st, yyyyMMdd, "", "", hhmm, "", "", "", "", "");
-        w.Segment("N1", "OU", "ALUMINUM BLANKING/MI", "1", SenderId);
+        w.Segment("N1", "OU", "ALUMINUM BLANKING/MI", "1", EdiInterchange.SenderId);
         w.Segment("N1", "MF", "", "1", suDuns);
 
         var hl = 0;   // li_hl01 — the running HL counter (also the CTT total)

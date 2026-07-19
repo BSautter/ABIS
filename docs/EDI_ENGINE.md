@@ -30,6 +30,22 @@ per-partner (e.g. the Aleris 870 `PRF*RV` value) ride on the profile too (`item_
 resolve their partner from this backbone (`GetEdiPartnerAsync` → 422 if no enabled profile); every new set
 builds on it. The receiving customer's own DUNS (N1*SU/N1*MF) still comes from `customer.customer_duns_number_string`.
 
+## The standard EDI-document pattern (conform to this for every new set)
+This is the going-forward standard; 861 + 870 conform to it, and 846/856/863/… must too.
+1. **Config** — one `abis_edi_partner` row per `(customer, transaction set)`: envelope + enablement as data,
+   `variant` selects the body path, per-partner constants ride on `item_reference`. Seed from the legacy proc.
+2. **Resolve** — the endpoint calls `GetEdiPartnerAsync(customerId, set)`; **422** if there's no enabled profile.
+3. **Assemble** — a repo method reads the source into a typed input model (861: BOL + coils; 870: `Edi870Batch`).
+4. **Generate** — a pure `EdiNNNGenerator.Generate(input, EdiPartnerProfile profile, …, control, timestamp)`
+   opens the interchange with **`EdiInterchange.Open(profile, setId, gsDefault, versionDefault, …)`** (ISA/GS/ST
+   from the profile) and writes its body on `X12Writer`. Never transmits. File name via `EdiInterchange.FileName`.
+5. **Persist** — one transaction: **`WriteEdiTransactionAsync`** (the shared sink) allocates the edi_file_id
+   (= control number), writes the `outbound_edi_transaction` row + the payload CLOB; then the set applies its own
+   **"sent" marker** (861: BOL status; 870: `abis_edi_870_mark`; 846: none — snapshot) and commits.
+6. **Result** — `Status` "generated"/"nothing", `Partner`, `EdiFileId`, control numbers, counts, `Transmitted=false`.
+Shared pieces live in `Edi/EdiInterchange.cs` (sender identity + envelope opener + file name) and
+`AbisRepository.WriteEdiTransactionAsync` (the persistence sink) so a new document is body + marker only.
+
 ## Architecture (`api/src/ABIS.Api/Edi/`)
 - **`X12Writer` + `X12Options`** ✅ (this PR) — builds one ISA/GS/ST…SE/GE/IEA interchange segment-by-segment,
   reproducing per-partner framing (element sep `*`; segment suffix `""` for 861/870/863/856 vs `~` for 846;
