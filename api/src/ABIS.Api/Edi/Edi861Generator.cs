@@ -197,8 +197,10 @@ public static class Edi861Generator
     /// <c>N1*MF</c>/<c>N1*OU</c> (no N1*SU), <c>*ET</c> date qualifiers, and a per-coil block of
     /// <c>RCD**1*UN</c>, <c>LIN**VO*{po}***SN*{coil}*HN*{lot}</c>, three PIDs (incl. <c>PID*S*QAS*ST*1</c>),
     /// <c>REF*SE</c> + <c>DTM*206</c>, qualified <c>MEA*WT*WT</c> weights, <c>MEA*PD*..</c> dimensions
-    /// (thickness *ED, width/length *IN/*LF), and a closing per-coil <c>MEA*CT**{n}*PC</c> running count.
-    /// The interchange uses the <c>@</c> component separator. Never transmits.</summary>
+    /// (thickness *ED with a forced four-decimal gauge; width *IN via <see cref="Dec4Trim"/> — default
+    /// <c>to_char(number(7,4))</c>, up to four decimals with no forced trailing zeros; length *LF), and a
+    /// closing per-coil <c>MEA*CT**{n}*PC</c> running count. The interchange uses the <c>@</c> component
+    /// separator. Never transmits.</summary>
     private static void ConstelliumBody(X12Writer w, ReceivingBol bol, IReadOnlyList<ReceivingBolCoil> coils,
         string supplierDuns, DateTime timestamp)
     {
@@ -228,7 +230,7 @@ public static class Edi861Generator
             w.Segment("MEA", "WT", "WT", Int(c.NetWeight), "01");
             w.Segment("MEA", "WT", "WT", Int(c.GrossWeight), "24");
             w.Segment("MEA", "PD", "TH", Dec4(c.CoilGauge), "ED");
-            w.Segment("MEA", "PD", "WD", DecTrim(c.CoilWidth), "IN");
+            w.Segment("MEA", "PD", "WD", Dec4Trim(c.CoilWidth), "IN");
             w.Segment("MEA", "PD", "LN", DecTrim(c.LinealFeed), "LF");
             // Legacy running coil count (f_edi_constellium_861: coil_count := coil_count + 1) — a per-coil
             // MEA*CT**{n}*PC where n is the 1-based coil index (the final value equals the CTT count).
@@ -250,6 +252,12 @@ public static class Edi861Generator
     private static string Int(int? v) => (v ?? 0).ToString(CultureInfo.InvariantCulture);
     // Legacy FM90.0000 / FM99990.0000 — four decimals, at least one leading digit, no padding blanks.
     private static string Dec4(decimal? v) => (v ?? 0m).ToString("0.0000", CultureInfo.InvariantCulture);
-    // Legacy default TO_CHAR(number) for lineal feet — no forced trailing zeros.
+    // Legacy default TO_CHAR(lineal_feed) where lineal_feed is number(7,2): up to two decimals, no forced
+    // trailing zeros. Used for MEA*PD*LN (and the Aleris MEA*CT). All real values are whole feet.
     private static string DecTrim(decimal? v) => (v ?? 0m).ToString("0.##", CultureInfo.InvariantCulture);
+    // Legacy default TO_CHAR(coil_width) where coil_width is number(7,4): up to four decimals, no forced
+    // trailing zeros (f_edi_constellium_861 line 376 — the commented-out FM99990.0000 above it was abandoned).
+    // Real production widths carry up to three decimals (e.g. 65.822, 70.835; 70.84/70.75 when the last is 0).
+    // Coil widths are always >= 1", so Oracle's leading-zero-suppressed form (".5") never arises here.
+    private static string Dec4Trim(decimal? v) => (v ?? 0m).ToString("0.####", CultureInfo.InvariantCulture);
 }

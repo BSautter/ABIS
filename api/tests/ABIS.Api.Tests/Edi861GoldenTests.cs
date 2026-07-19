@@ -50,6 +50,8 @@ public class Edi861GoldenTests
     {
         // Ported from f_edi_constellium_861 — the '@'-separator envelope, REF*MA header, *ET dates, and a
         // per-coil block ending in the running MEA*CT**{n}*PC count. Two coils exercise the count (1, 2).
+        // Widths carry three decimals (65.822 / 70.835 — real production shape) to pin the MEA*PD*WD precision:
+        // legacy emits to_char(coil_width) of a number(7,4), so these must survive intact, not round to 2 dp.
         var bol = new ReceivingBol
         {
             ReceivingBolId = 1, Bol = "BOL-0001", CustomerId = 2776,
@@ -60,13 +62,13 @@ public class Edi861GoldenTests
             new ReceivingBolCoil
             {
                 ReceivingBolId = 1, CoilId = 1, CoilOrgNum = "COIL-0001", CoilAbcNum = 900001, Status = 2,
-                NetWeight = 1000, GrossWeight = 1010, LinealFeed = 3500m, CoilWidth = 60.5m, CoilGauge = 0.0400m,
+                NetWeight = 1000, GrossWeight = 1010, LinealFeed = 3500m, CoilWidth = 65.822m, CoilGauge = 0.0400m,
                 Lot = "LOT-0001", PurchaseOrderNum = "PO0001", ConsumedCoilNum = "COIL-0001",
             },
             new ReceivingBolCoil
             {
                 ReceivingBolId = 1, CoilId = 2, CoilOrgNum = "COIL-0002", CoilAbcNum = 900002, Status = 2,
-                NetWeight = 2000, GrossWeight = 2010, LinealFeed = 6800m, CoilWidth = 48.25m, CoilGauge = 0.0350m,
+                NetWeight = 2000, GrossWeight = 2010, LinealFeed = 6800m, CoilWidth = 70.835m, CoilGauge = 0.0350m,
                 Lot = "LOT-0002", PurchaseOrderNum = "PO0002", ConsumedCoilNum = "COIL-0002",
             },
         };

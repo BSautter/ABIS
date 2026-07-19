@@ -60,6 +60,7 @@ public class Edi861GeneratorTests
     {
         // Two coils so the per-coil MEA*CT running count (1, 2) is exercised.
         var coils = new[] { Coil("CN-3", 700003, 9000, 9100), Coil("CN-4", 700004, 8000, 8100) };
+        coils[0].CoilWidth = 65.822m;   // 3-decimal, production-shaped width for the MEA*PD*WD precision check
         var lines = Lines(Edi861Generator.Generate(Bol(2776), coils, ConstelliumProfile(), "043207177", "CONSTELLIUM - BG", Ctrl, Ctrl, Now));
 
         // Envelope — receiver 01/043207177, '@' component separator, GS SH with the standard ABCo sender (no override).
@@ -80,7 +81,11 @@ public class Edi861GeneratorTests
         Assert.Contains("LIN**VO*PO-55***SN*CN-3*HN*HL-77", lines);
         Assert.Contains("PID*S*QAS*ST*1***68", lines);
         Assert.Contains("MEA*WT*WT*9000*01", lines);
-        Assert.Contains("MEA*PD*WD*60*IN", lines);
+        // Width is legacy default to_char(number(7,4)) — up to four decimals, no forced trailing zeros. The
+        // 3-decimal width survives intact (the 0.## helper would have rounded it to 65.82); the whole-number
+        // width drops its decimals entirely (unlike Arconic's forced-4-decimal 60.0000).
+        Assert.Contains("MEA*PD*WD*65.822*IN", lines);   // CN-3 (65.822m)
+        Assert.Contains("MEA*PD*WD*60*IN", lines);        // CN-4 (60.0m)
 
         // Per-coil trailing MEA*CT**{n}*PC running count (legacy f_edi_constellium_861 coil_count) —
         // 1-based, one per coil, ending at the CTT total. Each closes its own coil block (right after MEA*PD*LN).
