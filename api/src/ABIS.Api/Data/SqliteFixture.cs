@@ -108,6 +108,7 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS abis_truck_appointment;
             DROP TABLE IF EXISTS sheet_skid_detail;
             DROP TABLE IF EXISTS sheet_packing_item;
+            DROP TABLE IF EXISTS scrap_packing_item;
             DROP TABLE IF EXISTS recovery_scrap_worksheet;
             DROP TABLE IF EXISTS quality_scrap_worksheet;
             DROP TABLE IF EXISTS job_efolder_notes;
@@ -252,7 +253,8 @@ public static class SqliteFixture
             CREATE TABLE scrap_skid (
                 scrap_skid_num INTEGER PRIMARY KEY, scrap_ab_job_num TEXT, scrap_alloy2 TEXT, scrap_temper TEXT,
                 scrap_type INTEGER, scrap_net_wt REAL NOT NULL, scrap_tare_wt REAL NOT NULL, scrap_location TEXT,
-                scrap_notes TEXT, skid_scrap_status INTEGER, scrap_date TEXT);
+                scrap_notes TEXT, skid_scrap_status INTEGER, scrap_date TEXT,
+                scrap_skid_display_num TEXT, scrap_cust_po TEXT);
 
             -- Finished production items rolled onto a job (legacy production_sheet_item): the
             -- invoice's "processed weight" bucket = SUM(prod_item_net_wt). Decimals are REAL.
@@ -480,6 +482,10 @@ public static class SqliteFixture
             CREATE TABLE sheet_packing_item (
                 sh_packing_item INTEGER, packing_list INTEGER, sheet_skid_num INTEGER, sheet_packaging_ticket INTEGER,
                 PRIMARY KEY (sh_packing_item, packing_list));
+            -- Links a shipment (packing_list) to the scrap skids it carries (the SCRAP packing-line-item type).
+            CREATE TABLE scrap_packing_item (
+                sc_packing_item INTEGER, packing_list INTEGER, scrap_skid_num INTEGER, scrap_packaging_ticket INTEGER,
+                PRIMARY KEY (sc_packing_item, packing_list));
             -- Per (coil, job) scrap the recovery clerk booked (legacy recovery_scrap_worksheet); the
             -- recovery scrap-weight = SUM(scrap_item_net_wt). Falls back to quality_scrap_worksheet
             -- (the quality clerk's booking) when the recovery worksheet has none.

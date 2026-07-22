@@ -1372,11 +1372,12 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
 
         // GET items for a missing shipment → 404.
         Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/shipments/99999999/items")).StatusCode);
-        // POST to a missing shipment → 404 (no-shipment); to an existing shipment + missing skid → 404 (no-skid).
-        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/shipments/99999999/items", new { sheetSkidNum = 1 })).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/shipments/8801/items", new { sheetSkidNum = 88888888 })).StatusCode);
-        // DELETE a nonexistent item → 404.
-        Assert.Equal(HttpStatusCode.NotFound, (await _client.DeleteAsync("/api/shipments/8801/items/999")).StatusCode);
+        // POST to a missing shipment → 404 (no-shipment); existing shipment + missing skid → 404 (no-ref); bad type → 400.
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/shipments/99999999/items", new { itemType = "SHEET", refNum = 1 })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/shipments/8801/items", new { itemType = "SHEET", refNum = 88888888 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/shipments/8801/items", new { itemType = "WAREHOUSE", refNum = 1 })).StatusCode);
+        // DELETE a nonexistent item (by type + id) → 404.
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.DeleteAsync("/api/shipments/8801/items/SHEET/999")).StatusCode);
     }
 
     [Fact]

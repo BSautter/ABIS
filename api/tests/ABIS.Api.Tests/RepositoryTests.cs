@@ -1282,42 +1282,57 @@ public sealed class RepositoryTests : IDisposable
                 INSERT INTO production_sheet_item (prod_item_num, coil_abc_num, ab_job_num, prod_item_status, prod_item_pieces, prod_item_net_wt) VALUES (9140, 9120, 9130, 1, 100, 20000);
                 INSERT INTO sheet_skid (sheet_skid_num, ab_job_num, sheet_skid_display_num, sheet_net_wt, sheet_tare_wt, skid_pieces, skid_sheet_status) VALUES (9150, 9130, 'PSKID-1', 20000, 250, 100, 2);
                 INSERT INTO sheet_skid_detail (sheet_skid_num, prod_item_num) VALUES (9150, 9140);
+                INSERT INTO scrap_skid (scrap_skid_num, scrap_net_wt, scrap_tare_wt, scrap_type, scrap_alloy2, scrap_temper, scrap_skid_display_num, scrap_cust_po) VALUES (9160, 3000, 120, 5, '5052', 'H32', 'SCR-1', 'SPO-9');
                 """;
             cmd.ExecuteNonQuery();
         }
 
         Assert.Empty(await _repo.GetPackingItemsAsync(91000, CancellationToken.None));   // nothing packed yet
 
-        // Add the skid to the packing list.
-        var add = await _repo.AddSheetPackingItemAsync(91000, 9150, CancellationToken.None);
+        // Add the sheet skid to the packing list.
+        var add = await _repo.AddPackingItemAsync(91000, "SHEET", 9150, CancellationToken.None);
         Assert.Equal("created", add.Status);
         Assert.NotNull(add.Item);
-        Assert.Equal(1, add.Item!.ShPackingItem);        // per-list id starts at 1
+        Assert.Equal("SHEET", add.Item!.ItemType);
+        Assert.Equal(1, add.Item.PackingItemId);         // per-list id starts at 1
         Assert.Equal(9150, add.Item.PackagingTicket);    // ticket = the skid number
         Assert.Equal(20250m, add.Item.GrossWeight);      // 20000 net + 250 tare
         Assert.Equal("PPART", add.Item.EnduserPartNum);
         Assert.Equal("PO-91", add.Item.OrigCustomerPo);
         Assert.Equal("PCOIL-1", add.Item.CoilOrgNum);
 
+        // Add a scrap skid too (SCRAP type).
+        var addScrap = await _repo.AddPackingItemAsync(91000, "SCRAP", 9160, CancellationToken.None);
+        Assert.Equal("created", addScrap.Status);
+        Assert.Equal("SCRAP", addScrap.Item!.ItemType);
+        Assert.Equal(1, addScrap.Item.PackingItemId);    // scrap ids are their own per-list sequence
+        Assert.Equal(3120m, addScrap.Item.GrossWeight);  // 3000 + 120
+        Assert.Equal("5052", addScrap.Item.Alloy);
+        Assert.Equal("SPO-9", addScrap.Item.OrigCustomerPo);
+
         var items = await _repo.GetPackingItemsAsync(91000, CancellationToken.None);
-        Assert.Single(items);
-        Assert.Equal("PSKID-1", items[0].SkidDisplayNum);
+        Assert.Equal(2, items.Count);
+        Assert.Contains(items, i => i is { ItemType: "SHEET", SkidDisplayNum: "PSKID-1" });
+        Assert.Contains(items, i => i is { ItemType: "SCRAP", SkidDisplayNum: "SCR-1" });
 
         // Guards.
-        Assert.Equal("duplicate", (await _repo.AddSheetPackingItemAsync(91000, 9150, CancellationToken.None)).Status);
-        Assert.Equal("no-shipment", (await _repo.AddSheetPackingItemAsync(99999, 9150, CancellationToken.None)).Status);
-        Assert.Equal("no-skid", (await _repo.AddSheetPackingItemAsync(91000, 88888, CancellationToken.None)).Status);
+        Assert.Equal("duplicate", (await _repo.AddPackingItemAsync(91000, "SHEET", 9150, CancellationToken.None)).Status);
+        Assert.Equal("no-shipment", (await _repo.AddPackingItemAsync(99999, "SHEET", 9150, CancellationToken.None)).Status);
+        Assert.Equal("no-ref", (await _repo.AddPackingItemAsync(91000, "SHEET", 88888, CancellationToken.None)).Status);
+        Assert.Equal("bad-type", (await _repo.AddPackingItemAsync(91000, "WAREHOUSE", 9150, CancellationToken.None)).Status);
 
-        // The 856 ASN assembler now sees the packed skid — the loop is closed.
+        // The 856 ASN assembler sees the SHEET item (scrap isn't part of the ASN skid list) — the loop is closed.
         var ship = await _repo.AssembleEdi856Async(91000, null, CancellationToken.None);
         Assert.NotNull(ship);
         Assert.Single(ship!.Items);
         Assert.Equal("PSKID-1", ship.Items[0].SkidDisplayNum);
 
-        // Remove.
-        Assert.True(await _repo.DeletePackingItemAsync(91000, 1, CancellationToken.None));
+        // Remove — by (type, id). Sheet id 1 and scrap id 1 are distinct rows.
+        Assert.True(await _repo.DeletePackingItemAsync(91000, "SCRAP", 1, CancellationToken.None));
+        Assert.Single(await _repo.GetPackingItemsAsync(91000, CancellationToken.None));   // sheet remains
+        Assert.True(await _repo.DeletePackingItemAsync(91000, "SHEET", 1, CancellationToken.None));
         Assert.Empty(await _repo.GetPackingItemsAsync(91000, CancellationToken.None));
-        Assert.False(await _repo.DeletePackingItemAsync(91000, 1, CancellationToken.None));   // already gone
+        Assert.False(await _repo.DeletePackingItemAsync(91000, "SHEET", 1, CancellationToken.None));   // already gone
     }
 
     [Fact]

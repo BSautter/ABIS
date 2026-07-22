@@ -9605,7 +9605,7 @@
         "tags": [
           "Shipments"
         ],
-        "summary": "List the finished-sheet line items on a packing list (shipment) — the skids it carries, enriched with weight/pieces/part/PO/coil. This is the same content the 856 (ASN) reports.",
+        "summary": "List the line items on a packing list (shipment) — SHEET (finished-sheet skids, enriched with weight/pieces/part/PO/coil — the same content the 856 (ASN) reports) and SCRAP (scrap skids), each tagged with its itemType.",
         "operationId": "ListPackingItems",
         "parameters": [
           {
@@ -9644,7 +9644,7 @@
         "tags": [
           "Shipments"
         ],
-        "summary": "Add a finished-sheet skid to a packing list. The item id + packaging ticket are server-assigned. 404 if the shipment or skid is missing; 409 if the skid is already on this list. Config/data only — nothing transmits.",
+        "summary": "Add a skid to a packing list — itemType SHEET (finished sheet) or SCRAP (scrap), refNum = the skid number. The item id + packaging ticket are server-assigned. 400 bad type; 404 if the shipment or skid is missing; 409 if the skid is already on this list. Config/data only — nothing transmits.",
         "operationId": "AddPackingItem",
         "parameters": [
           {
@@ -9678,6 +9678,16 @@
               }
             }
           },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not Found"
           },
@@ -9690,12 +9700,12 @@
         }
       }
     },
-    "/api/shipments/{packingList}/items/{shPackingItem}": {
+    "/api/shipments/{packingList}/items/{itemType}/{itemId}": {
       "delete": {
         "tags": [
           "Shipments"
         ],
-        "summary": "Remove a line item from a packing list.",
+        "summary": "Remove a line item (by itemType SHEET/SCRAP + its id) from a packing list.",
         "operationId": "DeletePackingItem",
         "parameters": [
           {
@@ -9708,7 +9718,15 @@
             }
           },
           {
-            "name": "shPackingItem",
+            "name": "itemType",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemId",
             "in": "path",
             "required": true,
             "schema": {
@@ -15999,7 +16017,11 @@
       "PackingItemWrite": {
         "type": "object",
         "properties": {
-          "sheetSkidNum": {
+          "itemType": {
+            "type": "string",
+            "nullable": true
+          },
+          "refNum": {
             "type": "integer",
             "format": "int64"
           }
@@ -16009,7 +16031,7 @@
       "PackingLineItem": {
         "type": "object",
         "properties": {
-          "shPackingItem": {
+          "packingItemId": {
             "type": "integer",
             "format": "int64"
           },
@@ -16021,7 +16043,7 @@
             "type": "string",
             "nullable": true
           },
-          "sheetSkidNum": {
+          "refNum": {
             "type": "integer",
             "format": "int64"
           },
@@ -16068,6 +16090,19 @@
           },
           "lotNum": {
             "type": "string",
+            "nullable": true
+          },
+          "alloy": {
+            "type": "string",
+            "nullable": true
+          },
+          "temper": {
+            "type": "string",
+            "nullable": true
+          },
+          "scrapType": {
+            "type": "integer",
+            "format": "int32",
             "nullable": true
           }
         },

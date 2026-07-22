@@ -420,11 +420,13 @@ public sealed class ShipmentWrite
     public string? ShipmentNotes { get; set; }
 }
 
-/// <summary>Add a finished-sheet skid to a packing list (shipment). The <c>sh_packing_item</c> id and the
-/// <c>sheet_packaging_ticket</c> (= the skid number, legacy convention) are assigned server-side.</summary>
+/// <summary>Add a line item to a packing list (shipment). <see cref="ItemType"/> is <c>SHEET</c> (default) for a
+/// finished-sheet skid or <c>SCRAP</c> for a scrap skid; <see cref="RefNum"/> is that skid's number. The item id
+/// and the packaging ticket (= the skid number, legacy convention) are assigned server-side.</summary>
 public sealed class PackingItemWrite
 {
-    public long SheetSkidNum { get; set; }
+    public string ItemType { get; set; } = "SHEET";
+    public long RefNum { get; set; }
 }
 
 /// <summary>Partial update of a shipment as it ships out (status/dispatch fields).

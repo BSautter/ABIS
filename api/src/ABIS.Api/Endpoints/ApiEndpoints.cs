@@ -737,29 +737,30 @@ public static class ApiEndpoints
                     ? Results.NotFound()
                     : Results.Ok(await repo.GetPackingItemsAsync(packingList, ct)))
            .WithName("ListPackingItems").WithTags("Shipments")
-           .WithSummary("List the finished-sheet line items on a packing list (shipment) — the skids it carries, enriched with weight/pieces/part/PO/coil. This is the same content the 856 (ASN) reports.")
+           .WithSummary("List the line items on a packing list (shipment) — SHEET (finished-sheet skids, enriched with weight/pieces/part/PO/coil — the same content the 856 (ASN) reports) and SCRAP (scrap skids), each tagged with its itemType.")
            .Produces<IReadOnlyList<PackingLineItem>>().Produces(StatusCodes.Status404NotFound);
 
         api.MapPost("/shipments/{packingList:long}/items", async (long packingList, PackingItemWrite body, IAbisRepository repo, CancellationToken ct) =>
             {
-                var result = await repo.AddSheetPackingItemAsync(packingList, body.SheetSkidNum, ct);
+                var result = await repo.AddPackingItemAsync(packingList, body.ItemType, body.RefNum, ct);
                 return result.Status switch
                 {
-                    "created" => Results.Created($"/api/shipments/{packingList}/items/{result.Item!.ShPackingItem}", result.Item),
+                    "created" => Results.Created($"/api/shipments/{packingList}/items/{result.Item!.ItemType}/{result.Item.PackingItemId}", result.Item),
+                    "bad-type" => Results.ValidationProblem(new Dictionary<string, string[]> { ["itemType"] = ["itemType must be SHEET or SCRAP."] }),
                     "no-shipment" => Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Shipment not found", detail: $"No packing list {packingList}."),
-                    "no-skid" => Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Skid not found", detail: $"No sheet skid {body.SheetSkidNum}."),
-                    "duplicate" => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Already on this packing list", detail: $"Sheet skid {body.SheetSkidNum} is already a line item on packing list {packingList}."),
+                    "no-ref" => Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Skid not found", detail: $"No {body.ItemType} skid {body.RefNum}."),
+                    "duplicate" => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Already on this packing list", detail: $"{body.ItemType} skid {body.RefNum} is already a line item on packing list {packingList}."),
                     _ => Results.Problem(statusCode: StatusCodes.Status500InternalServerError, title: "Add failed"),
                 };
             })
            .WithName("AddPackingItem").WithTags("Shipments")
-           .WithSummary("Add a finished-sheet skid to a packing list. The item id + packaging ticket are server-assigned. 404 if the shipment or skid is missing; 409 if the skid is already on this list. Config/data only — nothing transmits.")
-           .Produces<PackingLineItem>(StatusCodes.Status201Created).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
+           .WithSummary("Add a skid to a packing list — itemType SHEET (finished sheet) or SCRAP (scrap), refNum = the skid number. The item id + packaging ticket are server-assigned. 400 bad type; 404 if the shipment or skid is missing; 409 if the skid is already on this list. Config/data only — nothing transmits.")
+           .Produces<PackingLineItem>(StatusCodes.Status201Created).ProducesValidationProblem().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
 
-        api.MapDelete("/shipments/{packingList:long}/items/{shPackingItem:long}", async (long packingList, long shPackingItem, IAbisRepository repo, CancellationToken ct) =>
-                await repo.DeletePackingItemAsync(packingList, shPackingItem, ct) ? Results.NoContent() : Results.NotFound())
+        api.MapDelete("/shipments/{packingList:long}/items/{itemType}/{itemId:long}", async (long packingList, string itemType, long itemId, IAbisRepository repo, CancellationToken ct) =>
+                await repo.DeletePackingItemAsync(packingList, itemType, itemId, ct) ? Results.NoContent() : Results.NotFound())
            .WithName("DeletePackingItem").WithTags("Shipments")
-           .WithSummary("Remove a line item from a packing list.")
+           .WithSummary("Remove a line item (by itemType SHEET/SCRAP + its id) from a packing list.")
            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
 
         // ---- Receiving BOLs --------------------------------------------

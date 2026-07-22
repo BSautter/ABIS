@@ -648,36 +648,47 @@ public sealed class Shipment
     public string? ShipmentNotes { get; set; }
 }
 
-/// <summary>One line item on a packing list (shipment) — a finished-sheet skid the shipment carries.
-/// Backed by <c>sheet_packing_item</c> (packing_list → sheet_skid); enriched with the skid + coil + order
-/// detail via the same join the 856 (ASN) consumes, so what you pack is what the ASN reports. <see cref="ItemType"/>
-/// is <c>SHEET</c> today; scrap / reject-coil / warehouse types follow in a later increment.</summary>
+/// <summary>One line item on a packing list (shipment) — what the shipment carries. <see cref="ItemType"/>
+/// selects the kind: <c>SHEET</c> (a finished-sheet skid, backed by <c>sheet_packing_item</c> → sheet_skid,
+/// enriched via the same join the 856 consumes) or <c>SCRAP</c> (a scrap skid, backed by
+/// <c>scrap_packing_item</c> → scrap_skid). Reject-coil / warehouse follow in a later increment. Fields not
+/// applicable to a type are null/0 (e.g. Pieces / EnduserPartNum / CoilOrgNum are sheet-only).</summary>
 public sealed class PackingLineItem
 {
-    /// <summary>sheet_packing_item.sh_packing_item — the per-packing-list item id (the DELETE key).</summary>
-    public long ShPackingItem { get; set; }
+    /// <summary>The per-(packing-list, type) item id — <c>sh_packing_item</c> for SHEET, <c>sc_packing_item</c>
+    /// for SCRAP. The DELETE key (with <see cref="ItemType"/>).</summary>
+    public long PackingItemId { get; set; }
     public long PackingList { get; set; }
-    /// <summary>The line-item kind. <c>SHEET</c> for finished-sheet skids (the only type built so far).</summary>
+    /// <summary>The line-item kind: <c>SHEET</c> or <c>SCRAP</c>.</summary>
     public string ItemType { get; set; } = "SHEET";
-    public long SheetSkidNum { get; set; }
-    /// <summary>sheet_packing_item.sheet_packaging_ticket (legacy convention: = the skid number).</summary>
+    /// <summary>The referenced object number — sheet_skid_num (SHEET) or scrap_skid_num (SCRAP).</summary>
+    public long RefNum { get; set; }
+    /// <summary>The packaging ticket (legacy convention: = the referenced skid number).</summary>
     public long PackagingTicket { get; set; }
     public string? SkidDisplayNum { get; set; }
     public decimal NetWeight { get; set; }
     public decimal TareWeight { get; set; }
     /// <summary>Derived net + tare — the physical shipping weight of the skid.</summary>
     public decimal GrossWeight { get; set; }
+    /// <summary>Sheet-only: pieces on the skid (0 for scrap).</summary>
     public int Pieces { get; set; }
     public long? AbJobNum { get; set; }
+    /// <summary>Sheet: order_item part. Scrap: the scrap customer PO (scrap_cust_po).</summary>
     public string? EnduserPartNum { get; set; }
     public string? OrigCustomerPo { get; set; }
-    /// <summary>A representative coil for the skid (a skid can span coils; this is the first by coil_org_num).</summary>
+    /// <summary>Sheet-only: a representative coil for the skid (first by coil_org_num).</summary>
     public string? CoilOrgNum { get; set; }
     public string? LotNum { get; set; }
+    /// <summary>Scrap: alloy2 + temper of the scrap skid (null for sheet).</summary>
+    public string? Alloy { get; set; }
+    public string? Temper { get; set; }
+    /// <summary>Scrap: the scrap type code; Sheet: null.</summary>
+    public int? ScrapType { get; set; }
 }
 
 /// <summary>Outcome of adding a packing-list line item — lets the endpoint map to 201 / 404 / 409 without
-/// throwing. <see cref="Status"/> is <c>created</c>, <c>no-shipment</c>, <c>no-skid</c>, or <c>duplicate</c>.</summary>
+/// throwing. <see cref="Status"/> is <c>created</c>, <c>no-shipment</c>, <c>no-ref</c> (the skid doesn't
+/// exist), <c>duplicate</c>, or <c>bad-type</c>.</summary>
 public sealed class PackingItemResult
 {
     public string Status { get; set; } = "created";
