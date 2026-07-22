@@ -992,6 +992,26 @@ public static class ApiEndpoints
            .WithSummary("Delete a dimensional QC check from a sheet skid; 404 if it isn't there.")
            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
 
+        api.MapGet("/coil-eval/jobs/{abJobNum:long}/qc-board", async (long abJobNum, IAbisRepository repo,
+                Abis.Api.Data.WinSpc.IWinSpcRepository win, CancellationToken ct) =>
+            {
+                var board = await repo.GetJobQcBoardAsync(abJobNum, ct);
+                // Enrich with WinSPC's own verdict for the job when the connector is wired up.
+                if (win.Enabled && await win.GetJobQcAsync(abJobNum.ToString(), ct) is { } qc)
+                    board.WinSpc = new WinSpcJobSummary
+                    {
+                        HasData = qc.TotalReadings > 0,
+                        TotalReadings = qc.TotalReadings,
+                        InSpecReadings = qc.InSpecReadings,
+                        OutOfSpecReadings = qc.OutOfSpecReadings,
+                        OverallInSpec = qc.TotalReadings > 0 ? qc.OutOfSpecReadings == 0 : null,
+                    };
+                return Results.Ok(board);
+            })
+           .WithName("GetJobQcBoard").WithTags("CoilEval")
+           .WithSummary("Dimensional-QC board for a job: each skid's in-spec/out-of-spec/unchecked status + good vs out-of-spec piece/weight roll-ups, plus WinSPC's own verdict when configured.")
+           .Produces<JobQcBoard>();
+
         api.MapGet("/coil-eval/jobs/{abJobNum:long}/eval-scrap", async (long abJobNum, IAbisRepository repo, CancellationToken ct) =>
                 Results.Ok(await repo.GetEvalScrapAsync(abJobNum, ct)))
            .WithName("GetEvalScrap").WithTags("CoilEval")

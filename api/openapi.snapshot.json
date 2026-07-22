@@ -1641,6 +1641,41 @@
         }
       }
     },
+    "/api/coil-eval/jobs/{abJobNum}/qc-board": {
+      "get": {
+        "tags": [
+          "CoilEval"
+        ],
+        "summary": "Dimensional-QC board for a job: each skid's in-spec/out-of-spec/unchecked status + good vs out-of-spec piece/weight roll-ups, plus WinSPC's own verdict when configured.",
+        "operationId": "GetJobQcBoard",
+        "parameters": [
+          {
+            "name": "abJobNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobQcBoard"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/coil-eval/jobs/{abJobNum}/eval-scrap": {
       "get": {
         "tags": [
@@ -15235,6 +15270,104 @@
         },
         "additionalProperties": false
       },
+      "JobQcBoard": {
+        "type": "object",
+        "properties": {
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalSkids": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "inSpecSkids": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "outOfSpecSkids": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "uncheckedSkids": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "goodPieces": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "outOfSpecPieces": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "goodWeight": {
+            "type": "number",
+            "format": "double"
+          },
+          "outOfSpecWeight": {
+            "type": "number",
+            "format": "double"
+          },
+          "skids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobQcSkid"
+            },
+            "nullable": true
+          },
+          "winSpc": {
+            "$ref": "#/components/schemas/WinSpcJobSummary"
+          }
+        },
+        "additionalProperties": false
+      },
+      "JobQcSkid": {
+        "type": "object",
+        "properties": {
+          "sheetSkidNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sheetSkidDisplayNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "skidPieces": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "sheetNetWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "skidSheetStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "checkCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "inSpecCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "outOfSpecCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "status": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
       "JobWrite": {
         "type": "object",
         "properties": {
@@ -20703,6 +20836,31 @@
           "netWtBalance": {
             "type": "number",
             "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "WinSpcJobSummary": {
+        "type": "object",
+        "properties": {
+          "hasData": {
+            "type": "boolean"
+          },
+          "totalReadings": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "inSpecReadings": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "outOfSpecReadings": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "overallInSpec": {
+            "type": "boolean",
             "nullable": true
           }
         },

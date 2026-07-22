@@ -4999,6 +4999,42 @@ public sealed class AbisRepository : IAbisRepository
             new { skid = sheetSkidNum }, cancellationToken: ct));
     }
 
+    public async Task<JobQcBoard> GetJobQcBoardAsync(long abJobNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        // One row per skid on the job, with its dimension-check pass/fail counts.
+        var skids = (await conn.QueryAsync<JobQcSkid>(new CommandDefinition(
+            """
+            SELECT s.sheet_skid_num AS SheetSkidNum, s.sheet_skid_display_num AS SheetSkidDisplayNum,
+                   s.skid_pieces AS SkidPieces, s.sheet_net_wt AS SheetNetWt, s.skid_sheet_status AS SkidSheetStatus,
+                   COUNT(d.dimension_check_num) AS CheckCount,
+                   COALESCE(SUM(CASE WHEN d.in_spec = 1 THEN 1 ELSE 0 END), 0) AS InSpecCount,
+                   COALESCE(SUM(CASE WHEN d.in_spec = 0 THEN 1 ELSE 0 END), 0) AS OutOfSpecCount
+            FROM sheet_skid s
+            LEFT JOIN sheet_skid_dimension_check d ON d.sheet_skid_num = s.sheet_skid_num
+            WHERE s.ab_job_num = :job
+            GROUP BY s.sheet_skid_num, s.sheet_skid_display_num, s.skid_pieces, s.sheet_net_wt, s.skid_sheet_status
+            ORDER BY s.sheet_skid_num
+            """, new { job = abJobNum }, cancellationToken: ct))).AsList();
+
+        var board = new JobQcBoard { AbJobNum = abJobNum, Skids = skids, TotalSkids = skids.Count };
+        foreach (var s in skids)
+        {
+            var pieces = s.SkidPieces ?? 0;
+            var wt = s.SheetNetWt ?? 0m;
+            switch (s.Status)
+            {
+                case "out-of-spec":
+                    board.OutOfSpecSkids++; board.OutOfSpecPieces += pieces; board.OutOfSpecWeight += wt; break;
+                case "in-spec":
+                    board.InSpecSkids++; board.GoodPieces += pieces; board.GoodWeight += wt; break;
+                default:
+                    board.UncheckedSkids++; break;
+            }
+        }
+        return board;
+    }
+
     public async Task<IReadOnlyList<EvalScrap>> GetEvalScrapAsync(long abJobNum, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

@@ -2178,6 +2178,50 @@ public sealed class QcCoilRow
 /// <summary>A dimensional QC check on a sheet-skid piece (table
 /// <c>sheet_skid_dimension_check</c>, PK <c>dimension_check_num</c>). <c>InSpec</c> is the
 /// pass/fail flag. Column names authoritative (oracle_ddl.sql).</summary>
+/// <summary>One skid's dimensional-QC roll-up for the job QC board: how many checks were recorded and
+/// how many passed/failed, with a derived green/red/grey status.</summary>
+public sealed class JobQcSkid
+{
+    public long SheetSkidNum { get; set; }
+    public string? SheetSkidDisplayNum { get; set; }
+    public int? SkidPieces { get; set; }
+    public decimal? SheetNetWt { get; set; }
+    public int? SkidSheetStatus { get; set; }
+    public int CheckCount { get; set; }
+    public int InSpecCount { get; set; }
+    public int OutOfSpecCount { get; set; }
+    /// <summary>"out-of-spec" if any check failed, "in-spec" if all checks passed, else "unchecked".</summary>
+    public string Status => OutOfSpecCount > 0 ? "out-of-spec" : CheckCount > 0 ? "in-spec" : "unchecked";
+}
+
+/// <summary>WinSPC's own verdict for a job (from its readings), shown alongside the ABIS QC board.</summary>
+public sealed class WinSpcJobSummary
+{
+    public bool HasData { get; set; }
+    public int TotalReadings { get; set; }
+    public int InSpecReadings { get; set; }
+    public int OutOfSpecReadings { get; set; }
+    /// <summary>All WinSPC readings in spec (and there is data). Null when WinSPC has no data.</summary>
+    public bool? OverallInSpec { get; set; }
+}
+
+/// <summary>The dimensional-QC board for a job: every skid's green/red status plus good vs out-of-spec
+/// piece/weight roll-ups, and (when configured) WinSPC's own verdict for the job.</summary>
+public sealed class JobQcBoard
+{
+    public long AbJobNum { get; set; }
+    public int TotalSkids { get; set; }
+    public int InSpecSkids { get; set; }
+    public int OutOfSpecSkids { get; set; }
+    public int UncheckedSkids { get; set; }
+    public int GoodPieces { get; set; }
+    public int OutOfSpecPieces { get; set; }
+    public decimal GoodWeight { get; set; }
+    public decimal OutOfSpecWeight { get; set; }
+    public IReadOnlyList<JobQcSkid> Skids { get; set; } = [];
+    public WinSpcJobSummary? WinSpc { get; set; }
+}
+
 public sealed class SheetSkidDimensionCheck
 {
     public long DimensionCheckNum { get; set; }

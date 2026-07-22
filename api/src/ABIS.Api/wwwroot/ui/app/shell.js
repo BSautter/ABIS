@@ -70,6 +70,7 @@ const NAV = [
             { id: 'test-results', label: 'Test results', href: '/ui/test-results.html', feature: 'Quality Control', icon: I.qc },
             { id: 'qa-hold', label: 'QA hold', href: '/ui/qa-hold.html', feature: 'Quality Control', icon: I.qc },
             { id: 'winspc-qc', label: 'Dimensional QC', href: '/ui/winspc-qc.html', feature: 'Quality Control', icon: I.qc },
+            { id: 'qc-board', label: 'QC board', href: '/ui/qc-board.html', feature: 'Quality Control', icon: I.qc },
             { id: 'recovery', label: 'Recovery', href: '/ui/recovery.html', feature: 'Quality Control', icon: I.recovery },
             { id: 'quality', label: 'Recovery setup', href: '/ui/quality.html', feature: 'Quality Control', icon: I.gear },
         ] },

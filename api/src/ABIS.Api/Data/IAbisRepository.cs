@@ -227,6 +227,8 @@ public interface IAbisRepository
     Task<bool> DeleteDimensionCheckAsync(long sheetSkidNum, long dimensionCheckNum, CancellationToken ct);
     /// <summary>The ab_job_num a sheet skid belongs to (for the WinSPC QC lookup); null if unknown.</summary>
     Task<long?> GetSkidJobAsync(long sheetSkidNum, CancellationToken ct);
+    /// <summary>The dimensional-QC board for a job: per-skid green/red status + good/out-of-spec roll-ups.</summary>
+    Task<JobQcBoard> GetJobQcBoardAsync(long abJobNum, CancellationToken ct);
     Task<IReadOnlyList<EvalScrap>> GetEvalScrapAsync(long abJobNum, CancellationToken ct);
     Task<EvalScrap> UpsertEvalScrapAsync(EvalScrapWrite body, CancellationToken ct);
 

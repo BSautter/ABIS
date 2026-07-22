@@ -1428,6 +1428,40 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task GetJobQcBoard_classifies_skids_and_rolls_up_good_vs_out_of_spec()
+    {
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO sheet_skid (sheet_skid_num, ab_job_num, sheet_skid_display_num, sheet_net_wt, sheet_tare_wt, skid_pieces) VALUES (74700, 55600, 'A', 1000, 50, 10);
+                INSERT INTO sheet_skid (sheet_skid_num, ab_job_num, sheet_skid_display_num, sheet_net_wt, sheet_tare_wt, skid_pieces) VALUES (74701, 55600, 'B', 2000, 50, 20);
+                INSERT INTO sheet_skid (sheet_skid_num, ab_job_num, sheet_skid_display_num, sheet_net_wt, sheet_tare_wt, skid_pieces) VALUES (74702, 55600, 'C', 3000, 50, 30);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+        var mk = (long skid, int inSpec) => _repo.CreateDimensionCheckAsync(skid,
+            new Abis.Api.Models.DimensionCheckWrite { Gauge = 0.05m, InSpec = inSpec, CheckedBy = "qa" }, CancellationToken.None);
+        await mk(74700, 1); await mk(74700, 1);           // all in spec → green
+        await mk(74701, 1); await mk(74701, 0);           // one fails → red
+        // 74702 left unchecked → grey
+
+        var board = await _repo.GetJobQcBoardAsync(55600, CancellationToken.None);
+        Assert.Equal(3, board.TotalSkids);
+        Assert.Equal(1, board.InSpecSkids);
+        Assert.Equal(1, board.OutOfSpecSkids);
+        Assert.Equal(1, board.UncheckedSkids);
+        Assert.Equal(10, board.GoodPieces);
+        Assert.Equal(1000m, board.GoodWeight);
+        Assert.Equal(20, board.OutOfSpecPieces);
+        Assert.Equal(2000m, board.OutOfSpecWeight);
+        Assert.Equal("in-spec", board.Skids.Single(s => s.SheetSkidNum == 74700).Status);
+        Assert.Equal("out-of-spec", board.Skids.Single(s => s.SheetSkidNum == 74701).Status);
+        Assert.Equal("unchecked", board.Skids.Single(s => s.SheetSkidNum == 74702).Status);
+    }
+
+    [Fact]
     public async Task DimensionCheck_crud_auto_increments_pc_and_edits_and_deletes()
     {
         using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())

@@ -1007,6 +1007,20 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Qc_board_returns_a_board_and_the_page_is_served()
+    {
+        // An unknown job yields an empty board (200), not an error.
+        var board = await _client.GetFromJsonAsync<JsonElement>("/api/coil-eval/jobs/987654/qc-board");
+        Assert.Equal(0, board.GetProperty("totalSkids").GetInt32());
+        Assert.Equal(0, board.GetProperty("skids").GetArrayLength());
+
+        var bare = _factory.CreateClient();
+        var page = await bare.GetAsync("/ui/qc-board.html");
+        page.EnsureSuccessStatusCode();
+        Assert.Contains("qc-board.js", await page.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task Typed_client_demo_page_is_served()
     {
         var bare = _factory.CreateClient();
