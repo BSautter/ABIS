@@ -941,6 +941,15 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Test_results_page_is_served()
+    {
+        var bare = _factory.CreateClient();
+        var resp = await bare.GetAsync("/ui/test-results.html");
+        resp.EnsureSuccessStatusCode();
+        Assert.Contains("test-results.js", await resp.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task Typed_client_demo_page_is_served()
     {
         var bare = _factory.CreateClient();
