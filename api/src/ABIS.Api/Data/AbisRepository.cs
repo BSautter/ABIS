@@ -3314,20 +3314,22 @@ public sealed class AbisRepository : IAbisRepository
     public async Task<EdiPartnerProfile> UpsertEdiPartnerAsync(EdiPartnerProfile p, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
+        // Bind names must NOT be Oracle reserved words — :set and :by both are, and triggered ORA-01745
+        // ("invalid host/bind variable name") on the live DB, 500-ing this admin write. Use :txnset / :updby.
         var args = new
         {
-            cust = p.CustomerId, set = p.TransactionSet, enabled = p.Enabled ? 1 : 0, variant = p.Variant,
+            cust = p.CustomerId, txnset = p.TransactionSet, enabled = p.Enabled ? 1 : 0, variant = p.Variant,
             rq = p.ReceiverQualifier, rid = p.ReceiverId, comp = p.ComponentSeparator, suffix = p.SegmentSuffix,
             ver = p.EnvelopeVersion, gs = p.GsFunctionalCode, gsSender = p.GsSenderCode, gsReceiver = p.GsReceiverCode,
-            prefix = p.FilePrefix, itemRef = p.ItemReference, now = (DateTime?)DateTime.UtcNow, by = p.UpdatedBy
+            prefix = p.FilePrefix, itemRef = p.ItemReference, now = (DateTime?)DateTime.UtcNow, updby = p.UpdatedBy
         };
         var n = await conn.ExecuteAsync(new CommandDefinition(
             """
             UPDATE abis_edi_partner SET enabled = :enabled, variant = :variant, receiver_qualifier = :rq,
                 receiver_id = :rid, component_separator = :comp, segment_suffix = :suffix, envelope_version = :ver,
                 gs_functional_code = :gs, gs_sender_code = :gsSender, gs_receiver_code = :gsReceiver,
-                file_prefix = :prefix, item_reference = :itemRef, updated_utc = :now, updated_by = :by
-             WHERE customer_id = :cust AND transaction_set = :set
+                file_prefix = :prefix, item_reference = :itemRef, updated_utc = :now, updated_by = :updby
+             WHERE customer_id = :cust AND transaction_set = :txnset
             """, args, cancellationToken: ct));
         if (n == 0)
             await conn.ExecuteAsync(new CommandDefinition(
@@ -3335,7 +3337,7 @@ public sealed class AbisRepository : IAbisRepository
                 INSERT INTO abis_edi_partner (customer_id, transaction_set, enabled, variant, receiver_qualifier,
                     receiver_id, component_separator, segment_suffix, envelope_version, gs_functional_code, gs_sender_code,
                     gs_receiver_code, file_prefix, item_reference, updated_utc, updated_by)
-                VALUES (:cust, :set, :enabled, :variant, :rq, :rid, :comp, :suffix, :ver, :gs, :gsSender, :gsReceiver, :prefix, :itemRef, :now, :by)
+                VALUES (:cust, :txnset, :enabled, :variant, :rq, :rid, :comp, :suffix, :ver, :gs, :gsSender, :gsReceiver, :prefix, :itemRef, :now, :updby)
                 """, args, cancellationToken: ct));
         return (await GetEdiPartnerAsync(p.CustomerId, p.TransactionSet, ct))!;
     }

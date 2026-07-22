@@ -5,6 +5,12 @@
     <AssemblyName>ABIS.Api</AssemblyName>
   </PropertyGroup>
 
+  <!-- Let the test project reach internal seed builders (e.g. AbisSchema.BuildOwnedDdl) so the
+       Oracle-only static-init crash is guarded by a plain unit test. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="ABIS.Api.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Dapper" Version="2.1.35" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.8" />

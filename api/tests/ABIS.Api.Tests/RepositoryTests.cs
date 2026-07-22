@@ -1232,6 +1232,37 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task UpsertEdiPartner_inserts_then_updates_and_round_trips()
+    {
+        // Exercises the admin EDI-setup write path (UpsertEdiPartnerAsync). On Oracle this had bound the
+        // reserved words :set / :by (ORA-01745) and 500-ed; the binds are now :txnset / :updby. This asserts the
+        // insert + update branches both round-trip (SQLite can't reproduce the Oracle reserved-word rejection).
+        var inserted = await _repo.UpsertEdiPartnerAsync(new Abis.Api.Models.EdiPartnerProfile
+        {
+            CustomerId = 4242, TransactionSet = "870", Enabled = true, Variant = "constellium",
+            ReceiverQualifier = "01", ReceiverId = "043207177", ComponentSeparator = "@", SegmentSuffix = "~",
+            EnvelopeVersion = "00401", GsFunctionalCode = "RS", FilePrefix = "S_const_870_", UpdatedBy = "tester",
+        }, CancellationToken.None);
+        Assert.Equal("constellium", inserted.Variant);
+        Assert.Equal("~", inserted.SegmentSuffix);
+
+        var read = await _repo.GetEdiPartnerAsync(4242, "870", CancellationToken.None);
+        Assert.NotNull(read);
+        Assert.True(read!.Enabled);
+        Assert.Equal("S_const_870_", read.FilePrefix);
+
+        // Second upsert hits the UPDATE branch (row exists): flip enabled + change the prefix.
+        var updated = await _repo.UpsertEdiPartnerAsync(new Abis.Api.Models.EdiPartnerProfile
+        {
+            CustomerId = 4242, TransactionSet = "870", Enabled = false, Variant = "constellium",
+            ReceiverQualifier = "01", ReceiverId = "043207177", ComponentSeparator = "@", SegmentSuffix = "~",
+            EnvelopeVersion = "00401", GsFunctionalCode = "RS", FilePrefix = "S_const_870_v2", UpdatedBy = "tester2",
+        }, CancellationToken.None);
+        Assert.False(updated.Enabled);
+        Assert.Equal("S_const_870_v2", updated.FilePrefix);
+    }
+
+    [Fact]
     public async Task GetScanLogs_lists_newest_first_and_filters_by_job()
     {
         var all = await _repo.GetScanLogsAsync(1, 25, abJobNum: null, orderBy: null, CancellationToken.None);

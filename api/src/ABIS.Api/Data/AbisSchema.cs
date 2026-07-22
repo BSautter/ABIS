@@ -24,7 +24,12 @@ public static class AbisSchema
 {
     // One statement per array entry, referenced tables before their FKs. Kept in sync with
     // docs/data-model/migrations/001_admin_scheduler.sql.
-    private static readonly string[] OwnedDdl =
+    // Built as a METHOD (not a static field) so it is evaluated at call time — AFTER every static field it
+    // depends on (X12Coil/X12Skid/ScrapStatus/ScrapType/EdiTypeDescriptions, declared below) is initialized.
+    // As a field initializer this spread ran during static construction, before those arrays existed, and threw
+    // a NullReferenceException (TypeInitializationException) that aborted the ENTIRE Oracle seed. SQLite never
+    // hit it because EnsureOwnedTablesAsync returns before touching this on non-Oracle. internal for tests.
+    internal static string[] BuildOwnedDdl() =>
     [
         """
         CREATE TABLE abis_scheduled_job (
@@ -444,12 +449,13 @@ public static class AbisSchema
 
         await using var conn = factory.Create();
         await conn.OpenAsync(ct);
-        foreach (var ddl in OwnedDdl)
+        var owned = BuildOwnedDdl();
+        var failed = 0;
+        foreach (var ddl in owned)
         {
             // q'[ ... ]' is an Oracle q-quoted literal (the DDL contains no ']'). Swallow the two
             // "already provisioned" codes so a re-run is a no-op: ORA-00955 (object already exists,
             // for CREATE) and ORA-01430 (column being added already exists, for an additive ALTER).
-            // Any other error re-raises.
             var block =
                 $$"""
                 BEGIN
@@ -458,11 +464,27 @@ public static class AbisSchema
                   IF SQLCODE NOT IN (-955, -1430) THEN RAISE; END IF;
                 END;
                 """;
-            await conn.ExecuteAsync(new CommandDefinition(block, cancellationToken: ct));
+            try
+            {
+                await conn.ExecuteAsync(new CommandDefinition(block, cancellationToken: ct));
+            }
+            catch (Exception ex)
+            {
+                // Resilience: one bad statement must NOT abort the whole seed. Previously any non-swallowed
+                // error propagated out of the loop, so the end-of-loop COMMIT never ran and EVERY pending
+                // partner-profile INSERT rolled back (e.g. a failed legacy-table write silently discarded all
+                // the new EDI partner seeds). Log this statement and carry on; the rest still commits.
+                failed++;
+                logger.LogWarning(ex, "ABIS-owned schema: a seed statement failed and was skipped: {Ddl:l}",
+                    ddl.Length > 120 ? ddl[..120].Replace('\n', ' ') + "…" : ddl.Replace('\n', ' '));
+            }
         }
         // Commit the config-default seed rows (CREATE/ALTER auto-commit on Oracle, but the partner-profile
         // INSERTs are DML and would otherwise roll back when the connection closes).
         await conn.ExecuteAsync(new CommandDefinition("BEGIN COMMIT; END;", cancellationToken: ct));
-        logger.LogInformation("ABIS-owned schema ensured ({Count} DDL statements applied idempotently).", OwnedDdl.Length);
+        if (failed > 0)
+            logger.LogWarning("ABIS-owned schema ensured with {Failed} of {Count} seed statements skipped (see warnings).", failed, owned.Length);
+        else
+            logger.LogInformation("ABIS-owned schema ensured ({Count} DDL statements applied idempotently).", owned.Length);
     }
 }
