@@ -134,6 +134,29 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Packing_list_document_renders_the_shipment_and_its_line_items()
+    {
+        // An empty packing list still renders the header (seeded shipment 8802, no items).
+        var empty = await _client.GetAsync("/api/documents/packing-list/8802");
+        empty.EnsureSuccessStatusCode();
+        Assert.Equal("text/html", empty.Content.Headers.ContentType!.MediaType);
+        var emptyHtml = await empty.Content.ReadAsStringAsync();
+        Assert.Contains("Packing List", emptyHtml);
+        Assert.Contains("8802", emptyHtml);
+
+        // Add a sheet skid (2990) to shipment 8801, then the document lists it with a totals row.
+        (await _client.PostAsJsonAsync("/api/shipments/8801/items", new { itemType = "SHEET", refNum = 2990 })).EnsureSuccessStatusCode();
+        var doc = await _client.GetAsync("/api/documents/packing-list/8801");
+        doc.EnsureSuccessStatusCode();
+        var html = await doc.Content.ReadAsStringAsync();
+        Assert.Contains("Sheet skid", html);
+        Assert.Contains("2990", html);
+        Assert.Contains("Totals", html);
+
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/documents/packing-list/999999")).StatusCode);
+    }
+
+    [Fact]
     public async Task Order_item_edge_trim_tolerance_is_enforced()
     {
         static object Item(double? inc, double? trm) => new

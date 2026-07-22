@@ -218,6 +218,73 @@ public static class HtmlDocuments
         return InvoicePage($"Invoice — Job {c.AbJobNum}", body);
     }
 
+    // The packing ticket / packing list (legacy d_report_packing_list): the shipment header + every line item
+    // it carries (SHEET / SCRAP / REJECT_COIL), with weight + piece totals. Renders on the same letter-size
+    // shell as the invoice. Nothing here transmits — it's a printable shipping document.
+    public static string PackingTicket(Shipment s, IReadOnlyList<PackingLineItem> items, string? customerName)
+    {
+        var rows = string.Concat(items.Select(it => $"""
+              <tr>
+                <td>{Esc(TypeLabel(it.ItemType))}</td>
+                <td>{it.RefNum}</td>
+                <td>{Esc(it.SkidDisplayNum) ?? "—"}</td>
+                <td>{Esc(it.EnduserPartNum) ?? "—"}</td>
+                <td>{Esc(it.OrigCustomerPo) ?? "—"}</td>
+                <td class="n">{Wt(it.NetWeight)}</td>
+                <td class="n">{Wt(it.GrossWeight)}</td>
+                <td class="n">{(it.Pieces == 0 ? "—" : it.Pieces.ToString())}</td>
+              </tr>
+            """));
+        var itemsSection = items.Count == 0
+            ? "<p class=\"dim\">No line items on this packing list yet.</p>"
+            : $"""
+            <table class="grid">
+              <thead><tr><th>Type</th><th>Skid / coil #</th><th>Display</th><th>Part</th><th>PO</th><th class="n">Net</th><th class="n">Gross</th><th class="n">Pcs</th></tr></thead>
+              <tbody>{rows}</tbody>
+              <tfoot><tr class="tot">
+                <th colspan="5">Totals — {items.Count} item{(items.Count == 1 ? "" : "s")}</th>
+                <td class="n">{Wt(items.Sum(i => i.NetWeight))}</td>
+                <td class="n">{Wt(items.Sum(i => i.GrossWeight))}</td>
+                <td class="n">{items.Sum(i => i.Pieces)}</td>
+              </tr></tfoot>
+            </table>
+            """;
+        var shipDate = s.ShipmentActualedDateTime ?? s.DateSent ?? s.ShipmentScheduledDateTime;
+        var body = $"""
+            <div class="doc">
+              <div class="head">
+                <div>
+                  <div class="co">Aluminum Blanking Company, Inc.</div>
+                  <div class="addr">360 W. Sheffield · Pontiac, MI 48340<br />(248) 338-4422 · FAX (248) 338-9779</div>
+                </div>
+                <div class="title">Aluminum Blanking<br />Packing List</div>
+              </div>
+
+              <table class="meta">
+                <tr><th>Packing list #</th><td>{s.PackingList}</td><th>BOL #</th><td>{Opt(s.BillOfLading)}</td><th>Ship date</th><td>{Dt(shipDate)}</td></tr>
+              </table>
+
+              <table class="kv">
+                <tr><th>Customer</th><td>{Esc(customerName) ?? Opt(s.CustomerId)}</td></tr>
+                <tr><th>Vehicle</th><td>{Esc(s.VehicleId) ?? "—"}</td></tr>
+                <tr><th>Status</th><td>{(s.ShipmentStatus == 0 ? "Shipped / closed" : "Open")}</td></tr>
+              </table>
+
+              <h2>Line items <span class="dim">— what this shipment carries</span></h2>
+              {itemsSection}
+            </div>
+            """;
+        return InvoicePage($"Packing List — {s.PackingList}", body);
+    }
+
+    private static string TypeLabel(string? itemType) => itemType switch
+    {
+        "SHEET" => "Sheet skid",
+        "SCRAP" => "Scrap skid",
+        "REJECT_COIL" => "Reject coil",
+        _ => itemType ?? "—",
+    };
+
     // Full-page (letter) document shell for reports like the invoice — distinct from the 4in tag
     // wrapper (Doc). Same dependency-free, print-friendly approach: inline CSS + an @media print block.
     private static string InvoicePage(string title, string body) => $$"""
@@ -245,6 +312,7 @@ public static class HtmlDocuments
           table.wts tr.hi td, table.wts tr.hi th { background:#fff8f0; }
           table.grid th, table.grid td { border:1px solid #d0d7de; padding:4px 6px; font-size:12px; }
           table.grid thead th { background:#f6f8fa; color:#57606a; font-size:11px; }
+          table.grid tfoot .tot th, table.grid tfoot .tot td { font-weight:800; background:#f6f8fa; border-top:2px solid #d0d7de; }
           .n { text-align:right; font-variant-numeric: tabular-nums; white-space:nowrap; }
           .strong { font-weight:800; }
           .dim { color:#8b949e; }

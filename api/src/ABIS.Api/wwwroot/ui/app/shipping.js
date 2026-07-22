@@ -86,6 +86,7 @@ async function loadShipment(id) {
         <div class="fld"><label>Skid / coil #</label><input id="addSkid" inputmode="numeric" style="width:130px" placeholder="skid or coil #" /></div>
         <button class="btn sm ghost" id="btnAddItem" type="button">Add</button>
         <span id="itemOk" class="ok-note"></span>
+        <button class="btn sm ghost" id="btnPrintPacking" type="button" style="margin-left:auto">Print packing list</button>
       </div>
       <div style="overflow-x:auto"><table class="tbl" style="min-width:560px">
         <thead><tr><th>Type</th><th>Skid</th><th>Part</th><th>PO</th><th>Coil</th><th style="text-align:right">Net</th><th style="text-align:right">Gross</th><th style="text-align:right">Pcs</th><th></th></tr></thead>
@@ -103,6 +104,7 @@ async function loadShipment(id) {
         $('#btnClose').addEventListener('click', () => void closeBol());
         $('#btnDispatch').addEventListener('click', () => void dispatch());
         $('#btnAddItem').addEventListener('click', () => void addPackItem());
+        $('#btnPrintPacking').addEventListener('click', () => void printPackingList());
         await loadPackingItems(id);
     }
     catch (e) {
@@ -161,6 +163,23 @@ async function addPackItem() {
     }
     catch (e) {
         setErr(`Add failed: ${e.message}`);
+    }
+}
+// Print the packing list — fetch the server-rendered HTML with auth, open it as a blob URL for printing.
+async function printPackingList() {
+    if (selected == null)
+        return;
+    setErr('');
+    try {
+        const r = await authFetch(`/api/documents/packing-list/${selected}`);
+        if (!r.ok) {
+            setErr(`Packing list failed: ${r.status}`);
+            return;
+        }
+        window.open(URL.createObjectURL(await r.blob()), '_blank');
+    }
+    catch (e) {
+        setErr(`Packing list failed: ${e.message}`);
     }
 }
 async function removePackItem(itemType, itemId) {

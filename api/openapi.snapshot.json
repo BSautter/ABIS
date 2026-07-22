@@ -2882,6 +2882,37 @@
         }
       }
     },
+    "/api/documents/packing-list/{packingList}": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Printable packing list / ticket for a shipment — the header + every line item it carries (sheet / scrap / reject-coil) with weight + piece totals.",
+        "operationId": "PackingListDocument",
+        "parameters": [
+          {
+            "name": "packingList",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/downtime": {
       "get": {
         "tags": [

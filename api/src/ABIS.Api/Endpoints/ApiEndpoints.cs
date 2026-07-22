@@ -1633,6 +1633,18 @@ public static class ApiEndpoints
            .WithSummary("Printable invoice for a job (weight rollups + spec block). Optional invoiceNum stamps the saved number/date.")
            .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
 
+        api.MapGet("/documents/packing-list/{packingList:long}", async (long packingList, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var shipment = await repo.GetShipmentAsync(packingList, ct);
+                if (shipment is null) return Results.NotFound();
+                var items = await repo.GetPackingItemsAsync(packingList, ct);
+                var customerName = shipment.CustomerId is { } cid ? (await repo.GetCustomerAsync(cid, ct))?.CustomerName : null;
+                return Results.Content(HtmlDocuments.PackingTicket(shipment, items, customerName), "text/html; charset=utf-8");
+            })
+           .WithName("PackingListDocument").WithTags("Documents")
+           .WithSummary("Printable packing list / ticket for a shipment — the header + every line item it carries (sheet / scrap / reject-coil) with weight + piece totals.")
+           .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
+
         api.MapPost("/sheet-skids", async (SheetSkidWrite body, IAbisRepository repo, CancellationToken ct) =>
             {
                 if (Validate(body) is { } problems)
