@@ -3,7 +3,7 @@
 > Living checklist of what's **still open**, generated 2026-07-11 from the parity re-audit (7 surfaces
 > re-verified against the current code) + the correctness bug sweep. Work it top-to-bottom.
 > The historical full-detail gap report is `PARITY_AUDIT.md` (2026-07-07, mostly closed since).
-> What's **done** lives in git history + GitHub releases (current: **v0.4.18**).
+> What's **done** lives in git history + GitHub releases (current: **v0.5.5**).
 
 **Legend:** `[ ]` open · `[~]` partial · severity **C**ritical / **H**igh / **M**edium / **L**ow.
 
@@ -16,8 +16,8 @@ percentage suggests.
 
 | Milestone | Definition |
 |-----------|------------|
-| **0.5.0** | **EDI engine complete** — generation + inbound + 997, **never transmits** (§A). ← *pushing for this now* |
-| **0.6 – 0.8** | Buildable feature-gap batches (§C: commercial → coils/receiving → quality) + the **live-DAS workflow spine** (§B), in increments |
+| **0.5.0** | **EDI engine — generation + 997** complete, **never transmits** (§A). ✅ **CLOSED at v0.5.5 (2026-07-22)**; two items deferred data-blocked (863 gen, inbound-856 ingest — see §A). |
+| **0.6 – 0.8** | Buildable feature-gap batches (§C: commercial → coils/receiving → quality) + the **live-DAS workflow spine** (§B), in increments. ← *current: starting with C2 packing-list line items* |
 | **0.9.x** | Feature-complete parity + a hardening / verification pass |
 | **1.0.0** | Cutover-ready: everything built, so the deferred **EDI transmit** + **data-source cutover** become an operational go-live decision, not a code gap |
 
@@ -30,17 +30,26 @@ percentage suggests.
 
 ---
 
-## A. EDI engine → 0.5.0 (BUILD fully + integrated, but NEVER transmit)
+## A. EDI engine → 0.5.0 ✅ CLOSED at v0.5.5 (2026-07-22) — BUILT fully + integrated, NEVER transmits
 Directive 2026-07-11: build ALL of EDI generation/ingestion/ack, stopping at an explicit no-op transmit seam.
-The VAN SFTP stays the single legacy owner (`GXS.ksh`) — the ONLY items still deferred-by-policy are the
-transport + the data-source cutover. Design in `docs/EDI_ENGINE.md`; see `[[abis-edi-engine-build]]`,
+The VAN SFTP stays the single legacy owner (`GXS.ksh`). Design in `docs/EDI_ENGINE.md`; see `[[abis-edi-engine-build]]`,
 `[[abis-no-live-firing-guardrail]]`, `[[abis-230-cron-inventory]]`. **Foundation shipped: #183 (X12Writer +
 `IEdiTransport`→`NoOpEdiTransport`, no SFTP anywhere), #184 (email → cmattinson override).**
-- [~] **C** EDI outbound generation (861 / 870 / 846 / 856 / 863) — foundation + **861 + 870 DONE** + **partner-profile backbone** (`abis_edi_partner`: per-customer per-doc config, 861/870 refactored onto it); **846 = next (on the backbone)**. Admin UI for the profiles = a small follow-up.
-- [ ] **H** Inbound EDI ingestion (856 ASN parse → `inbound_shipment` / `inbound_coil` / status)
-- [ ] **H** 997 functional-ack matching + aging alert (>2h no FA) — routes through `IEmailSender` (override-safe)
-- [ ] **DEFERRED** EDI VAN transport (GXS / Inovis SFTP) + postpro — legacy-owned, do NOT build (transmit seam stays no-op)
-- [ ] **DEFERRED** Data-source cutover (codi-ABIS reads the .230 sandbox, not live prod .9) — enables EDI-stall alert to be meaningful
+- [x] **C** EDI outbound generation (861 / 870 / 846 / 856) — **DONE + tested + verified live on codi-ABIS**.
+  All 17 live-partner profiles on the `abis_edi_partner` backbone map to a built variant: **861** Novelis(1153/1459/2582)/
+  Commonwealth(1980)/Constellium(2776)/Arconic(2784); **870** Novelis(1153/1459/2950)/Aleris(1980)/Constellium(2776,
+  per-coil); **856** Novelis/Constellium/Arconic; **846** Cleveland-Cliffs(3061). Golden byte-tests where a production
+  `.edi` existed (856/861/870). Admin UI for the profiles shipped.
+- [x] **H** 997 functional-ack matching + aging bell alert (#206/#207) — `Edi997Parser` + `/edi/997/waiting` + `/edi/997/ingest`.
+
+**Deferred out of 0.5 (accepted at close — NOT built; carried on the backlog):**
+- [ ] **DEFERRED (data-blocked)** **863 (test-result report) generation** — no production golden; the `.863` file may not
+  even be swept/transmitted by GXS. Also depends on the 863 test-result **WRITE** path (§C5) as its data source first.
+  Revisit once §C5 exists AND the plant supplies a real 863 golden / confirms it's transmitted.
+- [ ] **DEFERRED (data-blocked)** **Inbound 856 (ASN) ingestion** (parse → `inbound_shipment` / `inbound_coil` / status)
+  — the only inbound sample is a 2009 **test 850**; no real inbound business doc to validate against. Needs a real golden.
+- [ ] **DEFERRED (by policy)** EDI VAN transport (GXS / Inovis SFTP) + postpro — legacy-owned, do NOT build (transmit seam stays no-op).
+- [ ] **DEFERRED (operational, → 1.0)** Data-source cutover (codi-ABIS reads the .230 sandbox, not live prod .9) — enables the EDI-stall alert to be meaningful.
 
 ## B. Architectural program — the live-DAS workflow spine
 The edge read path is live (run-state + piece-count → auto-downtime); the DAS *workflow core* is absent. Buildable in pieces.
