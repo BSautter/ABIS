@@ -998,6 +998,15 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task WinSpc_qc_page_is_served()
+    {
+        var bare = _factory.CreateClient();
+        var resp = await bare.GetAsync("/ui/winspc-qc.html");
+        resp.EnsureSuccessStatusCode();
+        Assert.Contains("winspc-qc.js", await resp.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task Typed_client_demo_page_is_served()
     {
         var bare = _factory.CreateClient();
