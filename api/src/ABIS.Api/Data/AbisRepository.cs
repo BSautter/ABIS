@@ -573,6 +573,48 @@ public sealed class AbisRepository : IAbisRepository
         return PageAsync<TempTestResult>(TempTestCols, "temp_test_result", orderBy ?? "created_date DESC", where, p, page, pageSize, ct);
     }
 
+    /// <summary>Record a posted mechanical test result (pst_test_result). The composite PK is (coil_abc_num,
+    /// position, created_date, source_id): coil + position come from the caller, created_date is stamped now,
+    /// source_id defaults to 0 (manual). Guards that the coil exists (returns null → 404). This is the write path
+    /// that lets the read-only test-results list populate. Nullable numeric params carry an explicit DbType so
+    /// ODP.NET doesn't bind a null as CHAR (ORA-00932 territory). Never transmits.</summary>
+    public async Task<TestResult?> CreateTestResultAsync(TestResultWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var coilExists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM coil WHERE coil_abc_num = :coil", new { coil = body.CoilAbcNum }, cancellationToken: ct)) > 0;
+        if (!coilExists) return null;
+
+        var createdDate = DateTime.UtcNow;
+        var sourceId = body.SourceId ?? 0;
+        var p = new DynamicParameters();
+        p.Add("coil", body.CoilAbcNum);
+        p.Add("src", sourceId);
+        p.Add("created", createdDate, DbType.DateTime);
+        p.Add("ttype", body.TestType, DbType.Int32);
+        p.Add("pos", body.Position);
+        p.Add("yts", body.YtsVal, DbType.Decimal);
+        p.Add("uts", body.UtsVal, DbType.Decimal);
+        p.Add("elong", body.ElongVal, DbType.Decimal);
+        p.Add("nval", body.NVal, DbType.Decimal);
+        p.Add("rval", body.RVal, DbType.Decimal);
+        p.Add("thick", body.Thickness, DbType.Decimal);
+        p.Add("wid", body.Width, DbType.Decimal);
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO pst_test_result (coil_abc_num, source_id, created_date, test_type, position,
+                yts_val, uts_val, elong_val, n_val, r_val, thickness, width)
+            VALUES (:coil, :src, :created, :ttype, :pos, :yts, :uts, :elong, :nval, :rval, :thick, :wid)
+            """, p, cancellationToken: ct));
+
+        return new TestResult
+        {
+            CoilAbcNum = body.CoilAbcNum, SourceId = sourceId, CreatedDate = createdDate, TestType = body.TestType,
+            Position = body.Position, YtsVal = body.YtsVal, UtsVal = body.UtsVal, ElongVal = body.ElongVal,
+            NVal = body.NVal, RVal = body.RVal, Thickness = body.Thickness, Width = body.Width,
+        };
+    }
+
     public async Task<IReadOnlyList<SheetSkid>> GetJobSheetSkidsAsync(long abJobNum, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

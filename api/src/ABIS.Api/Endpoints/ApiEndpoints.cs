@@ -1477,6 +1477,21 @@ public static class ApiEndpoints
            .WithSummary("List posted mechanical test results (paged, filterable, sortable).")
            .Produces<PagedResult<TestResult>>().ProducesValidationProblem();
 
+        api.MapPost("/test-results", async (TestResultWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var problems = new Dictionary<string, string[]>();
+                if (body.CoilAbcNum is null or <= 0) problems["coilAbcNum"] = ["coilAbcNum is required."];
+                if (string.IsNullOrWhiteSpace(body.Position)) problems["position"] = ["position is required."];
+                if (problems.Count > 0) return Results.ValidationProblem(problems);
+                var created = await repo.CreateTestResultAsync(body, ct);
+                return created is null
+                    ? Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Coil not found", detail: $"No coil {body.CoilAbcNum}.")
+                    : Results.Created($"/api/test-results?position={Uri.EscapeDataString(body.Position!)}", created);
+            })
+           .WithName("CreateTestResult").WithTags("TestResults")
+           .WithSummary("Record a posted mechanical test result (pst_test_result) for a coil — YTS/UTS/elongation/n/r + thickness/width at a sample position. coilAbcNum + position are required; created_date is stamped server-side. 404 if the coil is missing. This is the write that lets the read-only test-results list populate.")
+           .Produces<TestResult>(StatusCodes.Status201Created).Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
         // In-progress / working-set test results (companion to the posted table).
         api.MapGet("/temp-test-results", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, int? testType = null, string? position = null,

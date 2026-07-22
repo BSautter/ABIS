@@ -177,6 +177,7 @@ public interface IAbisRepository
 
     // ---- QA -------------------------------------------------------------
     Task<PagedResult<TestResult>> GetTestResultsAsync(int page, int pageSize, int? testType, string? position, DateTime? from, DateTime? to, string? orderBy, CancellationToken ct);
+    Task<TestResult?> CreateTestResultAsync(TestResultWrite body, CancellationToken ct);
     Task<PagedResult<TempTestResult>> GetTempTestResultsAsync(int page, int pageSize, int? testType, string? position, DateTime? from, DateTime? to, string? orderBy, CancellationToken ct);
 
     // ---- Parts & dies (read) -------------------------------------------

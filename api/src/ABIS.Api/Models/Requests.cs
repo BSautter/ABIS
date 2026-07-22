@@ -583,6 +583,25 @@ public sealed class SalesProbabilityWrite
 /// customer is read from the coil's current owner, and <c>transfer_datetime</c> defaults to
 /// now. The transfer also re-points the coil's <c>customer_id</c> to the new owner (its prior
 /// owner is preserved in <c>coil_from_cust_id</c>).</summary>
+/// <summary>Record a posted mechanical test result (table <c>pst_test_result</c>) for a coil — the values off a
+/// tensile/mechanical test at a sample position. The composite PK is (coil_abc_num, position, created_date,
+/// source_id); <see cref="CoilAbcNum"/> and <see cref="Position"/> are required, <c>created_date</c> is stamped
+/// server-side (now), and <see cref="SourceId"/> defaults to 0 (manual entry).</summary>
+public sealed class TestResultWrite
+{
+    public long? CoilAbcNum { get; set; }
+    public string? Position { get; set; }
+    public int? TestType { get; set; }
+    public long? SourceId { get; set; }
+    public decimal? YtsVal { get; set; }
+    public decimal? UtsVal { get; set; }
+    public decimal? ElongVal { get; set; }
+    public decimal? NVal { get; set; }
+    public decimal? RVal { get; set; }
+    public decimal? Thickness { get; set; }
+    public decimal? Width { get; set; }
+}
+
 public sealed class CoilOwnershipTransferWrite
 {
     public long? CoilAbcNumOrig { get; set; }

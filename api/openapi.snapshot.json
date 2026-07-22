@@ -10618,6 +10618,51 @@
             "description": "Unauthorized"
           }
         }
+      },
+      "post": {
+        "tags": [
+          "TestResults"
+        ],
+        "summary": "Record a posted mechanical test result (pst_test_result) for a coil — YTS/UTS/elongation/n/r + thickness/width at a sample position. coilAbcNum + position are required; created_date is stamped server-side. 404 if the coil is missing. This is the write that lets the read-only test-results list populate.",
+        "operationId": "CreateTestResult",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestResultWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
       }
     },
     "/api/temp-test-results": {
@@ -19809,6 +19854,66 @@
             "type": "integer",
             "format": "int32",
             "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TestResultWrite": {
+        "type": "object",
+        "properties": {
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "position": {
+            "type": "string",
+            "nullable": true
+          },
+          "testType": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "sourceId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "ytsVal": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "utsVal": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "elongVal": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "nVal": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "rVal": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "thickness": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "width": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
           }
         },
         "additionalProperties": false

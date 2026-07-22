@@ -835,6 +835,24 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task TestResult_write_lets_the_read_only_list_populate()
+    {
+        // Missing coil → 404; missing required fields → 400.
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/test-results", new { coilAbcNum = 999999, position = "C" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/test-results", new { position = "C" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/test-results", new { coilAbcNum = 5001 })).StatusCode);
+
+        // Post a result for a seeded coil (5001) → 201; it then appears in the list.
+        var post = await _client.PostAsJsonAsync("/api/test-results",
+            new { coilAbcNum = 5001, position = "E2E-P", testType = 1, ytsVal = 40.1, utsVal = 45.2, thickness = 0.05, width = 48 });
+        Assert.Equal(HttpStatusCode.Created, post.StatusCode);
+        var created = await post.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(0, created.GetProperty("sourceId").GetInt64());   // default manual source
+        var list = await _client.GetFromJsonAsync<JsonElement>("/api/test-results?pageSize=100");
+        Assert.Contains(list.GetProperty("items").EnumerateArray(), r => (r.GetProperty("position").GetString() ?? "") == "E2E-P");
+    }
+
+    [Fact]
     public async Task A_supplied_request_id_is_echoed()
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, "/health");

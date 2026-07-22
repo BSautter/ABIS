@@ -1397,6 +1397,37 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateTestResult_writes_a_posted_result_and_guards_the_coil()
+    {
+        // Missing coil → null (→ 404 at the endpoint).
+        Assert.Null(await _repo.CreateTestResultAsync(
+            new Abis.Api.Models.TestResultWrite { CoilAbcNum = 999999, Position = "C" }, CancellationToken.None));
+
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "INSERT INTO coil (coil_abc_num, coil_org_num, coil_status, customer_id, lot_num, net_wt, net_wt_balance) VALUES (74100, 'ORG-741', 2, 4001, 'LOT-741', 10000, 10000);";
+            cmd.ExecuteNonQuery();
+        }
+
+        var created = await _repo.CreateTestResultAsync(new Abis.Api.Models.TestResultWrite
+        {
+            CoilAbcNum = 74100, Position = "C", TestType = 1, YtsVal = 42.5m, UtsVal = 48.0m, ElongVal = 12m, Thickness = 0.05m, Width = 48m,
+        }, CancellationToken.None);
+        Assert.NotNull(created);
+        Assert.Equal(74100, created!.CoilAbcNum);
+        Assert.Equal("C", created.Position);
+        Assert.Equal(0, created.SourceId);          // default manual source
+        Assert.Equal(42.5m, created.YtsVal);
+        Assert.NotNull(created.CreatedDate);
+
+        // The posted result is now listable (the read-only list can finally populate).
+        var page = await _repo.GetTestResultsAsync(1, 50, null, null, null, null, null, CancellationToken.None);
+        Assert.Contains(page.Items, r => r.CoilAbcNum == 74100 && r.Position == "C" && r.YtsVal == 42.5m);
+    }
+
+    [Fact]
     public async Task GetScanLogs_lists_newest_first_and_filters_by_job()
     {
         var all = await _repo.GetScanLogsAsync(1, 25, abJobNum: null, orderBy: null, CancellationToken.None);
