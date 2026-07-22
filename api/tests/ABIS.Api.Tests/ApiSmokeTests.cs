@@ -157,6 +157,22 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Bol_document_renders_the_shipment_and_freight_summary()
+    {
+        var resp = await _client.GetAsync("/api/documents/bol/8801");
+        resp.EnsureSuccessStatusCode();
+        Assert.Equal("text/html", resp.Content.Headers.ContentType!.MediaType);
+        var html = await resp.Content.ReadAsStringAsync();
+        Assert.Contains("Bill of Lading", html);
+        Assert.Contains("Ship from", html);
+        Assert.Contains("Ship to", html);
+        Assert.Contains("Freight", html);
+        Assert.Contains("135001", html);   // shipment 8801's bill_of_lading number
+
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/documents/bol/999999")).StatusCode);
+    }
+
+    [Fact]
     public async Task Order_item_edge_trim_tolerance_is_enforced()
     {
         static object Item(double? inc, double? trm) => new

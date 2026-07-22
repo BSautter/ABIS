@@ -87,6 +87,7 @@ async function loadShipment(id) {
         <button class="btn sm ghost" id="btnAddItem" type="button">Add</button>
         <span id="itemOk" class="ok-note"></span>
         <button class="btn sm ghost" id="btnPrintPacking" type="button" style="margin-left:auto">Print packing list</button>
+        <button class="btn sm ghost" id="btnPrintBol" type="button">Print BOL</button>
       </div>
       <div style="overflow-x:auto"><table class="tbl" style="min-width:560px">
         <thead><tr><th>Type</th><th>Skid</th><th>Part</th><th>PO</th><th>Coil</th><th style="text-align:right">Net</th><th style="text-align:right">Gross</th><th style="text-align:right">Pcs</th><th></th></tr></thead>
@@ -104,7 +105,8 @@ async function loadShipment(id) {
         $('#btnClose').addEventListener('click', () => void closeBol());
         $('#btnDispatch').addEventListener('click', () => void dispatch());
         $('#btnAddItem').addEventListener('click', () => void addPackItem());
-        $('#btnPrintPacking').addEventListener('click', () => void printPackingList());
+        $('#btnPrintPacking').addEventListener('click', () => void printDoc(`/api/documents/packing-list/${id}`, 'Packing list'));
+        $('#btnPrintBol').addEventListener('click', () => void printDoc(`/api/documents/bol/${id}`, 'BOL'));
         await loadPackingItems(id);
     }
     catch (e) {
@@ -165,21 +167,19 @@ async function addPackItem() {
         setErr(`Add failed: ${e.message}`);
     }
 }
-// Print the packing list — fetch the server-rendered HTML with auth, open it as a blob URL for printing.
-async function printPackingList() {
-    if (selected == null)
-        return;
+// Print a shipping document — fetch the server-rendered HTML with auth, open it as a blob URL for printing.
+async function printDoc(url, label) {
     setErr('');
     try {
-        const r = await authFetch(`/api/documents/packing-list/${selected}`);
+        const r = await authFetch(url);
         if (!r.ok) {
-            setErr(`Packing list failed: ${r.status}`);
+            setErr(`${label} failed: ${r.status}`);
             return;
         }
         window.open(URL.createObjectURL(await r.blob()), '_blank');
     }
     catch (e) {
-        setErr(`Packing list failed: ${e.message}`);
+        setErr(`${label} failed: ${e.message}`);
     }
 }
 async function removePackItem(itemType, itemId) {

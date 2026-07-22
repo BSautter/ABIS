@@ -86,6 +86,7 @@ async function loadShipment(id: number): Promise<void> {
         <button class="btn sm ghost" id="btnAddItem" type="button">Add</button>
         <span id="itemOk" class="ok-note"></span>
         <button class="btn sm ghost" id="btnPrintPacking" type="button" style="margin-left:auto">Print packing list</button>
+        <button class="btn sm ghost" id="btnPrintBol" type="button">Print BOL</button>
       </div>
       <div style="overflow-x:auto"><table class="tbl" style="min-width:560px">
         <thead><tr><th>Type</th><th>Skid</th><th>Part</th><th>PO</th><th>Coil</th><th style="text-align:right">Net</th><th style="text-align:right">Gross</th><th style="text-align:right">Pcs</th><th></th></tr></thead>
@@ -103,7 +104,8 @@ async function loadShipment(id: number): Promise<void> {
     $('#btnClose').addEventListener('click', () => void closeBol());
     $('#btnDispatch').addEventListener('click', () => void dispatch());
     $('#btnAddItem').addEventListener('click', () => void addPackItem());
-    $('#btnPrintPacking').addEventListener('click', () => void printPackingList());
+    $('#btnPrintPacking').addEventListener('click', () => void printDoc(`/api/documents/packing-list/${id}`, 'Packing list'));
+    $('#btnPrintBol').addEventListener('click', () => void printDoc(`/api/documents/bol/${id}`, 'BOL'));
     await loadPackingItems(id);
   } catch (e) { setErr(`Load failed: ${(e as Error).message}`); }
   finally { setBusy(false); }
@@ -156,16 +158,15 @@ async function addPackItem(): Promise<void> {
   } catch (e) { setErr(`Add failed: ${(e as Error).message}`); }
 }
 
-// Print the packing list — fetch the server-rendered HTML with auth, open it as a blob URL for printing
+// Print a shipping document — fetch the server-rendered HTML with auth, open it as a blob URL for printing
 // (a plain window.open would not carry the API key / bearer token).
-async function printPackingList(): Promise<void> {
-  if (selected == null) return;
+async function printDoc(url: string, label: string): Promise<void> {
   setErr('');
   try {
-    const r = await authFetch(`/api/documents/packing-list/${selected}`);
-    if (!r.ok) { setErr(`Packing list failed: ${r.status}`); return; }
+    const r = await authFetch(url);
+    if (!r.ok) { setErr(`${label} failed: ${r.status}`); return; }
     window.open(URL.createObjectURL(await r.blob()), '_blank');
-  } catch (e) { setErr(`Packing list failed: ${(e as Error).message}`); }
+  } catch (e) { setErr(`${label} failed: ${(e as Error).message}`); }
 }
 
 async function removePackItem(itemType: string, itemId: number): Promise<void> {

@@ -1645,6 +1645,20 @@ public static class ApiEndpoints
            .WithSummary("Printable packing list / ticket for a shipment — the header + every line item it carries (sheet / scrap / reject-coil) with weight + piece totals.")
            .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
 
+        api.MapGet("/documents/bol/{packingList:long}", async (long packingList, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var shipment = await repo.GetShipmentAsync(packingList, ct);
+                if (shipment is null) return Results.NotFound();
+                var carrier = shipment.CarrierId is { } carId ? await repo.GetCarrierAsync(carId, ct) : null;
+                var customer = shipment.CustomerId is { } cid ? await repo.GetCustomerAsync(cid, ct) : null;
+                var shipTo = shipment.DesShCustId is { } shId ? await repo.GetCustomerAsync(shId, ct) : null;
+                var items = await repo.GetPackingItemsAsync(packingList, ct);
+                return Results.Content(HtmlDocuments.BillOfLading(shipment, carrier, customer, shipTo, items), "text/html; charset=utf-8");
+            })
+           .WithName("BolDocument").WithTags("Documents")
+           .WithSummary("Printable bill of lading for a shipment — ship-from / ship-to / carrier + the freight summary (handling units + total net/gross weight) + signature lines.")
+           .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
+
         api.MapPost("/sheet-skids", async (SheetSkidWrite body, IAbisRepository repo, CancellationToken ct) =>
             {
                 if (Validate(body) is { } problems)

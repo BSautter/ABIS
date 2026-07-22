@@ -2913,6 +2913,37 @@
         }
       }
     },
+    "/api/documents/bol/{packingList}": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Printable bill of lading for a shipment — ship-from / ship-to / carrier + the freight summary (handling units + total net/gross weight) + signature lines.",
+        "operationId": "BolDocument",
+        "parameters": [
+          {
+            "name": "packingList",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/downtime": {
       "get": {
         "tags": [

@@ -285,6 +285,70 @@ public static class HtmlDocuments
         _ => itemType ?? "—",
     };
 
+    // The bill of lading (legacy d_report_bol): ship-from / ship-to / carrier + the freight summary (handling
+    // units + total net/gross weight from the packing-list line items) + signature lines. Printable doc only.
+    public static string BillOfLading(Shipment s, Carrier? carrier, Customer? customer, Customer? shipTo, IReadOnlyList<PackingLineItem> items)
+    {
+        var shipDate = s.ShipmentActualedDateTime ?? s.DateSent ?? s.ShipmentScheduledDateTime;
+        var st = shipTo ?? customer;
+        var body = $"""
+            <div class="doc">
+              <div class="head">
+                <div>
+                  <div class="co">Aluminum Blanking Company, Inc.</div>
+                  <div class="addr">360 W. Sheffield · Pontiac, MI 48340<br />(248) 338-4422 · FAX (248) 338-9779</div>
+                </div>
+                <div class="title">Bill of Lading<br />#{Opt(s.BillOfLading)}</div>
+              </div>
+
+              <table class="meta">
+                <tr><th>BOL #</th><td>{Opt(s.BillOfLading)}</td><th>Packing list #</th><td>{s.PackingList}</td><th>Ship date</th><td>{Dt(shipDate)}</td></tr>
+              </table>
+
+              <div class="cols">
+                <div><h2>Ship from</h2><table class="kv">
+                  <tr><th>Name</th><td>Aluminum Blanking Company, Inc.</td></tr>
+                  <tr><th>Address</th><td>360 W. Sheffield, Pontiac, MI 48340</td></tr>
+                </table></div>
+                <div><h2>Ship to</h2><table class="kv">
+                  <tr><th>Name</th><td>{Esc(st?.CustomerName) ?? "—"}</td></tr>
+                  <tr><th>Address</th><td>{Esc(Addr(st))}</td></tr>
+                </table></div>
+              </div>
+
+              <h2>Carrier</h2>
+              <table class="kv">
+                <tr><th>Carrier</th><td>{Esc(carrier?.CarrierFullName) ?? "—"}</td></tr>
+                <tr><th>SCAC</th><td>{Esc(carrier?.Scac) ?? "—"}</td></tr>
+                <tr><th>Vehicle / trailer</th><td>{Esc(s.VehicleId) ?? "—"}</td></tr>
+                <tr><th>Bill to</th><td>{Esc(customer?.CustomerName) ?? Opt(s.CustomerId)}</td></tr>
+              </table>
+
+              <h2>Freight</h2>
+              <table class="wts">
+                <thead><tr><th>Description</th><th class="n">Handling units</th><th class="n">Net wt</th><th class="n">Gross wt</th></tr></thead>
+                <tbody>
+                  <tr><th>Aluminum sheet / scrap skids + rejected coils</th><td class="n">{items.Count}</td><td class="n">{Wt(items.Sum(i => i.NetWeight))}</td><td class="n">{Wt(items.Sum(i => i.GrossWeight))}</td></tr>
+                </tbody>
+              </table>
+
+              <div class="sign">
+                <div class="sigcol"><div class="sigline"></div>Shipper signature / date</div>
+                <div class="sigcol"><div class="sigline"></div>Carrier / driver signature / date</div>
+              </div>
+            </div>
+            """;
+        return InvoicePage($"Bill of Lading — {Opt(s.BillOfLading)}", body);
+    }
+
+    private static string Addr(Customer? c)
+    {
+        if (c is null) return "—";
+        var parts = new[] { c.CustomerStreet, c.CustomerCity, c.CustomerState, c.CustomerZip }
+            .Where(x => !string.IsNullOrWhiteSpace(x)).ToArray();
+        return parts.Length == 0 ? "—" : string.Join(", ", parts);
+    }
+
     // Full-page (letter) document shell for reports like the invoice — distinct from the 4in tag
     // wrapper (Doc). Same dependency-free, print-friendly approach: inline CSS + an @media print block.
     private static string InvoicePage(string title, string body) => $$"""
@@ -317,6 +381,10 @@ public static class HtmlDocuments
           .strong { font-weight:800; }
           .dim { color:#8b949e; }
           .notes { border:1px solid #eaecef; border-radius:4px; padding:8px 10px; background:#fafbfc; white-space:pre-wrap; }
+          .cols { display:flex; gap:20px; } .cols > div { flex:1; }
+          .sign { display:flex; gap:40px; margin-top:34px; }
+          .sigcol { flex:1; font-size:12px; color:#57606a; }
+          .sigline { border-top:1px solid #111; margin-bottom:4px; height:28px; }
           @media print { body { background:#fff; } .doc { border:0; margin:0; max-width:none; } @page { margin: 12mm; } }
         </style></head><body>{{body}}</body></html>
         """;
