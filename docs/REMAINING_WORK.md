@@ -110,9 +110,9 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - *(Done: scan→verify→label handheld page + HTML coil label.)*
 
 ### C5. Quality
-- [ ] **C** 863 mechanical test-result WRITE (`PST_TEST_RESULT`) — `/test-results` is read-only; list can't populate
-- [ ] **C** Coil QA-hold workflow (status 11) + `COIL_TRACK_QA` audit + search/browse console
-- [ ] **C** Dimension-check tolerance validation vs part-shape spec (nominal ± tol, 15% sanity) — the real QC gate; `in_spec` is client-supplied today
+- [x] **C** 863 mechanical test-result WRITE (`PST_TEST_RESULT`) — done (#225 API + #226 Quality "Test results" page); the read-only list can finally populate
+- [x] **C** Coil QA-hold workflow (status 11) + `COIL_TRACK_QA` audit + search/browse console — done (#227: qa-hold/qa-release/qa-history endpoints + Quality "QA hold" console)
+- [ ] **C** Dimension-check tolerance validation vs part-shape spec (nominal ± tol, 15% sanity) — the real QC gate; `in_spec` is client-supplied today. **BLOCKED:** the authoritative pass/fail rule lives in the legacy binary DataWindow `d_skid_dim_check` (not in the vendored source) — mapping the measured columns (gauge/width/length_oper/length_drive/square) to each shape's nominal±tol is a QC-correctness call that must be verified against live Oracle / confirmed with the plant, not inferred. See the note at `ApiEndpoints.cs` `Validate(DimensionCheckWrite)`.
 - [ ] **H** Instron `.ASC` test-file import & parse (up to 9 samples)
 - [ ] **H** Recovery report suite (remaining ~6 templates) + customer-report SETUP write (`recovery_report_customer`/`cust_scrap_type_needed`)
 - [ ] **M** Recovery depth (add/remove coil-job, autoparts filter, pull-from-DAS-vs-office, email/print/export)
