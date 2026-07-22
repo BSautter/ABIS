@@ -1428,6 +1428,20 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task GetSkidJob_resolves_the_job_for_a_skid_and_null_when_unknown()
+    {
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "INSERT INTO sheet_skid (sheet_skid_num, ab_job_num, sheet_skid_display_num, sheet_net_wt, sheet_tare_wt) VALUES (74500, 124346, 'SKD-745', 10000, 200);";
+            cmd.ExecuteNonQuery();
+        }
+        Assert.Equal(124346, await _repo.GetSkidJobAsync(74500, CancellationToken.None));
+        Assert.Null(await _repo.GetSkidJobAsync(999998, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task CoilQaHold_places_releases_and_audits_the_transitions()
     {
         // Unknown coil → NotFound (→ 404) for both actions.

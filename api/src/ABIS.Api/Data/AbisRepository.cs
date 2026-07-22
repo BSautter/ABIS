@@ -4957,6 +4957,14 @@ public sealed class AbisRepository : IAbisRepository
         return (await GetDimensionChecksAsync(sheetSkidNum, ct)).First(c => c.DimensionCheckNum == id);
     }
 
+    public async Task<long?> GetSkidJobAsync(long sheetSkidNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.ExecuteScalarAsync<long?>(new CommandDefinition(
+            "SELECT ab_job_num FROM sheet_skid WHERE sheet_skid_num = :skid",
+            new { skid = sheetSkidNum }, cancellationToken: ct));
+    }
+
     public async Task<IReadOnlyList<EvalScrap>> GetEvalScrapAsync(long abJobNum, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

@@ -1,8 +1,79 @@
 using Abis.Api.Data.WinSpc;
+using Abis.Api.Models;
 using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace ABIS.Api.Tests;
+
+/// <summary>The WinSPC-driven dimension-check gate: validating submitted measurements against
+/// WinSPC's authoritative spec limits.</summary>
+public class WinSpcGateTests
+{
+    private static WinSpcReading R(string dim, double lsl, double usl) =>
+        new() { Dimension = dim, Lsl = lsl, Usl = usl };
+
+    [Fact]
+    public void All_in_spec_passes()
+    {
+        var body = new DimensionCheckWrite { Gauge = 0.043m, Width = 64.1m, InSpec = 0 };
+        var res = WinSpcGate.Evaluate(body, [R("gauge", 0.042, 0.044), R("width", 63.938, 64.252)]);
+        Assert.Equal(1, res.InSpec);
+        Assert.Contains("in spec", res.Note);
+    }
+
+    [Fact]
+    public void An_out_of_spec_measurement_fails_and_is_named()
+    {
+        var body = new DimensionCheckWrite { Gauge = 0.043m, Width = 64.30m };   // width over USL
+        var res = WinSpcGate.Evaluate(body, [R("gauge", 0.042, 0.044), R("width", 63.938, 64.252)]);
+        Assert.Equal(0, res.InSpec);
+        Assert.Contains("width", res.Note);
+    }
+
+    [Fact]
+    public void Under_lsl_fails()
+    {
+        var res = WinSpcGate.Evaluate(new DimensionCheckWrite { Gauge = 0.030m }, [R("gauge", 0.042, 0.044)]);
+        Assert.Equal(0, res.InSpec);
+    }
+
+    [Fact]
+    public void Conflicting_specs_for_a_dimension_are_ambiguous_and_skipped()
+    {
+        // Two 'length' characteristics with different limits → length is ambiguous, not gated.
+        var body = new DimensionCheckWrite { LengthOper = 30.0m };
+        var res = WinSpcGate.Evaluate(body, [R("length", 29.9, 30.1), R("length", 40.0, 41.0)]);
+        Assert.Null(res.InSpec);   // nothing evaluable → caller keeps the client value
+    }
+
+    [Fact]
+    public void No_matching_spec_falls_back_to_null()
+    {
+        var res = WinSpcGate.Evaluate(new DimensionCheckWrite { Gauge = 0.043m }, [R("width", 63.9, 64.2)]);
+        Assert.Null(res.InSpec);
+    }
+
+    [Fact]
+    public void One_sided_spec_is_honored()
+    {
+        // Only a USL defined (LSL absent) — over the USL fails, under passes.
+        var over = WinSpcGate.Evaluate(new DimensionCheckWrite { Square = 12m },
+            [new WinSpcReading { Dimension = "square", Lsl = null, Usl = 9 }]);
+        Assert.Equal(0, over.InSpec);
+        var under = WinSpcGate.Evaluate(new DimensionCheckWrite { Square = 3m },
+            [new WinSpcReading { Dimension = "square", Lsl = null, Usl = 9 }]);
+        Assert.Equal(1, under.InSpec);
+    }
+
+    [Fact]
+    public void Null_measurement_is_not_checked()
+    {
+        // Width has a spec but no submitted value → not evaluated; gauge in spec → overall pass.
+        var res = WinSpcGate.Evaluate(new DimensionCheckWrite { Gauge = 0.043m },
+            [R("gauge", 0.042, 0.044), R("width", 63.9, 64.2)]);
+        Assert.Equal(1, res.InSpec);
+    }
+}
 
 /// <summary>Pure-function coverage for the WinSPC characteristic→dimension map and the
 /// in-spec rule (no database needed).</summary>

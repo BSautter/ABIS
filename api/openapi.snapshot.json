@@ -1486,7 +1486,7 @@
         "tags": [
           "CoilEval"
         ],
-        "summary": "Record a dimensional QC check on a sheet-skid piece (in-spec pass/fail).",
+        "summary": "Record a dimensional QC check on a sheet-skid piece. When WinSPC is configured and has data for the skid's job, in_spec is set from WinSPC's authoritative spec limits (LSL/USL) and the note records the verdict; otherwise the supplied in_spec is used.",
         "operationId": "CreateDimensionCheck",
         "parameters": [
           {
