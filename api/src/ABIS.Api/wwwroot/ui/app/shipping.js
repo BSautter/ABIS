@@ -82,8 +82,8 @@ async function loadShipment(id) {
       </div>
       <h3 style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);margin:16px 0 8px">Packing list <span style="text-transform:none;letter-spacing:0;color:var(--ink-3);font-weight:400">— sheet + scrap skids (sheet feeds the 856)</span></h3>
       <div class="frow" style="align-items:flex-end;margin-bottom:8px">
-        <div class="fld"><label>Type</label><select id="addType" style="width:130px"><option value="SHEET">Sheet skid</option><option value="SCRAP">Scrap skid</option></select></div>
-        <div class="fld"><label>Skid #</label><input id="addSkid" inputmode="numeric" style="width:130px" placeholder="skid number" /></div>
+        <div class="fld"><label>Type</label><select id="addType" style="width:140px"><option value="SHEET">Sheet skid</option><option value="SCRAP">Scrap skid</option><option value="REJECT_COIL">Reject coil</option></select></div>
+        <div class="fld"><label>Skid / coil #</label><input id="addSkid" inputmode="numeric" style="width:130px" placeholder="skid or coil #" /></div>
         <button class="btn sm ghost" id="btnAddItem" type="button">Add</button>
         <span id="itemOk" class="ok-note"></span>
       </div>

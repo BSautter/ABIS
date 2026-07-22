@@ -109,6 +109,8 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS sheet_skid_detail;
             DROP TABLE IF EXISTS sheet_packing_item;
             DROP TABLE IF EXISTS scrap_packing_item;
+            DROP TABLE IF EXISTS reject_coil_packing_item;
+            DROP TABLE IF EXISTS reject_coil;
             DROP TABLE IF EXISTS recovery_scrap_worksheet;
             DROP TABLE IF EXISTS quality_scrap_worksheet;
             DROP TABLE IF EXISTS job_efolder_notes;
@@ -486,6 +488,13 @@ public static class SqliteFixture
             CREATE TABLE scrap_packing_item (
                 sc_packing_item INTEGER, packing_list INTEGER, scrap_skid_num INTEGER, scrap_packaging_ticket INTEGER,
                 PRIMARY KEY (sc_packing_item, packing_list));
+            -- Rejected coils (the REJECT_COIL packing-line-item type) + the link to a packing list.
+            CREATE TABLE reject_coil (
+                coil_abc_num INTEGER PRIMARY KEY, ab_job_num INTEGER, reject_coil_location TEXT,
+                reject_coil_quantity REAL, reject_coil_status INTEGER, reject_coil_date TEXT);
+            CREATE TABLE reject_coil_packing_item (
+                rej_coil_packing_item INTEGER, packing_list INTEGER, rej_coil_packaging_ticket INTEGER, coil_abc_num INTEGER,
+                PRIMARY KEY (rej_coil_packing_item, packing_list));
             -- Per (coil, job) scrap the recovery clerk booked (legacy recovery_scrap_worksheet); the
             -- recovery scrap-weight = SUM(scrap_item_net_wt). Falls back to quality_scrap_worksheet
             -- (the quality clerk's booking) when the recovery worksheet has none.

@@ -3240,13 +3240,18 @@ public sealed class AbisRepository : IAbisRepository
 
     // ---- Packing-list line items — the skids a shipment carries (SHEET = sheet_packing_item, SCRAP = scrap_packing_item) ----
 
-    // Per line-item type: its junction table + id / ref / ticket columns + the referenced-object table & key.
-    // All are fixed internal identifiers (never user input), so interpolating them into SQL is injection-safe.
-    private static (string Table, string IdCol, string RefCol, string TicketCol, string RefTable, string RefKey)? PackingItemCfg(string itemType) =>
+    // Per line-item type: its junction table + id / ref / ticket columns + the referenced-object table & key, and
+    // the ticket source (null = ticket is the ref number, legacy convention for sheet/scrap; a sequence name =
+    // draw the ticket from it, as reject-coil does off the shared SHEET_PACKAGING_TICKET_SEQ). All identifiers are
+    // fixed internal constants (never user input), so interpolating them into SQL is injection-safe.
+    private static (string Table, string IdCol, string RefCol, string TicketCol, string RefTable, string RefKey, string? TicketSeq)? PackingItemCfg(string itemType) =>
         (itemType ?? "").Trim().ToUpperInvariant() switch
         {
-            "SHEET" => ("sheet_packing_item", "sh_packing_item", "sheet_skid_num", "sheet_packaging_ticket", "sheet_skid", "sheet_skid_num"),
-            "SCRAP" => ("scrap_packing_item", "sc_packing_item", "scrap_skid_num", "scrap_packaging_ticket", "scrap_skid", "scrap_skid_num"),
+            "SHEET" => ("sheet_packing_item", "sh_packing_item", "sheet_skid_num", "sheet_packaging_ticket", "sheet_skid", "sheet_skid_num", null),
+            "SCRAP" => ("scrap_packing_item", "sc_packing_item", "scrap_skid_num", "scrap_packaging_ticket", "scrap_skid", "scrap_skid_num", null),
+            // Reject coils link a rejected coil (reject_coil.coil_abc_num); the ticket is a running sequence value
+            // (SHEET_PACKAGING_TICKET_SEQ on Oracle, MAX+1 on SQLite), NOT the coil number.
+            "REJECT_COIL" => ("reject_coil_packing_item", "rej_coil_packing_item", "coil_abc_num", "rej_coil_packaging_ticket", "reject_coil", "coil_abc_num", "sheet_packaging_ticket_seq"),
             _ => null,
         };
 
@@ -3298,7 +3303,22 @@ public sealed class AbisRepository : IAbisRepository
             """, new { pl = packingList }, cancellationToken: ct))).ToList();
         foreach (var it in scrap) { it.ItemType = "SCRAP"; it.GrossWeight = it.NetWeight + it.TareWeight; }
 
-        return sheet.Concat(scrap).ToList();
+        // Reject coils: enriched from the coil itself (a rejected coil isn't a skid). The remaining balance weight
+        // stands in for net/gross; there are no pieces.
+        var reject = (await conn.QueryAsync<PackingLineItem>(new CommandDefinition(
+            """
+            SELECT spi.rej_coil_packing_item AS PackingItemId, spi.packing_list AS PackingList,
+                   spi.coil_abc_num AS RefNum, spi.rej_coil_packaging_ticket AS PackagingTicket,
+                   c.coil_org_num AS SkidDisplayNum, COALESCE(c.net_wt_balance, 0) AS NetWeight,
+                   c.coil_org_num AS CoilOrgNum, c.lot_num AS LotNum, c.coil_alloy2 AS Alloy, c.coil_temper AS Temper
+              FROM reject_coil_packing_item spi
+              JOIN coil c ON c.coil_abc_num = spi.coil_abc_num
+             WHERE spi.packing_list = :pl
+             ORDER BY spi.rej_coil_packaging_ticket
+            """, new { pl = packingList }, cancellationToken: ct))).ToList();
+        foreach (var it in reject) { it.ItemType = "REJECT_COIL"; it.GrossWeight = it.NetWeight; }
+
+        return sheet.Concat(scrap).Concat(reject).ToList();
     }
 
     /// <summary>Add a skid to a packing list. <paramref name="itemType"/> is SHEET or SCRAP. Guards (typed status,
@@ -3326,9 +3346,13 @@ public sealed class AbisRepository : IAbisRepository
         var nextId = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
             $"SELECT COALESCE(MAX({cfg.IdCol}), 0) + 1 FROM {cfg.Table} WHERE packing_list = :pl",
             new { pl = packingList }, transaction: (DbTransaction)tx, cancellationToken: ct));
+        // Ticket: the ref number (sheet/scrap legacy convention) unless the type draws it from a sequence (reject).
+        var ticket = cfg.TicketSeq is { } seq
+            ? await NextIdAsync(conn, (DbTransaction)tx, cfg.Table, cfg.TicketCol, ct, sequence: seq)
+            : refNum;
         await conn.ExecuteAsync(new CommandDefinition(
             $"INSERT INTO {cfg.Table} ({cfg.IdCol}, packing_list, {cfg.RefCol}, {cfg.TicketCol}) VALUES (:id, :pl, :ref, :ticket)",
-            new { id = nextId, pl = packingList, @ref = refNum, ticket = refNum }, transaction: (DbTransaction)tx, cancellationToken: ct));
+            new { id = nextId, pl = packingList, @ref = refNum, ticket }, transaction: (DbTransaction)tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
 
         var created = (await GetPackingItemsAsync(packingList, ct)).FirstOrDefault(i => i.ItemType == type && i.PackingItemId == nextId);

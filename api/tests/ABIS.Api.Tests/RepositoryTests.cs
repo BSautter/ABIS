@@ -1283,6 +1283,7 @@ public sealed class RepositoryTests : IDisposable
                 INSERT INTO sheet_skid (sheet_skid_num, ab_job_num, sheet_skid_display_num, sheet_net_wt, sheet_tare_wt, skid_pieces, skid_sheet_status) VALUES (9150, 9130, 'PSKID-1', 20000, 250, 100, 2);
                 INSERT INTO sheet_skid_detail (sheet_skid_num, prod_item_num) VALUES (9150, 9140);
                 INSERT INTO scrap_skid (scrap_skid_num, scrap_net_wt, scrap_tare_wt, scrap_type, scrap_alloy2, scrap_temper, scrap_skid_display_num, scrap_cust_po) VALUES (9160, 3000, 120, 5, '5052', 'H32', 'SCR-1', 'SPO-9');
+                INSERT INTO reject_coil (coil_abc_num, ab_job_num) VALUES (9120, 9130);
                 """;
             cmd.ExecuteNonQuery();
         }
@@ -1310,15 +1311,24 @@ public sealed class RepositoryTests : IDisposable
         Assert.Equal("5052", addScrap.Item.Alloy);
         Assert.Equal("SPO-9", addScrap.Item.OrigCustomerPo);
 
+        // Add a reject coil (REJECT_COIL type) — enriched from the coil; the ticket is a sequence value.
+        var addRej = await _repo.AddPackingItemAsync(91000, "REJECT_COIL", 9120, CancellationToken.None);
+        Assert.Equal("created", addRej.Status);
+        Assert.Equal("REJECT_COIL", addRej.Item!.ItemType);
+        Assert.Equal(9120, addRej.Item.RefNum);
+        Assert.Equal("PCOIL-1", addRej.Item.CoilOrgNum);
+
         var items = await _repo.GetPackingItemsAsync(91000, CancellationToken.None);
-        Assert.Equal(2, items.Count);
+        Assert.Equal(3, items.Count);
         Assert.Contains(items, i => i is { ItemType: "SHEET", SkidDisplayNum: "PSKID-1" });
         Assert.Contains(items, i => i is { ItemType: "SCRAP", SkidDisplayNum: "SCR-1" });
+        Assert.Contains(items, i => i is { ItemType: "REJECT_COIL", CoilOrgNum: "PCOIL-1" });
 
         // Guards.
         Assert.Equal("duplicate", (await _repo.AddPackingItemAsync(91000, "SHEET", 9150, CancellationToken.None)).Status);
         Assert.Equal("no-shipment", (await _repo.AddPackingItemAsync(99999, "SHEET", 9150, CancellationToken.None)).Status);
         Assert.Equal("no-ref", (await _repo.AddPackingItemAsync(91000, "SHEET", 88888, CancellationToken.None)).Status);
+        Assert.Equal("no-ref", (await _repo.AddPackingItemAsync(91000, "REJECT_COIL", 77777, CancellationToken.None)).Status);   // coil not in reject_coil
         Assert.Equal("bad-type", (await _repo.AddPackingItemAsync(91000, "WAREHOUSE", 9150, CancellationToken.None)).Status);
 
         // The 856 ASN assembler sees the SHEET item (scrap isn't part of the ASN skid list) — the loop is closed.
@@ -1327,8 +1337,9 @@ public sealed class RepositoryTests : IDisposable
         Assert.Single(ship!.Items);
         Assert.Equal("PSKID-1", ship.Items[0].SkidDisplayNum);
 
-        // Remove — by (type, id). Sheet id 1 and scrap id 1 are distinct rows.
+        // Remove — by (type, id). Sheet / scrap / reject ids are each their own per-list sequence (all start at 1).
         Assert.True(await _repo.DeletePackingItemAsync(91000, "SCRAP", 1, CancellationToken.None));
+        Assert.True(await _repo.DeletePackingItemAsync(91000, "REJECT_COIL", 1, CancellationToken.None));
         Assert.Single(await _repo.GetPackingItemsAsync(91000, CancellationToken.None));   // sheet remains
         Assert.True(await _repo.DeletePackingItemAsync(91000, "SHEET", 1, CancellationToken.None));
         Assert.Empty(await _repo.GetPackingItemsAsync(91000, CancellationToken.None));

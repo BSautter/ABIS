@@ -737,7 +737,7 @@ public static class ApiEndpoints
                     ? Results.NotFound()
                     : Results.Ok(await repo.GetPackingItemsAsync(packingList, ct)))
            .WithName("ListPackingItems").WithTags("Shipments")
-           .WithSummary("List the line items on a packing list (shipment) — SHEET (finished-sheet skids, enriched with weight/pieces/part/PO/coil — the same content the 856 (ASN) reports) and SCRAP (scrap skids), each tagged with its itemType.")
+           .WithSummary("List the line items on a packing list (shipment) — SHEET (finished-sheet skids, enriched with weight/pieces/part/PO/coil — the same content the 856 (ASN) reports), SCRAP (scrap skids), and REJECT_COIL (rejected coils), each tagged with its itemType.")
            .Produces<IReadOnlyList<PackingLineItem>>().Produces(StatusCodes.Status404NotFound);
 
         api.MapPost("/shipments/{packingList:long}/items", async (long packingList, PackingItemWrite body, IAbisRepository repo, CancellationToken ct) =>
@@ -746,7 +746,7 @@ public static class ApiEndpoints
                 return result.Status switch
                 {
                     "created" => Results.Created($"/api/shipments/{packingList}/items/{result.Item!.ItemType}/{result.Item.PackingItemId}", result.Item),
-                    "bad-type" => Results.ValidationProblem(new Dictionary<string, string[]> { ["itemType"] = ["itemType must be SHEET or SCRAP."] }),
+                    "bad-type" => Results.ValidationProblem(new Dictionary<string, string[]> { ["itemType"] = ["itemType must be SHEET, SCRAP, or REJECT_COIL."] }),
                     "no-shipment" => Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Shipment not found", detail: $"No packing list {packingList}."),
                     "no-ref" => Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Skid not found", detail: $"No {body.ItemType} skid {body.RefNum}."),
                     "duplicate" => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Already on this packing list", detail: $"{body.ItemType} skid {body.RefNum} is already a line item on packing list {packingList}."),
@@ -754,7 +754,7 @@ public static class ApiEndpoints
                 };
             })
            .WithName("AddPackingItem").WithTags("Shipments")
-           .WithSummary("Add a skid to a packing list — itemType SHEET (finished sheet) or SCRAP (scrap), refNum = the skid number. The item id + packaging ticket are server-assigned. 400 bad type; 404 if the shipment or skid is missing; 409 if the skid is already on this list. Config/data only — nothing transmits.")
+           .WithSummary("Add a line item to a packing list — itemType SHEET (finished sheet) / SCRAP (scrap) with refNum = the skid number, or REJECT_COIL with refNum = the coil abc number. The item id + packaging ticket are server-assigned. 400 bad type; 404 if the shipment or skid/coil is missing; 409 if it's already on this list. Config/data only — nothing transmits.")
            .Produces<PackingLineItem>(StatusCodes.Status201Created).ProducesValidationProblem().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
 
         api.MapDelete("/shipments/{packingList:long}/items/{itemType}/{itemId:long}", async (long packingList, string itemType, long itemId, IAbisRepository repo, CancellationToken ct) =>

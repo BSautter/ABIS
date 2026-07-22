@@ -9605,7 +9605,7 @@
         "tags": [
           "Shipments"
         ],
-        "summary": "List the line items on a packing list (shipment) — SHEET (finished-sheet skids, enriched with weight/pieces/part/PO/coil — the same content the 856 (ASN) reports) and SCRAP (scrap skids), each tagged with its itemType.",
+        "summary": "List the line items on a packing list (shipment) — SHEET (finished-sheet skids, enriched with weight/pieces/part/PO/coil — the same content the 856 (ASN) reports), SCRAP (scrap skids), and REJECT_COIL (rejected coils), each tagged with its itemType.",
         "operationId": "ListPackingItems",
         "parameters": [
           {
@@ -9644,7 +9644,7 @@
         "tags": [
           "Shipments"
         ],
-        "summary": "Add a skid to a packing list — itemType SHEET (finished sheet) or SCRAP (scrap), refNum = the skid number. The item id + packaging ticket are server-assigned. 400 bad type; 404 if the shipment or skid is missing; 409 if the skid is already on this list. Config/data only — nothing transmits.",
+        "summary": "Add a line item to a packing list — itemType SHEET (finished sheet) / SCRAP (scrap) with refNum = the skid number, or REJECT_COIL with refNum = the coil abc number. The item id + packaging ticket are server-assigned. 400 bad type; 404 if the shipment or skid/coil is missing; 409 if it's already on this list. Config/data only — nothing transmits.",
         "operationId": "AddPackingItem",
         "parameters": [
           {
