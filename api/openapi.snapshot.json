@@ -6034,6 +6034,166 @@
         }
       }
     },
+    "/api/coils/{coilAbcNum}/qa-history": {
+      "get": {
+        "tags": [
+          "Quality"
+        ],
+        "summary": "A coil's QA hold/release history (COIL_TRACK_QA audit, newest first).",
+        "operationId": "GetCoilQaHistory",
+        "parameters": [
+          {
+            "name": "coilAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CoilQaTrack"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/coils/{coilAbcNum}/qa-hold": {
+      "post": {
+        "tags": [
+          "Quality"
+        ],
+        "summary": "Place a coil on QA hold (coil_status → 11) and record the audit; 404 unknown, 409 terminal/already-on-hold.",
+        "operationId": "PlaceCoilOnQaHold",
+        "parameters": [
+          {
+            "name": "coilAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoilQaHoldWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoilQaTransition"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/coils/{coilAbcNum}/qa-release": {
+      "post": {
+        "tags": [
+          "Quality"
+        ],
+        "summary": "Release a coil from QA hold (restores its pre-hold status, or ToStatus) and record the audit; 404 unknown, 409 if not on hold.",
+        "operationId": "ReleaseCoilFromQaHold",
+        "parameters": [
+          {
+            "name": "coilAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoilQaReleaseWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoilQaTransition"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/quality/scrap-types": {
       "get": {
         "tags": [
@@ -12006,6 +12166,99 @@
             "type": "integer",
             "format": "int64",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CoilQaHoldWrite": {
+        "type": "object",
+        "properties": {
+          "modifiedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CoilQaOutcome": {
+        "enum": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "type": "integer",
+        "format": "int32"
+      },
+      "CoilQaReleaseWrite": {
+        "type": "object",
+        "properties": {
+          "modifiedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "toStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CoilQaTrack": {
+        "type": "object",
+        "properties": {
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "coilTrackDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "coilPreStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "coilCurStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "coilModifiedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CoilQaTransition": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "$ref": "#/components/schemas/CoilQaOutcome"
+          },
+          "coil": {
+            "$ref": "#/components/schemas/Coil"
+          },
+          "track": {
+            "$ref": "#/components/schemas/CoilQaTrack"
           }
         },
         "additionalProperties": false

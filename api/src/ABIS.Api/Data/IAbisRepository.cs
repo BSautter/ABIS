@@ -226,6 +226,11 @@ public interface IAbisRepository
     Task<IReadOnlyList<EvalScrap>> GetEvalScrapAsync(long abJobNum, CancellationToken ct);
     Task<EvalScrap> UpsertEvalScrapAsync(EvalScrapWrite body, CancellationToken ct);
 
+    // ---- Coil QA hold (COIL_TRACK_QA audit) ------------------------------
+    Task<IReadOnlyList<CoilQaTrack>> GetCoilQaHistoryAsync(long coilAbcNum, CancellationToken ct);
+    Task<CoilQaTransition> PlaceCoilOnQaHoldAsync(long coilAbcNum, CoilQaHoldWrite body, CancellationToken ct);
+    Task<CoilQaTransition> ReleaseCoilFromQaHoldAsync(long coilAbcNum, CoilQaReleaseWrite body, CancellationToken ct);
+
     // ---- Production folder -----------------------------------------------
     Task<ProductionFolder?> GetProductionFolderAsync(long abJobNum, CancellationToken ct);
     Task<IReadOnlyList<JobFolderNote>> GetJobFolderNotesAsync(long abJobNum, CancellationToken ct);

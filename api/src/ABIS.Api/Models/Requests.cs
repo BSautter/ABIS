@@ -602,6 +602,25 @@ public sealed class TestResultWrite
     public decimal? Width { get; set; }
 }
 
+/// <summary>Place a coil on QA hold (coil_status → 11). Both fields are required: the legacy
+/// COIL_TRACK_QA columns are NOT NULL, and on Oracle an empty string binds as NULL — so the
+/// endpoint rejects blank values rather than hit ORA-01400 at the INSERT.</summary>
+public sealed class CoilQaHoldWrite
+{
+    public string? ModifiedBy { get; set; }
+    public string? Note { get; set; }
+}
+
+/// <summary>Release a coil from QA hold. <c>ToStatus</c> is an optional override for the status to
+/// restore; when omitted the coil returns to the status it held when it was placed on QA hold (the
+/// most recent hold's coil_pre_status), defaulting to 2 (new) if there is no prior hold on record.</summary>
+public sealed class CoilQaReleaseWrite
+{
+    public string? ModifiedBy { get; set; }
+    public string? Note { get; set; }
+    public int? ToStatus { get; set; }
+}
+
 public sealed class CoilOwnershipTransferWrite
 {
     public long? CoilAbcNumOrig { get; set; }

@@ -1428,6 +1428,68 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task CoilQaHold_places_releases_and_audits_the_transitions()
+    {
+        // Unknown coil → NotFound (→ 404) for both actions.
+        Assert.Equal(Abis.Api.Models.CoilQaOutcome.NotFound,
+            (await _repo.PlaceCoilOnQaHoldAsync(999998, new Abis.Api.Models.CoilQaHoldWrite { ModifiedBy = "qa", Note = "n" }, CancellationToken.None)).Outcome);
+        Assert.Equal(Abis.Api.Models.CoilQaOutcome.NotFound,
+            (await _repo.ReleaseCoilFromQaHoldAsync(999998, new Abis.Api.Models.CoilQaReleaseWrite { ModifiedBy = "qa", Note = "n" }, CancellationToken.None)).Outcome);
+
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO coil (coil_abc_num, coil_org_num, coil_status, customer_id, lot_num, net_wt, net_wt_balance) VALUES (74200, 'ORG-742', 2, 4001, 'LOT-742', 10000, 10000);
+                INSERT INTO coil (coil_abc_num, coil_org_num, coil_status, customer_id, lot_num, net_wt, net_wt_balance) VALUES (74201, 'ORG-742T', 13, 4001, 'LOT-742T', 10000, 10000);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+
+        // A terminal coil (13/transferred) cannot be placed on hold.
+        Assert.Equal(Abis.Api.Models.CoilQaOutcome.Terminal,
+            (await _repo.PlaceCoilOnQaHoldAsync(74201, new Abis.Api.Models.CoilQaHoldWrite { ModifiedBy = "qa", Note = "n" }, CancellationToken.None)).Outcome);
+
+        // Place on hold: status → 11, audit row pre=2 → cur=11.
+        var held = await _repo.PlaceCoilOnQaHoldAsync(74200,
+            new Abis.Api.Models.CoilQaHoldWrite { ModifiedBy = "auditor", Note = "edge tear suspected" }, CancellationToken.None);
+        Assert.Equal(Abis.Api.Models.CoilQaOutcome.Ok, held.Outcome);
+        Assert.Equal(11, held.Coil!.CoilStatus);
+        Assert.Equal(2, held.Track!.CoilPreStatus);
+        Assert.Equal(11, held.Track.CoilCurStatus);
+
+        // Second hold is a no-op conflict (already on hold).
+        Assert.Equal(Abis.Api.Models.CoilQaOutcome.AlreadyOnHold,
+            (await _repo.PlaceCoilOnQaHoldAsync(74200, new Abis.Api.Models.CoilQaHoldWrite { ModifiedBy = "qa", Note = "n" }, CancellationToken.None)).Outcome);
+
+        // Release restores the pre-hold status (2) recorded at hold time; audit row pre=11 → cur=2.
+        var released = await _repo.ReleaseCoilFromQaHoldAsync(74200,
+            new Abis.Api.Models.CoilQaReleaseWrite { ModifiedBy = "auditor", Note = "cleared" }, CancellationToken.None);
+        Assert.Equal(Abis.Api.Models.CoilQaOutcome.Ok, released.Outcome);
+        Assert.Equal(2, released.Coil!.CoilStatus);
+        Assert.Equal(11, released.Track!.CoilPreStatus);
+        Assert.Equal(2, released.Track.CoilCurStatus);
+
+        // Releasing a coil that isn't on hold → NotOnHold conflict.
+        Assert.Equal(Abis.Api.Models.CoilQaOutcome.NotOnHold,
+            (await _repo.ReleaseCoilFromQaHoldAsync(74200, new Abis.Api.Models.CoilQaReleaseWrite { ModifiedBy = "qa", Note = "n" }, CancellationToken.None)).Outcome);
+
+        // History has both transitions, newest first.
+        var history = await _repo.GetCoilQaHistoryAsync(74200, CancellationToken.None);
+        Assert.Equal(2, history.Count);
+        Assert.Equal(2, history[0].CoilCurStatus);   // the release is newest
+        Assert.Equal(11, history[1].CoilCurStatus);  // the hold is older
+        Assert.All(history, h => Assert.Equal("auditor", h.CoilModifiedBy));
+
+        // ToStatus override wins over the restore lookup.
+        await _repo.PlaceCoilOnQaHoldAsync(74200, new Abis.Api.Models.CoilQaHoldWrite { ModifiedBy = "qa", Note = "recheck" }, CancellationToken.None);
+        var overridden = await _repo.ReleaseCoilFromQaHoldAsync(74200,
+            new Abis.Api.Models.CoilQaReleaseWrite { ModifiedBy = "qa", Note = "to scrap-ready", ToStatus = 4 }, CancellationToken.None);
+        Assert.Equal(4, overridden.Coil!.CoilStatus);
+    }
+
+    [Fact]
     public async Task GetScanLogs_lists_newest_first_and_filters_by_job()
     {
         var all = await _repo.GetScanLogsAsync(1, 25, abJobNum: null, orderBy: null, CancellationToken.None);

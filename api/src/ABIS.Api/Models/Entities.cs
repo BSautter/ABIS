@@ -383,6 +383,28 @@ public sealed class TestResult
     public decimal? Width { get; set; }
 }
 
+/// <summary>A coil QA status-transition audit row (legacy <c>COIL_TRACK_QA</c>): every QA
+/// hold or release records the coil's pre/cur <c>coil_status</c>, who made the change, when,
+/// and a mandatory note. PK is (coil_abc_num, coil_track_date). Drives the per-coil QA history
+/// behind the QA-hold console.</summary>
+public sealed class CoilQaTrack
+{
+    public long? CoilAbcNum { get; set; }
+    public DateTime? CoilTrackDate { get; set; }
+    public int? CoilPreStatus { get; set; }
+    public int? CoilCurStatus { get; set; }
+    public string? CoilModifiedBy { get; set; }
+    public string? Note { get; set; }
+}
+
+/// <summary>The outcome of a coil QA hold/release transition, so the endpoint can map it to the
+/// right HTTP status without leaking repository internals.</summary>
+public enum CoilQaOutcome { Ok, NotFound, Terminal, AlreadyOnHold, NotOnHold }
+
+/// <summary>Result of a QA transition: the outcome plus (on success) the reloaded coil and the
+/// audit row that was written.</summary>
+public sealed record CoilQaTransition(CoilQaOutcome Outcome, Coil? Coil = null, CoilQaTrack? Track = null);
+
 /// <summary>An in-progress / working-set mechanical test result (table
 /// <c>temp_test_result</c>) — the companion to the posted <c>pst_test_result</c>.
 /// Note the legacy column names differ from the posted table: <c>yts</c>/<c>uts</c>/

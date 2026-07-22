@@ -950,6 +950,38 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Coil_qa_hold_is_authed_validated_and_guarded()
+    {
+        // Auth is enforced.
+        var bare = _factory.CreateClient();
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await bare.PostAsJsonAsync("/api/coils/1/qa-hold", new { modifiedBy = "qa", note = "n" })).StatusCode);
+
+        // modifiedBy + note are required (blank would be an Oracle NOT-NULL/empty-string trap).
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/coils/1/qa-hold", new { modifiedBy = "", note = "" })).StatusCode);
+
+        // Unknown coil → 404.
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await _client.PostAsJsonAsync("/api/coils/999999/qa-hold", new { modifiedBy = "qa", note = "missing" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await _client.PostAsJsonAsync("/api/coils/999999/qa-release", new { modifiedBy = "qa", note = "missing" })).StatusCode);
+
+        // History of an unknown coil is an empty list, not an error.
+        var history = await _client.GetFromJsonAsync<JsonElement>("/api/coils/999999/qa-history");
+        Assert.Equal(0, history.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Qa_hold_page_is_served()
+    {
+        var bare = _factory.CreateClient();
+        var resp = await bare.GetAsync("/ui/qa-hold.html");
+        resp.EnsureSuccessStatusCode();
+        Assert.Contains("qa-hold.js", await resp.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task Typed_client_demo_page_is_served()
     {
         var bare = _factory.CreateClient();

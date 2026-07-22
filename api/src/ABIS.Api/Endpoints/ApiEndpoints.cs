@@ -414,6 +414,33 @@ public static class ApiEndpoints
            .WithSummary("Update a coil's status, location, or notes (409 if the coil is done/shipped/transferred). Supports If-Match.")
            .Produces<Coil>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status412PreconditionFailed);
 
+        // ---- Coil QA hold (status 11 + COIL_TRACK_QA audit) --------------
+        // The dedicated QA-hold transitions: unlike the generic PatchCoil, these record an audit
+        // row for every hold/release and enforce the QA state machine (legacy w_qa_coil).
+        api.MapGet("/coils/{coilAbcNum:long}/qa-history", async (long coilAbcNum, IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetCoilQaHistoryAsync(coilAbcNum, ct)))
+           .WithName("GetCoilQaHistory").WithTags("Quality")
+           .WithSummary("A coil's QA hold/release history (COIL_TRACK_QA audit, newest first).")
+           .Produces<IReadOnlyList<CoilQaTrack>>();
+
+        api.MapPost("/coils/{coilAbcNum:long}/qa-hold", async (long coilAbcNum, CoilQaHoldWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (Validate(body) is { } errs) return Results.ValidationProblem(errs);
+                return QaResult(await repo.PlaceCoilOnQaHoldAsync(coilAbcNum, body, ct), coilAbcNum);
+            })
+           .WithName("PlaceCoilOnQaHold").WithTags("Quality")
+           .WithSummary("Place a coil on QA hold (coil_status → 11) and record the audit; 404 unknown, 409 terminal/already-on-hold.")
+           .Produces<CoilQaTransition>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
+
+        api.MapPost("/coils/{coilAbcNum:long}/qa-release", async (long coilAbcNum, CoilQaReleaseWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (Validate(body) is { } errs) return Results.ValidationProblem(errs);
+                return QaResult(await repo.ReleaseCoilFromQaHoldAsync(coilAbcNum, body, ct), coilAbcNum);
+            })
+           .WithName("ReleaseCoilFromQaHold").WithTags("Quality")
+           .WithSummary("Release a coil from QA hold (restores its pre-hold status, or ToStatus) and record the audit; 404 unknown, 409 if not on hold.")
+           .Produces<CoilQaTransition>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
+
         // ---- Orders -----------------------------------------------------
         api.MapGet("/orders", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, long? customerId = null, string? po = null,
@@ -3139,6 +3166,45 @@ public static class ApiEndpoints
     private static void Positive(Dictionary<string, string[]> e, string field, decimal? v)
     {
         if (v is { } d && d <= 0m) e[field] = [$"{field} must be greater than zero."];
+    }
+
+    // Map a QA hold/release outcome to the right HTTP status.
+    private static IResult QaResult(CoilQaTransition r, long coilAbcNum) => r.Outcome switch
+    {
+        CoilQaOutcome.Ok => Results.Ok(r),
+        CoilQaOutcome.NotFound => Results.NotFound(),
+        CoilQaOutcome.Terminal => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Coil is terminal",
+            detail: $"Coil {coilAbcNum} is done/shipped/transferred and cannot be placed on QA hold."),
+        CoilQaOutcome.AlreadyOnHold => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Already on QA hold",
+            detail: $"Coil {coilAbcNum} is already on QA hold."),
+        CoilQaOutcome.NotOnHold => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Not on QA hold",
+            detail: $"Coil {coilAbcNum} is not on QA hold."),
+        _ => Results.Problem(statusCode: StatusCodes.Status500InternalServerError),
+    };
+
+    private static Dictionary<string, string[]>? Validate(CoilQaHoldWrite body)
+    {
+        // modifiedBy + note are mandatory: COIL_TRACK_QA has them NOT NULL and Oracle binds an
+        // empty string as NULL, so a blank value would be an ORA-01400 at the INSERT. Req rejects
+        // whitespace-only up front.
+        var e = new Dictionary<string, string[]>();
+        Req(e, "modifiedBy", body.ModifiedBy);
+        Req(e, "note", body.Note);
+        Max(e, "modifiedBy", body.ModifiedBy, 64);
+        Max(e, "note", body.Note, 1024);
+        return e.Count == 0 ? null : e;
+    }
+
+    private static Dictionary<string, string[]>? Validate(CoilQaReleaseWrite body)
+    {
+        var e = new Dictionary<string, string[]>();
+        Req(e, "modifiedBy", body.ModifiedBy);
+        Req(e, "note", body.Note);
+        Max(e, "modifiedBy", body.ModifiedBy, 64);
+        Max(e, "note", body.Note, 1024);
+        // coil_status is NUMBER(2); the known code table runs 0..14.
+        if (body.ToStatus is { } s && (s < 0 || s > 14)) e["toStatus"] = ["toStatus must be a valid coil status (0-14)."];
+        return e.Count == 0 ? null : e;
     }
 
     private static Dictionary<string, string[]>? Validate(PartWrite body)

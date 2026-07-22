@@ -615,6 +615,99 @@ public sealed class AbisRepository : IAbisRepository
         };
     }
 
+    // ---- Coil QA hold (COIL_TRACK_QA audit) ---------------------------------
+    // A coil is placed on QA hold (coil_status → 11) or released back to a usable status; each
+    // transition writes a COIL_TRACK_QA row (pre → cur status, who, when, why). Mirrors legacy
+    // w_qa_coil. Terminal statuses (0 done / 10 shipped / 13 transferred) can't be held — same
+    // rule as PatchCoil.
+
+    public async Task<IReadOnlyList<CoilQaTrack>> GetCoilQaHistoryAsync(long coilAbcNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<CoilQaTrack>(new CommandDefinition(
+            """
+            SELECT coil_abc_num AS CoilAbcNum, coil_track_date AS CoilTrackDate,
+                   coil_pre_status AS CoilPreStatus, coil_cur_status AS CoilCurStatus,
+                   coil_modified_by AS CoilModifiedBy, note AS Note
+            FROM coil_track_qa WHERE coil_abc_num = :coil
+            ORDER BY coil_track_date DESC
+            """, new { coil = coilAbcNum }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    public async Task<CoilQaTransition> PlaceCoilOnQaHoldAsync(long coilAbcNum, CoilQaHoldWrite body, CancellationToken ct)
+    {
+        var coil = await GetCoilAsync(coilAbcNum, ct);
+        if (coil is null) return new CoilQaTransition(CoilQaOutcome.NotFound);
+        var cur = coil.CoilStatus ?? -1;
+        if (cur is 0 or 10 or 13) return new CoilQaTransition(CoilQaOutcome.Terminal);
+        if (cur == 11) return new CoilQaTransition(CoilQaOutcome.AlreadyOnHold, coil);
+
+        var track = await WriteQaTransitionAsync(coilAbcNum, cur, 11, body.ModifiedBy, body.Note, ct);
+        return new CoilQaTransition(CoilQaOutcome.Ok, await GetCoilAsync(coilAbcNum, ct), track);
+    }
+
+    public async Task<CoilQaTransition> ReleaseCoilFromQaHoldAsync(long coilAbcNum, CoilQaReleaseWrite body, CancellationToken ct)
+    {
+        var coil = await GetCoilAsync(coilAbcNum, ct);
+        if (coil is null) return new CoilQaTransition(CoilQaOutcome.NotFound);
+        if ((coil.CoilStatus ?? -1) != 11) return new CoilQaTransition(CoilQaOutcome.NotOnHold, coil);
+
+        // Restore the status the coil held when it went on hold; the caller may override, and 2
+        // (new) is the fallback for a coil that reached 11 without a recorded hold (e.g. minted
+        // on-hold at damaged receiving).
+        int target = body.ToStatus ?? await RestoreStatusForReleaseAsync(coilAbcNum, ct) ?? 2;
+        var track = await WriteQaTransitionAsync(coilAbcNum, 11, target, body.ModifiedBy, body.Note, ct);
+        return new CoilQaTransition(CoilQaOutcome.Ok, await GetCoilAsync(coilAbcNum, ct), track);
+    }
+
+    private async Task<int?> RestoreStatusForReleaseAsync(long coilAbcNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.ExecuteScalarAsync<int?>(new CommandDefinition(
+            """
+            SELECT coil_pre_status FROM coil_track_qa
+            WHERE coil_abc_num = :coil AND coil_cur_status = 11
+              AND coil_track_date = (SELECT MAX(coil_track_date) FROM coil_track_qa
+                                     WHERE coil_abc_num = :coil AND coil_cur_status = 11)
+            """, new { coil = coilAbcNum }, cancellationToken: ct));
+    }
+
+    // Flip coil_status and record the COIL_TRACK_QA audit row in one transaction. ModifiedBy/Note
+    // are already validated non-empty at the endpoint (Oracle binds '' as NULL and both columns
+    // are NOT NULL).
+    private async Task<CoilQaTrack> WriteQaTransitionAsync(
+        long coilAbcNum, int fromStatus, int toStatus, string? modifiedBy, string? note, CancellationToken ct)
+    {
+        var when = DateTime.UtcNow;
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE coil SET coil_status = :status WHERE coil_abc_num = :coil",
+            new { status = toStatus, coil = coilAbcNum }, tx, cancellationToken: ct));
+
+        var p = new DynamicParameters();
+        p.Add("coil", coilAbcNum);
+        p.Add("when", when, DbType.DateTime);
+        p.Add("pre", fromStatus, DbType.Int32);
+        p.Add("cur", toStatus, DbType.Int32);
+        p.Add("by", modifiedBy);
+        p.Add("note", note);
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO coil_track_qa (coil_abc_num, coil_track_date, coil_pre_status, coil_cur_status, coil_modified_by, note)
+            VALUES (:coil, :when, :pre, :cur, :by, :note)
+            """, p, tx, cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
+        return new CoilQaTrack
+        {
+            CoilAbcNum = coilAbcNum, CoilTrackDate = when, CoilPreStatus = fromStatus,
+            CoilCurStatus = toStatus, CoilModifiedBy = modifiedBy, Note = note,
+        };
+    }
+
     public async Task<IReadOnlyList<SheetSkid>> GetJobSheetSkidsAsync(long abJobNum, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

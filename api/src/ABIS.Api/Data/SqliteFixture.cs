@@ -44,6 +44,7 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS part_num_reinforcement;
             DROP TABLE IF EXISTS part_num_liftgate;
             DROP TABLE IF EXISTS pst_test_result;
+            DROP TABLE IF EXISTS coil_track_qa;
             DROP TABLE IF EXISTS customer;
             DROP TABLE IF EXISTS sheet_skid;
             DROP TABLE IF EXISTS scrap_skid;
@@ -235,6 +236,11 @@ public static class SqliteFixture
                 test_type INTEGER, yts_val REAL, uts_val REAL, elong_val REAL, n_val REAL, r_val REAL,
                 thickness REAL, width REAL,
                 PRIMARY KEY (coil_abc_num, position, created_date, source_id));
+
+            CREATE TABLE coil_track_qa (
+                coil_abc_num INTEGER, coil_track_date TEXT, coil_pre_status INTEGER, coil_cur_status INTEGER,
+                coil_modified_by TEXT NOT NULL, note TEXT NOT NULL,
+                PRIMARY KEY (coil_abc_num, coil_track_date));
 
             CREATE TABLE customer (
                 customer_id INTEGER PRIMARY KEY, customer_full_name TEXT, customer_short_name TEXT, customer_type INTEGER,
