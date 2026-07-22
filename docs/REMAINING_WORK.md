@@ -22,7 +22,7 @@ percentage suggests.
 | **1.0.0** | Cutover-ready: everything built, so the deferred **EDI transmit** + **data-source cutover** become an operational go-live decision, not a code gap |
 
 ## Suggested next 5 (highest value, buildable now)
-1. **Packing-list line items** (C2) — unblocks a real packing list + the 856 trigger.
+1. ~~**Packing-list line items** (C2)~~ — ✅ **DONE** (#217 sheet, #219 scrap + generalized API, #220 reject-coil; warehouse deferred). Shipments now carry line items and feed the 856.
 2. **863 mechanical test-result WRITE** (C5) — the test-result list cannot populate without it.
 3. **Coil-ownership transfer mint semantics** (C3) — today it mutates `customer_id` in place (wrong audit trail).
 4. **Dimension-check tolerance validation** (C5) — the actual QC gate; today `in_spec` = whatever the client sends.
@@ -83,7 +83,7 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [ ] **M** Accounting scrap-type summary; print coil-cert label on order close; customer delete
 
 ### C2. Logistics / shipping
-- [ ] **C** Packing-list line items (`SHEET`/`SCRAP`/`REJECT_COIL`/`WH_PACKING_ITEM`) — shipment is header-only
+- [~] **C** Packing-list line items — ✅ `SHEET` (#217) + `SCRAP` (#219) + `REJECT_COIL` (#220) built (add/list/remove on the shipment, feeding the 856); only `WH_PACKING_ITEM` (9 live rows) deferred
 - [ ] **C** BOL / combi-form / packing-ticket printing (the `rpabco` document engine)
 - [ ] **H** Sketch image storage (`sketch_view` LONG RAW) + display + job/part linkage + DAS/e-folder render
 - [ ] **H** Die → shape mapping + `line_die_4sheet_type` (scheduling can't tell which line/die makes which shape); die label/report print
