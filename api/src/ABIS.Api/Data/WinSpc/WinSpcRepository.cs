@@ -63,7 +63,8 @@ public sealed class WinSpcRepository : IWinSpcRepository
         {
             await using var conn = _factory.Create();
             await conn.OpenAsync(ct);
-            await conn.ExecuteScalarAsync<long>(new CommandDefinition("SELECT COUNT(*) FROM PART", cancellationToken: ct));
+            await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+                "SELECT COUNT(*) FROM PART", commandTimeout: _options.CommandTimeoutSeconds, cancellationToken: ct));
             return null;
         }
         catch (Exception ex)
@@ -86,7 +87,7 @@ public sealed class WinSpcRepository : IWinSpcRepository
         await using DbConnection conn = _factory.Create();
         await conn.OpenAsync(ct);
         var rows = (await conn.QueryAsync<WinSpcReading>(new CommandDefinition(
-            ReadingsSql, new { tagPattern, key }, cancellationToken: ct))).AsList();
+            ReadingsSql, new { tagPattern, key }, commandTimeout: _options.CommandTimeoutSeconds, cancellationToken: ct))).AsList();
 
         if (rows.Count > MaxReadings) rows = rows.GetRange(0, MaxReadings);
 

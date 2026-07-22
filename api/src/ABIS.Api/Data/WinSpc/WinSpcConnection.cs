@@ -37,6 +37,12 @@ public sealed class WinSpcOptions
     /// <summary>As <see cref="JobTagPattern"/>, for the coil-number tag ("Coil #", "Coil No." …).</summary>
     public string CoilTagPattern { get; set; } = "%COIL%";
 
+    /// <summary>Hard per-query timeout (seconds). WinSPC is a <b>live production</b> SPC box, so the
+    /// connector caps how long any single read can run — a mis-keyed or heavy lookup fails fast
+    /// instead of loading the server. Combined with the on-demand-only usage and a small pool, ABIS
+    /// stays a good citizen on the plant's quality DB.</summary>
+    public int CommandTimeoutSeconds { get; set; } = 15;
+
     public WinSpcDialect Dialect => Provider.Trim().ToLowerInvariant() switch
     {
         "sqlserver" => WinSpcDialect.SqlServer,
