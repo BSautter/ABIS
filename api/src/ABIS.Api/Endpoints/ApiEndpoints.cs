@@ -27,11 +27,17 @@ public static class ApiEndpoints
     /// <c>f_security_door</c> checks (see <c>legacy/src/security/f_security_door.srf</c>).
     /// A <b>mutating</b> request (POST/PUT/PATCH/DELETE) under a mapped tag requires the
     /// caller to hold Write (level 1) on that feature — mirroring the legacy screens, which
-    /// gate writes with <c>IF f_security_door("…") = 1</c>. Only tags that map 1:1 to a
-    /// single legacy feature are listed; ambiguous tags (Shipments, Dies, Sketches, Sales,
-    /// Accounting, Downtime, Jobs, Stacker, ScanLog, Carriers, ProdFolder) are intentionally
-    /// left ungated pending live <c>security_application</c> verification — see NEXT_STEPS.
-    /// Security-admin writes keep their own inline "User Control"/"User Group Control" gates.</summary>
+    /// gate writes with <c>IF f_security_door("…") = 1</c>.
+    ///
+    /// Each tag is mapped to the same feature its module's <b>nav page</b> is gated on
+    /// (<c>shell.ts</c>), which guarantees consistency: any OIDC end-user who can reach the
+    /// page already holds the feature, so the write gate can't lock them out, and the plant
+    /// kiosks/edge (API-key service accounts) bypass the gate entirely (floor writes unaffected).
+    /// Tags whose nav page has <em>no</em> feature (Dies, Sketches, Sales, Accounting, Trucks,
+    /// Carriers, DAS, ScanLog, OpcLog) are deliberately left ungated — those pages are open in
+    /// the UI, so there is no authoritative feature name to gate the API on without risking a
+    /// lockout; they await live <c>security_application</c> verification. Security-admin writes
+    /// keep their own inline "User Control"/"User Group Control" gates.</summary>
     private static readonly IReadOnlyDictionary<string, string> FeatureByTag = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         ["Orders"] = "Order Entry",
@@ -39,11 +45,19 @@ public static class ApiEndpoints
         ["Customers"] = "Order Entry",          // customer master is edited from the order-entry module
         ["Parts"] = "Part Number",
         ["Coils"] = "Inventory(Coil)",
+        ["CoilOwnership"] = "Inventory(Coil)",  // coil-ownership page is gated on Inventory(Coil)
         ["Skids"] = "Inventory(Skid)",
         ["Warehouse"] = "Warehouse",
+        ["Shipments"] = "Warehouse",            // the shipping page is gated on Warehouse
+        ["Stacker"] = "Warehouse",              // the stacker page is gated on Warehouse
         ["Receiving"] = "Shipment(Receiving)",
         ["CoilEval"] = "Quality Control",
         ["Quality"] = "Quality Control",
+        ["TestResults"] = "Quality Control",    // test-results page is gated on Quality Control
+        ["Recovery"] = "Quality Control",       // recovery page is gated on Quality Control
+        ["Jobs"] = "Production Control",         // jobs page is gated on Production Control
+        ["ProdFolder"] = "Production Control",   // production-folder page is gated on Production Control
+        ["Downtime"] = "Downtime report",       // downtime page is gated on Downtime report
         ["Shifts"] = "Shift Control",
         ["Maintenance"] = "Maintenance_logs",
     };

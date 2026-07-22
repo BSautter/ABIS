@@ -125,7 +125,7 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [ ] **M** Maintenance parts/spares inventory; equipment hierarchy cascade + More-Details; log record-nav + maintenance reports
 - [ ] **M** Uptime reports (uptime, uptime-per-line) + downtime pivots (job/day/month/year/part/shift + dt-vs-production ratio)
 - [ ] **M** Native Excel export (reporting is CSV-only)
-- [ ] **C/H** Feature-gate the last ~12 write tags still auth-only (Shipments / Dies / Sketches / Accounting / Sales / CoilOwnership / DAS / Stacker / Recovery / TestResults / Downtime)
+- [~] **C/H** Feature-gate the write tags still auth-only. Done for every tag that maps 1:1 to a nav-gated feature (safe — the user who can reach the page already holds it; kiosks/edge use the API key and bypass): **Jobs**→Production Control, **Shipments**/**Stacker**→Warehouse, **CoilOwnership**→Inventory(Coil), **TestResults**/**Recovery**→Quality Control, **ProdFolder**→Production Control, **Downtime**→Downtime report (added to `FeatureByTag`). Still **deferred:** Dies / Sketches / Sales / Accounting / Trucks / Carriers / DAS / ScanLog / OpcLog — their nav pages have NO feature gate, so there's no authoritative feature name to gate the API on without risking a lockout; needs live `security_application` verification.
 - [ ] **M** OPC-log collector + item-selection config (viewer is read-only; edge is the producer); source/host/device tree
 - [ ] **M** Step-up re-auth popup; in-DB job control (DBMS_SCHEDULER enable/disable/run-now)
 

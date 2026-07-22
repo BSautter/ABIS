@@ -1416,16 +1416,30 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     public async Task Coil_transfer_performed_by_comes_from_the_principal()
     {
         // An OIDC end-user (X-User-Login) transferring coil 5001 (owner 4001 -> 4002): the
-        // certificate's performedBy is their login, not the client-supplied "SPOOFED".
+        // certificate's performedBy is their login, not the client-supplied "SPOOFED". jsmith
+        // holds Inventory(Coil) Write (via the Operators group), which the CoilOwnership write
+        // gate now requires.
         var req = new HttpRequestMessage(HttpMethod.Post, "/api/coil-ownership/transfers")
         {
             Content = JsonContent.Create(new { coilAbcNumOrig = 5001, customerIdNew = 4002, transferPerformedBy = "SPOOFED" }),
         };
-        req.Headers.Add("X-User-Login", "auditor7");
+        req.Headers.Add("X-User-Login", "jsmith");
         var resp = await _client.SendAsync(req);
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
         var created = await resp.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("auditor7", created.GetProperty("transferPerformedBy").GetString());
+        Assert.Equal("jsmith", created.GetProperty("transferPerformedBy").GetString());
+    }
+
+    [Fact]
+    public async Task Coil_ownership_write_is_gated_on_inventory_coil_feature()
+    {
+        // mlee (Admins group) has no Inventory(Coil) grant → the CoilOwnership write is forbidden.
+        var req = new HttpRequestMessage(HttpMethod.Post, "/api/coil-ownership/transfers")
+        {
+            Content = JsonContent.Create(new { coilAbcNumOrig = 5001, customerIdNew = 4002 }),
+        };
+        req.Headers.Add("X-User-Login", "mlee");
+        Assert.Equal(HttpStatusCode.Forbidden, (await _client.SendAsync(req)).StatusCode);
     }
 
     [Fact]
