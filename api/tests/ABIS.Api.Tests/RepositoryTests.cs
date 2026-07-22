@@ -733,7 +733,7 @@ public sealed class RepositoryTests : IDisposable
     public void Sort_defaults_when_no_field_supplied()
     {
         Assert.True(Sort.TryResolve("jobs", null, null, out var orderBy, out _));
-        Assert.Equal("ab_job_num", orderBy);
+        Assert.Equal("ab_job_num DESC", orderBy);   // newest-first default (so "Recent" shows current jobs, not 1999)
     }
 
     [Fact]

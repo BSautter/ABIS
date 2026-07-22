@@ -35,7 +35,9 @@ public static class Sort
         ["jobs"] = new(Cols(
             ("abJobNum", "ab_job_num"), ("jobStatus", "job_status"), ("lineNum", "line_num"),
             ("dueDate", "due_date"), ("createDate", "create_date"), ("materialYield", "material_yield")),
-            DefaultOrderBy: "ab_job_num", TieBreaker: "ab_job_num"),
+            // Default NEWEST-first: ab_job_num is a sequence, so DESC surfaces current jobs, not ones from 1999.
+            // (This matches GetJobsAsync's own default; without it the "Recent"/completed list showed the oldest.)
+            DefaultOrderBy: "ab_job_num DESC", TieBreaker: "ab_job_num"),
 
         ["coils"] = new(Cols(
             ("coilAbcNum", "coil_abc_num"), ("alloy", "coil_alloy2"), ("temper", "coil_temper"),
