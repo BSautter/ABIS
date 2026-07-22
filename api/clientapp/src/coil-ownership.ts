@@ -45,14 +45,18 @@ function scaffold(): string {
     <div id="pane-new" class="grid" style="display:none">
       <div class="stack"><div class="card">
         <header><h2>Pick a coil to transfer</h2></header>
-        <div class="body"><form id="coilForm" class="frow" style="margin-bottom:8px">
-          <div class="fld"><label>Customer id</label><input id="fCoilCust" inputmode="numeric" style="width:110px" placeholder="any" /></div>
-          <div class="fld"><label>Search</label><input id="fCoilSearch" style="width:130px" placeholder="coil / lot" /></div>
-          <button class="btn sm" type="submit">Find coils</button>
-        </form></div>
-        <div style="overflow-x:auto"><table class="tbl" style="min-width:520px">
-          <thead><tr><th>Coil</th><th>Owner</th><th>Org</th><th>Lot</th><th>Metal</th><th class="num">Balance</th></tr></thead>
-          <tbody id="tCoils"><tr><td colspan="6" class="muted">Find transferable coils.</td></tr></tbody>
+        <div class="body">
+          <form id="coilForm" class="frow" style="margin-bottom:8px;align-items:center">
+            <div class="fld"><label>Customer id</label><input id="fCoilCust" inputmode="numeric" style="width:110px" placeholder="any" /></div>
+            <div class="fld"><label>Search</label><input id="fCoilSearch" style="width:130px" placeholder="coil / lot" /></div>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="fReadyOnly" /> Ready only</label>
+            <button class="btn sm" type="submit">Find coils</button>
+          </form>
+          <div class="frow" style="align-items:center;gap:10px"><button class="btn sm ghost" id="btnMarkReady" type="button">Mark checked → Ready for transfer</button><span id="okReady" class="ok-note"></span></div>
+        </div>
+        <div style="overflow-x:auto"><table class="tbl" style="min-width:560px">
+          <thead><tr><th></th><th>Coil</th><th>Owner</th><th>Org</th><th>Lot</th><th>Metal</th><th class="num">Balance</th><th>Status</th></tr></thead>
+          <tbody id="tCoils"><tr><td colspan="8" class="muted">Find transferable coils.</td></tr></tbody>
         </table></div>
       </div></div>
       <div class="stack"><div class="card">
@@ -122,19 +126,46 @@ async function openCertificate(certificateNum: number): Promise<void> {
 async function searchCoils(): Promise<void> {
   setErr('');
   try {
-    const cust = v('#fCoilCust');
-    const list = await client().getTransferableCoils(cust ? Number(cust) : undefined, v('#fCoilSearch') || undefined);
-    $('#tCoils').innerHTML = (list ?? []).length ? (list ?? []).map((c) => `
+    // Raw authFetch (not the generated client) so the readyOnly filter + the new bulk-mark
+    // endpoint work regardless of client regeneration.
+    const qs = new URLSearchParams();
+    if (v('#fCoilCust')) qs.set('customerId', v('#fCoilCust'));
+    if (v('#fCoilSearch')) qs.set('search', v('#fCoilSearch'));
+    if ($<HTMLInputElement>('#fReadyOnly').checked) qs.set('readyOnly', 'true');
+    const r = await authFetch(`/api/coil-ownership/transferable-coils?${qs.toString()}`);
+    if (!r.ok) { setErr(`Coil search failed (${r.status}).`); return; }
+    const list: any[] = await r.json();
+    $('#tCoils').innerHTML = list.length ? list.map((c) => `
       <tr class="click" data-coil="${c.coilAbcNum}" data-owner="${c.customerId ?? ''}">
+        <td><input type="checkbox" class="ck" data-coil="${c.coilAbcNum}" /></td>
         <td class="mono">${esc(c.coilAbcNum)}</td><td>${esc(c.customerShortName)}</td><td class="mono">${esc(c.coilOrgNum)}</td>
-        <td class="mono">${esc(c.lotNum)}</td><td>${esc(c.coilAlloy2)} ${esc(c.coilTemper)}</td><td class="num">${esc(num(c.netWtBalance))}</td></tr>`).join('')
-      : '<tr><td colspan="6" class="muted">No coils.</td></tr>';
+        <td class="mono">${esc(c.lotNum)}</td><td>${esc(c.coilAlloy2)} ${esc(c.coilTemper)}</td><td class="num">${esc(num(c.netWtBalance))}</td>
+        <td>${c.coilStatus === 12 ? '<span class="chip ok">Ready</span>' : `<span class="chip mut">${esc(c.coilStatus ?? '')}</span>`}</td></tr>`).join('')
+      : '<tr><td colspan="8" class="muted">No coils.</td></tr>';
     document.querySelectorAll<HTMLTableRowElement>('#tCoils tr.click').forEach((tr) =>
-      tr.addEventListener('click', () => {
+      tr.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).closest('.ck')) return;   // a checkbox click shouldn't pick the row
         setV('#tCoilOrig', tr.dataset.coil);
         $('#pickedOwner').textContent = tr.dataset.owner ? `current owner: customer ${tr.dataset.owner}` : '';
       }));
   } catch (e) { setErr(`Coil search failed: ${(e as Error).message}`); }
+}
+
+async function markReady(): Promise<void> {
+  const ids = Array.from(document.querySelectorAll<HTMLInputElement>('#tCoils .ck:checked')).map((c) => Number(c.dataset.coil));
+  if (!ids.length) { setErr('Check one or more coils to mark ready.'); return; }
+  setErr(''); $('#okReady').textContent = ''; setBusy(true);
+  try {
+    const r = await authFetch('/api/coils/ready-for-transfer', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coilAbcNums: ids }),
+    });
+    if (!r.ok) { setErr(`Mark ready failed (${r.status}).`); return; }
+    const res = await r.json();
+    const skipped = (res.skipped ?? []).length;
+    $('#okReady').textContent = `✓ ${res.updated} marked ready${skipped ? `, ${skipped} skipped` : ''}.`;
+    await searchCoils();
+  } catch (e) { setErr(`Mark ready failed: ${(e as Error).message}`); }
+  finally { setBusy(false); }
 }
 
 async function submitTransfer(): Promise<void> {
@@ -170,6 +201,7 @@ function showTab(name: string): void {
   ['ledger', 'new'].forEach((t) => $(`#tab-${t}`).addEventListener('click', () => showTab(t)));
   $<HTMLFormElement>('#ledgerForm').addEventListener('submit', (e) => { e.preventDefault(); void loadLedger(); });
   $<HTMLFormElement>('#coilForm').addEventListener('submit', (e) => { e.preventDefault(); void searchCoils(); });
+  $('#btnMarkReady').addEventListener('click', () => void markReady());
   $('#btnTransfer').addEventListener('click', () => void submitTransfer());
   showTab('ledger');
   await loadLedger();

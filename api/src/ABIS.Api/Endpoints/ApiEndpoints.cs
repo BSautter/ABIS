@@ -2515,8 +2515,8 @@ public static class ApiEndpoints
            .WithSummary("The printable transfer certificate (full customer addresses + coil details).")
            .Produces<CoilOwnershipTransferCertificate>().Produces(StatusCodes.Status404NotFound);
 
-        api.MapGet("/coil-ownership/transferable-coils", async (IAbisRepository repo, CancellationToken ct, long? customerId = null, string? search = null) =>
-                Results.Ok(await repo.GetTransferableCoilsAsync(customerId, search, ct)))
+        api.MapGet("/coil-ownership/transferable-coils", async (IAbisRepository repo, CancellationToken ct, long? customerId = null, string? search = null, bool readyOnly = false) =>
+                Results.Ok(await repo.GetTransferableCoilsAsync(customerId, search, readyOnly, ct)))
            .WithName("GetTransferableCoils").WithTags("CoilOwnership")
            .WithSummary("Coils eligible to transfer, with their current owner (the coil picker).")
            .Produces<IReadOnlyList<TransferableCoil>>();

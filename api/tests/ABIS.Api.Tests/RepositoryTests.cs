@@ -1646,7 +1646,7 @@ public sealed class RepositoryTests : IDisposable
         // Transferable = has material left (net_wt_balance > 0). Coil 5004 is fully
         // consumed (balance 0), so it must not appear; 5001-5003 still have balance.
         // Guards the live-only whole-table-scan bug (unscoped returned ~150k coils).
-        var coils = await _repo.GetTransferableCoilsAsync(null, null, CancellationToken.None);
+        var coils = await _repo.GetTransferableCoilsAsync(null, null, false, CancellationToken.None);
         var ids = coils.Select(c => c.CoilAbcNum).ToList();
         Assert.Contains(5001L, ids);
         Assert.Contains(5002L, ids);
@@ -1655,8 +1655,14 @@ public sealed class RepositoryTests : IDisposable
         Assert.All(coils, c => Assert.True(c.NetWtBalance > 0));
 
         // Customer scope still narrows within the transferable set.
-        var cust4001 = await _repo.GetTransferableCoilsAsync(4001, null, CancellationToken.None);
+        var cust4001 = await _repo.GetTransferableCoilsAsync(4001, null, false, CancellationToken.None);
         Assert.All(cust4001, c => Assert.Equal(4001L, c.CustomerId));
+
+        // readyOnly restricts to status 12: mark 5001 ready, then only status-12 coils return.
+        await _repo.SetCoilsReadyForTransferAsync(new long[] { 5001 }, CancellationToken.None);
+        var ready = await _repo.GetTransferableCoilsAsync(null, null, true, CancellationToken.None);
+        Assert.All(ready, c => Assert.Equal(12, c.CoilStatus));
+        Assert.Contains(5001L, ready.Select(c => c.CoilAbcNum));
     }
 
     // ---- maintenance log -----------------------------------------------

@@ -2314,10 +2314,12 @@ public sealed class AbisRepository : IAbisRepository
     // (~150k rows on the live DB, of which only ~8.8k have a balance) — unusably slow
     // (~200s) and wrong (consumed coils can't be transferred). Optional customer scope + a
     // text search on org-num / lot / notes narrow it further.
-    public async Task<IReadOnlyList<TransferableCoil>> GetTransferableCoilsAsync(long? customerId, string? search, CancellationToken ct)
+    public async Task<IReadOnlyList<TransferableCoil>> GetTransferableCoilsAsync(long? customerId, string? search, bool readyOnly, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
         var like = string.IsNullOrWhiteSpace(search) ? null : $"%{search.Trim()}%";
+        // readyOnly restricts the picker to coils marked Ready for transfer (status 12) — the
+        // intended precondition once operators have bulk-marked them.
         var rows = await conn.QueryAsync<TransferableCoil>(new CommandDefinition(
             """
             SELECT c.coil_abc_num AS CoilAbcNum, c.customer_id AS CustomerId, cu.customer_short_name AS CustomerShortName,
@@ -2328,9 +2330,10 @@ public sealed class AbisRepository : IAbisRepository
             LEFT JOIN customer cu ON cu.customer_id = c.customer_id
             WHERE c.net_wt_balance > 0
               AND (:cust IS NULL OR c.customer_id = :cust)
+              AND (:ready = 0 OR c.coil_status = 12)
               AND (:pat IS NULL OR c.coil_org_num LIKE :pat OR c.lot_num LIKE :pat OR c.coil_notes LIKE :pat)
             ORDER BY c.coil_abc_num
-            """, new { cust = customerId, pat = like }, cancellationToken: ct));
+            """, new { cust = customerId, pat = like, ready = readyOnly ? 1 : 0 }, cancellationToken: ct));
         return rows.AsList();
     }
 

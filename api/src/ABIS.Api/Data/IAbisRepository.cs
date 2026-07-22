@@ -94,7 +94,7 @@ public interface IAbisRepository
     // ---- Coil ownership transfer ---------------------------------------
     Task<IReadOnlyList<CoilOwnershipTransfer>> GetCoilOwnershipTransfersAsync(long? customerId, CancellationToken ct);
     Task<CoilOwnershipTransferCertificate?> GetCoilOwnershipTransferCertificateAsync(long certificateNum, CancellationToken ct);
-    Task<IReadOnlyList<TransferableCoil>> GetTransferableCoilsAsync(long? customerId, string? search, CancellationToken ct);
+    Task<IReadOnlyList<TransferableCoil>> GetTransferableCoilsAsync(long? customerId, string? search, bool readyOnly, CancellationToken ct);
     Task<CoilOwnershipTransfer?> CreateCoilOwnershipTransferAsync(CoilOwnershipTransferWrite body, CancellationToken ct);
 
     // ---- Security / authorization -------------------------------------
