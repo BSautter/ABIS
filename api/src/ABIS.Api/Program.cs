@@ -33,6 +33,14 @@ var dbOptions = builder.Configuration.GetSection(DatabaseOptions.SectionName).Ge
 builder.Services.AddSingleton(dbOptions);
 builder.Services.AddSingleton<IDbConnectionFactory, DbConnectionFactory>();
 builder.Services.AddScoped<IAbisRepository, AbisRepository>();
+
+// Secondary, read-only WinSPC (SQL Server) quality database. Inert unless WinSpc:Enabled=true
+// with a connection string — CI and un-wired deployments get a disabled connector.
+var winSpcOptions = builder.Configuration.GetSection(Abis.Api.Data.WinSpc.WinSpcOptions.SectionName)
+                        .Get<Abis.Api.Data.WinSpc.WinSpcOptions>() ?? new Abis.Api.Data.WinSpc.WinSpcOptions();
+builder.Services.AddSingleton(winSpcOptions);
+builder.Services.AddSingleton<Abis.Api.Data.WinSpc.IWinSpcConnectionFactory, Abis.Api.Data.WinSpc.WinSpcConnectionFactory>();
+builder.Services.AddScoped<Abis.Api.Data.WinSpc.IWinSpcRepository, Abis.Api.Data.WinSpc.WinSpcRepository>();
 // Bind large CLOB payloads (generated EDI X12) correctly on Oracle 11g — see ClobText.
 Dapper.SqlMapper.AddTypeHandler(new Abis.Api.Data.ClobTextHandler());
 

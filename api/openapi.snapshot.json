@@ -6194,6 +6194,95 @@
         }
       }
     },
+    "/api/winspc/health": {
+      "get": {
+        "tags": [
+          "Quality"
+        ],
+        "summary": "WinSPC connector status: enabled + reachable (the read-only SPC quality DB).",
+        "operationId": "WinSpcHealth",
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/winspc/job/{abJobNum}/qc": {
+      "get": {
+        "tags": [
+          "Quality"
+        ],
+        "summary": "WinSPC dimensional QC (readings + spec limits + in/out-of-spec) for an ABIS job number.",
+        "operationId": "WinSpcJobQc",
+        "parameters": [
+          {
+            "name": "abJobNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WinSpcQc"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/winspc/coil/{coilNum}/qc": {
+      "get": {
+        "tags": [
+          "Quality"
+        ],
+        "summary": "WinSPC dimensional QC for an ABIS coil number (matched on the WinSPC 'Coil #' tag).",
+        "operationId": "WinSpcCoilQc",
+        "parameters": [
+          {
+            "name": "coilNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WinSpcQc"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/quality/scrap-types": {
       "get": {
         "tags": [
@@ -20509,6 +20598,90 @@
           "netWtBalance": {
             "type": "number",
             "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "WinSpcQc": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "nullable": true
+          },
+          "keyKind": {
+            "type": "string",
+            "nullable": true
+          },
+          "totalReadings": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "inSpecReadings": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "outOfSpecReadings": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "readings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WinSpcReading"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "WinSpcReading": {
+        "type": "object",
+        "properties": {
+          "readingAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "partName": {
+            "type": "string",
+            "nullable": true
+          },
+          "characteristic": {
+            "type": "string",
+            "nullable": true
+          },
+          "dimension": {
+            "type": "string",
+            "nullable": true
+          },
+          "reading": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "lsl": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "target": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "usl": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "units": {
+            "type": "string",
+            "nullable": true
+          },
+          "inSpec": {
+            "type": "boolean",
             "nullable": true
           }
         },

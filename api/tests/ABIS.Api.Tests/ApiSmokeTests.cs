@@ -982,6 +982,22 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task WinSpc_reports_disabled_and_guards_qc_endpoints()
+    {
+        // The connector is off in the test config → health says disabled, QC endpoints 503.
+        var health = await _client.GetFromJsonAsync<JsonElement>("/api/winspc/health");
+        Assert.False(health.GetProperty("enabled").GetBoolean());
+        Assert.False(health.GetProperty("reachable").GetBoolean());
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, (await _client.GetAsync("/api/winspc/job/124346/qc")).StatusCode);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, (await _client.GetAsync("/api/winspc/coil/F50043566/qc")).StatusCode);
+
+        // Auth still applies.
+        var bare = _factory.CreateClient();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await bare.GetAsync("/api/winspc/job/124346/qc")).StatusCode);
+    }
+
+    [Fact]
     public async Task Typed_client_demo_page_is_served()
     {
         var bare = _factory.CreateClient();

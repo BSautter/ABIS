@@ -26,6 +26,10 @@
     <!-- Production driver. Selected at runtime via Database:Provider=Oracle.
          Not exercised by the test suite (no Oracle instance in CI). -->
     <PackageReference Include="Oracle.ManagedDataAccess.Core" Version="23.5.1" />
+    <!-- Read-only driver for the secondary WinSPC (SQL Server) quality database.
+         Only used when WinSpc:Enabled=true; the test suite exercises the WinSPC
+         repository against a SQLite mimic, not this driver (no SQL Server in CI). -->
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
 

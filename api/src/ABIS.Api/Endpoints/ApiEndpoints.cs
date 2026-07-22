@@ -441,6 +441,34 @@ public static class ApiEndpoints
            .WithSummary("Release a coil from QA hold (restores its pre-hold status, or ToStatus) and record the audit; 404 unknown, 409 if not on hold.")
            .Produces<CoilQaTransition>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
 
+        // ---- WinSPC dimensional QC (read-only secondary SQL Server DB) ---
+        // Surfaces the plant's WinSPC (SPC) dimensional measurements + spec limits + pass/fail for
+        // an ABIS job/coil, joined via WinSPC's free-text "Job #"/"Coil #" tags. Read-only; 503
+        // when the connector isn't configured (WinSpc:Enabled=false).
+        api.MapGet("/winspc/health", async (Abis.Api.Data.WinSpc.IWinSpcRepository win, CancellationToken ct) =>
+            {
+                var err = await win.CheckAsync(ct);
+                return Results.Ok(new { enabled = win.Enabled, reachable = err is null, error = err });
+            })
+           .WithName("WinSpcHealth").WithTags("Quality")
+           .WithSummary("WinSPC connector status: enabled + reachable (the read-only SPC quality DB).");
+
+        api.MapGet("/winspc/job/{abJobNum:long}/qc", async (long abJobNum, Abis.Api.Data.WinSpc.IWinSpcRepository win, CancellationToken ct) =>
+                await win.GetJobQcAsync(abJobNum.ToString(), ct) is { } qc
+                    ? Results.Ok(qc)
+                    : WinSpcDisabled())
+           .WithName("WinSpcJobQc").WithTags("Quality")
+           .WithSummary("WinSPC dimensional QC (readings + spec limits + in/out-of-spec) for an ABIS job number.")
+           .Produces<Abis.Api.Data.WinSpc.WinSpcQc>().Produces(StatusCodes.Status503ServiceUnavailable);
+
+        api.MapGet("/winspc/coil/{coilNum}/qc", async (string coilNum, Abis.Api.Data.WinSpc.IWinSpcRepository win, CancellationToken ct) =>
+                await win.GetCoilQcAsync(coilNum, ct) is { } qc
+                    ? Results.Ok(qc)
+                    : WinSpcDisabled())
+           .WithName("WinSpcCoilQc").WithTags("Quality")
+           .WithSummary("WinSPC dimensional QC for an ABIS coil number (matched on the WinSPC 'Coil #' tag).")
+           .Produces<Abis.Api.Data.WinSpc.WinSpcQc>().Produces(StatusCodes.Status503ServiceUnavailable);
+
         // ---- Orders -----------------------------------------------------
         api.MapGet("/orders", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, long? customerId = null, string? po = null,
@@ -3167,6 +3195,10 @@ public static class ApiEndpoints
     {
         if (v is { } d && d <= 0m) e[field] = [$"{field} must be greater than zero."];
     }
+
+    private static IResult WinSpcDisabled() => Results.Problem(
+        statusCode: StatusCodes.Status503ServiceUnavailable, title: "WinSPC not configured",
+        detail: "The WinSPC connector is disabled (set WinSpc:Enabled=true with a read-only connection string).");
 
     // Map a QA hold/release outcome to the right HTTP status.
     private static IResult QaResult(CoilQaTransition r, long coilAbcNum) => r.Outcome switch
