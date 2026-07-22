@@ -2402,7 +2402,7 @@ public static class ApiEndpoints
                     : Results.Created($"/api/coil-ownership/transfers/{created.CertificateNum}/certificate", created);
             })
            .WithName("CreateCoilOwnershipTransfer").WithTags("CoilOwnership")
-           .WithSummary("Record a coil-ownership transfer (issues a certificate; re-points coil ownership). 409 if the new owner already owns the coil.")
+           .WithSummary("Record a coil-ownership transfer: issues a certificate, MINTS a new coil for the new owner (status New, carrying the original's attributes) and marks the original coil Transferred — it does not mutate ownership in place. The new coil_abc_num is server-assigned. 409 if the new owner already owns the coil.")
            .Produces<CoilOwnershipTransfer>(StatusCodes.Status201Created)
            .Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
 

@@ -822,6 +822,16 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
         var real = await _client.PostAsJsonAsync("/api/coil-ownership/transfers",
             new { coilAbcNumOrig = 5002, customerIdNew = 4002 });
         Assert.Equal(HttpStatusCode.Created, real.StatusCode);
+        // The transfer MINTS a new coil (not an in-place re-owner): the source coil 5002 is now Transferred (13),
+        // and the certificate points at a freshly-minted coil id.
+        var cert = await real.Content.ReadFromJsonAsync<JsonElement>();
+        var newCoilId = cert.GetProperty("coilAbcNumNew").GetInt64();
+        Assert.True(newCoilId > 0 && newCoilId != 5002);
+        var origCoil = await _client.GetFromJsonAsync<JsonElement>("/api/coils/5002");
+        Assert.Equal(13, origCoil.GetProperty("coilStatus").GetInt32());
+        var mintedCoil = await _client.GetFromJsonAsync<JsonElement>($"/api/coils/{newCoilId}");
+        Assert.Equal(2, mintedCoil.GetProperty("coilStatus").GetInt32());
+        Assert.Equal(4002, mintedCoil.GetProperty("customerId").GetInt64());
     }
 
     [Fact]

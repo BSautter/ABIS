@@ -587,6 +587,8 @@ public sealed class CoilOwnershipTransferWrite
 {
     public long? CoilAbcNumOrig { get; set; }
     public long? CustomerIdNew { get; set; }
+    /// <summary>Ignored — the transfer MINTS a new coil, so the new coil_abc_num is server-assigned. Kept for
+    /// backward compatibility with older clients.</summary>
     public long? CoilAbcNumNew { get; set; }
     public string? TransferPerformedBy { get; set; }
     public string? AuthorizationNote { get; set; }

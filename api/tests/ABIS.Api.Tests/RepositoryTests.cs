@@ -1347,6 +1347,56 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task CoilOwnershipTransfer_mints_a_new_coil_and_marks_the_original_transferred()
+    {
+        // A coil owned by customer 7301, ready-for-transfer (status 12), with distinctive attributes incl. an
+        // UNMODELED column (customer_po) — inserted locally to keep shared counts stable.
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO customer (customer_id, customer_full_name, customer_short_name, customer_type) VALUES (7301, 'OWNER A', 'OWN-A', 1);
+                INSERT INTO customer (customer_id, customer_full_name, customer_short_name, customer_type) VALUES (7302, 'OWNER B', 'OWN-B', 1);
+                INSERT INTO coil (coil_abc_num, coil_org_num, coil_status, customer_id, lot_num, net_wt, net_wt_balance, coil_location, customer_po) VALUES (73100, 'ORG-731', 12, 7301, 'LOT-731', 12000, 9000, 'Building 3', 'CPO-731');
+                """;
+            cmd.ExecuteNonQuery();
+        }
+
+        var result = await _repo.CreateCoilOwnershipTransferAsync(new Abis.Api.Models.CoilOwnershipTransferWrite
+        {
+            CoilAbcNumOrig = 73100, CustomerIdNew = 7302, TransferPerformedBy = "tester",
+        }, CancellationToken.None);
+        Assert.NotNull(result);
+        var newId = result!.CoilAbcNumNew!.Value;
+        Assert.True(newId > 0 && newId != 73100);   // a fresh coil id was minted
+
+        // The original coil is NOT re-owned in place — it's marked Transferred (13) and keeps its owner (audit trail).
+        var orig = await _repo.GetCoilAsync(73100, CancellationToken.None);
+        Assert.Equal(13, orig!.CoilStatus);
+        Assert.Equal(7301, orig.CustomerId);
+
+        // The minted coil is New (2), owned by the new customer, from the old owner, carrying the source attributes.
+        var minted = await _repo.GetCoilAsync(newId, CancellationToken.None);
+        Assert.Equal(2, minted!.CoilStatus);
+        Assert.Equal(7302, minted.CustomerId);
+        Assert.Equal(7301, minted.CoilFromCustId);
+        Assert.Equal("ORG-731", minted.CoilOrgNum);
+        Assert.Equal("LOT-731", minted.LotNum);
+        Assert.Equal(12000m, minted.NetWt);
+        Assert.Equal("Building 3", minted.CoilLocation);
+
+        // The full-column copy carried an UNMODELED column (customer_po) too — verify via a direct read.
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"SELECT customer_po FROM coil WHERE coil_abc_num = {newId}";
+            Assert.Equal("CPO-731", (string?)cmd.ExecuteScalar());
+        }
+    }
+
+    [Fact]
     public async Task GetScanLogs_lists_newest_first_and_filters_by_job()
     {
         var all = await _repo.GetScanLogsAsync(1, 25, abJobNum: null, orderBy: null, CancellationToken.None);

@@ -528,9 +528,9 @@ test('coil-ownership flow: transferable coils picker (typed)', async () => {
   assert.ok(beta.every((c) => c.customerId === 4002));
 });
 
-// The transfer write flow: record a transfer; it issues the next certificate and
-// re-points the coil's owner to the new customer (prior owner preserved).
-test('coil-ownership flow: createTransfer issues cert + re-points owner (typed)', async () => {
+// The transfer write flow: record a transfer; it issues the next certificate and MINTS a new
+// coil for the new owner (the source coil is marked Transferred, its own owner preserved).
+test('coil-ownership flow: createTransfer issues cert + mints a new coil (typed)', async () => {
   // coil 5002 is owned by ACME (4001); transfer it to BETA (4002).
   const before = await client.getCoil(5002);
   assert.equal(before.customerId, 4001);
@@ -543,10 +543,17 @@ test('coil-ownership flow: createTransfer issues cert + re-points owner (typed)'
   assert.equal(created.customerIdOrig, 4001);
   assert.equal(created.customerIdNew, 4002);
 
-  // the coil's ownership moved, prior owner kept in coil_from_cust_id
+  // the source coil is Transferred (13) and keeps its own owner (audit trail preserved, not re-pointed)
   const after = await client.getCoil(5002);
-  assert.equal(after.customerId, 4002);
-  assert.equal(after.coilFromCustId, 4001);
+  assert.equal(after.coilStatus, 13);
+  assert.equal(after.customerId, 4001);
+
+  // a new coil was minted for the new owner: New (2), owned by BETA, from ACME
+  assert.ok(created.coilAbcNumNew > 0 && created.coilAbcNumNew !== 5002);
+  const minted = await client.getCoil(created.coilAbcNumNew);
+  assert.equal(minted.customerId, 4002);
+  assert.equal(minted.coilFromCustId, 4001);
+  assert.equal(minted.coilStatus, 2);
 
   // and the certificate is retrievable with both customers resolved
   const cert = await client.getCoilOwnershipTransferCertificate(created.certificateNum);

@@ -2172,6 +2172,42 @@ public sealed class AbisRepository : IAbisRepository
             new { id = body.CoilAbcNumOrig }, transaction: tx, cancellationToken: ct));
         if (coil is null) return null; // the coil to transfer does not exist
 
+        // MINT semantics (legacy w_coil_ownership_transfer): a transfer does NOT mutate the coil's customer_id
+        // in place (which would erase the provenance) — it mints a NEW coil owned by the new customer (status 2 =
+        // New, coil_from_cust_id = the prior owner) that carries the original coil's full attribute set, and marks
+        // the ORIGINAL coil status 13 = Transferred (terminal). So both coils survive: the source shows its
+        // transfer, and the new owner gets a fresh coil_abc_num. COIL_ABC_NUM_SEQ (Oracle) / MAX+1 (SQLite).
+        var newCoilId = await NextIdAsync(conn, tx, "coil", "coil_abc_num", ct);
+
+        // Copy every column of the source coil except its PK — read the live column set from the result schema
+        // so it works on both Oracle (full legacy column set: cash_date, part_num, material_num, damaged_code, …)
+        // and the SQLite fixture, with no hard-coded list to drift. Column names come from the DB catalog, not
+        // user input, so interpolating them is injection-safe.
+        var copyCols = new List<string>();
+        await using (var schemaCmd = conn.CreateCommand())
+        {
+            schemaCmd.CommandText = "SELECT * FROM coil WHERE 1 = 0";
+            schemaCmd.Transaction = tx;
+            await using var reader = await schemaCmd.ExecuteReaderAsync(ct);
+            for (var i = 0; i < reader.FieldCount; i++)
+            {
+                var name = reader.GetName(i);
+                if (!name.Equals("coil_abc_num", StringComparison.OrdinalIgnoreCase)) copyCols.Add(name);
+            }
+        }
+        var colList = string.Join(", ", copyCols);
+        await conn.ExecuteAsync(new CommandDefinition(
+            $"INSERT INTO coil (coil_abc_num, {colList}) SELECT :newId, {colList} FROM coil WHERE coil_abc_num = :orig",
+            new { newId = newCoilId, orig = body.CoilAbcNumOrig }, transaction: tx, cancellationToken: ct));
+        // Re-owner the minted coil + reset it to New; the prior owner is captured in coil_from_cust_id.
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE coil SET customer_id = :custNew, coil_from_cust_id = :origOwner, coil_status = 2 WHERE coil_abc_num = :newId",
+            new { custNew = body.CustomerIdNew, origOwner = coil.CurrentCustomerId, newId = newCoilId }, transaction: tx, cancellationToken: ct));
+        // Mark the source coil Transferred (13) — terminal; it keeps its own owner for the audit trail.
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE coil SET coil_status = 13 WHERE coil_abc_num = :orig",
+            new { orig = body.CoilAbcNumOrig }, transaction: tx, cancellationToken: ct));
+
         var cert = await NextIdAsync(conn, tx, "coil_ownership_transfer", "certificate_num", ct);
         await conn.ExecuteAsync(new CommandDefinition(
             """
@@ -2182,17 +2218,11 @@ public sealed class AbisRepository : IAbisRepository
             """,
             new
             {
-                cert, coilOrig = body.CoilAbcNumOrig, coilNew = body.CoilAbcNumNew, org = coil.CoilOrgNum,
+                cert, coilOrig = body.CoilAbcNumOrig, coilNew = newCoilId, org = coil.CoilOrgNum,
                 custOrig = coil.CurrentCustomerId, custNew = body.CustomerIdNew, dt = (DateTime?)DateTime.UtcNow,
                 perf = body.TransferPerformedBy, auth = body.AuthorizationNote, note = body.Notes
             },
             transaction: tx, cancellationToken: ct));
-
-        // Re-point ownership; SQLite and Oracle both evaluate the RHS with pre-update values,
-        // so coil_from_cust_id captures the prior owner in the same statement.
-        await conn.ExecuteAsync(new CommandDefinition(
-            "UPDATE coil SET coil_from_cust_id = customer_id, customer_id = :custNew WHERE coil_abc_num = :id",
-            new { custNew = body.CustomerIdNew, id = body.CoilAbcNumOrig }, transaction: tx, cancellationToken: ct));
 
         await tx.CommitAsync(ct);
         return (await GetCoilOwnershipTransfersAsync(null, ct)).First(t => t.CertificateNum == cert);
