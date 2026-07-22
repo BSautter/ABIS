@@ -897,6 +897,29 @@ public sealed class AbisRepository : IAbisRepository
         };
     }
 
+    public async Task<CoilDeleteResult> DeleteCoilAsync(long coilAbcNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var status = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(
+            "SELECT coil_status FROM coil WHERE coil_abc_num = :id", new { id = coilAbcNum }, cancellationToken: ct));
+        if (status is null && await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+                "SELECT COUNT(*) FROM coil WHERE coil_abc_num = :id", new { id = coilAbcNum }, cancellationToken: ct)) == 0)
+            return new CoilDeleteResult(CoilDeleteOutcome.NotFound);
+
+        if (status is 0 or 10 or 13)
+            return new CoilDeleteResult(CoilDeleteOutcome.InUse,
+                $"Coil {coilAbcNum} is {status switch { 0 => "done", 10 => "shipped", _ => "transferred" }} and cannot be deleted.");
+
+        var used = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM process_coil WHERE coil_abc_num = :id", new { id = coilAbcNum }, cancellationToken: ct));
+        if (used > 0)
+            return new CoilDeleteResult(CoilDeleteOutcome.InUse, $"Coil {coilAbcNum} has been applied to a job and cannot be deleted.");
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM coil WHERE coil_abc_num = :id", new { id = coilAbcNum }, cancellationToken: ct));
+        return new CoilDeleteResult(CoilDeleteOutcome.Deleted);
+    }
+
     public async Task<CustomerOrder> CreateOrderAsync(CustomerOrderWrite body, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

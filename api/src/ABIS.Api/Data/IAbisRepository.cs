@@ -34,6 +34,9 @@ public interface IAbisRepository
     /// <summary>Bulk-mark coils Ready for transfer (status 12). Skips terminal (0/10/13), already-12,
     /// zero-balance, and unknown coils, reporting the reason for each.</summary>
     Task<BulkCoilStatusResult> SetCoilsReadyForTransferAsync(IReadOnlyList<long> coilAbcNums, CancellationToken ct);
+    /// <summary>Delete a coil, guarded: refuses (InUse) a coil that's been applied to a job
+    /// (process_coil rows) or is terminal (done/shipped/transferred); NotFound if it doesn't exist.</summary>
+    Task<CoilDeleteResult> DeleteCoilAsync(long coilAbcNum, CancellationToken ct);
 
     // ---- Orders (read + write) -----------------------------------------
     Task<PagedResult<CustomerOrder>> GetOrdersAsync(int page, int pageSize, long? customerId, string? po, string? orderBy, CancellationToken ct);

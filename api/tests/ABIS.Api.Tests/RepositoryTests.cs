@@ -1428,6 +1428,32 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task DeleteCoil_is_guarded_against_in_use_and_terminal_coils()
+    {
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO coil (coil_abc_num, coil_org_num, coil_status, customer_id, lot_num, net_wt, net_wt_balance) VALUES (77200, 'D-772', 2, 4001, 'L', 5000, 5000);
+                INSERT INTO coil (coil_abc_num, coil_org_num, coil_status, customer_id, lot_num, net_wt, net_wt_balance) VALUES (77201, 'D-772b', 2, 4001, 'L', 5000, 5000);
+                INSERT INTO coil (coil_abc_num, coil_org_num, coil_status, customer_id, lot_num, net_wt, net_wt_balance) VALUES (77202, 'D-772c', 13, 4001, 'L', 5000, 5000);
+                INSERT INTO process_coil (ab_job_num, coil_abc_num, process_coil_status, process_end_wt, process_quantity) VALUES (77299, 77201, 2, 100, 100);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+        // Unknown → NotFound.
+        Assert.Equal(Abis.Api.Models.CoilDeleteOutcome.NotFound, (await _repo.DeleteCoilAsync(999998, CancellationToken.None)).Outcome);
+        // Applied to a job (process_coil row) → InUse.
+        Assert.Equal(Abis.Api.Models.CoilDeleteOutcome.InUse, (await _repo.DeleteCoilAsync(77201, CancellationToken.None)).Outcome);
+        // Terminal (transferred) → InUse.
+        Assert.Equal(Abis.Api.Models.CoilDeleteOutcome.InUse, (await _repo.DeleteCoilAsync(77202, CancellationToken.None)).Outcome);
+        // Fresh, unused → Deleted, then gone.
+        Assert.Equal(Abis.Api.Models.CoilDeleteOutcome.Deleted, (await _repo.DeleteCoilAsync(77200, CancellationToken.None)).Outcome);
+        Assert.Null(await _repo.GetCoilAsync(77200, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task SetCoilsReadyForTransfer_updates_eligible_and_skips_the_rest_with_reasons()
     {
         using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())

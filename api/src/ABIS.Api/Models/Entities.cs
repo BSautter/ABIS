@@ -383,6 +383,11 @@ public sealed class TestResult
     public decimal? Width { get; set; }
 }
 
+/// <summary>Outcome of a guarded coil delete, so the endpoint can map it to the right HTTP status.</summary>
+public enum CoilDeleteOutcome { Deleted, NotFound, InUse }
+
+public sealed record CoilDeleteResult(CoilDeleteOutcome Outcome, string? Reason = null);
+
 /// <summary>Result of a bulk coil status change: which coils were updated and which were skipped
 /// (with the reason), so the UI can report per-coil outcomes.</summary>
 public sealed class BulkCoilStatusResult

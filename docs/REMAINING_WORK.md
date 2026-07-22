@@ -93,10 +93,10 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 
 ### C3. Coils / receiving
 - [ ] **C** Warehouse skid CRUD + status-20 warehouse-coil mint (+ process_coil/sheet_skid rows, weight recon, package-num)
-- [ ] **H** Coil-ownership transfer mint semantics — mint a NEW `coil_abc_num` (status 2) + set original → status 13 (today: in-place `customer_id` UPDATE)
-- [ ] **H** Bulk "Change status → Ready for transfer" (status 12) — precondition of the transfer picker
+- [x] **H** Coil-ownership transfer mint semantics — done (#224): mints a NEW `coil_abc_num` (status 2, from-cust set) + original → status 13; cert carries the new id
+- [x] **H** Bulk "Change status → Ready for transfer" (status 12) — done (#240 `POST /coils/ready-for-transfer` with eligibility guards; #241 picker `readyOnly` filter + coil-ownership mark-ready UI)
 - [ ] **H** Scrap-skid lifecycle (delete / return-scrap / credit); sheet-skid modify/delete (weight+piece recon)
-- [ ] **H** Guarded coil delete; change-coil-customer-on-BOL cascade
+- [~] **H** Guarded coil delete — done (DELETE /coils/{n}, refuses coils applied to a job or done/shipped/transferred); change-coil-customer-on-BOL cascade still TODO
 - [ ] **H** Mint carries full coil attributes (cash_date / part_num / PO / material_num / coil_location / mid_num / damaged_code / …)
 - [ ] **H** QR / coil-quality capture + flaw mapping (`coil_quality*`); inbound status-on-receipt (received_time, damage codes)
 - [ ] **M/L** Import-from-BOL / show-archived-BOL browsers; multi-condition coil search; manual new-coil + live-scale weigh-in

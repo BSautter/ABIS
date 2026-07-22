@@ -439,6 +439,20 @@ public static class ApiEndpoints
            .WithSummary("Bulk-mark coils Ready for transfer (status 12) — the precondition for the ownership-transfer picker. Terminal (done/shipped/transferred), already-ready, zero-balance, and unknown coils are skipped with a reason.")
            .Produces<BulkCoilStatusResult>().ProducesValidationProblem();
 
+        api.MapDelete("/coils/{coilAbcNum:long}", async (long coilAbcNum, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var r = await repo.DeleteCoilAsync(coilAbcNum, ct);
+                return r.Outcome switch
+                {
+                    CoilDeleteOutcome.Deleted => Results.NoContent(),
+                    CoilDeleteOutcome.NotFound => Results.NotFound(),
+                    _ => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Coil in use", detail: r.Reason),
+                };
+            })
+           .WithName("DeleteCoil").WithTags("Coils")
+           .WithSummary("Delete a coil, guarded: 409 if it's been applied to a job or is done/shipped/transferred; 404 if unknown; 204 on delete.")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
+
         // ---- Coil QA hold (status 11 + COIL_TRACK_QA audit) --------------
         // The dedicated QA-hold transitions: unlike the generic PatchCoil, these record an audit
         // row for every hold/release and enforce the QA state machine (legacy w_qa_coil).
