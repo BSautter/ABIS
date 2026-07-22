@@ -4940,6 +4940,10 @@ public sealed class AbisRepository : IAbisRepository
         await using var conn = await OpenAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
         var id = await NextIdAsync(conn, tx, "sheet_skid_dimension_check", "dimension_check_num", ct);
+        // PC# auto-increment: when the caller doesn't supply one, take the next piece number on the skid.
+        var pcNumber = body.PcNumber ?? await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT COALESCE(MAX(pc_number), 0) + 1 FROM sheet_skid_dimension_check WHERE sheet_skid_num = :skid",
+            new { skid = sheetSkidNum }, tx, cancellationToken: ct));
         await conn.ExecuteAsync(new CommandDefinition(
             """
             INSERT INTO sheet_skid_dimension_check (dimension_check_num, sheet_skid_num, pc_number, gauge, width,
@@ -4948,13 +4952,43 @@ public sealed class AbisRepository : IAbisRepository
             """,
             new
             {
-                id, skid = sheetSkidNum, pc = body.PcNumber, gauge = body.Gauge, width = body.Width,
+                id, skid = sheetSkidNum, pc = pcNumber, gauge = body.Gauge, width = body.Width,
                 lo = body.LengthOper, ld = body.LengthDrive, sq = body.Square, head = body.HeadDimension,
                 ace = body.AllCutEdge, inspec = body.InSpec ?? 1, updby = body.CheckedBy, note = body.Note
             },
             transaction: tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
         return (await GetDimensionChecksAsync(sheetSkidNum, ct)).First(c => c.DimensionCheckNum == id);
+    }
+
+    public async Task<SheetSkidDimensionCheck?> UpdateDimensionCheckAsync(long sheetSkidNum, long dimensionCheckNum, DimensionCheckWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var affected = await conn.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE sheet_skid_dimension_check
+               SET pc_number = COALESCE(:pc, pc_number), gauge = :gauge, width = :width,
+                   length_oper = :lo, length_drive = :ld, square = :sq, head_dimension = :head,
+                   all_cut_edge = :ace, in_spec = COALESCE(:inspec, in_spec), checked_by = :updby, note = :note
+             WHERE dimension_check_num = :id AND sheet_skid_num = :skid
+            """,
+            new
+            {
+                id = dimensionCheckNum, skid = sheetSkidNum, pc = body.PcNumber, gauge = body.Gauge, width = body.Width,
+                lo = body.LengthOper, ld = body.LengthDrive, sq = body.Square, head = body.HeadDimension,
+                ace = body.AllCutEdge, inspec = body.InSpec, updby = body.CheckedBy, note = body.Note
+            }, cancellationToken: ct));
+        if (affected == 0) return null;
+        return (await GetDimensionChecksAsync(sheetSkidNum, ct)).FirstOrDefault(c => c.DimensionCheckNum == dimensionCheckNum);
+    }
+
+    public async Task<bool> DeleteDimensionCheckAsync(long sheetSkidNum, long dimensionCheckNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var affected = await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM sheet_skid_dimension_check WHERE dimension_check_num = :id AND sheet_skid_num = :skid",
+            new { id = dimensionCheckNum, skid = sheetSkidNum }, cancellationToken: ct));
+        return affected > 0;
     }
 
     public async Task<long?> GetSkidJobAsync(long sheetSkidNum, CancellationToken ct)

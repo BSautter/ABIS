@@ -961,29 +961,36 @@ public static class ApiEndpoints
             {
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
-
-                // The QC gate: when WinSPC is wired up and has readings for this skid's job, its spec
-                // limits are authoritative — derive in_spec from them (transparent, exact LSL/USL) and
-                // stamp the reason into the note, overriding the operator-supplied flag. When WinSPC has
-                // no data (or is disabled), the operator's in_spec stands.
-                if (win.Enabled && await repo.GetSkidJobAsync(sheetSkidNum, ct) is { } job
-                    && await win.GetJobQcAsync(job.ToString(), ct) is { Readings.Count: > 0 } qc)
-                {
-                    var gate = Abis.Api.Data.WinSpc.WinSpcGate.Evaluate(body, qc.Readings);
-                    if (gate.InSpec is { } verdict)
-                    {
-                        body.InSpec = verdict;
-                        body.Note = string.IsNullOrWhiteSpace(body.Note) ? gate.Note : $"{gate.Note} · {body.Note}";
-                        if (body.Note is { Length: > 255 }) body.Note = body.Note[..255];
-                    }
-                }
-
+                await ApplyWinSpcGateAsync(body, sheetSkidNum, repo, win, ct);
                 var created = await repo.CreateDimensionCheckAsync(sheetSkidNum, body, ct);
                 return Results.Created($"/api/coil-eval/skids/{sheetSkidNum}/dimension-checks/{created.DimensionCheckNum}", created);
             })
            .WithName("CreateDimensionCheck").WithTags("CoilEval")
-           .WithSummary("Record a dimensional QC check on a sheet-skid piece. When WinSPC is configured and has data for the skid's job, in_spec is set from WinSPC's authoritative spec limits (LSL/USL) and the note records the verdict; otherwise the supplied in_spec is used.")
+           .WithSummary("Record a dimensional QC check on a sheet-skid piece. When WinSPC is configured and has data for the skid's job, in_spec is set from WinSPC's authoritative spec limits (LSL/USL) and the note records the verdict; otherwise the supplied in_spec is used. PC# auto-increments when omitted.")
            .Produces<SheetSkidDimensionCheck>(StatusCodes.Status201Created).ProducesValidationProblem();
+
+        api.MapPut("/coil-eval/skids/{sheetSkidNum:long}/dimension-checks/{dimensionCheckNum:long}", async (long sheetSkidNum, long dimensionCheckNum,
+                DimensionCheckWrite body, IAbisRepository repo, Abis.Api.Data.WinSpc.IWinSpcRepository win, CancellationToken ct) =>
+            {
+                if (Validate(body) is { } problems)
+                    return Results.ValidationProblem(problems);
+                await ApplyWinSpcGateAsync(body, sheetSkidNum, repo, win, ct);   // re-gate: the values may have changed
+                return await repo.UpdateDimensionCheckAsync(sheetSkidNum, dimensionCheckNum, body, ct) is { } updated
+                    ? Results.Ok(updated)
+                    : Results.NotFound();
+            })
+           .WithName("UpdateDimensionCheck").WithTags("CoilEval")
+           .WithSummary("Edit a dimensional QC check (re-applies the WinSPC gate); 404 if the check isn't on the skid.")
+           .Produces<SheetSkidDimensionCheck>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
+        api.MapDelete("/coil-eval/skids/{sheetSkidNum:long}/dimension-checks/{dimensionCheckNum:long}", async (long sheetSkidNum, long dimensionCheckNum,
+                IAbisRepository repo, CancellationToken ct) =>
+                await repo.DeleteDimensionCheckAsync(sheetSkidNum, dimensionCheckNum, ct)
+                    ? Results.NoContent()
+                    : Results.NotFound())
+           .WithName("DeleteDimensionCheck").WithTags("CoilEval")
+           .WithSummary("Delete a dimensional QC check from a sheet skid; 404 if it isn't there.")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
 
         api.MapGet("/coil-eval/jobs/{abJobNum:long}/eval-scrap", async (long abJobNum, IAbisRepository repo, CancellationToken ct) =>
                 Results.Ok(await repo.GetEvalScrapAsync(abJobNum, ct)))
@@ -3212,6 +3219,26 @@ public static class ApiEndpoints
     private static void Positive(Dictionary<string, string[]> e, string field, decimal? v)
     {
         if (v is { } d && d <= 0m) e[field] = [$"{field} must be greater than zero."];
+    }
+
+    // The dimension-check QC gate: when WinSPC is wired up and has readings for this skid's job, its
+    // spec limits are authoritative — derive in_spec from the submitted measurements (transparent, exact
+    // LSL/USL) and stamp the reason into the note. When WinSPC has no data (or is disabled) the caller's
+    // in_spec stands. Shared by the create + edit endpoints.
+    private static async Task ApplyWinSpcGateAsync(DimensionCheckWrite body, long sheetSkidNum,
+        IAbisRepository repo, Abis.Api.Data.WinSpc.IWinSpcRepository win, CancellationToken ct)
+    {
+        if (win.Enabled && await repo.GetSkidJobAsync(sheetSkidNum, ct) is { } job
+            && await win.GetJobQcAsync(job.ToString(), ct) is { Readings.Count: > 0 } qc)
+        {
+            var gate = Abis.Api.Data.WinSpc.WinSpcGate.Evaluate(body, qc.Readings);
+            if (gate.InSpec is { } verdict)
+            {
+                body.InSpec = verdict;
+                body.Note = string.IsNullOrWhiteSpace(body.Note) ? gate.Note : $"{gate.Note} · {body.Note}";
+                if (body.Note is { Length: > 255 }) body.Note = body.Note[..255];
+            }
+        }
     }
 
     private static IResult WinSpcDisabled() => Results.Problem(

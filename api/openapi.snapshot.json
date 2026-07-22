@@ -1486,7 +1486,7 @@
         "tags": [
           "CoilEval"
         ],
-        "summary": "Record a dimensional QC check on a sheet-skid piece. When WinSPC is configured and has data for the skid's job, in_spec is set from WinSPC's authoritative spec limits (LSL/USL) and the note records the verdict; otherwise the supplied in_spec is used.",
+        "summary": "Record a dimensional QC check on a sheet-skid piece. When WinSPC is configured and has data for the skid's job, in_spec is set from WinSPC's authoritative spec limits (LSL/USL) and the note records the verdict; otherwise the supplied in_spec is used. PC# auto-increments when omitted.",
         "operationId": "CreateDimensionCheck",
         "parameters": [
           {
@@ -1529,6 +1529,111 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/coil-eval/skids/{sheetSkidNum}/dimension-checks/{dimensionCheckNum}": {
+      "put": {
+        "tags": [
+          "CoilEval"
+        ],
+        "summary": "Edit a dimensional QC check (re-applies the WinSPC gate); 404 if the check isn't on the skid.",
+        "operationId": "UpdateDimensionCheck",
+        "parameters": [
+          {
+            "name": "sheetSkidNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "dimensionCheckNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DimensionCheckWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SheetSkidDimensionCheck"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "CoilEval"
+        ],
+        "summary": "Delete a dimensional QC check from a sheet skid; 404 if it isn't there.",
+        "operationId": "DeleteDimensionCheck",
+        "parameters": [
+          {
+            "name": "sheetSkidNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "dimensionCheckNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
           },
           "401": {
             "description": "Unauthorized"

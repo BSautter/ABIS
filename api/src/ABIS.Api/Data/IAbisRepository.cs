@@ -223,6 +223,8 @@ public interface IAbisRepository
     Task<IReadOnlyList<QcCoilRow>> GetQcCoilsAsync(long abJobNum, CancellationToken ct);
     Task<IReadOnlyList<SheetSkidDimensionCheck>> GetDimensionChecksAsync(long sheetSkidNum, CancellationToken ct);
     Task<SheetSkidDimensionCheck> CreateDimensionCheckAsync(long sheetSkidNum, DimensionCheckWrite body, CancellationToken ct);
+    Task<SheetSkidDimensionCheck?> UpdateDimensionCheckAsync(long sheetSkidNum, long dimensionCheckNum, DimensionCheckWrite body, CancellationToken ct);
+    Task<bool> DeleteDimensionCheckAsync(long sheetSkidNum, long dimensionCheckNum, CancellationToken ct);
     /// <summary>The ab_job_num a sheet skid belongs to (for the WinSPC QC lookup); null if unknown.</summary>
     Task<long?> GetSkidJobAsync(long sheetSkidNum, CancellationToken ct);
     Task<IReadOnlyList<EvalScrap>> GetEvalScrapAsync(long abJobNum, CancellationToken ct);

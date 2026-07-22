@@ -1428,6 +1428,40 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task DimensionCheck_crud_auto_increments_pc_and_edits_and_deletes()
+    {
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "INSERT INTO sheet_skid (sheet_skid_num, ab_job_num, sheet_skid_display_num, sheet_net_wt, sheet_tare_wt) VALUES (74600, 55501, 'SKD-746', 10000, 200);";
+            cmd.ExecuteNonQuery();
+        }
+        // PC# auto-increments when omitted: 1, then 2.
+        var c1 = await _repo.CreateDimensionCheckAsync(74600, new Abis.Api.Models.DimensionCheckWrite { Gauge = 0.05m, CheckedBy = "qa" }, CancellationToken.None);
+        var c2 = await _repo.CreateDimensionCheckAsync(74600, new Abis.Api.Models.DimensionCheckWrite { Gauge = 0.051m, CheckedBy = "qa" }, CancellationToken.None);
+        Assert.Equal(1, c1.PcNumber);
+        Assert.Equal(2, c2.PcNumber);
+
+        // Edit c1's gauge + in_spec.
+        var edited = await _repo.UpdateDimensionCheckAsync(74600, c1.DimensionCheckNum,
+            new Abis.Api.Models.DimensionCheckWrite { Gauge = 0.06m, InSpec = 0, CheckedBy = "qa2" }, CancellationToken.None);
+        Assert.NotNull(edited);
+        Assert.Equal(0.06m, edited!.Gauge);
+        Assert.Equal(0, edited.InSpec);
+
+        // Editing a check that isn't on the skid → null.
+        Assert.Null(await _repo.UpdateDimensionCheckAsync(74600, 999998, new Abis.Api.Models.DimensionCheckWrite { CheckedBy = "x" }, CancellationToken.None));
+
+        // Delete c2; then it's gone; deleting again → false.
+        Assert.True(await _repo.DeleteDimensionCheckAsync(74600, c2.DimensionCheckNum, CancellationToken.None));
+        Assert.False(await _repo.DeleteDimensionCheckAsync(74600, c2.DimensionCheckNum, CancellationToken.None));
+        var remaining = await _repo.GetDimensionChecksAsync(74600, CancellationToken.None);
+        Assert.Single(remaining);
+        Assert.Equal(c1.DimensionCheckNum, remaining[0].DimensionCheckNum);
+    }
+
+    [Fact]
     public async Task GetSkidJob_resolves_the_job_for_a_skid_and_null_when_unknown()
     {
         using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
