@@ -116,7 +116,7 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [ ] **H** Instron `.ASC` test-file import & parse (up to 9 samples)
 - [ ] **H** Recovery report suite (remaining ~6 templates) + customer-report SETUP write (`recovery_report_customer`/`cust_scrap_type_needed`)
 - [ ] **M** Recovery depth (add/remove coil-job, autoparts filter, pull-from-DAS-vs-office, email/print/export)
-- [ ] **M** Dimension-check edit/delete; job-level dim-QC green/red board; good-material in-spec rollup; PC# auto-increment
+- [x] **M** Dimension-check edit/delete; job-level dim-QC green/red board; good-material in-spec rollup; PC# auto-increment — done (#236 edit/delete + PC# auto-increment; #237 QC board page + GET /coil-eval/jobs/{n}/qc-board with good/out-of-spec roll-ups + WinSPC verdict)
 - [ ] **M** QA coil photos; QA email notification + "make scrap" action
 
 ### C6. Platform / admin / reports
