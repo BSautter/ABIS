@@ -857,6 +857,46 @@ public sealed class AbisRepository : IAbisRepository
         return n == 0 ? null : await GetCoilAsync(coilAbcNum, ct);
     }
 
+    public async Task<BulkCoilStatusResult> SetCoilsReadyForTransferAsync(IReadOnlyList<long> coilAbcNums, CancellationToken ct)
+    {
+        const int ReadyForTransfer = 12;
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        var updated = new List<long>();
+        var skipped = new List<SkippedCoil>();
+        foreach (var id in coilAbcNums.Distinct())
+        {
+            var c = await conn.QuerySingleOrDefaultAsync<CoilStatusBalanceRow>(new CommandDefinition(
+                "SELECT coil_status AS Status, net_wt_balance AS Balance FROM coil WHERE coil_abc_num = :id",
+                new { id }, tx, cancellationToken: ct));
+            if (c is null) { skipped.Add(new SkippedCoil { CoilAbcNum = id, Reason = "not found" }); continue; }
+
+            var status = c.Status ?? -1;
+            string? reason = status switch
+            {
+                0 => "done", 10 => "shipped", 13 => "already transferred",
+                12 => "already ready for transfer",
+                _ when (c.Balance ?? 0m) <= 0m => "no weight balance",
+                _ => null,
+            };
+            if (reason is not null) { skipped.Add(new SkippedCoil { CoilAbcNum = id, Reason = reason }); continue; }
+
+            await conn.ExecuteAsync(new CommandDefinition(
+                "UPDATE coil SET coil_status = :s WHERE coil_abc_num = :id",
+                new { s = ReadyForTransfer, id }, tx, cancellationToken: ct));
+            updated.Add(id);
+        }
+        await tx.CommitAsync(ct);
+        return new BulkCoilStatusResult
+        {
+            Requested = coilAbcNums.Distinct().Count(),
+            Updated = updated.Count,
+            UpdatedCoils = updated,
+            Skipped = skipped,
+        };
+    }
+
     public async Task<CustomerOrder> CreateOrderAsync(CustomerOrderWrite body, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
@@ -2368,6 +2408,12 @@ public sealed class AbisRepository : IAbisRepository
     {
         public long? CurrentCustomerId { get; set; }
         public string? CoilOrgNum { get; set; }
+    }
+
+    private sealed class CoilStatusBalanceRow
+    {
+        public int? Status { get; set; }
+        public decimal? Balance { get; set; }
     }
 
     // ---- Security / authorization (legacy security.pbl) ----

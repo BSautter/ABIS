@@ -2243,6 +2243,50 @@
         }
       }
     },
+    "/api/coils/ready-for-transfer": {
+      "post": {
+        "tags": [
+          "Coils"
+        ],
+        "summary": "Bulk-mark coils Ready for transfer (status 12) — the precondition for the ownership-transfer picker. Terminal (done/shipped/transferred), already-ready, zero-balance, and unknown coils are skipped with a reason.",
+        "operationId": "CoilsReadyForTransfer",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoilBulkStatusWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkCoilStatusResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/customers": {
       "get": {
         "tags": [
@@ -11784,6 +11828,35 @@
         },
         "additionalProperties": false
       },
+      "BulkCoilStatusResult": {
+        "type": "object",
+        "properties": {
+          "requested": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "updated": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "updatedCoils": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "nullable": true
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkippedCoil"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "Carrier": {
         "type": "object",
         "properties": {
@@ -12000,6 +12073,20 @@
           "piecesPerCase": {
             "type": "integer",
             "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CoilBulkStatusWrite": {
+        "type": "object",
+        "properties": {
+          "coilAbcNums": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
             "nullable": true
           }
         },
@@ -20204,6 +20291,20 @@
           "totalNetWt": {
             "type": "number",
             "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "SkippedCoil": {
+        "type": "object",
+        "properties": {
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "reason": {
+            "type": "string",
             "nullable": true
           }
         },

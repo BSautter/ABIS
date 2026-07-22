@@ -1428,6 +1428,36 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task SetCoilsReadyForTransfer_updates_eligible_and_skips_the_rest_with_reasons()
+    {
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO coil (coil_abc_num, coil_org_num, coil_status, customer_id, lot_num, net_wt, net_wt_balance) VALUES (76100, 'O-761', 2,  4001, 'L', 5000, 5000);
+                INSERT INTO coil (coil_abc_num, coil_org_num, coil_status, customer_id, lot_num, net_wt, net_wt_balance) VALUES (76101, 'O-761b', 13, 4001, 'L', 5000, 5000);
+                INSERT INTO coil (coil_abc_num, coil_org_num, coil_status, customer_id, lot_num, net_wt, net_wt_balance) VALUES (76102, 'O-761c', 12, 4001, 'L', 5000, 5000);
+                INSERT INTO coil (coil_abc_num, coil_org_num, coil_status, customer_id, lot_num, net_wt, net_wt_balance) VALUES (76103, 'O-761d', 4,  4001, 'L', 5000, 0);
+                INSERT INTO coil (coil_abc_num, coil_org_num, coil_status, customer_id, lot_num, net_wt, net_wt_balance) VALUES (76104, 'O-761e', 10, 4001, 'L', 5000, 5000);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+        var res = await _repo.SetCoilsReadyForTransferAsync(new long[] { 76100, 76101, 76102, 76103, 76104, 999997 }, CancellationToken.None);
+        Assert.Equal(6, res.Requested);
+        Assert.Equal(1, res.Updated);
+        Assert.Equal(new long[] { 76100 }, res.UpdatedCoils);
+        Assert.Equal(12, (await _repo.GetCoilAsync(76100, CancellationToken.None))!.CoilStatus);
+
+        string Reason(long id) => res.Skipped.Single(s => s.CoilAbcNum == id).Reason!;
+        Assert.Equal("already transferred", Reason(76101));
+        Assert.Equal("already ready for transfer", Reason(76102));
+        Assert.Equal("no weight balance", Reason(76103));
+        Assert.Equal("shipped", Reason(76104));
+        Assert.Equal("not found", Reason(999997));
+    }
+
+    [Fact]
     public async Task GetJobQcBoard_classifies_skids_and_rolls_up_good_vs_out_of_spec()
     {
         using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())

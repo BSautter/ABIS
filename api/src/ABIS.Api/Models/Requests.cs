@@ -602,6 +602,13 @@ public sealed class TestResultWrite
     public decimal? Width { get; set; }
 }
 
+/// <summary>Bulk-mark coils as Ready for transfer (coil_status → 12) — the precondition for the
+/// ownership-transfer picker.</summary>
+public sealed class CoilBulkStatusWrite
+{
+    public long[]? CoilAbcNums { get; set; }
+}
+
 /// <summary>Place a coil on QA hold (coil_status → 11). Both fields are required: the legacy
 /// COIL_TRACK_QA columns are NOT NULL, and on Oracle an empty string binds as NULL — so the
 /// endpoint rejects blank values rather than hit ORA-01400 at the INSERT.</summary>

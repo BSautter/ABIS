@@ -383,6 +383,22 @@ public sealed class TestResult
     public decimal? Width { get; set; }
 }
 
+/// <summary>Result of a bulk coil status change: which coils were updated and which were skipped
+/// (with the reason), so the UI can report per-coil outcomes.</summary>
+public sealed class BulkCoilStatusResult
+{
+    public int Requested { get; set; }
+    public int Updated { get; set; }
+    public IReadOnlyList<long> UpdatedCoils { get; set; } = [];
+    public IReadOnlyList<SkippedCoil> Skipped { get; set; } = [];
+}
+
+public sealed class SkippedCoil
+{
+    public long CoilAbcNum { get; set; }
+    public string? Reason { get; set; }
+}
+
 /// <summary>A coil QA status-transition audit row (legacy <c>COIL_TRACK_QA</c>): every QA
 /// hold or release records the coil's pre/cur <c>coil_status</c>, who made the change, when,
 /// and a mandatory note. PK is (coil_abc_num, coil_track_date). Drives the per-coil QA history

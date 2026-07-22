@@ -1431,6 +1431,22 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Coils_ready_for_transfer_validates_and_reports_per_coil()
+    {
+        // Empty list → 400.
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/coils/ready-for-transfer", new { coilAbcNums = Array.Empty<long>() })).StatusCode);
+
+        // A known coil + an unknown one → 200 with a per-coil result (unknown is skipped "not found").
+        var resp = await _client.PostAsJsonAsync("/api/coils/ready-for-transfer", new { coilAbcNums = new long[] { 5001, 999997 } });
+        resp.EnsureSuccessStatusCode();
+        var r = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(2, r.GetProperty("requested").GetInt32());
+        Assert.Contains(r.GetProperty("skipped").EnumerateArray(),
+            s => s.GetProperty("coilAbcNum").GetInt64() == 999997 && s.GetProperty("reason").GetString() == "not found");
+    }
+
+    [Fact]
     public async Task Coil_ownership_write_is_gated_on_inventory_coil_feature()
     {
         // mlee (Admins group) has no Inventory(Coil) grant → the CoilOwnership write is forbidden.

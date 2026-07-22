@@ -428,6 +428,17 @@ public static class ApiEndpoints
            .WithSummary("Update a coil's status, location, or notes (409 if the coil is done/shipped/transferred). Supports If-Match.")
            .Produces<Coil>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status412PreconditionFailed);
 
+        api.MapPost("/coils/ready-for-transfer", async (CoilBulkStatusWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var ids = body.CoilAbcNums ?? [];
+                if (ids.Length == 0)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["coilAbcNums"] = ["At least one coil is required."] });
+                return Results.Ok(await repo.SetCoilsReadyForTransferAsync(ids, ct));
+            })
+           .WithName("CoilsReadyForTransfer").WithTags("Coils")
+           .WithSummary("Bulk-mark coils Ready for transfer (status 12) — the precondition for the ownership-transfer picker. Terminal (done/shipped/transferred), already-ready, zero-balance, and unknown coils are skipped with a reason.")
+           .Produces<BulkCoilStatusResult>().ProducesValidationProblem();
+
         // ---- Coil QA hold (status 11 + COIL_TRACK_QA audit) --------------
         // The dedicated QA-hold transitions: unlike the generic PatchCoil, these record an audit
         // row for every hold/release and enforce the QA state machine (legacy w_qa_coil).
