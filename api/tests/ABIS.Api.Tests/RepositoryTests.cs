@@ -1263,6 +1263,64 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task PackingItems_add_list_remove_and_feed_the_856()
+    {
+        // A shipment + a finished-sheet skid with its full order/coil chain, inserted locally (keeps shared
+        // counts stable). Exercises the packing-list line-item CRUD + the guarantee that an added item flows
+        // into the 856 (ASN) assembler unchanged.
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO customer (customer_id, customer_full_name, customer_short_name, customer_city, customer_state, customer_type, edi_req, customer_duns_number_string) VALUES (9100, 'PACK CO', 'PACK', 'Detroit', 'MI', 1, 'Y', '111222333');
+                INSERT INTO shipment (packing_list, bill_of_lading, customer_id, shipment_status) VALUES (91000, 191000, 9100, 2);
+                INSERT INTO customer_order (order_abc_num, orig_customer_id, orig_customer_po, enduser_po) VALUES (9110, 9100, 'PO-91', 'EPO-91');
+                INSERT INTO order_item (order_item_num, order_abc_num, enduser_part_num, item_status) VALUES (1, 9110, 'PPART', 1);
+                INSERT INTO coil (coil_abc_num, coil_org_num, coil_gauge, coil_status, customer_id, lot_num, net_wt, net_wt_balance) VALUES (9120, 'PCOIL-1', 0.05, 2, 9100, 'PLOT', 30000, 0);
+                INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num, job_status) VALUES (9130, 9110, 1, 0);
+                INSERT INTO production_sheet_item (prod_item_num, coil_abc_num, ab_job_num, prod_item_status, prod_item_pieces, prod_item_net_wt) VALUES (9140, 9120, 9130, 1, 100, 20000);
+                INSERT INTO sheet_skid (sheet_skid_num, ab_job_num, sheet_skid_display_num, sheet_net_wt, sheet_tare_wt, skid_pieces, skid_sheet_status) VALUES (9150, 9130, 'PSKID-1', 20000, 250, 100, 2);
+                INSERT INTO sheet_skid_detail (sheet_skid_num, prod_item_num) VALUES (9150, 9140);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+
+        Assert.Empty(await _repo.GetPackingItemsAsync(91000, CancellationToken.None));   // nothing packed yet
+
+        // Add the skid to the packing list.
+        var add = await _repo.AddSheetPackingItemAsync(91000, 9150, CancellationToken.None);
+        Assert.Equal("created", add.Status);
+        Assert.NotNull(add.Item);
+        Assert.Equal(1, add.Item!.ShPackingItem);        // per-list id starts at 1
+        Assert.Equal(9150, add.Item.PackagingTicket);    // ticket = the skid number
+        Assert.Equal(20250m, add.Item.GrossWeight);      // 20000 net + 250 tare
+        Assert.Equal("PPART", add.Item.EnduserPartNum);
+        Assert.Equal("PO-91", add.Item.OrigCustomerPo);
+        Assert.Equal("PCOIL-1", add.Item.CoilOrgNum);
+
+        var items = await _repo.GetPackingItemsAsync(91000, CancellationToken.None);
+        Assert.Single(items);
+        Assert.Equal("PSKID-1", items[0].SkidDisplayNum);
+
+        // Guards.
+        Assert.Equal("duplicate", (await _repo.AddSheetPackingItemAsync(91000, 9150, CancellationToken.None)).Status);
+        Assert.Equal("no-shipment", (await _repo.AddSheetPackingItemAsync(99999, 9150, CancellationToken.None)).Status);
+        Assert.Equal("no-skid", (await _repo.AddSheetPackingItemAsync(91000, 88888, CancellationToken.None)).Status);
+
+        // The 856 ASN assembler now sees the packed skid — the loop is closed.
+        var ship = await _repo.AssembleEdi856Async(91000, null, CancellationToken.None);
+        Assert.NotNull(ship);
+        Assert.Single(ship!.Items);
+        Assert.Equal("PSKID-1", ship.Items[0].SkidDisplayNum);
+
+        // Remove.
+        Assert.True(await _repo.DeletePackingItemAsync(91000, 1, CancellationToken.None));
+        Assert.Empty(await _repo.GetPackingItemsAsync(91000, CancellationToken.None));
+        Assert.False(await _repo.DeletePackingItemAsync(91000, 1, CancellationToken.None));   // already gone
+    }
+
+    [Fact]
     public async Task GetScanLogs_lists_newest_first_and_filters_by_job()
     {
         var all = await _repo.GetScanLogsAsync(1, 25, abJobNum: null, orderBy: null, CancellationToken.None);

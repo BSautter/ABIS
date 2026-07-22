@@ -3238,6 +3238,82 @@ public sealed class AbisRepository : IAbisRepository
         return n == 0 ? null : await GetShipmentAsync(packingList, ct);
     }
 
+    // ---- Packing-list line items (sheet_packing_item) — the skids a shipment carries ----
+
+    /// <summary>The finished-sheet line items on a packing list, enriched with skid + order + a representative
+    /// coil — the same join chain the 856 (ASN) consumes, so what's packed is what the ASN reports. One row per
+    /// <c>sh_packing_item</c>; the coil org/lot come from the skid's first coil (a skid can span coils).</summary>
+    public async Task<IReadOnlyList<PackingLineItem>> GetPackingItemsAsync(long packingList, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var items = (await conn.QueryAsync<PackingLineItem>(new CommandDefinition(
+            """
+            SELECT spi.sh_packing_item AS ShPackingItem, spi.packing_list AS PackingList,
+                   spi.sheet_skid_num AS SheetSkidNum, spi.sheet_packaging_ticket AS PackagingTicket,
+                   ss.sheet_skid_display_num AS SkidDisplayNum, ss.sheet_net_wt AS NetWeight,
+                   ss.sheet_tare_wt AS TareWeight, ss.skid_pieces AS Pieces, ss.ab_job_num AS AbJobNum,
+                   oi.enduser_part_num AS EnduserPartNum, co.orig_customer_po AS OrigCustomerPo,
+                   (SELECT MIN(c.coil_org_num) FROM sheet_skid_detail ssd
+                      JOIN production_sheet_item psi ON psi.prod_item_num = ssd.prod_item_num
+                      JOIN coil c ON c.coil_abc_num = psi.coil_abc_num
+                     WHERE ssd.sheet_skid_num = ss.sheet_skid_num) AS CoilOrgNum,
+                   (SELECT MIN(c.lot_num) FROM sheet_skid_detail ssd
+                      JOIN production_sheet_item psi ON psi.prod_item_num = ssd.prod_item_num
+                      JOIN coil c ON c.coil_abc_num = psi.coil_abc_num
+                     WHERE ssd.sheet_skid_num = ss.sheet_skid_num) AS LotNum
+              FROM sheet_packing_item spi
+              JOIN sheet_skid ss ON ss.sheet_skid_num = spi.sheet_skid_num
+              LEFT JOIN ab_job aj ON aj.ab_job_num = ss.ab_job_num
+              LEFT JOIN order_item oi ON oi.order_abc_num = aj.order_abc_num AND oi.order_item_num = aj.order_item_num
+              LEFT JOIN customer_order co ON co.order_abc_num = aj.order_abc_num
+             WHERE spi.packing_list = :pl
+             ORDER BY spi.sheet_packaging_ticket
+            """, new { pl = packingList }, cancellationToken: ct))).ToList();
+        foreach (var it in items) it.GrossWeight = it.NetWeight + it.TareWeight;
+        return items;
+    }
+
+    /// <summary>Add a finished-sheet skid to a packing list. Guards: the shipment and skid must exist and the skid
+    /// must not already be on this list (returns a typed status for 404/409 instead of throwing). The item id is
+    /// the per-list <c>MAX(sh_packing_item)+1</c> (composite PK, no global sequence); the packaging ticket follows
+    /// the legacy convention (= the skid number). Config/data only — nothing transmits.</summary>
+    public async Task<PackingItemResult> AddSheetPackingItemAsync(long packingList, long sheetSkidNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var shipExists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM shipment WHERE packing_list = :pl", new { pl = packingList }, cancellationToken: ct)) > 0;
+        if (!shipExists) return new PackingItemResult { Status = "no-shipment" };
+        var skidExists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM sheet_skid WHERE sheet_skid_num = :skid", new { skid = sheetSkidNum }, cancellationToken: ct)) > 0;
+        if (!skidExists) return new PackingItemResult { Status = "no-skid" };
+        var dup = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM sheet_packing_item WHERE packing_list = :pl AND sheet_skid_num = :skid",
+            new { pl = packingList, skid = sheetSkidNum }, cancellationToken: ct)) > 0;
+        if (dup) return new PackingItemResult { Status = "duplicate" };
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var nextId = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COALESCE(MAX(sh_packing_item), 0) + 1 FROM sheet_packing_item WHERE packing_list = :pl",
+            new { pl = packingList }, transaction: (DbTransaction)tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            "INSERT INTO sheet_packing_item (sh_packing_item, packing_list, sheet_skid_num, sheet_packaging_ticket) VALUES (:id, :pl, :skid, :ticket)",
+            new { id = nextId, pl = packingList, skid = sheetSkidNum, ticket = sheetSkidNum }, transaction: (DbTransaction)tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+
+        var created = (await GetPackingItemsAsync(packingList, ct)).FirstOrDefault(i => i.ShPackingItem == nextId);
+        return new PackingItemResult { Status = "created", Item = created };
+    }
+
+    /// <summary>Remove a line item from a packing list. Returns false when no such (packing_list, sh_packing_item).</summary>
+    public async Task<bool> DeletePackingItemAsync(long packingList, long shPackingItem, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM sheet_packing_item WHERE packing_list = :pl AND sh_packing_item = :id",
+            new { pl = packingList, id = shPackingItem }, cancellationToken: ct));
+        return n > 0;
+    }
+
     public Task<PagedResult<ReceivingBol>> GetReceivingBolsAsync(int page, int pageSize, long? customerId, int? status, string? orderBy, CancellationToken ct)
     {
         var p = new DynamicParameters();

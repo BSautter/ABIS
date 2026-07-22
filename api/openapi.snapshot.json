@@ -9600,6 +9600,136 @@
         }
       }
     },
+    "/api/shipments/{packingList}/items": {
+      "get": {
+        "tags": [
+          "Shipments"
+        ],
+        "summary": "List the finished-sheet line items on a packing list (shipment) — the skids it carries, enriched with weight/pieces/part/PO/coil. This is the same content the 856 (ASN) reports.",
+        "operationId": "ListPackingItems",
+        "parameters": [
+          {
+            "name": "packingList",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PackingLineItem"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Shipments"
+        ],
+        "summary": "Add a finished-sheet skid to a packing list. The item id + packaging ticket are server-assigned. 404 if the shipment or skid is missing; 409 if the skid is already on this list. Config/data only — nothing transmits.",
+        "operationId": "AddPackingItem",
+        "parameters": [
+          {
+            "name": "packingList",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackingItemWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackingLineItem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/shipments/{packingList}/items/{shPackingItem}": {
+      "delete": {
+        "tags": [
+          "Shipments"
+        ],
+        "summary": "Remove a line item from a packing list.",
+        "operationId": "DeletePackingItem",
+        "parameters": [
+          {
+            "name": "packingList",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "shPackingItem",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/sketches": {
       "get": {
         "tags": [
@@ -15860,6 +15990,83 @@
             "nullable": true
           },
           "billtoAlbl": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PackingItemWrite": {
+        "type": "object",
+        "properties": {
+          "sheetSkidNum": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PackingLineItem": {
+        "type": "object",
+        "properties": {
+          "shPackingItem": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "packingList": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "itemType": {
+            "type": "string",
+            "nullable": true
+          },
+          "sheetSkidNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "packagingTicket": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "skidDisplayNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "netWeight": {
+            "type": "number",
+            "format": "double"
+          },
+          "tareWeight": {
+            "type": "number",
+            "format": "double"
+          },
+          "grossWeight": {
+            "type": "number",
+            "format": "double"
+          },
+          "pieces": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "enduserPartNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "origCustomerPo": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilOrgNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "lotNum": {
             "type": "string",
             "nullable": true
           }

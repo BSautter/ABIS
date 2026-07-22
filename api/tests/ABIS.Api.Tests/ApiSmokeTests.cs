@@ -1363,6 +1363,23 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task PackingItems_endpoints_are_wired_over_http()
+    {
+        // GET items for a seeded shipment → 200 array (empty; the base fixture seeds no packing linkage).
+        var list = await _client.GetAsync("/api/shipments/8801/items");
+        Assert.Equal(HttpStatusCode.OK, list.StatusCode);
+        Assert.Equal(JsonValueKind.Array, (await list.Content.ReadFromJsonAsync<JsonElement>()).ValueKind);
+
+        // GET items for a missing shipment → 404.
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/shipments/99999999/items")).StatusCode);
+        // POST to a missing shipment → 404 (no-shipment); to an existing shipment + missing skid → 404 (no-skid).
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/shipments/99999999/items", new { sheetSkidNum = 1 })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/shipments/8801/items", new { sheetSkidNum = 88888888 })).StatusCode);
+        // DELETE a nonexistent item → 404.
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.DeleteAsync("/api/shipments/8801/items/999")).StatusCode);
+    }
+
+    [Fact]
     public async Task EdiPartner_admin_upserts_lists_and_deletes()
     {
         // Upsert a new 846 profile (Cleveland-Cliffs) — the admin EDI setup.

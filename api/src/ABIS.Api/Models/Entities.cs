@@ -648,6 +648,42 @@ public sealed class Shipment
     public string? ShipmentNotes { get; set; }
 }
 
+/// <summary>One line item on a packing list (shipment) — a finished-sheet skid the shipment carries.
+/// Backed by <c>sheet_packing_item</c> (packing_list → sheet_skid); enriched with the skid + coil + order
+/// detail via the same join the 856 (ASN) consumes, so what you pack is what the ASN reports. <see cref="ItemType"/>
+/// is <c>SHEET</c> today; scrap / reject-coil / warehouse types follow in a later increment.</summary>
+public sealed class PackingLineItem
+{
+    /// <summary>sheet_packing_item.sh_packing_item — the per-packing-list item id (the DELETE key).</summary>
+    public long ShPackingItem { get; set; }
+    public long PackingList { get; set; }
+    /// <summary>The line-item kind. <c>SHEET</c> for finished-sheet skids (the only type built so far).</summary>
+    public string ItemType { get; set; } = "SHEET";
+    public long SheetSkidNum { get; set; }
+    /// <summary>sheet_packing_item.sheet_packaging_ticket (legacy convention: = the skid number).</summary>
+    public long PackagingTicket { get; set; }
+    public string? SkidDisplayNum { get; set; }
+    public decimal NetWeight { get; set; }
+    public decimal TareWeight { get; set; }
+    /// <summary>Derived net + tare — the physical shipping weight of the skid.</summary>
+    public decimal GrossWeight { get; set; }
+    public int Pieces { get; set; }
+    public long? AbJobNum { get; set; }
+    public string? EnduserPartNum { get; set; }
+    public string? OrigCustomerPo { get; set; }
+    /// <summary>A representative coil for the skid (a skid can span coils; this is the first by coil_org_num).</summary>
+    public string? CoilOrgNum { get; set; }
+    public string? LotNum { get; set; }
+}
+
+/// <summary>Outcome of adding a packing-list line item — lets the endpoint map to 201 / 404 / 409 without
+/// throwing. <see cref="Status"/> is <c>created</c>, <c>no-shipment</c>, <c>no-skid</c>, or <c>duplicate</c>.</summary>
+public sealed class PackingItemResult
+{
+    public string Status { get; set; } = "created";
+    public PackingLineItem? Item { get; set; }
+}
+
 /// <summary>An inbound receiving BOL (table <c>receiving_bol</c>).</summary>
 public sealed class ReceivingBol
 {

@@ -420,6 +420,13 @@ public sealed class ShipmentWrite
     public string? ShipmentNotes { get; set; }
 }
 
+/// <summary>Add a finished-sheet skid to a packing list (shipment). The <c>sh_packing_item</c> id and the
+/// <c>sheet_packaging_ticket</c> (= the skid number, legacy convention) are assigned server-side.</summary>
+public sealed class PackingItemWrite
+{
+    public long SheetSkidNum { get; set; }
+}
+
 /// <summary>Partial update of a shipment as it ships out (status/dispatch fields).
 /// Null fields are left unchanged (COALESCE).</summary>
 public sealed class ShipmentStatusPatch

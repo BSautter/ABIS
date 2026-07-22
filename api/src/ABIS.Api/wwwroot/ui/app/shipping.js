@@ -80,6 +80,16 @@ async function loadShipment(id) {
         <button class="btn sm" id="btnClose" type="button">Mark shipped / Close BOL</button>
         <span id="closeOk" class="ok-note"></span>
       </div>
+      <h3 style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);margin:16px 0 8px">Packing list <span style="text-transform:none;letter-spacing:0;color:var(--ink-3);font-weight:400">— finished-sheet skids (what the 856 reports)</span></h3>
+      <div class="frow" style="align-items:flex-end;margin-bottom:8px">
+        <div class="fld"><label>Add sheet skid #</label><input id="addSkid" inputmode="numeric" style="width:150px" placeholder="skid number" /></div>
+        <button class="btn sm ghost" id="btnAddItem" type="button">Add skid</button>
+        <span id="itemOk" class="ok-note"></span>
+      </div>
+      <div style="overflow-x:auto"><table class="tbl" style="min-width:520px">
+        <thead><tr><th>Skid</th><th>Part</th><th>PO</th><th>Coil</th><th style="text-align:right">Net</th><th style="text-align:right">Gross</th><th style="text-align:right">Pcs</th><th></th></tr></thead>
+        <tbody id="packItems"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
+      </table></div>
       <h3 style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);margin:16px 0 8px">Dispatch <span style="text-transform:none;letter-spacing:0;color:var(--ink-3);font-weight:400">— manual edit</span></h3>
       <div class="frow">
         <div class="fld"><label>Status</label><input id="dStatus" value="${esc(s.shipmentStatus)}" style="width:80px" /></div>
@@ -91,12 +101,81 @@ async function loadShipment(id) {
       <div class="frow" style="margin-top:10px;align-items:center"><button class="btn sm ghost" id="btnDispatch" type="button">Save dispatch</button><span id="dispOk" class="ok-note"></span></div>`;
         $('#btnClose').addEventListener('click', () => void closeBol());
         $('#btnDispatch').addEventListener('click', () => void dispatch());
+        $('#btnAddItem').addEventListener('click', () => void addPackItem());
+        await loadPackingItems(id);
     }
     catch (e) {
         setErr(`Load failed: ${e.message}`);
     }
     finally {
         setBusy(false);
+    }
+}
+// ---- Packing-list line items (the skids a shipment carries) — endpoints newer than the NSwag client. ----
+async function loadPackingItems(id) {
+    try {
+        const r = await authFetch(`/api/shipments/${id}/items`);
+        if (!r.ok) {
+            $('#packItems').innerHTML = `<tr><td colspan="8" class="muted">Failed to load items (${r.status}).</td></tr>`;
+            return;
+        }
+        const items = await r.json();
+        const num = (n) => `<td class="mono" style="text-align:right">${esc(n)}</td>`;
+        $('#packItems').innerHTML = items.length ? items.map((it) => `
+      <tr>
+        <td class="mono">${esc(it.skidDisplayNum ?? it.sheetSkidNum)}</td>
+        <td class="mono">${esc(it.enduserPartNum)}</td><td class="mono">${esc(it.origCustomerPo)}</td><td class="mono">${esc(it.coilOrgNum)}</td>
+        ${num(Math.round(it.netWeight))}${num(Math.round(it.grossWeight))}${num(it.pieces)}
+        <td><button class="btn sm ghost" data-rm="${it.shPackingItem}" type="button">Remove</button></td>
+      </tr>`).join('') : '<tr><td colspan="8" class="muted">No skids on this packing list yet.</td></tr>';
+        document.querySelectorAll('#packItems button[data-rm]').forEach((b) => b.addEventListener('click', () => void removePackItem(Number(b.dataset.rm))));
+    }
+    catch (e) {
+        setErr(`Items failed: ${e.message}`);
+    }
+}
+async function addPackItem() {
+    if (selected == null)
+        return;
+    const skid = val('#addSkid');
+    if (!skid)
+        return;
+    setErr('');
+    try {
+        const r = await authFetch(`/api/shipments/${selected}/items`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sheetSkidNum: Number(skid) }),
+        });
+        if (!r.ok) {
+            const why = r.status === 409 ? 'that skid is already on this list'
+                : r.status === 404 ? 'shipment or skid not found' : `error ${r.status}`;
+            setErr(`Add failed: ${why}.`);
+            return;
+        }
+        $('#addSkid').value = '';
+        $('#itemOk').textContent = '✓ Skid added.';
+        await loadPackingItems(selected);
+    }
+    catch (e) {
+        setErr(`Add failed: ${e.message}`);
+    }
+}
+async function removePackItem(shPackingItem) {
+    if (selected == null)
+        return;
+    if (!window.confirm(`Remove item ${shPackingItem} from packing list ${selected}?`))
+        return;
+    setErr('');
+    try {
+        const r = await authFetch(`/api/shipments/${selected}/items/${shPackingItem}`, { method: 'DELETE' });
+        if (!r.ok && r.status !== 404) {
+            setErr(`Remove failed (${r.status}).`);
+            return;
+        }
+        await loadPackingItems(selected);
+    }
+    catch (e) {
+        setErr(`Remove failed: ${e.message}`);
     }
 }
 // Guided close-out: mark the shipment shipped + stamp sent/actual dates in one action
