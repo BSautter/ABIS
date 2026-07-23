@@ -43,7 +43,9 @@ public sealed class AbisRepository : IAbisRepository
     // Legacy w_inv_coil "on-hand inventory" predicate: exclude coils that have left inventory —
     // 0 Done, 10 Shipped, 13 Transferred, 20 Warehouse-item (w_inv_coil.srw:3575). No balance
     // predicate (legacy counts a fully-consumed-but-not-yet-status-0 coil as on hand).
-    private const string OnHandCoilPredicate = "coil_status NOT IN (0, 10, 13, 20)";
+    // IS NULL guard: NOT-IN on a nullable column silently drops NULL-status coils; treat an
+    // unknown status as on-hand (it's not one of the off-inventory codes).
+    private const string OnHandCoilPredicate = "(coil_status IS NULL OR coil_status NOT IN (0, 10, 13, 20))";
 
     private const string OrderCols = """
         order_abc_num AS OrderAbcNum, orig_customer_id AS OrigCustomerId, enduser_id AS EnduserId,
@@ -3544,11 +3546,25 @@ public sealed class AbisRepository : IAbisRepository
         p.Add("inv", invoiceNum);
         p.Add("tstamp", tstamp, DbType.DateTime);
         p.Add("notes", body.Notes);
-        await conn.ExecuteAsync(new CommandDefinition(
-            """
-            INSERT INTO invoice (ab_job_num, invoice_num, "TIMESTAMP", notes)
-            VALUES (:job, :inv, :tstamp, :notes)
-            """, p, cancellationToken: ct));
+        try
+        {
+            await conn.ExecuteAsync(new CommandDefinition(
+                """
+                INSERT INTO invoice (ab_job_num, invoice_num, "TIMESTAMP", notes)
+                VALUES (:job, :inv, :tstamp, :notes)
+                """, p, cancellationToken: ct));
+        }
+        catch (DbException)
+        {
+            // The pre-check has a TOCTOU race: a concurrent create can win between the SELECT and this
+            // INSERT and trip the (ab_job_num, invoice_num) PK. If the row now exists it's the same
+            // conflict (409), not a 500 — otherwise it's a real error, so rethrow.
+            var raced = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+                "SELECT COUNT(*) FROM invoice WHERE ab_job_num = :job AND invoice_num = :inv",
+                new { job = body.AbJobNum, inv = invoiceNum }, cancellationToken: ct));
+            if (raced > 0) return new InvoiceSaveResult(InvoiceSaveOutcome.Duplicate, null);
+            throw;
+        }
 
         return new InvoiceSaveResult(InvoiceSaveOutcome.Created,
             new Invoice { AbJobNum = body.AbJobNum, InvoiceNum = invoiceNum, Timestamp = tstamp, Notes = body.Notes });
@@ -3595,13 +3611,15 @@ public sealed class AbisRepository : IAbisRepository
         inv.ScrapWt = await conn.ExecuteScalarAsync<decimal>(new CommandDefinition(
             "SELECT COALESCE(SUM(return_item_net_wt), 0) FROM return_scrap_item WHERE ab_job_num = :id",
             new { id = abJobNum }, cancellationToken: ct));
+        // Tare excludes voided skids (skid_sheet_status = 6) so it matches the billed SkidCount
+        // below — otherwise a voided skid's tare inflates the invoice while its count is excluded.
         inv.TareWt = await conn.ExecuteScalarAsync<decimal>(new CommandDefinition(
-            "SELECT COALESCE(SUM(sheet_tare_wt), 0) FROM sheet_skid WHERE ab_job_num = :id",
+            "SELECT COALESCE(SUM(sheet_tare_wt), 0) FROM sheet_skid WHERE ab_job_num = :id AND (skid_sheet_status IS NULL OR skid_sheet_status <> 6)",
             new { id = abJobNum }, cancellationToken: ct));
         // Voided skids (skid_sheet_status = 6) don't count toward the billed skid total
         // (legacy w_e_car_folder:701 counts WHERE skid_sheet_status <> 6).
         inv.SkidCount = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
-            "SELECT COUNT(*) FROM sheet_skid WHERE ab_job_num = :id AND skid_sheet_status <> 6",
+            "SELECT COUNT(*) FROM sheet_skid WHERE ab_job_num = :id AND (skid_sheet_status IS NULL OR skid_sheet_status <> 6)",
             new { id = abJobNum }, cancellationToken: ct));
 
         // Rejected/rebanded billed weights: the exact per-coil MAX rule, summed by disposition.
@@ -6020,7 +6038,7 @@ public sealed class AbisRepository : IAbisRepository
             SELECT j.ab_job_num AS AbJobNum, j.job_status AS JobStatus, j.line_num AS LineNum,
                    j.order_abc_num AS OrderAbcNum, o.orig_customer_po AS OrigCustomerPo, c.customer_short_name AS CustomerShortName,
                    (SELECT COUNT(*) FROM process_coil pc WHERE pc.ab_job_num = j.ab_job_num) AS CoilCount,
-                   (SELECT COUNT(*) FROM sheet_skid ss WHERE ss.ab_job_num = j.ab_job_num AND ss.skid_sheet_status <> 6) AS SkidCount,
+                   (SELECT COUNT(*) FROM sheet_skid ss WHERE ss.ab_job_num = j.ab_job_num AND (ss.skid_sheet_status IS NULL OR ss.skid_sheet_status <> 6)) AS SkidCount,
                    (SELECT COUNT(*) FROM job_efolder_notes n WHERE n.ab_job_num = j.ab_job_num) AS NoteCount
             FROM ab_job j
             LEFT JOIN customer_order o ON o.order_abc_num = j.order_abc_num
@@ -6069,9 +6087,9 @@ public sealed class AbisRepository : IAbisRepository
             """
             SELECT j.ab_job_num AS AbJobNum, j.line_num AS LineNum, j.job_status AS JobStatus, j.order_abc_num AS OrderAbcNum,
                    (SELECT COUNT(*) FROM process_coil pc WHERE pc.ab_job_num = j.ab_job_num) AS CoilCount,
-                   (SELECT COUNT(*) FROM sheet_skid ss WHERE ss.ab_job_num = j.ab_job_num AND ss.skid_sheet_status <> 6) AS SkidCount
+                   (SELECT COUNT(*) FROM sheet_skid ss WHERE ss.ab_job_num = j.ab_job_num AND (ss.skid_sheet_status IS NULL OR ss.skid_sheet_status <> 6)) AS SkidCount
             FROM ab_job j
-            WHERE j.job_status NOT IN (0, 3)
+            WHERE j.job_status IN (1, 2, 4)
               AND (:line IS NULL OR j.line_num = :line)
             ORDER BY j.ab_job_num DESC
             """, new { line = lineNum }, cancellationToken: ct));

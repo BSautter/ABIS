@@ -130,11 +130,11 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [ ] **M** Step-up re-auth popup; in-DB job control (DBMS_SCHEDULER enable/disable/run-now)
 
 ## D. Bug / robustness leftovers (from the sweep — verified, low severity)
-- [ ] **M** Invoice-save duplicate: return **409** not a 500 (wrap check+insert in a txn / catch PK ORA-00001) — `CreateInvoiceAsync`
+- [x] **M** Invoice-save duplicate: return **409** not a 500 — done (#260): `CreateInvoiceAsync` now catches the PK violation on the INSERT (the pre-check's TOCTOU race) and re-checks → returns Duplicate (409) instead of a 500.
 - [ ] **L** `If-Match` optimistic concurrency: push the version into the UPDATE `WHERE` (true compare-and-swap; today check-then-act) — `WithIfMatch`
-- [ ] **L** Invoice **tare** bucket sums voided skids while `SkidCount` excludes them (`<> 6`) — display inconsistency — `GetInvoiceComputationAsync`
-- [ ] **L** Stacker board: tighten `job_status NOT IN (0,3)` → `IN (1,2,4)` (matches its own comment; robust to NULL/new codes) — latent, 0 impact now
-- [ ] **L** On-hand-coil (`coil_status NOT IN …`) + skid-count (`skid_sheet_status <> 6`): add `IS NULL` guards — nullable columns, 0 NULL rows today
+- [x] **L** Invoice **tare** bucket — done (#260): `GetInvoiceComputationAsync` tare now excludes voided skids (`skid_sheet_status <> 6`) so it matches `SkidCount`.
+- [x] **L** Stacker board — done (#260): `job_status NOT IN (0,3)` → `IN (1,2,4)` (matches its comment; robust to NULL/new codes).
+- [x] **L** On-hand-coil + skid-count `IS NULL` guards — done (#260): `OnHandCoilPredicate` + every `skid_sheet_status <> 6` now guard NULL (`IS NULL OR …`).
 - [ ] **L** `pollPieceCount`: clear `pieceCurrent` on a transient edge outage so a stale count isn't shown — `das-console.ts`
 - [ ] **L** Committed `wwwroot/…/generated/abis-client.js` drifts vs a fresh gen — regen periodically or CI-enforce
 
