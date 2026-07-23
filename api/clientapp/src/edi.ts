@@ -42,8 +42,12 @@ function scaffold(): string {
         </table></div>
       </div></div>
       <div class="stack"><div class="card">
-        <header><h2>Transaction detail</h2></header>
+        <header><h2>Transaction detail</h2><button class="btn sm ghost" id="btnPayload" type="button" style="display:none">View X12 payload</button></header>
         <div class="body kv" id="txDetail"><p class="muted">Select a transaction.</p></div>
+        <div class="body" id="payloadWrap" style="display:none;border-top:1px solid var(--line)">
+          <div class="frow" style="align-items:center;justify-content:space-between"><span class="sub">Stored X12 (generation only — never transmitted)</span><button class="btn xs ghost" id="btnCopyPayload" type="button">Copy</button></div>
+          <pre id="txPayload" style="max-height:340px;overflow:auto;white-space:pre-wrap;word-break:break-all;font-family:var(--mono,monospace);font-size:12px;margin:6px 0 0"></pre>
+        </div>
       </div></div>
     </div>
 
@@ -142,6 +146,8 @@ async function loadTransactions(): Promise<void> {
   } catch (e) { setErr(`Transactions load failed: ${(e as Error).message}`); }
 }
 
+let selectedTxId: number | null = null;
+
 async function loadTxDetail(id: number): Promise<void> {
   setBusy(true);
   try {
@@ -150,7 +156,25 @@ async function loadTxDetail(id: number): Promise<void> {
       .filter(([, val2]) => val2 != null)
       .map(([k, val2]) => `<span><b>${esc(k)}</b>${esc(val2 instanceof Date ? val2.toLocaleString() : val2)}</span>`)
       .join('');
+    // Reset the payload viewer for the newly-selected transaction.
+    selectedTxId = id;
+    $('#btnPayload').style.display = '';
+    $('#payloadWrap').style.display = 'none';
+    $('#txPayload').textContent = '';
   } catch (e) { setErr(`Detail load failed: ${(e as Error).message}`); }
+  finally { setBusy(false); }
+}
+
+// The stored X12 is plain text; the NSwag client discards non-JSON bodies, so fetch it directly.
+async function loadPayload(): Promise<void> {
+  if (selectedTxId == null) return;
+  setErr(''); setBusy(true);
+  try {
+    const r = await authFetch(`/api/edi/transactions/${selectedTxId}/payload`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    $('#txPayload').textContent = await r.text();
+    $('#payloadWrap').style.display = '';
+  } catch (e) { setErr(`Payload load failed: ${(e as Error).message}`); }
   finally { setBusy(false); }
 }
 
@@ -316,6 +340,8 @@ function showTab(name: string): void {
   $<HTMLFormElement>('#logForm').addEventListener('submit', (e) => { e.preventDefault(); void loadLog(); });
   $<HTMLFormElement>('#partForm').addEventListener('submit', (e) => { e.preventDefault(); void savePartner(); });
   $('#pReset').addEventListener('click', () => clearPartner());
+  $('#btnPayload').addEventListener('click', () => void loadPayload());
+  $('#btnCopyPayload').addEventListener('click', () => void navigator.clipboard?.writeText($('#txPayload').textContent ?? ''));
   showTab('tx');
   await Promise.all([loadTransactions(), loadWaiting(), loadLog(), loadPartners(), loadCustomers(), loadTypes()]);
 })();
