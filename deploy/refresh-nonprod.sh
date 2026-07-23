@@ -1,61 +1,68 @@
 #!/usr/bin/env bash
-# Refresh the non-prod DB (.230) from prod (.9) via network-mode Oracle Data Pump.
-# READS prod only; DESTRUCTIVE on .230; preserves the modernization's ABIS_* tables.
-# See docs/DB_REFRESH.md for the one-time setup (DB link `prod_9`, directory `dpump_dir`).
+# Weekly non-prod (.230) refresh from prod (.9), part 1 of 2: the BULK network import.
+# Runs ON the .230 host; pulls from prod over the public DB link `prod_9`. Reads prod only.
+# See docs/DB_REFRESH.md for setup. Companion: refresh-long-tables.sh (the LONG-column tables,
+# which a network link cannot carry — must go file-based).
 #
-# Run on the .230 host as the `oracle` user. Weekly cron (Sunday 02:00):
-#   0 2 * * 0 /home/oracle/scripts/refresh-nonprod.sh >> /home/oracle/scripts/refresh-nonprod.log 2>&1
-#
-# Credentials: DO NOT hardcode. Set these in the oracle user's environment (or an Oracle wallet):
-#   ORA_LOCAL   e.g. SYSTEM/secret@abc11   (the .230 import account)
-#   The prod password lives only in the `prod_9` DB link, not here.
+# NOT `set -e`: Data Pump returns exit 5 ("completed with errors") for the harmless
+# "object already exists" noise on a replace; that is success for our purposes.
+set -uo pipefail
 
-set -euo pipefail
-
-ORA_LOCAL="${ORA_LOCAL:?set ORA_LOCAL=user/pwd@abc11 for the .230 import account}"
-LINK="prod_9"
+: "${ORACLE_SID:=abc11}"; export ORACLE_SID
+# Local .230 import account, e.g. ORA_LOCAL="dbo/obd#157" (no @alias — connects to the local SID).
+ORA_LOCAL="${ORA_LOCAL:?set ORA_LOCAL=dbo/pwd for the local .230 import account}"
+DPDIR="${DPDIR:-/u01/app/oracle/dpump}"
 STAMP="$(date +%Y%m%d_%H%M)"
-LOG="refresh_${STAMP}.log"
 
-echo "== $(date '+%F %T') non-prod refresh starting =="
+# LONG-column tables the network link CANNOT move (ORA-31679) — excluded here, refreshed by
+# refresh-long-tables.sh. Keep this list in sync with that script.
+LONG_TABLES="'OUTBOUND_EDI_TRANSACTION','INBOUND_TRANSACTION','EDI_FILE_863','IMPORTED_FILE_863','SKETCH','SKETCH_JPG'"
 
-# --- Pre-flight: prod must be reachable over the link, or we abort WITHOUT touching .230. ---
-probe() { sqlplus -s /nolog <<SQL
-whenever sqlerror exit 2
-connect ${ORA_LOCAL}
+echo "== $(date '+%F %T') network refresh starting (SID=$ORACLE_SID) =="
+
+# Pre-flight: prod reachable over the link, or abort WITHOUT touching .230.
+probe=$(sqlplus -s "$ORA_LOCAL" <<'SQL'
 set heading off feedback off pagesize 0
-SELECT 'PROD_OK=' || COUNT(*) FROM coil@${LINK} WHERE ROWNUM = 1;
+SELECT 'PROBE=' || COUNT(*) FROM coil@prod_9 WHERE ROWNUM = 1;
 exit
 SQL
-}
-if ! probe | grep -q 'PROD_OK='; then
-  echo "ABORT: prod (.9) not reachable over DB link ${LINK}; .230 left untouched." >&2
+)
+if ! echo "$probe" | grep -q 'PROBE=1'; then
+  echo "ABORT: prod (.9) not reachable over DB link prod_9; .230 left untouched." >&2
   exit 1
 fi
 
-before="$(sqlplus -s ${ORA_LOCAL} <<'SQL'
+before=$(sqlplus -s "$ORA_LOCAL" <<'SQL'
 set heading off feedback off pagesize 0
 SELECT COUNT(*) FROM coil;
 exit
 SQL
-)"
-echo "coil rows on .230 before: ${before// /}"
+)
+echo "coil rows on .230 before: ${before//[[:space:]]/}"
 
-# --- The refresh. table_exists_action=replace reloads legacy DBO tables; ABIS_* are excluded. ---
-impdp "${ORA_LOCAL}" \
-  network_link="${LINK}" \
-  schemas=DBO \
-  table_exists_action=replace \
-  exclude=TABLE:"LIKE 'ABIS\_%' ESCAPE '\'" \
-  exclude=STATISTICS \
-  logfile=dpump_dir:"${LOG}" \
-  parallel=4 metrics=yes logtime=all
+# Network import: all DBO tables EXCEPT the ABIS_* modernization tables and the LONG tables.
+# (Standard Edition -> no parallel; 11g -> no logtime.)
+cat > "$DPDIR/net_${STAMP}.par" <<EOF
+network_link=prod_9
+schemas=DBO
+table_exists_action=replace
+exclude=TABLE:"LIKE 'ABIS%'"
+exclude=TABLE:"IN (${LONG_TABLES})"
+exclude=STATISTICS
+logfile=dpump_dir:net_${STAMP}.log
+EOF
 
-after="$(sqlplus -s ${ORA_LOCAL} <<'SQL'
+impdp "$ORA_LOCAL" parfile="$DPDIR/net_${STAMP}.par"; rc=$?
+if [ "$rc" -ne 0 ] && [ "$rc" -ne 5 ]; then
+  echo "network import FAILED (impdp exit $rc); see dpump_dir/net_${STAMP}.log" >&2
+  exit "$rc"
+fi
+
+after=$(sqlplus -s "$ORA_LOCAL" <<'SQL'
 set heading off feedback off pagesize 0
 SELECT COUNT(*) FROM coil;
 exit
 SQL
-)"
-echo "coil rows on .230 after:  ${after// /}   (log: dpump_dir/${LOG})"
-echo "== $(date '+%F %T') non-prod refresh done =="
+)
+echo "coil rows on .230 after:  ${after//[[:space:]]/}   (impdp exit $rc; log dpump_dir/net_${STAMP}.log)"
+echo "== $(date '+%F %T') network refresh done — now run refresh-long-tables.sh for the EDI/sketch tables =="

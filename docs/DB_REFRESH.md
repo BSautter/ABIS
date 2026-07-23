@@ -1,117 +1,119 @@
 # Refresh the non-prod DB (.230) from prod (.9)
 
-Copy the live plant schema from **prod `192.168.1.9` (ABC11)** into the **non-prod sandbox
-`192.168.1.230` (abc11)** so the modernization UI (which reads .230 — see
-[[abis-ui-production-data-source]]) shows current plant data.
+Copy the live plant schema from **prod `192.168.1.9` / host `db01` / port `1523` (ABC11)** into the
+**non-prod sandbox `192.168.1.230` / host `oeldb01` (abc11)** so the modernization UI (which reads
+.230 — see [[abis-ui-production-data-source]]) shows current plant data.
 
-> **Safety model.** The refresh only **READS** prod (Oracle Data Pump export). It never writes
-> to .9. It is **destructive on .230** (that's the point — .230 is the write sandbox). It
-> **preserves the modernization's own `ABIS_*` tables** on .230 (their config — EDI partners,
-> job runs, etc. — is not on prod and must survive the refresh). It is a DB copy only: it does
-> **not** run any legacy EDI / scheduled job, so the no-live-firing guardrail is intact.
+> **Verified end-to-end 2026-07-23.** The values below are the real, working ones for this plant.
 
-Run everything below **on the .230 host as the `oracle` user**. Nothing runs on prod.
+## Safety model
+- **Reads prod only** (Data Pump export). Never writes to .9.
+- **Destructive on .230** — that's the point; .230 is the write sandbox.
+- **Preserves the modernization's `ABIS_*` tables** on .230 (their config — EDI partners, job runs —
+  is not on prod and must survive). They are excluded from the refresh.
+- A DB copy only: it runs **no** legacy EDI / scheduled job, so the no-live-firing guardrail is intact.
+
+## Two parts (why)
+Network-mode Data Pump is fast and runs entirely on .230, but it **cannot move `LONG`/`LONG RAW`
+columns over a DB link** (`ORA-31679`). A handful of legacy tables use `LONG` — including
+**`OUTBOUND_EDI_TRANSACTION`, which the modern EDI page reads** (list / detail / 997 / stall check).
+So the refresh is two parts:
+
+1. **Bulk** — network import of every DBO table **except** `ABIS_*` and the `LONG` tables. → `deploy/refresh-nonprod.sh`
+2. **LONG tables** — file-based (dump) import of the six `LONG` tables. → `deploy/refresh-long-tables.sh`
+
+The `LONG` tables: `OUTBOUND_EDI_TRANSACTION`, `INBOUND_TRANSACTION`, `EDI_FILE_863`,
+`IMPORTED_FILE_863`, `SKETCH`, `SKETCH_JPG`.
 
 ---
 
-## One-time setup (DBA, on .230)
+## One-time setup
 
-### 1. A database link to prod (.9)
-The import pulls over this link, so no job ever runs on prod and no dump files are shuffled.
-
-```sql
--- as SYSTEM on .230
-CREATE DATABASE LINK prod_9
-  CONNECT TO dbo IDENTIFIED BY "<dbo-password-on-.9>"
-  USING '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=192.168.1.9)(PORT=1521))
-          (CONNECT_DATA=(SERVICE_NAME=abc11)))';
-
--- verify it reaches prod:
-SELECT COUNT(*) FROM coil@prod_9;      -- ~150k on prod
+### 1. Data Pump folder on .230 (OS, host `oeldb01`, user `oracle`)
+```bash
+mkdir -p /u01/app/oracle/dpump && chmod 750 /u01/app/oracle/dpump
 ```
-
-> Store the link's prod password with care (it lives in the data dictionary). Rotate it if
-> prod's `dbo` password changes. Prefer a **read-only** prod account if one exists over full `dbo`.
-
-### 2. A Data Pump directory (needed for the log file only, in network mode)
 ```sql
--- as SYSTEM on .230; the path must exist and be writable by the oracle OS user
+-- as SYSDBA on .230
 CREATE OR REPLACE DIRECTORY dpump_dir AS '/u01/app/oracle/dpump';
 GRANT READ, WRITE ON DIRECTORY dpump_dir TO SYSTEM;
 ```
 
-### 3. Import privilege
-`SYSTEM` already has `IMP_FULL_DATABASE`. If you use another account, grant it.
-
----
-
-## The refresh command (network-mode Data Pump import)
-
-One command; no dump files. `table_exists_action=replace` drops+reloads each legacy table;
-tables that are **not on prod** (the `ABIS_*` modernization tables) are left untouched, and the
-`exclude` is a belt-and-suspenders guard.
-
-```bash
-impdp SYSTEM/"<system-pwd>"@abc11 \
-  network_link=prod_9 \
-  schemas=DBO \
-  table_exists_action=replace \
-  exclude=TABLE:"LIKE 'ABIS\_%' ESCAPE '\'" \
-  exclude=STATISTICS \
-  logfile=dpump_dir:refresh_$(date +%Y%m%d_%H%M).log \
-  parallel=4 metrics=yes logtime=all
+### 2. PUBLIC DB link to prod on .230 (SQL, as SYSDBA on .230)
+Must be **PUBLIC** so the import account (`dbo`) can use it. Prod's listener is on **port 1523**
+(host `db01`), service `abc11`. Paste as **one line** (SQL\*Plus splits statements at a blank line):
+```sql
+CREATE PUBLIC DATABASE LINK prod_9 CONNECT TO dbo IDENTIFIED BY "<dbo-pwd>" USING '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=192.168.1.9)(PORT=1523))(CONNECT_DATA=(SERVICE_NAME=abc11)))';
+-- verify (returned 149837 live):
+SELECT COUNT(*) FROM coil@prod_9;
 ```
+The `dbo` password is the same on prod and non-prod. The import runs as `dbo` (owns the DBO schema);
+grant it the import role once: `GRANT IMP_FULL_DATABASE TO dbo;` (as SYSDBA).
 
-Notes:
-- `schemas=DBO` — the app schema (both prod and non-prod use the `DBO` schema).
-- `exclude=STATISTICS` — skip optimizer stats (regather locally if needed); much faster.
-- `parallel=4` — tune to the .230 host's cores.
-- To refresh **data only** into already-matching tables (faster, keeps local grants/indexes),
-  use `table_exists_action=truncate` instead of `replace` — but `replace` is safer when prod's
-  schema has drifted (added columns/tables), so it's the default here.
-- After a `replace`, regather stats if query plans matter:
-  `EXEC DBMS_STATS.GATHER_SCHEMA_STATS('DBO', DEGREE=>4);`
+### 3. Passwordless ssh/scp prod (`db01`) → .230 (`oeldb01`)
+Part 2 (the `LONG` tables) pushes a dump from prod to .230. Confirm `scp` from `db01` to
+`oracle@192.168.1.230` works without a password (set up an ssh key if not).
 
 ---
 
-## Weekly automation (cron on .230)
+## Run it manually (first time / on demand)
 
-`deploy/refresh-nonprod.sh` wraps the import with a **pre-flight link check** (it will *not*
-wipe .230 if prod is unreachable), before/after row counts, and logging. Install it and add a
-cron entry — **Sunday 02:00** keeps the prod read off business hours:
-
-```cron
-# m h dom mon dow   command   (oracle user's crontab on .230)
-0 2 * * 0  /home/oracle/scripts/refresh-nonprod.sh >> /home/oracle/scripts/refresh-nonprod.log 2>&1
-```
-
-This is a **new, standalone** cron owned by the DBA on .230 — it is unrelated to the legacy
-crontab and touches no EDI pipeline (see [[abis-230-cron-inventory]] / [[abis-no-live-firing-guardrail]]).
-
----
-
-## Alternative: file-based (if the DB link isn't available)
-
-Export on prod to a dump, copy it, import on .230. This runs `expdp` on prod (a read), so use a
-read-only account and off-hours.
-
+**Part 1 — bulk, on .230** (`impdp` is a shell command, not SQL\*Plus; connect to the local SID, no
+`@alias`; a parfile avoids shell-quoting the excludes):
 ```bash
-# on .9 (prod) — READ only:
-expdp <ro-user>/"<pwd>"@abc11 schemas=DBO exclude=STATISTICS \
-      directory=dpump_dir dumpfile=dbo_%U.dmp parallel=4 logfile=exp_dbo.log
+cat > /u01/app/oracle/dpump/net.par <<'EOF'
+network_link=prod_9
+schemas=DBO
+table_exists_action=replace
+exclude=TABLE:"LIKE 'ABIS%'"
+exclude=TABLE:"IN ('OUTBOUND_EDI_TRANSACTION','INBOUND_TRANSACTION','EDI_FILE_863','IMPORTED_FILE_863','SKETCH','SKETCH_JPG')"
+exclude=STATISTICS
+logfile=dpump_dir:net.log
+EOF
+impdp dbo parfile=/u01/app/oracle/dpump/net.par      # enter dbo password
+```
+> Standard Edition → **no `parallel`**; 11g → **no `logtime`**. Expect `ORA-31684 "already exists"`
+> noise (functions/sequences/views a table-replace doesn't touch) and a couple of `ORA-39083` FK
+> warnings — normal; `impdp` returns exit **5** ("completed with errors") and that's success here.
 
-scp /u01/.../dbo_*.dmp oracle@192.168.1.230:/u01/app/oracle/dpump/
-
+**Part 2 — LONG tables, on prod `db01`** (export → copy → load on .230):
+```bash
+# on prod:
+expdp dbo/<pwd> directory=DATA_PUMP_DIR dumpfile=long_tabs.dmp logfile=long_exp.log reuse_dumpfiles=yes \
+  tables=OUTBOUND_EDI_TRANSACTION,INBOUND_TRANSACTION,EDI_FILE_863,IMPORTED_FILE_863,SKETCH,SKETCH_JPG
+scp /u01/app_11g/product/11.2.0/home/rdbms/log/long_tabs.dmp oracle@192.168.1.230:/u01/app/oracle/dpump/
 # on .230:
-impdp SYSTEM/"<pwd>"@abc11 schemas=DBO directory=dpump_dir dumpfile=dbo_%U.dmp \
-      table_exists_action=replace exclude=TABLE:"LIKE 'ABIS\_%' ESCAPE '\'" \
-      exclude=STATISTICS parallel=4 logfile=imp_dbo.log
+impdp dbo directory=dpump_dir dumpfile=long_tabs.dmp table_exists_action=replace \
+  tables=OUTBOUND_EDI_TRANSACTION,INBOUND_TRANSACTION,EDI_FILE_863,IMPORTED_FILE_863,SKETCH,SKETCH_JPG
 ```
+Verify: `SELECT COUNT(*) FROM outbound_edi_transaction;` on .230 → 87617 (EDI page repopulates).
+
+After: `EXEC DBMS_STATS.GATHER_SCHEMA_STATS('DBO', DEGREE=>1);` (optional, refreshes optimizer stats).
 
 ---
 
-## After a refresh
-- The modern app on codi-ABIS keeps running against .230 — the `ABIS_*` config is intact, so no
-  re-seed is needed. (If you ever DO drop the `ABIS_*` tables, the app re-provisions them on next
-  start via `AbisSchema`, but their **data** — partner config etc. — would be lost.)
-- Sanity check: `SELECT COUNT(*) FROM coil;` on .230 should now match prod's count.
+## Weekly automation
+Both scripts read credentials from the environment (prefer an Oracle wallet); they tolerate Data
+Pump's exit-5 and won't wipe .230 if prod is unreachable.
+
+- **`deploy/refresh-nonprod.sh`** — Part 1. Cron on **.230** (`oracle`), Sunday 02:00:
+  ```cron
+  0 2 * * 0  ORA_LOCAL="dbo/<pwd>" /home/oracle/scripts/refresh-nonprod.sh >> /home/oracle/scripts/refresh.log 2>&1
+  ```
+- **`deploy/refresh-long-tables.sh`** — Part 2. Cron on **prod `db01`** (`oracle`), Sunday 02:30
+  (after Part 1), pushing to .230:
+  ```cron
+  30 2 * * 0  PROD_ORA="dbo/<pwd>" NONPROD_ORA="dbo/<pwd>" /home/oracle/scripts/refresh-long-tables.sh >> /home/oracle/scripts/refresh-long.log 2>&1
+  ```
+
+Because Part 1 **excludes** the `LONG` tables, the weekly network run never re-empties EDI/sketch
+data again. Part 2 keeps that data current. If you skip Part 2 some week, the `LONG` tables simply
+stay at their last sync (preserved, not wiped).
+
+---
+
+## Notes
+- The two `ORA-39083` FKs left disabled after a bulk refresh (`AB_JOB→SKETCH_JPG`, a Quest tool FK)
+  re-validate once Part 2 loads `SKETCH_JPG`; re-enable if desired (`ALTER TABLE ab_job ENABLE
+  CONSTRAINT <name>;`) — non-critical.
+- The modern app on codi-ABIS keeps running against .230 throughout; `ABIS_*` config is untouched.
