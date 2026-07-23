@@ -2000,6 +2000,22 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task DowntimePivot_groups_by_part()
+    {
+        // Downtime walks ab_job → order_item → part. Job 1001's item (7001) has no part_num_id but
+        // carries enduser_part_num "PN-3003-A" (label falls back to the order item's number);
+        // job 1003's item (7003) points at part 6003 "PN-3003-C".
+        var byPart = await _repo.GetDowntimePivotAsync(null, null, null, "part", CancellationToken.None);
+        Assert.Equal(2, byPart.Count);
+        Assert.Equal("PN-3003-A", byPart[0].Bucket);   // 25 min > 10 min -> first
+        Assert.Equal(2, byPart[0].Occurrences);
+        Assert.Equal(25.0, byPart[0].DowntimeMinutes);
+        var pc = Assert.Single(byPart, r => r.Bucket == "PN-3003-C");
+        Assert.Equal(1, pc.Occurrences);
+        Assert.Equal(10.0, pc.DowntimeMinutes);
+    }
+
+    [Fact]
     public async Task OrderCoil_assign_lists_warns_on_other_order_and_removes()
     {
         // Seed: coil 4802 is on order 9001; coil 4801 is on order 9002. Customer 4001 owns 4801/4802/4803.

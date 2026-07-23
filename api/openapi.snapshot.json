@@ -8665,7 +8665,7 @@
         "tags": [
           "Reporting"
         ],
-        "summary": "Downtime rolled up along one dimension (legacy daily-prod downtime pivots): occurrences + minutes grouped by groupBy = cause (default) | job | line | shift | day | month | year, optionally one line. Defaults to the last 365 days when unbounded.",
+        "summary": "Downtime rolled up along one dimension (legacy daily-prod downtime pivots): occurrences + minutes grouped by groupBy = cause (default) | job | part | line | shift | day | month | year, optionally one line. Defaults to the last 365 days when unbounded.",
         "operationId": "GetDowntimePivot",
         "parameters": [
           {

@@ -2053,7 +2053,7 @@ public sealed class AbisRepository : IAbisRepository
     // d_report_dt_summary). Pulls the detail segments joined to their instance (+ shift for the shift
     // grouping) for the window/line, then buckets in C# so day/month/year need no DB date functions.
     // Minutes = SUM(duration)/60; occurrences = number of detail segments in the bucket.
-    // groupBy: "cause" (default, instance_item) | "job" | "line" | "shift" | "day" | "month" | "year".
+    // groupBy: "cause" (default, instance_item) | "job" | "part" | "line" | "shift" | "day" | "month" | "year".
     public async Task<IReadOnlyList<DowntimePivotRow>> GetDowntimePivotAsync(DateTime? from, DateTime? to, long? lineNum, string groupBy, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
@@ -2063,15 +2063,22 @@ public sealed class AbisRepository : IAbisRepository
         if (to is not null) { where.Add("i.starting_time < :dto"); p.Add("dto", to, DbType.DateTime); }
         if (lineNum is not null) { where.Add("i.line_num = :line"); p.Add("line", lineNum); }
         var clause = where.Count > 0 ? "WHERE " + string.Join(" AND ", where) : "";
+        // The part dimension walks ab_job → order_item → part_num (all 1:1, so no row fan-out); the
+        // downtime instance carries only ab_job_num. Left joins so downtime not tied to a job/part
+        // still counts (bucketed as "(none)").
         var raw = await conn.QueryAsync<DtPivotRaw>(new CommandDefinition(
             $"""
             SELECT d.instance_item AS InstanceItem, i.ab_job_num AS AbJobNum, i.line_num AS LineNum,
                    l.line_desc AS LineDesc, s.schedule_type AS ScheduleType,
-                   i.starting_time AS StartingTime, d.duration AS Duration
+                   i.starting_time AS StartingTime, d.duration AS Duration,
+                   oi.part_num_id AS PartNumId, COALESCE(pn.enduser_part_num, oi.enduser_part_num) AS PartLabel
             FROM dt_instance_detail d
             JOIN dt_instance i ON i.instance_num = d.instance_num
             LEFT JOIN shift s ON s.shift_num = i.shift_num
             LEFT JOIN line l ON l.line_num = i.line_num
+            LEFT JOIN ab_job aj ON aj.ab_job_num = i.ab_job_num
+            LEFT JOIN order_item oi ON oi.order_abc_num = aj.order_abc_num AND oi.order_item_num = aj.order_item_num
+            LEFT JOIN part_num pn ON pn.part_num_id = oi.part_num_id
             {clause}
             """, p, cancellationToken: ct));
 
@@ -2083,6 +2090,7 @@ public sealed class AbisRepository : IAbisRepository
             switch (g)
             {
                 case "job": key = r.AbJobNum?.ToString() ?? "?"; label = r.AbJobNum?.ToString() ?? "(none)"; break;
+                case "part": key = r.PartNumId?.ToString() ?? "?"; label = r.PartLabel ?? r.PartNumId?.ToString() ?? "(none)"; break;
                 case "line": key = r.LineNum?.ToString() ?? "?"; label = r.LineDesc ?? r.LineNum?.ToString() ?? "(none)"; break;
                 case "shift": key = r.ScheduleType?.ToString() ?? "?"; label = ShiftLabel(r.ScheduleType); break;
                 case "day": label = key = r.StartingTime?.ToString("yyyy-MM-dd") ?? "(undated)"; break;
@@ -2133,6 +2141,8 @@ public sealed class AbisRepository : IAbisRepository
         public int? ScheduleType { get; set; }
         public DateTime? StartingTime { get; set; }
         public decimal? Duration { get; set; }
+        public long? PartNumId { get; set; }
+        public string? PartLabel { get; set; }
     }
 
     private sealed class DtPivotAccum

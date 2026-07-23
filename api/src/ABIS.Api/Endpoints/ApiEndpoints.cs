@@ -2178,7 +2178,7 @@ public static class ApiEndpoints
                 return Results.Ok(await repo.GetDowntimePivotAsync(f, t, lineNum, groupBy, ct));
             })
            .WithName("GetDowntimePivot").WithTags("Reporting")
-           .WithSummary("Downtime rolled up along one dimension (legacy daily-prod downtime pivots): occurrences + minutes grouped by groupBy = cause (default) | job | line | shift | day | month | year, optionally one line. Defaults to the last 365 days when unbounded.")
+           .WithSummary("Downtime rolled up along one dimension (legacy daily-prod downtime pivots): occurrences + minutes grouped by groupBy = cause (default) | job | part | line | shift | day | month | year, optionally one line. Defaults to the last 365 days when unbounded.")
            .Produces<IReadOnlyList<DowntimePivotRow>>();
 
         // ---- Calculator (legacy w_order_entry suggested piece weight) ----

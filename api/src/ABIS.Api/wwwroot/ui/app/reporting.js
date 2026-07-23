@@ -235,6 +235,11 @@ const REPORTS = {
         load: (f, t) => loadJson(`/api/reporting/downtime-pivot${qwin(f, t, { groupBy: 'job' })}`),
         cols: pivotCols('Job'),
     },
+    'dt-by-part': {
+        note: 'Downtime minutes + occurrences by part (ab_job → order_item → part).',
+        load: (f, t) => loadJson(`/api/reporting/downtime-pivot${qwin(f, t, { groupBy: 'part' })}`),
+        cols: pivotCols('Part'),
+    },
     'dt-by-line': {
         note: 'Downtime minutes + occurrences by line.',
         load: (f, t) => loadJson(`/api/reporting/downtime-pivot${qwin(f, t, { groupBy: 'line' })}`),
