@@ -100,13 +100,18 @@ async function loadShipment(id: number): Promise<void> {
         <div class="fld"><label>Actual</label><input id="dActual" type="date" value="${esc(dt(s.shipmentActualedDateTime))}" /></div>
         <div class="fld" style="flex:1;min-width:180px"><label>Notes</label><input id="dNotes" value="${esc(s.shipmentNotes)}" /></div>
       </div>
-      <div class="frow" style="margin-top:10px;align-items:center"><button class="btn sm ghost" id="btnDispatch" type="button">Save dispatch</button><span id="dispOk" class="ok-note"></span></div>`;
+      <div class="frow" style="margin-top:10px;align-items:center"><button class="btn sm ghost" id="btnDispatch" type="button">Save dispatch</button><span id="dispOk" class="ok-note"></span></div>
+      <h3 style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);margin:16px 0 8px">Status history <span style="text-transform:none;letter-spacing:0;color:var(--ink-3);font-weight:400">— shipment_track, newest first</span></h3>
+      <div style="overflow-x:auto"><table class="tbl" style="min-width:520px">
+        <thead><tr><th>When</th><th>By</th><th>Shipment status</th><th>Vehicle status</th><th>Ship-to</th></tr></thead>
+        <tbody id="shipHist"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+      </table></div>`;
     $('#btnClose').addEventListener('click', () => void closeBol());
     $('#btnDispatch').addEventListener('click', () => void dispatch());
     $('#btnAddItem').addEventListener('click', () => void addPackItem());
     $('#btnPrintPacking').addEventListener('click', () => void printDoc(`/api/documents/packing-list/${id}`, 'Packing list'));
     $('#btnPrintBol').addEventListener('click', () => void printDoc(`/api/documents/bol/${id}`, 'BOL'));
-    await loadPackingItems(id);
+    await Promise.all([loadPackingItems(id), loadHistory(id)]);
   } catch (e) { setErr(`Load failed: ${(e as Error).message}`); }
   finally { setBusy(false); }
 }
@@ -134,6 +139,27 @@ async function loadPackingItems(id: number): Promise<void> {
     document.querySelectorAll<HTMLButtonElement>('#packItems button[data-id]').forEach((b) =>
       b.addEventListener('click', () => void removePackItem(String(b.dataset.type), Number(b.dataset.id))));
   } catch (e) { setErr(`Items failed: ${(e as Error).message}`); }
+}
+
+// A pre→cur transition: show the arrow only when the value actually changed.
+const transition = (domain: string, pre: number | undefined, cur: number | undefined): string =>
+  pre != null && pre !== cur
+    ? `${statusChip(domain, pre)} → ${statusChip(domain, cur)}`
+    : cur != null ? statusChip(domain, cur) : '<span class="muted">—</span>';
+
+async function loadHistory(id: number): Promise<void> {
+  try {
+    const rows = await client().getShipmentHistory(id);
+    const when = (d: Date | undefined) => (d == null ? '' : d.toLocaleString());
+    const shipTo = (pre: number | undefined, cur: number | undefined) =>
+      pre != null && pre !== cur ? `${esc(pre)} → ${esc(cur)}` : cur != null ? esc(cur) : '<span class="muted">—</span>';
+    $('#shipHist').innerHTML = rows.length ? rows.map((h) => `<tr>
+      <td class="mono">${esc(when(h.logDate))}</td><td>${esc(h.modifiedBy)}</td>
+      <td>${transition('shipmentStatus', h.preShipmentStatus, h.curShipmentStatus)}</td>
+      <td>${transition('vehicleStatus', h.preVehicleStatus, h.curVehicleStatus)}</td>
+      <td class="mono">${shipTo(h.preShipToId, h.curShipToId)}</td></tr>`).join('')
+      : '<tr><td colspan="5" class="muted">No recorded status changes.</td></tr>';
+  } catch (e) { setErr(`History failed: ${(e as Error).message}`); }
 }
 
 async function addPackItem(): Promise<void> {
