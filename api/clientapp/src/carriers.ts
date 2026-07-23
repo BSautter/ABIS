@@ -49,8 +49,12 @@ function scaffold(): string {
             <div class="fld"><label>SCAC</label><input id="cScac" style="width:90px" /></div>
             <div class="fld" style="flex:1;min-width:160px"><label>Name</label><input id="cName" /></div>
             <div class="fld"><label>Type code</label><input id="cType" style="width:100px" /></div>
+            <div class="fld" style="flex:1;min-width:150px"><label>Street</label><input id="cStreet" /></div>
             <div class="fld"><label>City</label><input id="cCity" style="width:120px" /></div>
             <div class="fld"><label>State</label><input id="cState" style="width:70px" /></div>
+            <div class="fld"><label>Zip</label><input id="cZip" style="width:90px" /></div>
+            <div class="fld"><label>Country</label><input id="cCountry" style="width:90px" /></div>
+            <div class="fld"><label>DUNS #</label><input id="cDuns" inputmode="numeric" style="width:120px" /></div>
             <div class="fld"><label>Phone</label><input id="cPhone" style="width:140px" /></div>
             <div class="fld"><label>Status</label><input id="cStatus" inputmode="numeric" style="width:90px" /></div>
           </div>
@@ -92,7 +96,8 @@ async function loadCarrier(id: number): Promise<void> {
     editingId = id;
     $('#formTitle').textContent = `Edit carrier #${id}`;
     setV('#cScac', c.scac); setV('#cName', c.carrierFullName); setV('#cType', c.carrierTypeCode);
-    setV('#cCity', c.carrierCity); setV('#cState', c.carrierState);
+    setV('#cStreet', c.carrierStreet); setV('#cCity', c.carrierCity); setV('#cState', c.carrierState);
+    setV('#cZip', c.carrierZip); setV('#cCountry', c.carrierCountry); setV('#cDuns', c.carrierDunsNumber);
     setV('#cPhone', c.carrierPhoneNumber); setV('#cStatus', c.status);
   } catch (e) { setErr(`Load failed: ${(e as Error).message}`); }
   finally { setBusy(false); }
@@ -101,7 +106,7 @@ async function loadCarrier(id: number): Promise<void> {
 function newCarrier(): void {
   editingId = null;
   $('#formTitle').textContent = 'New carrier';
-  ['#cScac', '#cName', '#cType', '#cCity', '#cState', '#cPhone', '#cStatus'].forEach((id) => setV(id, ''));
+  ['#cScac', '#cName', '#cType', '#cStreet', '#cCity', '#cState', '#cZip', '#cCountry', '#cDuns', '#cPhone', '#cStatus'].forEach((id) => setV(id, ''));
   setOk(''); setErr('');
 }
 
@@ -111,8 +116,12 @@ async function save(): Promise<void> {
     scac: v('#cScac') || undefined,
     carrierFullName: v('#cName') || undefined,
     carrierTypeCode: v('#cType') || undefined,
+    carrierStreet: v('#cStreet') || undefined,
     carrierCity: v('#cCity') || undefined,
     carrierState: v('#cState') || undefined,
+    carrierZip: v('#cZip') || undefined,
+    carrierCountry: v('#cCountry') || undefined,
+    carrierDunsNumber: v('#cDuns') ? Number(v('#cDuns')) : undefined,
     carrierPhoneNumber: v('#cPhone') || undefined,
     status: v('#cStatus') ? Number(v('#cStatus')) : undefined,
   });

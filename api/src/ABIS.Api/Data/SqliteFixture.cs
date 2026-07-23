@@ -424,7 +424,8 @@ public static class SqliteFixture
 
             CREATE TABLE carrier (
                 carrier_id INTEGER PRIMARY KEY, scac TEXT, carrier_full_name TEXT, carrier_type_code TEXT,
-                carrier_city TEXT, carrier_state TEXT, carrier_phone_number TEXT, status INTEGER);
+                carrier_street TEXT, carrier_city TEXT, carrier_state TEXT, carrier_zip TEXT, carrier_country TEXT,
+                carrier_duns_number INTEGER, carrier_phone_number TEXT, status INTEGER);
 
             CREATE TABLE shift (
                 shift_num INTEGER PRIMARY KEY, start_time TEXT, end_time TEXT, line_num INTEGER,
@@ -948,6 +949,15 @@ public static class SqliteFixture
             INSERT INTO customer (customer_id, customer_full_name, customer_short_name, customer_city, customer_state,
                 customer_type, edi_req, customer_duns_number_string)
             VALUES (3061, 'CLIFFS STEEL-CLEVELAND', 'CLIFFS-CLE', 'Cleveland', 'OH', 1, 'Y', '606072130')
+            """);
+        // A clean, unreferenced customer (+ one contact) — the deletable case for the guarded delete.
+        conn.Execute("""
+            INSERT INTO customer (customer_id, customer_full_name, customer_short_name, customer_city, customer_state, customer_type, edi_req)
+            VALUES (4099, 'DELETABLE CO', 'DELCO', 'Akron', 'OH', 1, 'N')
+            """);
+        conn.Execute("""
+            INSERT INTO customer_contact (contact_id, customer_id, first_name, last_name, department)
+            VALUES (5699, 4099, 'Pat', 'Vale', 'Purchasing')
             """);
         conn.Execute(
             """

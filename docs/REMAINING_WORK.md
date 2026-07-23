@@ -80,7 +80,7 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [~] **H** Part revisions (version + re-point open items) — still TODO; **routing sequences per part — done (#258)**: `GET/POST /parts/{id}/routings` + `DELETE /parts/{id}/routings/{seq}/{line}/{die}/{shape}` over legacy `ROUTING` (line/die/shape + SPM & efficiency standards + edge-trim/stacker; all-column PK → edit = delete + re-add). Routings travel with a part copy and are cleared on part delete. Routing panel on the Parts page.
 - [~] **M** **Part copy/delete + obsolete-in-use guard — done (#256)**: `POST /parts/{id}/copy` (part + blank geometry, INSERT…SELECT) + `DELETE /parts/{id}` refused with 409 when referenced by any order line (order_item.part_num_id), with Duplicate/Delete buttons on the Parts page. **Order copy/duplicate — done (#255)**: `POST /orders/{id}/copy` clones header + items + geometry. Still TODO here: end-user change cascade; order-entry part picker
 - [ ] **H/M** Sector consistency validation; edge-trim tolerance gate + override + `f_add_system_log_tran` audit
-- [ ] **M** Accounting scrap-type summary; print coil-cert label on order close; customer delete
+- [~] **M** Accounting scrap-type summary; print coil-cert label on order close; **customer delete — done (#261)**: `DELETE /customers/{id}` refused with 409 when referenced by any order/part/coil/shipment, else deletes the customer + its contacts + recovery config; Delete button on the Customers page.
 
 ### C2. Logistics / shipping
 - [~] **C** Packing-list line items — ✅ `SHEET` (#217) + `SCRAP` (#219) + `REJECT_COIL` (#220) built (add/list/remove on the shipment, feeding the 856); only `WH_PACKING_ITEM` (9 live rows) deferred
@@ -89,7 +89,7 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [~] **H** Die → shape mapping — done (#254): `GET/POST /line-die-shapes` + `DELETE /line-die-shapes/{shape}/{line}/{die}` over `LINE_DIE_4SHEET_TYPE` (composite PK), so scheduling can resolve the eligible line/die for a shape (filter by sheetType/lineNum/dieId; add guards line/die-exist + dup). Dies page gained a mapping panel. Still TODO: **die label/report print**.
 - [x] **M** Shipment header EDI-trigger fields — done (#259): the shipment read now carries `edi_req`/`edi_triggered`/`edi_file_id_856`/`edi_file_id_desadv` + the 856/desadv/des-856 dates, and `POST /shipments/{pl}/edi-trigger` (docType 856|desadv + optional file id) stamps them (bookkeeping only — never transmits). Surfacing on the shipping UI is a follow-up.
 - [ ] **M** Manual EDI send/resend from UI; view archived EDI payload; X12 map maintenance
-- [ ] **L** Shipment status-change history (`SHIPMENT_TRACK`); carrier DUNS/street/zip/country fields
+- [~] **L** Shipment status-change history (`SHIPMENT_TRACK`) — still TODO; **carrier DUNS/street/zip/country fields — done (#261)**: added `carrier_street`/`carrier_zip`/`carrier_country`/`carrier_duns_number` to the carrier read+write + Carriers form inputs.
 
 ### C3. Coils / receiving
 - [ ] **C** Warehouse skid CRUD + status-20 warehouse-coil mint (+ process_coil/sheet_skid rows, weight recon, package-num)

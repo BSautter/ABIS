@@ -1911,6 +1911,12 @@ public static class ApiEndpoints
            .WithSummary("Replace a customer. Supports If-Match.")
            .Produces<Customer>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status412PreconditionFailed).ProducesValidationProblem();
 
+        api.MapDelete("/customers/{customerId:long}", async (long customerId, IAbisRepository repo, CancellationToken ct) =>
+                DeleteResultToHttp(await repo.DeleteCustomerAsync(customerId, ct), "Customer in use"))
+           .WithName("DeleteCustomer").WithTags("Customers")
+           .WithSummary("Delete a customer (and its contacts + recovery config). 409 if the customer is referenced by any order, part, coil, or shipment.")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
+
         // ---- Skids ------------------------------------------------------
         api.MapGet("/sheet-skids", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, string? sort = null, string? dir = null) =>

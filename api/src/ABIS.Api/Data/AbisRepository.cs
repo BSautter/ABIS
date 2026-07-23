@@ -307,8 +307,9 @@ public sealed class AbisRepository : IAbisRepository
 
     private const string CarrierCols = """
         carrier_id AS CarrierId, scac AS Scac, carrier_full_name AS CarrierFullName,
-        carrier_type_code AS CarrierTypeCode, carrier_city AS CarrierCity, carrier_state AS CarrierState,
-        carrier_phone_number AS CarrierPhoneNumber, status AS Status
+        carrier_type_code AS CarrierTypeCode, carrier_street AS CarrierStreet, carrier_city AS CarrierCity,
+        carrier_state AS CarrierState, carrier_zip AS CarrierZip, carrier_country AS CarrierCountry,
+        carrier_duns_number AS CarrierDunsNumber, carrier_phone_number AS CarrierPhoneNumber, status AS Status
         """;
 
     private const string ShiftCols = """
@@ -820,6 +821,41 @@ public sealed class AbisRepository : IAbisRepository
             $"UPDATE customer SET {CustomerSetClause}, customer_maint_date = :ts WHERE customer_id = :id",
             p, cancellationToken: ct));
         return n == 0 ? null : await GetCustomerAsync(customerId, ct);
+    }
+
+    // Delete a customer, refusing when it owns business data (orders / parts / coils / shipments).
+    // On delete, the customer's owned config children (contacts + recovery setup) go with it.
+    public async Task<DeleteResult> DeleteCustomerAsync(long customerId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM customer WHERE customer_id = :id", new { id = customerId }, cancellationToken: ct));
+        if (exists == 0) return new DeleteResult(DeleteOutcome.NotFound);
+
+        var orders = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM customer_order WHERE orig_customer_id = :id OR enduser_id = :id", new { id = customerId }, cancellationToken: ct));
+        if (orders > 0) return new DeleteResult(DeleteOutcome.InUse, $"Customer {customerId} is on {orders} order(s) and cannot be deleted.");
+        var parts = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM part_num WHERE customer_id = :id", new { id = customerId }, cancellationToken: ct));
+        if (parts > 0) return new DeleteResult(DeleteOutcome.InUse, $"Customer {customerId} owns {parts} part(s) and cannot be deleted.");
+        var coils = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM coil WHERE customer_id = :id OR coil_from_cust_id = :id", new { id = customerId }, cancellationToken: ct));
+        if (coils > 0) return new DeleteResult(DeleteOutcome.InUse, $"Customer {customerId} owns {coils} coil(s) and cannot be deleted.");
+        var ships = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM shipment WHERE customer_id = :id", new { id = customerId }, cancellationToken: ct));
+        if (ships > 0) return new DeleteResult(DeleteOutcome.InUse, $"Customer {customerId} is on {ships} shipment(s) and cannot be deleted.");
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        foreach (var sql in new[]
+        {
+            "DELETE FROM customer_contact WHERE customer_id = :id",
+            "DELETE FROM recovery_report_customer WHERE customer_id = :id",
+            "DELETE FROM cust_scrap_type_needed WHERE customer_id = :id",
+            "DELETE FROM customer WHERE customer_id = :id",
+        })
+            await conn.ExecuteAsync(new CommandDefinition(sql, new { id = customerId }, transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+        return new DeleteResult(DeleteOutcome.Deleted);
     }
 
     public async Task<AbJob?> PatchJobAsync(long abJobNum, JobPatch patch, CancellationToken ct)
@@ -6255,11 +6291,13 @@ public sealed class AbisRepository : IAbisRepository
         var id = await NextIdAsync(conn, tx, "carrier", "carrier_id", ct);
         await conn.ExecuteAsync(new CommandDefinition(
             """
-            INSERT INTO carrier (carrier_id, scac, carrier_full_name, carrier_type_code, carrier_city, carrier_state, carrier_phone_number, status)
-            VALUES (:id, :scac, :name, :type, :city, :state, :phone, :status)
+            INSERT INTO carrier (carrier_id, scac, carrier_full_name, carrier_type_code, carrier_street, carrier_city,
+                carrier_state, carrier_zip, carrier_country, carrier_duns_number, carrier_phone_number, status)
+            VALUES (:id, :scac, :name, :type, :street, :city, :state, :zip, :country, :duns, :phone, :status)
             """,
-            new { id, scac = body.Scac, name = body.CarrierFullName, type = body.CarrierTypeCode, city = body.CarrierCity,
-                  state = body.CarrierState, phone = body.CarrierPhoneNumber, status = body.Status },
+            new { id, scac = body.Scac, name = body.CarrierFullName, type = body.CarrierTypeCode, street = body.CarrierStreet,
+                  city = body.CarrierCity, state = body.CarrierState, zip = body.CarrierZip, country = body.CarrierCountry,
+                  duns = body.CarrierDunsNumber, phone = body.CarrierPhoneNumber, status = body.Status },
             transaction: tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
         return (await GetCarrierAsync(id, ct))!;
@@ -6271,11 +6309,13 @@ public sealed class AbisRepository : IAbisRepository
         var n = await conn.ExecuteAsync(new CommandDefinition(
             """
             UPDATE carrier SET scac = :scac, carrier_full_name = :name, carrier_type_code = :type,
-                   carrier_city = :city, carrier_state = :state, carrier_phone_number = :phone, status = :status
+                   carrier_street = :street, carrier_city = :city, carrier_state = :state, carrier_zip = :zip,
+                   carrier_country = :country, carrier_duns_number = :duns, carrier_phone_number = :phone, status = :status
             WHERE carrier_id = :id
             """,
-            new { scac = body.Scac, name = body.CarrierFullName, type = body.CarrierTypeCode, city = body.CarrierCity,
-                  state = body.CarrierState, phone = body.CarrierPhoneNumber, status = body.Status, id = carrierId },
+            new { scac = body.Scac, name = body.CarrierFullName, type = body.CarrierTypeCode, street = body.CarrierStreet,
+                  city = body.CarrierCity, state = body.CarrierState, zip = body.CarrierZip, country = body.CarrierCountry,
+                  duns = body.CarrierDunsNumber, phone = body.CarrierPhoneNumber, status = body.Status, id = carrierId },
             cancellationToken: ct));
         return n == 0 ? null : await GetCarrierAsync(carrierId, ct);
     }

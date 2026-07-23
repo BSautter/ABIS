@@ -951,8 +951,12 @@ public sealed class Carrier
     public string? Scac { get; set; }
     public string? CarrierFullName { get; set; }
     public string? CarrierTypeCode { get; set; }
+    public string? CarrierStreet { get; set; }
     public string? CarrierCity { get; set; }
     public string? CarrierState { get; set; }
+    public string? CarrierZip { get; set; }
+    public string? CarrierCountry { get; set; }
+    public long? CarrierDunsNumber { get; set; }
     public string? CarrierPhoneNumber { get; set; }
     public int? Status { get; set; }
 }

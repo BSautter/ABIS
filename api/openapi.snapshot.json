@@ -2795,6 +2795,38 @@
             "description": "Unauthorized"
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "Customers"
+        ],
+        "summary": "Delete a customer (and its contacts + recovery config). 409 if the customer is referenced by any order, part, coil, or shipment.",
+        "operationId": "DeleteCustomer",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
       }
     },
     "/api/customers/{customerId}/contacts": {
@@ -13270,12 +13302,29 @@
             "type": "string",
             "nullable": true
           },
+          "carrierStreet": {
+            "type": "string",
+            "nullable": true
+          },
           "carrierCity": {
             "type": "string",
             "nullable": true
           },
           "carrierState": {
             "type": "string",
+            "nullable": true
+          },
+          "carrierZip": {
+            "type": "string",
+            "nullable": true
+          },
+          "carrierCountry": {
+            "type": "string",
+            "nullable": true
+          },
+          "carrierDunsNumber": {
+            "type": "integer",
+            "format": "int64",
             "nullable": true
           },
           "carrierPhoneNumber": {
@@ -13341,12 +13390,29 @@
             "type": "string",
             "nullable": true
           },
+          "carrierStreet": {
+            "type": "string",
+            "nullable": true
+          },
           "carrierCity": {
             "type": "string",
             "nullable": true
           },
           "carrierState": {
             "type": "string",
+            "nullable": true
+          },
+          "carrierZip": {
+            "type": "string",
+            "nullable": true
+          },
+          "carrierCountry": {
+            "type": "string",
+            "nullable": true
+          },
+          "carrierDunsNumber": {
+            "type": "integer",
+            "format": "int64",
             "nullable": true
           },
           "carrierPhoneNumber": {

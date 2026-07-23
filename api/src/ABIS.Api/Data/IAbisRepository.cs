@@ -92,6 +92,7 @@ public interface IAbisRepository
     Task<CustomerContact?> UpdateCustomerContactAsync(long contactId, CustomerContactWrite body, CancellationToken ct);
     Task<Customer> CreateCustomerAsync(CustomerWrite body, CancellationToken ct);
     Task<Customer?> UpdateCustomerAsync(long customerId, CustomerWrite body, CancellationToken ct);
+    Task<DeleteResult> DeleteCustomerAsync(long customerId, CancellationToken ct);
 
     // ---- Skids ----------------------------------------------------------
     Task<PagedResult<SheetSkid>> GetSheetSkidsAsync(int page, int pageSize, string? orderBy, CancellationToken ct);

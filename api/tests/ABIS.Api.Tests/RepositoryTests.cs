@@ -291,7 +291,7 @@ public sealed class RepositoryTests : IDisposable
     public async Task GetCustomers_lists_and_filters_by_name()
     {
         var all = await _repo.GetCustomersAsync(1, 25, name: null, orderBy: null, CancellationToken.None);
-        Assert.Equal(7, all.TotalCount);   // ACME + BETA + Novelis Kingston/Oswego/Guthrie (1153/1459/2582) + Aleris (1980) + Cliffs (3061)
+        Assert.Equal(8, all.TotalCount);   // ACME + BETA + Novelis Kingston/Oswego/Guthrie (1153/1459/2582) + Aleris (1980) + Cliffs (3061) + DELCO (4099)
 
         var acme = await _repo.GetCustomersAsync(1, 25, name: "ACME", orderBy: null, CancellationToken.None);
         Assert.Single(acme.Items);
@@ -430,8 +430,8 @@ public sealed class RepositoryTests : IDisposable
         var created = await _repo.CreateCustomerAsync(
             new CustomerWrite { CustomerName = "GAMMA ALLOYS", CustomerShortName = "GAMMA" }, CancellationToken.None);
 
-        Assert.Equal(4003, created.CustomerId);   // MAX(4002) + 1
-        var fetched = await _repo.GetCustomerAsync(4003, CancellationToken.None);
+        Assert.Equal(4100, created.CustomerId);   // MAX(4099) + 1
+        var fetched = await _repo.GetCustomerAsync(4100, CancellationToken.None);
         Assert.Equal("GAMMA ALLOYS", fetched!.CustomerName);
     }
 
@@ -2232,6 +2232,37 @@ public sealed class RepositoryTests : IDisposable
         Assert.Null(await _repo.MarkShipmentEdiTriggeredAsync(99999999, "856", null, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task Carrier_address_fields_roundtrip_and_customer_guarded_delete()
+    {
+        // Carrier: the new street/zip/country/DUNS fields round-trip on create + update.
+        var c = await _repo.CreateCarrierAsync(new CarrierWrite
+        {
+            CarrierFullName = "Gamma Transit", Scac = "GMMA", CarrierStreet = "100 Dock Rd",
+            CarrierCity = "Gary", CarrierState = "IN", CarrierZip = "46402", CarrierCountry = "USA",
+            CarrierDunsNumber = 123456789, Status = 1,
+        }, CancellationToken.None);
+        Assert.Equal("100 Dock Rd", c.CarrierStreet);
+        Assert.Equal("46402", c.CarrierZip);
+        Assert.Equal("USA", c.CarrierCountry);
+        Assert.Equal(123456789L, c.CarrierDunsNumber!.Value);
+        var up = await _repo.UpdateCarrierAsync(c.CarrierId,
+            new CarrierWrite { CarrierFullName = "Gamma", CarrierCountry = "CAN", CarrierDunsNumber = 987654321 }, CancellationToken.None);
+        Assert.Equal("CAN", up!.CarrierCountry);
+        Assert.Equal(987654321L, up.CarrierDunsNumber!.Value);
+
+        // Customer guarded delete: 4001 is referenced by orders -> InUse (still present after).
+        Assert.Equal(DeleteOutcome.InUse, (await _repo.DeleteCustomerAsync(4001, CancellationToken.None)).Outcome);
+        Assert.NotNull(await _repo.GetCustomerAsync(4001, CancellationToken.None));
+
+        // 4099 is unreferenced -> Deleted; its contact goes with it; a second delete is NotFound.
+        Assert.Single(await _repo.GetCustomerContactsAsync(4099, CancellationToken.None));
+        Assert.Equal(DeleteOutcome.Deleted, (await _repo.DeleteCustomerAsync(4099, CancellationToken.None)).Outcome);
+        Assert.Null(await _repo.GetCustomerAsync(4099, CancellationToken.None));
+        Assert.Empty(await _repo.GetCustomerContactsAsync(4099, CancellationToken.None));
+        Assert.Equal(DeleteOutcome.NotFound, (await _repo.DeleteCustomerAsync(4099, CancellationToken.None)).Outcome);
+    }
+
     // ---- customer contacts & sketches ----------------------------------
 
     [Fact]
@@ -2348,11 +2379,11 @@ public sealed class RepositoryTests : IDisposable
         var created = await _repo.CreateCustomerContactAsync(4002,
             new CustomerContactWrite { FirstName = "Pat", LastName = "Nguyen", Department = "Logistics", City = "Toledo", State = "OH" },
             CancellationToken.None);
-        Assert.Equal(5604, created.ContactId);    // MAX(5603) + 1
+        Assert.Equal(5700, created.ContactId);    // MAX(5699) + 1
         Assert.Equal(4002, created.CustomerId);   // owner comes from the route
         Assert.Equal("Nguyen", created.LastName);
         // The new contact appears under its owning customer.
-        Assert.Contains(await _repo.GetCustomerContactsAsync(4002, CancellationToken.None), c => c.ContactId == 5604);
+        Assert.Contains(await _repo.GetCustomerContactsAsync(4002, CancellationToken.None), c => c.ContactId == 5700);
     }
 
     [Fact]

@@ -55,6 +55,7 @@ function scaffold() {
             <div class="frow" style="margin-top:10px;align-items:center">
               <button class="btn sm" id="btnSave" type="button">Save</button>
               <button class="btn sm ghost" id="btnNew" type="button">New</button>
+              <button class="btn sm ghost" id="btnDelete" type="button" style="color:var(--crit)">Delete</button>
               <span id="ok" class="ok-note"></span>
             </div>
           </div>
@@ -174,6 +175,39 @@ async function saveCustomer() {
         setBusy(false);
     }
 }
+// Delete the loaded customer — refused by the server (409) if it's referenced by any order/part/coil/shipment.
+async function deleteCustomer() {
+    if (editingCustomerId == null) {
+        setErr('Load a customer first to delete it.');
+        return;
+    }
+    if (!window.confirm(`Delete customer #${editingCustomerId} and its contacts? This cannot be undone.`))
+        return;
+    setErr('');
+    setOk('');
+    setBusy(true);
+    try {
+        const r = await authFetch(`/api/customers/${editingCustomerId}`, { method: 'DELETE' });
+        if (r.status === 409) {
+            setErr('Cannot delete: this customer is referenced by an order, part, coil, or shipment.');
+            return;
+        }
+        if (!r.ok && r.status !== 204) {
+            setErr(`Delete failed (${r.status}).`);
+            return;
+        }
+        const gone = editingCustomerId;
+        newCustomer();
+        await search();
+        setOk(`✓ Deleted customer #${gone}.`);
+    }
+    catch (e) {
+        setErr(`Delete failed: ${e.message}`);
+    }
+    finally {
+        setBusy(false);
+    }
+}
 async function loadContacts(customerId) {
     contactsById.clear();
     try {
@@ -251,6 +285,7 @@ async function saveContact() {
     $('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); void search(); });
     $('#btnNew').addEventListener('click', newCustomer);
     $('#btnSave').addEventListener('click', () => void saveCustomer());
+    $('#btnDelete').addEventListener('click', () => void deleteCustomer());
     $('#btnContactSave').addEventListener('click', () => void saveContact());
     $('#btnContactNew').addEventListener('click', newContact);
     newCustomer();
