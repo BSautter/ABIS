@@ -18,6 +18,23 @@ const val = (id: string) => $<HTMLInputElement>(id).value.trim();
 
 let alloys: string[] = [];
 let currentDetail: any = null;   // the loaded order detail (header + customer + items) for in-place edit
+const custParts = new Map<string, any>();   // the new-order customer's parts, keyed by part # (the picker source)
+
+// Load the parts belonging to the customer typed into the New-order form; populate the shared
+// datalist so a line's Part # field autocompletes and prefills the spec on selection.
+async function loadCustomerParts(): Promise<void> {
+  custParts.clear();
+  const list = $('#partList'); if (list) list.innerHTML = '';
+  const cid = $<HTMLInputElement>('#nCustomer').value.trim();
+  if (!cid) return;
+  try {
+    const page = await client().listParts(1, 500, Number(cid), undefined, undefined, undefined);
+    const parts = (page.items ?? []).filter((p) => p.enduserPartNum);
+    parts.forEach((p) => { if (p.enduserPartNum) custParts.set(p.enduserPartNum, p); });
+    if (list) list.innerHTML = parts.map((p) =>
+      `<option value="${esc(p.enduserPartNum)}">#${esc(p.partNumId)} · ${esc(p.alloy)} ${esc(p.sheetType)} ${esc(p.gauge)}</option>`).join('');
+  } catch { /* the picker is best-effort — manual entry still works */ }
+}
 
 function scaffold(): string {
   return `
@@ -60,6 +77,7 @@ function scaffold(): string {
           <div class="fld"><label>Enduser PO</label><input id="nEnduserPo" style="width:170px" placeholder="optional" /></div>
         </div>
         <h3 style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);margin:16px 0 8px">Line items</h3>
+        <datalist id="partList"></datalist>
         <div id="lines"></div>
         <div class="frow" style="margin-top:10px;align-items:center">
           <button class="btn sm ghost" id="btnAddLine" type="button">+ Add line</button>
@@ -299,7 +317,7 @@ function lineRow(): HTMLDivElement {
   div.className = 'frow';
   div.style.cssText = 'gap:8px;margin-bottom:9px;padding-bottom:9px;border-bottom:1px solid var(--line-2)';
   div.innerHTML = `
-    <div class="fld"><label>Part #</label><input class="ePart" style="width:120px" /></div>
+    <div class="fld"><label>Part #</label><input class="ePart" list="partList" style="width:130px" placeholder="pick or type" /></div>
     <div class="fld"><label>Alloy</label><select class="eAlloy">${alloys.map((a) => `<option>${esc(a)}</option>`).join('')}</select></div>
     <div class="fld"><label>Sheet</label><input class="eSheet" value="FLAT" style="width:80px" /></div>
     <div class="fld"><label>Gauge</label><input class="eGauge" type="number" step="0.001" style="width:80px" /></div>
@@ -309,6 +327,15 @@ function lineRow(): HTMLDivElement {
     <div class="fld"><label>Unit $</label><input class="ePrice" type="number" step="0.00001" style="width:85px" /></div>
     <button class="mini" type="button" title="remove line" style="align-self:flex-end;color:var(--crit)">✕</button>`;
   div.querySelector('button')!.addEventListener('click', () => div.remove());
+  // Picking a known part prefills the line's spec + tags the row with its part_num_id.
+  const partInput = div.querySelector('.ePart') as HTMLInputElement;
+  partInput.addEventListener('change', () => {
+    const p = custParts.get(partInput.value.trim());
+    if (!p) { delete div.dataset.partNumId; return; }
+    div.dataset.partNumId = String(p.partNumId);
+    const set = (sel: string, v: unknown) => { const el = div.querySelector(sel) as HTMLInputElement; if (el && v != null) el.value = String(v); };
+    set('.eAlloy', p.alloy); set('.eSheet', p.sheetType); set('.eGauge', p.gauge); set('.ePieces', p.piecesSkid);
+  });
   return div;
 }
 
@@ -323,6 +350,7 @@ async function createOrder(): Promise<void> {
   const items = Array.from($('#lines').querySelectorAll<HTMLDivElement>(':scope > div')).map((row) => {
     const due = (row.querySelector('.eDue') as HTMLInputElement).value;
     return new OrderItemWrite({
+      partNumId: row.dataset.partNumId ? Number(row.dataset.partNumId) : undefined,
       enduserPartNum: (row.querySelector('.ePart') as HTMLInputElement).value.trim() || undefined,
       alloy2: (row.querySelector('.eAlloy') as HTMLSelectElement).value || undefined,
       sheetType: (row.querySelector('.eSheet') as HTMLInputElement).value.trim() || undefined,
@@ -350,6 +378,7 @@ async function createOrder(): Promise<void> {
   $('#lines').appendChild(lineRow());
   $<HTMLFormElement>('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); void search(); });
   $('#btnAddLine').addEventListener('click', () => $('#lines').appendChild(lineRow()));
+  $('#nCustomer').addEventListener('change', () => void loadCustomerParts());
   $('#btnCreate').addEventListener('click', () => void createOrder());
   await search();
 })();
