@@ -11307,6 +11307,44 @@
         }
       }
     },
+    "/api/shipments/{packingList}/history": {
+      "get": {
+        "tags": [
+          "Shipments"
+        ],
+        "summary": "A shipment's status-change audit trail (legacy SHIPMENT_TRACK) — before/after shipment + vehicle status (and customer/ship-to) with who/when, newest first.",
+        "operationId": "GetShipmentHistory",
+        "parameters": [
+          {
+            "name": "packingList",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ShipmentTrackRow"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/shipments/{packingList}/close": {
       "post": {
         "tags": [
@@ -22207,6 +22245,65 @@
             "nullable": true
           },
           "shipmentNotes": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ShipmentTrackRow": {
+        "type": "object",
+        "properties": {
+          "logDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "packingListNo": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "preShipmentStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "curShipmentStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "preVehicleStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "curVehicleStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "preCustId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "curCustId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "preShipToId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "curShipToId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "modifiedBy": {
             "type": "string",
             "nullable": true
           }

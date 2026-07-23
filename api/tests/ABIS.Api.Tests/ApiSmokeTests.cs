@@ -551,6 +551,19 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Shipment_history_returns_audit_trail()
+    {
+        var arr = await _client.GetFromJsonAsync<JsonElement>("/api/shipments/8801/history");
+        Assert.Equal(2, arr.GetArrayLength());
+        Assert.Equal(0, arr[0].GetProperty("curShipmentStatus").GetInt32());   // newest first = shipped
+        Assert.Equal("RMILLER", arr[0].GetProperty("modifiedBy").GetString());
+
+        // A shipment with no history -> empty array.
+        var empty = await _client.GetFromJsonAsync<JsonElement>("/api/shipments/8802/history");
+        Assert.Equal(0, empty.GetArrayLength());
+    }
+
+    [Fact]
     public async Task Customer_guarded_delete_flow()
     {
         // 4001 is referenced by orders/parts/coils -> 409; the unreferenced 4099 -> 204 then 404.

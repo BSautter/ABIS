@@ -397,6 +397,15 @@ public static class SqliteFixture
                 edi_req TEXT, edi_triggered TEXT, edi_file_id_856 INTEGER, edi_file_id_desadv INTEGER,
                 shipment_edi856_date TEXT, shipment_des_edi856_date TEXT, shipment_desadv_date TEXT);
 
+            -- Shipment status-change audit trail (legacy SHIPMENT_TRACK): one append-only row per
+            -- change, with the before/after status + who/when.
+            CREATE TABLE shipment_track (
+                log_date TEXT NOT NULL, packing_list_no INTEGER NOT NULL,
+                pre_shipment_status INTEGER, cur_shipment_status INTEGER,
+                pre_vehicle_status INTEGER, cur_vehicle_status INTEGER,
+                pre_cust_id INTEGER, cur_cust_id INTEGER,
+                pre_ship_to_id INTEGER, cur_ship_to_id INTEGER, modified_by TEXT);
+
             CREATE TABLE receiving_bol (
                 receiving_bol_id INTEGER PRIMARY KEY, bol TEXT, customer_id INTEGER,
                 created_by TEXT, created_date TEXT, received_date TEXT, status INTEGER);
@@ -818,6 +827,19 @@ public static class SqliteFixture
             {
                 new { PackingList = 8801L, BillOfLading = (long?)135001L, CarrierId = (long?)1201L, CustomerId = (long?)4001L, DesShCustId = (long?)4001L, VehicleId = "TRK-100", VehicleStatus = (int?)1, ShipmentStatus = (int?)1, ShipmentScheduledDateTime = (DateTime?)d, DateSent = (DateTime?)d.AddHours(4), ShipmentActualedDateTime = (DateTime?)d.AddHours(4), ShipmentNotes = "Shipped" },
                 new { PackingList = 8802L, BillOfLading = (long?)135002L, CarrierId = (long?)1202L, CustomerId = (long?)4002L, DesShCustId = (long?)4002L, VehicleId = "TRK-200", VehicleStatus = (int?)0, ShipmentStatus = (int?)0, ShipmentScheduledDateTime = (DateTime?)d.AddDays(1), DateSent = (DateTime?)null, ShipmentActualedDateTime = (DateTime?)null, ShipmentNotes = "Scheduled" }
+            });
+
+        // Status-change history for shipment 8801: New(1)->InTransit(2)->Shipped(0), two audit rows.
+        conn.Execute(
+            """
+            INSERT INTO shipment_track (log_date, packing_list_no, pre_shipment_status, cur_shipment_status,
+                pre_vehicle_status, cur_vehicle_status, pre_cust_id, cur_cust_id, pre_ship_to_id, cur_ship_to_id, modified_by)
+            VALUES (:LogDate, :Pl, :PreS, :CurS, :PreV, :CurV, :PreC, :CurC, :PreST, :CurST, :By)
+            """,
+            new[]
+            {
+                new { LogDate = (DateTime?)d.AddHours(2), Pl = 8801L, PreS = (int?)1, CurS = (int?)2, PreV = (int?)1, CurV = (int?)1, PreC = (long?)4001L, CurC = (long?)4001L, PreST = (long?)4001L, CurST = (long?)4001L, By = "JSMITH" },
+                new { LogDate = (DateTime?)d.AddHours(4), Pl = 8801L, PreS = (int?)2, CurS = (int?)0, PreV = (int?)1, CurV = (int?)0, PreC = (long?)4001L, CurC = (long?)4001L, PreST = (long?)4001L, CurST = (long?)4001L, By = "RMILLER" }
             });
 
         conn.Execute("""

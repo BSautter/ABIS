@@ -850,6 +850,23 @@ public sealed class Shipment
     public DateTime? ShipmentDesadvDate { get; set; }
 }
 
+/// <summary>One shipment status-change audit row (legacy <c>SHIPMENT_TRACK</c>) — the before/after
+/// shipment + vehicle status (and customer / ship-to) at a point in time, plus who changed it.</summary>
+public sealed class ShipmentTrackRow
+{
+    public DateTime? LogDate { get; set; }
+    public long PackingListNo { get; set; }
+    public int? PreShipmentStatus { get; set; }
+    public int? CurShipmentStatus { get; set; }
+    public int? PreVehicleStatus { get; set; }
+    public int? CurVehicleStatus { get; set; }
+    public long? PreCustId { get; set; }
+    public long? CurCustId { get; set; }
+    public long? PreShipToId { get; set; }
+    public long? CurShipToId { get; set; }
+    public string? ModifiedBy { get; set; }
+}
+
 /// <summary>One line item on a packing list (shipment) — what the shipment carries. <see cref="ItemType"/>
 /// selects the kind: <c>SHEET</c> (a finished-sheet skid, backed by <c>sheet_packing_item</c> → sheet_skid,
 /// enriched via the same join the 856 consumes) or <c>SCRAP</c> (a scrap skid, backed by

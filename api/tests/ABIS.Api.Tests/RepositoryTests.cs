@@ -2233,6 +2233,22 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task ShipmentHistory_lists_status_changes_newest_first()
+    {
+        // Shipment 8801 has two audit rows: New(1)->InTransit(2) then InTransit(2)->Shipped(0).
+        var hist = await _repo.GetShipmentHistoryAsync(8801, CancellationToken.None);
+        Assert.Equal(2, hist.Count);
+        Assert.Equal(2, hist[0].PreShipmentStatus);      // newest first
+        Assert.Equal(0, hist[0].CurShipmentStatus);
+        Assert.Equal("RMILLER", hist[0].ModifiedBy);
+        Assert.Equal(1, hist[1].PreShipmentStatus);
+        Assert.Equal(2, hist[1].CurShipmentStatus);
+
+        // A shipment with no recorded changes -> empty.
+        Assert.Empty(await _repo.GetShipmentHistoryAsync(8802, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Carrier_address_fields_roundtrip_and_customer_guarded_delete()
     {
         // Carrier: the new street/zip/country/DUNS fields round-trip on create + update.

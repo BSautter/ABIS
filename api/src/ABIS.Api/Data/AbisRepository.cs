@@ -4296,6 +4296,22 @@ public sealed class AbisRepository : IAbisRepository
         return await GetShipmentAsync(packingList, ct);
     }
 
+    // A shipment's status-change audit trail (legacy SHIPMENT_TRACK), newest first.
+    public async Task<IReadOnlyList<ShipmentTrackRow>> GetShipmentHistoryAsync(long packingList, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<ShipmentTrackRow>(new CommandDefinition(
+            """
+            SELECT log_date AS LogDate, packing_list_no AS PackingListNo,
+                   pre_shipment_status AS PreShipmentStatus, cur_shipment_status AS CurShipmentStatus,
+                   pre_vehicle_status AS PreVehicleStatus, cur_vehicle_status AS CurVehicleStatus,
+                   pre_cust_id AS PreCustId, cur_cust_id AS CurCustId,
+                   pre_ship_to_id AS PreShipToId, cur_ship_to_id AS CurShipToId, modified_by AS ModifiedBy
+            FROM shipment_track WHERE packing_list_no = :pl ORDER BY log_date DESC
+            """, new { pl = packingList }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
     public async Task<Shipment> CreateShipmentAsync(ShipmentWrite body, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

@@ -249,6 +249,7 @@ public interface IAbisRepository
     Task<PagedResult<Shipment>> GetShipmentsAsync(int page, int pageSize, long? customerId, string? orderBy, CancellationToken ct);
     Task<Shipment?> GetShipmentAsync(long packingList, CancellationToken ct);
     Task<Shipment?> MarkShipmentEdiTriggeredAsync(long packingList, string docType, long? ediFileId, CancellationToken ct);
+    Task<IReadOnlyList<ShipmentTrackRow>> GetShipmentHistoryAsync(long packingList, CancellationToken ct);
     Task<Shipment> CreateShipmentAsync(ShipmentWrite body, CancellationToken ct);
     Task<Shipment?> UpdateShipmentAsync(long packingList, ShipmentWrite body, CancellationToken ct);
     Task<Shipment?> PatchShipmentAsync(long packingList, ShipmentStatusPatch patch, CancellationToken ct);

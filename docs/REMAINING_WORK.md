@@ -89,7 +89,7 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [~] **H** Die → shape mapping — done (#254): `GET/POST /line-die-shapes` + `DELETE /line-die-shapes/{shape}/{line}/{die}` over `LINE_DIE_4SHEET_TYPE` (composite PK), so scheduling can resolve the eligible line/die for a shape (filter by sheetType/lineNum/dieId; add guards line/die-exist + dup). Dies page gained a mapping panel. Still TODO: **die label/report print**.
 - [x] **M** Shipment header EDI-trigger fields — done (#259): the shipment read now carries `edi_req`/`edi_triggered`/`edi_file_id_856`/`edi_file_id_desadv` + the 856/desadv/des-856 dates, and `POST /shipments/{pl}/edi-trigger` (docType 856|desadv + optional file id) stamps them (bookkeeping only — never transmits). Surfacing on the shipping UI is a follow-up.
 - [ ] **M** Manual EDI send/resend from UI; view archived EDI payload; X12 map maintenance
-- [~] **L** Shipment status-change history (`SHIPMENT_TRACK`) — still TODO; **carrier DUNS/street/zip/country fields — done (#261)**: added `carrier_street`/`carrier_zip`/`carrier_country`/`carrier_duns_number` to the carrier read+write + Carriers form inputs.
+- [~] **L** **Shipment status-change history — done (#264)**: `GET /shipments/{pl}/history` reads `SHIPMENT_TRACK` (before/after shipment+vehicle status + customer/ship-to + who/when, newest first); UI panel a follow-up. **carrier DUNS/street/zip/country fields — done (#261)**: added `carrier_street`/`carrier_zip`/`carrier_country`/`carrier_duns_number` to the carrier read+write + Carriers form inputs.
 
 ### C3. Coils / receiving
 - [ ] **C** Warehouse skid CRUD + status-20 warehouse-coil mint (+ process_coil/sheet_skid rows, weight recon, package-num)

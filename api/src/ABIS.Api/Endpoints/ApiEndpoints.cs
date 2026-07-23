@@ -981,6 +981,12 @@ public static class ApiEndpoints
            .WithSummary("Record that an 856 or desadv was generated for a shipment — stamps edi_req/edi_triggered + the file id + date (docType = 856 default | desadv). Bookkeeping only; the modern stack never transmits EDI.")
            .Produces<Shipment>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
 
+        api.MapGet("/shipments/{packingList:long}/history", async (long packingList, IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetShipmentHistoryAsync(packingList, ct)))
+           .WithName("GetShipmentHistory").WithTags("Shipments")
+           .WithSummary("A shipment's status-change audit trail (legacy SHIPMENT_TRACK) — before/after shipment + vehicle status (and customer/ship-to) with who/when, newest first.")
+           .Produces<IReadOnlyList<ShipmentTrackRow>>();
+
         api.MapPost("/shipments", async (ShipmentWrite body, IAbisRepository repo, CancellationToken ct) =>
             {
                 if (Validate(body) is { } problems)
