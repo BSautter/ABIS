@@ -97,7 +97,7 @@ async function load(main) {
     const t = new Date();
     clock.textContent = t.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + t.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     const [coils, hold, jobs, edi, scrap, sched] = await Promise.allSettled([
-        client.listCoils(1, 1, undefined, undefined, undefined, undefined, undefined, undefined),
+        client.listCoils(1, 1, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined),
         client.getOnHoldCoils(),
         client.listJobs(1, 1, undefined, undefined, undefined, undefined, undefined),
         client.listEdiTransactions(1, 50, undefined, undefined, undefined, undefined),

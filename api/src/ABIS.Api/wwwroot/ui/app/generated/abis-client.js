@@ -2330,7 +2330,7 @@ export class AbisClient {
      * @param dir (optional)
      * @return OK
      */
-    listCoils(page, pageSize, status, alloy, location, customerId, sort, dir) {
+    listCoils(page, pageSize, status, alloy, location, customerId, search, temper, sort, dir) {
         let url_ = this.baseUrl + "/api/coils?";
         if (page === null)
             throw new globalThis.Error("The parameter 'page' cannot be null.");
@@ -2356,6 +2356,14 @@ export class AbisClient {
             throw new globalThis.Error("The parameter 'customerId' cannot be null.");
         else if (customerId !== undefined)
             url_ += "customerId=" + encodeURIComponent("" + customerId) + "&";
+        if (search === null)
+            throw new globalThis.Error("The parameter 'search' cannot be null.");
+        else if (search !== undefined)
+            url_ += "search=" + encodeURIComponent("" + search) + "&";
+        if (temper === null)
+            throw new globalThis.Error("The parameter 'temper' cannot be null.");
+        else if (temper !== undefined)
+            url_ += "temper=" + encodeURIComponent("" + temper) + "&";
         if (sort === null)
             throw new globalThis.Error("The parameter 'sort' cannot be null.");
         else if (sort !== undefined)

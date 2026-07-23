@@ -28,7 +28,7 @@ async function search() {
     msg.textContent = 'Loading…';
     try {
         // Strongly typed: wrong arg types or field names would fail compilation.
-        const page = await client().listCoils(1, 50, undefined, undefined, undefined, undefined, sort, dir);
+        const page = await client().listCoils(1, 50, undefined, undefined, undefined, undefined, undefined, undefined, sort, dir);
         const rows = (page.items ?? [])
             .map((c) => `
       <tr class="click" data-id="${c.coilAbcNum}">
