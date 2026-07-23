@@ -2136,6 +2136,38 @@ public sealed class RepositoryTests : IDisposable
         Assert.Null(await _repo.GetPartShapeAsync(copy.PartNumId, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task RecoverySetup_upserts_and_deletes_customers_and_scrap_types()
+    {
+        // Upsert a new recovery customer, then update it (upsert, not duplicate).
+        var created = await _repo.UpsertRecoveryCustomerAsync(4003,
+            new RecoveryCustomerWrite { CustomerName = "New Cust", AllProducts = "Y", AutoOnly = "N", CommOnly = "N" }, CancellationToken.None);
+        Assert.Equal("New Cust", created.CustomerName);
+        Assert.Contains(await _repo.GetRecoveryCustomersAsync(CancellationToken.None), c => c.CustomerId == 4003 && c.AllProducts == "Y");
+        var updated = await _repo.UpsertRecoveryCustomerAsync(4003,
+            new RecoveryCustomerWrite { CustomerName = "New Cust", AllProducts = "N", AutoOnly = "Y", CommOnly = "N" }, CancellationToken.None);
+        Assert.Equal("Y", updated.AutoOnly);
+        Assert.Single((await _repo.GetRecoveryCustomersAsync(CancellationToken.None)).Where(c => c.CustomerId == 4003));
+        Assert.True(await _repo.DeleteRecoveryCustomerAsync(4003, CancellationToken.None));
+        Assert.False(await _repo.DeleteRecoveryCustomerAsync(4003, CancellationToken.None));
+
+        // Scrap-type-needed: unknown scrap type -> null (endpoint 404s).
+        Assert.Null(await _repo.UpsertCustomerScrapTypeAsync(4001, 999, new CustomerScrapTypeWrite { AbcOrMill = "ABC" }, CancellationToken.None));
+
+        // Add scrap type 3 (EDGE) to customer 4001 (seed already tracks 1, 2).
+        var st = await _repo.UpsertCustomerScrapTypeAsync(4001, 3,
+            new CustomerScrapTypeWrite { AbcOrMill = "MILL", Autoparts = "N", NonAutoparts = "Y" }, CancellationToken.None);
+        Assert.NotNull(st);
+        Assert.Equal("EDGE", st!.ScrapCode);
+        Assert.Equal("MILL", st.AbcOrMill);
+        Assert.Equal(3, (await _repo.GetCustomerDefectsAsync(4001, CancellationToken.None)).Count);
+
+        // Remove it -> back to 2; a second delete is a miss.
+        Assert.True(await _repo.DeleteCustomerScrapTypeAsync(4001, 3, CancellationToken.None));
+        Assert.False(await _repo.DeleteCustomerScrapTypeAsync(4001, 3, CancellationToken.None));
+        Assert.Equal(2, (await _repo.GetCustomerDefectsAsync(4001, CancellationToken.None)).Count);
+    }
+
     // ---- customer contacts & sketches ----------------------------------
 
     [Fact]

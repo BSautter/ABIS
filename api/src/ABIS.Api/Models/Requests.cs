@@ -193,6 +193,25 @@ public sealed class DieWrite
     public int? AverageDieChangeMinutes { get; set; }
 }
 
+/// <summary>Configure a customer for recovery reporting (legacy <c>recovery_report_customer</c> setup).
+/// <see cref="CustomerName"/> is required. The scope flags are Y/N text (the modern read contract).</summary>
+public sealed class RecoveryCustomerWrite
+{
+    public string? CustomerName { get; set; }
+    public string? AllProducts { get; set; }
+    public string? AutoOnly { get; set; }
+    public string? CommOnly { get; set; }
+}
+
+/// <summary>Configure a scrap/defect type a customer needs on the recovery report
+/// (legacy <c>cust_scrap_type_needed</c> setup).</summary>
+public sealed class CustomerScrapTypeWrite
+{
+    public string? AbcOrMill { get; set; }
+    public string? Autoparts { get; set; }
+    public string? NonAutoparts { get; set; }
+}
+
 /// <summary>Add a die → shape mapping (legacy <c>LINE_DIE_4SHEET_TYPE</c>): which (line, die)
 /// makes a shape. <see cref="SheetType"/> is required.</summary>
 public sealed class LineDieShapeWrite

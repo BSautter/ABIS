@@ -155,7 +155,11 @@ public interface IAbisRepository
     Task<IReadOnlyList<ScrapType>> GetScrapTypesAsync(CancellationToken ct);
     Task<IReadOnlyList<ProductType>> GetProductTypesAsync(CancellationToken ct);
     Task<IReadOnlyList<RecoveryCustomer>> GetRecoveryCustomersAsync(CancellationToken ct);
+    Task<RecoveryCustomer> UpsertRecoveryCustomerAsync(long customerId, RecoveryCustomerWrite body, CancellationToken ct);
+    Task<bool> DeleteRecoveryCustomerAsync(long customerId, CancellationToken ct);
     Task<IReadOnlyList<CustomerDefect>> GetCustomerDefectsAsync(long customerId, CancellationToken ct);
+    Task<CustomerDefect?> UpsertCustomerScrapTypeAsync(long customerId, long scrapTypeId, CustomerScrapTypeWrite body, CancellationToken ct);
+    Task<bool> DeleteCustomerScrapTypeAsync(long customerId, long scrapTypeId, CancellationToken ct);
     Task<IReadOnlyList<ProductionSummaryRow>> GetProductionSummaryAsync(DateTime? from, DateTime? to, CancellationToken ct);
     Task<IReadOnlyList<LineEfficiencyRow>> GetLineEfficiencyAsync(DateTime? from, DateTime? to, CancellationToken ct);
     Task<IReadOnlyList<MonthlyProductionRow>> GetMonthlyProductionAsync(DateTime? from, DateTime? to, CancellationToken ct);

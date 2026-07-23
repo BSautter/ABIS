@@ -2604,10 +2604,44 @@ public static class ApiEndpoints
            .WithName("GetRecoveryCustomers").WithTags("Quality")
            .WithSummary("Customers configured for recovery reporting.").Produces<IReadOnlyList<RecoveryCustomer>>();
 
+        api.MapPut("/quality/recovery-customers/{customerId:long}", async (long customerId, RecoveryCustomerWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (string.IsNullOrWhiteSpace(body.CustomerName))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["customerName"] = new[] { "customerName is required." } });
+                return Results.Ok(await repo.UpsertRecoveryCustomerAsync(customerId, body, ct));
+            })
+           .WithName("UpsertRecoveryCustomer").WithTags("Quality")
+           .WithSummary("Configure (upsert) a customer for recovery reporting — customerName + scope flags (allProducts/autoOnly/commOnly, Y/N).")
+           .Produces<RecoveryCustomer>().ProducesValidationProblem();
+
+        api.MapDelete("/quality/recovery-customers/{customerId:long}", async (long customerId, IAbisRepository repo, CancellationToken ct) =>
+                await repo.DeleteRecoveryCustomerAsync(customerId, ct)
+                    ? Results.NoContent()
+                    : Results.NotFound(new { message = $"Customer {customerId} is not configured for recovery reporting." }))
+           .WithName("DeleteRecoveryCustomer").WithTags("Quality")
+           .WithSummary("Remove a customer's recovery-reporting configuration.")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
+
         api.MapGet("/quality/customer-defects", async (long customerId, IAbisRepository repo, CancellationToken ct) =>
                 Results.Ok(await repo.GetCustomerDefectsAsync(customerId, ct)))
            .WithName("GetCustomerDefects").WithTags("Quality")
            .WithSummary("The scrap/defect types a customer tracks.").Produces<IReadOnlyList<CustomerDefect>>();
+
+        api.MapPut("/quality/customer-defects/{customerId:long}/{scrapTypeId:long}", async (long customerId, long scrapTypeId, CustomerScrapTypeWrite body, IAbisRepository repo, CancellationToken ct) =>
+                await repo.UpsertCustomerScrapTypeAsync(customerId, scrapTypeId, body, ct) is { } row
+                    ? Results.Ok(row)
+                    : Results.NotFound(new { message = $"Scrap type {scrapTypeId} not found." }))
+           .WithName("UpsertCustomerScrapType").WithTags("Quality")
+           .WithSummary("Configure (upsert) a scrap/defect type a customer needs on the recovery report (abcOrMill + autoparts/nonAutoparts). 404 if the scrap type doesn't exist.")
+           .Produces<CustomerDefect>().Produces(StatusCodes.Status404NotFound);
+
+        api.MapDelete("/quality/customer-defects/{customerId:long}/{scrapTypeId:long}", async (long customerId, long scrapTypeId, IAbisRepository repo, CancellationToken ct) =>
+                await repo.DeleteCustomerScrapTypeAsync(customerId, scrapTypeId, ct)
+                    ? Results.NoContent()
+                    : Results.NotFound(new { message = $"Customer {customerId} does not track scrap type {scrapTypeId}." }))
+           .WithName("DeleteCustomerScrapType").WithTags("Quality")
+           .WithSummary("Remove a scrap/defect type from a customer's recovery-report needs.")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
 
         // ---- OPC log (legacy w_opc_log) ---------------------------------
         api.MapGet("/opc-log/logs", async (IAbisRepository repo, CancellationToken ct) =>

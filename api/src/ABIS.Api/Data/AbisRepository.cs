@@ -3388,6 +3388,78 @@ public sealed class AbisRepository : IAbisRepository
         return rows.AsList();
     }
 
+    // ---- Recovery-report SETUP (legacy recovery_report_customer + cust_scrap_type_needed) ----
+
+    // Upsert a customer's recovery-reporting config (delete + insert on the customer_id key — portable).
+    public async Task<RecoveryCustomer> UpsertRecoveryCustomerAsync(long customerId, RecoveryCustomerWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM recovery_report_customer WHERE customer_id = :id", new { id = customerId }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO recovery_report_customer (customer_id, customer_name, all_products, auto_only, comm_only)
+            VALUES (:id, :name, :all, :auto, :comm)
+            """,
+            new { id = customerId, name = body.CustomerName, all = body.AllProducts, auto = body.AutoOnly, comm = body.CommOnly },
+            transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+        return new RecoveryCustomer
+        {
+            CustomerId = customerId, CustomerName = body.CustomerName,
+            AllProducts = body.AllProducts, AutoOnly = body.AutoOnly, CommOnly = body.CommOnly,
+        };
+    }
+
+    public async Task<bool> DeleteRecoveryCustomerAsync(long customerId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM recovery_report_customer WHERE customer_id = :id", new { id = customerId }, cancellationToken: ct));
+        return n > 0;
+    }
+
+    // Upsert a customer's needed scrap type. Null when the scrap_type_id doesn't exist (endpoint 404s).
+    public async Task<CustomerDefect?> UpsertCustomerScrapTypeAsync(long customerId, long scrapTypeId, CustomerScrapTypeWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var typeExists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM scrap_type WHERE scrap_type_id = :st", new { st = scrapTypeId }, cancellationToken: ct)) > 0;
+        if (!typeExists) return null;
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM cust_scrap_type_needed WHERE customer_id = :cid AND scrap_type_id = :st",
+            new { cid = customerId, st = scrapTypeId }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO cust_scrap_type_needed (customer_id, scrap_type_id, abc_or_mill, autoparts, non_autoparts)
+            VALUES (:cid, :st, :abc, :auto, :non)
+            """,
+            new { cid = customerId, st = scrapTypeId, abc = body.AbcOrMill, auto = body.Autoparts, non = body.NonAutoparts },
+            transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+
+        return await conn.QuerySingleOrDefaultAsync<CustomerDefect>(new CommandDefinition(
+            """
+            SELECT c.customer_id AS CustomerId, c.scrap_type_id AS ScrapTypeId,
+                   s.scrap_code AS ScrapCode, s.scrap_defect AS ScrapDefect,
+                   c.abc_or_mill AS AbcOrMill, c.autoparts AS Autoparts, c.non_autoparts AS NonAutoparts
+            FROM cust_scrap_type_needed c JOIN scrap_type s ON s.scrap_type_id = c.scrap_type_id
+            WHERE c.customer_id = :cid AND c.scrap_type_id = :st
+            """, new { cid = customerId, st = scrapTypeId }, cancellationToken: ct));
+    }
+
+    public async Task<bool> DeleteCustomerScrapTypeAsync(long customerId, long scrapTypeId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM cust_scrap_type_needed WHERE customer_id = :cid AND scrap_type_id = :st",
+            new { cid = customerId, st = scrapTypeId }, cancellationToken: ct));
+        return n > 0;
+    }
+
     public async Task<IReadOnlyList<InvoiceCoil>> GetInvoiceCoilsAsync(long abJobNum, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

@@ -484,6 +484,32 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Recovery_setup_write_flow()
+    {
+        // Upsert a recovery customer; it appears in the list.
+        var put = await _client.PutAsJsonAsync("/api/quality/recovery-customers/4009",
+            new { customerName = "Smoke Cust", allProducts = "Y", autoOnly = "N", commOnly = "N" });
+        Assert.Equal(HttpStatusCode.OK, put.StatusCode);
+        var list = await _client.GetFromJsonAsync<JsonElement>("/api/quality/recovery-customers");
+        Assert.Contains(list.EnumerateArray(), c => c.GetProperty("customerId").GetInt64() == 4009);
+
+        // Missing name -> 400; delete -> 204 then 404 (leaves the seed clean).
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PutAsJsonAsync("/api/quality/recovery-customers/4009", new { customerName = "" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync("/api/quality/recovery-customers/4009")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.DeleteAsync("/api/quality/recovery-customers/4009")).StatusCode);
+
+        // Customer scrap-type: unknown type -> 404; known type -> 200 enriched (scrap_type 1 = DENT).
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await _client.PutAsJsonAsync("/api/quality/customer-defects/4002/999", new { abcOrMill = "ABC" })).StatusCode);
+        var st = await _client.PutAsJsonAsync("/api/quality/customer-defects/4002/1",
+            new { abcOrMill = "ABC", autoparts = "Y", nonAutoparts = "N" });
+        Assert.Equal(HttpStatusCode.OK, st.StatusCode);
+        Assert.Equal("DENT", (await st.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("scrapCode").GetString());
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync("/api/quality/customer-defects/4002/1")).StatusCode);
+    }
+
+    [Fact]
     public async Task Piece_weight_calculator_computes_by_shape_and_density()
     {
         // Rectangle 48x48 x gauge 0.1 x explicit density 0.1 = 2304 * 0.1 * 0.1 = 23.04 lb.
