@@ -8242,6 +8242,44 @@
             "description": "Unauthorized"
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "Recovery"
+        ],
+        "summary": "Remove a coil from a job's recovery worksheet (deletes only the recovery overlay row; the processed coil is untouched).",
+        "operationId": "DeleteRecoveryCoil",
+        "parameters": [
+          {
+            "name": "abJobNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "coilAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
       }
     },
     "/api/recovery/jobs/{abJobNum}/report": {

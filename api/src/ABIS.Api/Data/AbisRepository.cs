@@ -2215,6 +2215,17 @@ public sealed class AbisRepository : IAbisRepository
         return rows.First(r => r.CoilAbcNum == coilAbcNum);
     }
 
+    // Remove a coil from a job's recovery worksheet. Only deletes the recovery_job_coil overlay row
+    // (the underlying process_coil / coil is untouched) — 404 if the coil isn't on the worksheet.
+    public async Task<bool> DeleteRecoveryJobCoilAsync(long coilAbcNum, long abJobNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM recovery_job_coil WHERE coil_abc_num = :coil AND ab_job_num = :job",
+            new { coil = coilAbcNum, job = abJobNum }, cancellationToken: ct));
+        return n > 0;
+    }
+
     // The daily recovery report (legacy d_report_recovery_daily_main): each recovery coil on a job
     // with its ship / scrap / rejected weights and yield. The weights are the ~production of a web
     // of tables the legacy PL/SQL walks — on Oracle we CALL those functions directly (f_get_coil_*),

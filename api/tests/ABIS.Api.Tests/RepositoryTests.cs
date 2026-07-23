@@ -2137,6 +2137,29 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task RecoveryCoil_upsert_then_delete_removes_only_the_overlay_row()
+    {
+        // Seed has coil 5001 on job 1001 flagged. Upsert an extra coil onto the worksheet.
+        await _repo.UpsertRecoveryJobCoilAsync(5002, 1001,
+            new RecoveryJobCoilWrite { SpecialAttention = 1 }, CancellationToken.None);
+        var before = await _repo.GetRecoveryCoilsByJobAsync(1001, CancellationToken.None);
+        Assert.Contains(before, c => c.CoilAbcNum == 5001);
+        Assert.Contains(before, c => c.CoilAbcNum == 5002);
+
+        // Delete the overlay row: it disappears from the worksheet, the sibling stays.
+        Assert.True(await _repo.DeleteRecoveryJobCoilAsync(5001, 1001, CancellationToken.None));
+        var after = await _repo.GetRecoveryCoilsByJobAsync(1001, CancellationToken.None);
+        Assert.DoesNotContain(after, c => c.CoilAbcNum == 5001);
+        Assert.Contains(after, c => c.CoilAbcNum == 5002);
+
+        // The processed coil itself is untouched (still assignable back to the worksheet).
+        Assert.True(await _repo.ProcessCoilExistsAsync(5001, 1001, CancellationToken.None));
+
+        // Deleting a coil that isn't on the worksheet -> false (endpoint 404s).
+        Assert.False(await _repo.DeleteRecoveryJobCoilAsync(5001, 1001, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task RecoverySetup_upserts_and_deletes_customers_and_scrap_types()
     {
         // Upsert a new recovery customer, then update it (upsert, not duplicate).

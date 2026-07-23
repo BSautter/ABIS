@@ -2242,6 +2242,14 @@ public static class ApiEndpoints
            .WithSummary("Set a coil's recovery-worksheet flags for a job (upsert). The coil must have been processed on the job.")
            .Produces<RecoveryJobCoil>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
 
+        api.MapDelete("/recovery/jobs/{abJobNum:long}/coils/{coilAbcNum:long}", async (long abJobNum, long coilAbcNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.DeleteRecoveryJobCoilAsync(coilAbcNum, abJobNum, ct)
+                    ? Results.NoContent()
+                    : Results.NotFound(new { message = $"Coil {coilAbcNum} is not on the recovery worksheet for job {abJobNum}." }))
+           .WithName("DeleteRecoveryCoil").WithTags("Recovery")
+           .WithSummary("Remove a coil from a job's recovery worksheet (deletes only the recovery overlay row; the processed coil is untouched).")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
+
         api.MapGet("/recovery/jobs/{abJobNum:long}/report", async (long abJobNum, IAbisRepository repo, CancellationToken ct) =>
                 Results.Ok(await repo.GetRecoveryReportAsync(abJobNum, ct)))
            .WithName("GetRecoveryReport").WithTags("Recovery")

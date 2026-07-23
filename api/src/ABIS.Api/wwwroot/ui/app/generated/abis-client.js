@@ -626,7 +626,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * A job's run history. Empty until a future execution engine records runs.
+     * A job's run history (populated by the scheduler engine).
      * @return OK
      */
     getScheduledJobRuns(id) {
@@ -664,6 +664,58 @@ export class AbisClient {
                 else {
                     result200 = null;
                 }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Run a scheduled job now (records a run). Only allowlisted operations execute — an unknown/legacy operation is recorded 'unsupported' and never fires. 404 if the job is unknown.
+     * @return OK
+     */
+    runScheduledJob(id) {
+        let url_ = this.baseUrl + "/api/admin/jobs/{id}/run";
+        if (id === undefined || id === null)
+            throw new globalThis.Error("The parameter 'id' must be defined.");
+        url_ = url_.replace("{id}", encodeURIComponent("" + id));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processRunScheduledJob(_response);
+        });
+    }
+    processRunScheduledJob(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = ScheduledJobRun.fromJS(resultData200);
                 return result200;
             });
         }
@@ -1918,7 +1970,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Record a dimensional QC check on a sheet-skid piece (in-spec pass/fail).
+     * Record a dimensional QC check on a sheet-skid piece. When WinSPC is configured and has data for the skid's job, in_spec is set from WinSPC's authoritative spec limits (LSL/USL) and the note records the verdict; otherwise the supplied in_spec is used. PC# auto-increments when omitted.
      * @return Created
      */
     createDimensionCheck(sheetSkidNum, body) {
@@ -1961,6 +2013,169 @@ export class AbisClient {
                 let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
                 result400 = HttpValidationProblemDetails.fromJS(resultData400);
                 return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Edit a dimensional QC check (re-applies the WinSPC gate); 404 if the check isn't on the skid.
+     * @return OK
+     */
+    updateDimensionCheck(sheetSkidNum, dimensionCheckNum, body) {
+        let url_ = this.baseUrl + "/api/coil-eval/skids/{sheetSkidNum}/dimension-checks/{dimensionCheckNum}";
+        if (sheetSkidNum === undefined || sheetSkidNum === null)
+            throw new globalThis.Error("The parameter 'sheetSkidNum' must be defined.");
+        url_ = url_.replace("{sheetSkidNum}", encodeURIComponent("" + sheetSkidNum));
+        if (dimensionCheckNum === undefined || dimensionCheckNum === null)
+            throw new globalThis.Error("The parameter 'dimensionCheckNum' must be defined.");
+        url_ = url_.replace("{dimensionCheckNum}", encodeURIComponent("" + dimensionCheckNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processUpdateDimensionCheck(_response);
+        });
+    }
+    processUpdateDimensionCheck(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = SheetSkidDimensionCheck.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Delete a dimensional QC check from a sheet skid; 404 if it isn't there.
+     * @return No Content
+     */
+    deleteDimensionCheck(sheetSkidNum, dimensionCheckNum) {
+        let url_ = this.baseUrl + "/api/coil-eval/skids/{sheetSkidNum}/dimension-checks/{dimensionCheckNum}";
+        if (sheetSkidNum === undefined || sheetSkidNum === null)
+            throw new globalThis.Error("The parameter 'sheetSkidNum' must be defined.");
+        url_ = url_.replace("{sheetSkidNum}", encodeURIComponent("" + sheetSkidNum));
+        if (dimensionCheckNum === undefined || dimensionCheckNum === null)
+            throw new globalThis.Error("The parameter 'dimensionCheckNum' must be defined.");
+        url_ = url_.replace("{dimensionCheckNum}", encodeURIComponent("" + dimensionCheckNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeleteDimensionCheck(_response);
+        });
+    }
+    processDeleteDimensionCheck(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Dimensional-QC board for a job: each skid's in-spec/out-of-spec/unchecked status + good vs out-of-spec piece/weight roll-ups, plus WinSPC's own verdict when configured.
+     * @return OK
+     */
+    getJobQcBoard(abJobNum) {
+        let url_ = this.baseUrl + "/api/coil-eval/jobs/{abJobNum}/qc-board";
+        if (abJobNum === undefined || abJobNum === null)
+            throw new globalThis.Error("The parameter 'abJobNum' must be defined.");
+        url_ = url_.replace("{abJobNum}", encodeURIComponent("" + abJobNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetJobQcBoard(_response);
+        });
+    }
+    processGetJobQcBoard(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = JobQcBoard.fromJS(resultData200);
+                return result200;
             });
         }
         else if (status === 401) {
@@ -2141,7 +2356,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Record a coil-ownership transfer (issues a certificate; re-points coil ownership). 409 if the new owner already owns the coil.
+     * Record a coil-ownership transfer: issues a certificate, MINTS a new coil for the new owner (status New, carrying the original's attributes) and marks the original coil Transferred — it does not mutate ownership in place. The new coil_abc_num is server-assigned. 409 if the new owner already owns the coil.
      * @return Created
      */
     createCoilOwnershipTransfer(body) {
@@ -2261,9 +2476,10 @@ export class AbisClient {
      * Coils eligible to transfer, with their current owner (the coil picker).
      * @param customerId (optional)
      * @param search (optional)
+     * @param readyOnly (optional)
      * @return OK
      */
-    getTransferableCoils(customerId, search) {
+    getTransferableCoils(customerId, search, readyOnly) {
         let url_ = this.baseUrl + "/api/coil-ownership/transferable-coils?";
         if (customerId === null)
             throw new globalThis.Error("The parameter 'customerId' cannot be null.");
@@ -2273,6 +2489,10 @@ export class AbisClient {
             throw new globalThis.Error("The parameter 'search' cannot be null.");
         else if (search !== undefined)
             url_ += "search=" + encodeURIComponent("" + search) + "&";
+        if (readyOnly === null)
+            throw new globalThis.Error("The parameter 'readyOnly' cannot be null.");
+        else if (readyOnly !== undefined)
+            url_ += "readyOnly=" + encodeURIComponent("" + readyOnly) + "&";
         url_ = url_.replace(/[?&]$/, "");
         let options_ = {
             method: "GET",
@@ -2319,13 +2539,15 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * List raw input coils (paged, filterable, sortable).
+     * List raw input coils (paged, filterable, sortable). search matches org/mill coil #, lot, mid-number, or notes; temper filters by coil temper.
      * @param page (optional)
      * @param pageSize (optional)
      * @param status (optional)
      * @param alloy (optional)
      * @param location (optional)
      * @param customerId (optional)
+     * @param search (optional)
+     * @param temper (optional)
      * @param sort (optional)
      * @param dir (optional)
      * @return OK
@@ -2660,6 +2882,58 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Delete a coil, guarded: 409 if it's been applied to a job or is done/shipped/transferred; 404 if unknown; 204 on delete.
+     * @return No Content
+     */
+    deleteCoil(coilAbcNum) {
+        let url_ = this.baseUrl + "/api/coils/{coilAbcNum}";
+        if (coilAbcNum === undefined || coilAbcNum === null)
+            throw new globalThis.Error("The parameter 'coilAbcNum' must be defined.");
+        url_ = url_.replace("{coilAbcNum}", encodeURIComponent("" + coilAbcNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeleteCoil(_response);
+        });
+    }
+    processDeleteCoil(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * List a coil's processing history (the jobs that consumed it).
      * @return OK
      */
@@ -2704,6 +2978,293 @@ export class AbisClient {
         else if (status === 401) {
             return response.text().then((_responseText) => {
                 return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Bulk-mark coils Ready for transfer (status 12) — the precondition for the ownership-transfer picker. Terminal (done/shipped/transferred), already-ready, zero-balance, and unknown coils are skipped with a reason.
+     * @return OK
+     */
+    coilsReadyForTransfer(body) {
+        let url_ = this.baseUrl + "/api/coils/ready-for-transfer";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCoilsReadyForTransfer(_response);
+        });
+    }
+    processCoilsReadyForTransfer(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = BulkCoilStatusResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * A coil's quality capture: the header (material grade / dimensions / mill / PCC) + its flaw map.
+     * @return OK
+     */
+    getCoilQuality(coilAbcNum) {
+        let url_ = this.baseUrl + "/api/coils/{coilAbcNum}/quality";
+        if (coilAbcNum === undefined || coilAbcNum === null)
+            throw new globalThis.Error("The parameter 'coilAbcNum' must be defined.");
+        url_ = url_.replace("{coilAbcNum}", encodeURIComponent("" + coilAbcNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetCoilQuality(_response);
+        });
+    }
+    processGetCoilQuality(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = CoilQualityDetail.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Create or replace a coil's quality header (coilOrgNum required); 404 if the coil is unknown.
+     * @return OK
+     */
+    upsertCoilQuality(coilAbcNum, body) {
+        let url_ = this.baseUrl + "/api/coils/{coilAbcNum}/quality";
+        if (coilAbcNum === undefined || coilAbcNum === null)
+            throw new globalThis.Error("The parameter 'coilAbcNum' must be defined.");
+        url_ = url_.replace("{coilAbcNum}", encodeURIComponent("" + coilAbcNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processUpsertCoilQuality(_response);
+        });
+    }
+    processUpsertCoilQuality(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = CoilQuality.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Add a flaw segment (start→end position + single-char flaw code) to a coil's flaw map; 404 if the coil is unknown.
+     * @return Created
+     */
+    addCoilQualityFlaw(coilAbcNum, body) {
+        let url_ = this.baseUrl + "/api/coils/{coilAbcNum}/quality/flaws";
+        if (coilAbcNum === undefined || coilAbcNum === null)
+            throw new globalThis.Error("The parameter 'coilAbcNum' must be defined.");
+        url_ = url_.replace("{coilAbcNum}", encodeURIComponent("" + coilAbcNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processAddCoilQualityFlaw(_response);
+        });
+    }
+    processAddCoilQualityFlaw(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                let result201 = null;
+                let resultData201 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result201 = CoilQualityFlaw.fromJS(resultData201);
+                return result201;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Delete a flaw segment by its key (startingPosition, endingPosition, flawCode query params); 404 if not found.
+     * @return No Content
+     */
+    deleteCoilQualityFlaw(coilAbcNum, startingPosition, endingPosition, flawCode) {
+        let url_ = this.baseUrl + "/api/coils/{coilAbcNum}/quality/flaws?";
+        if (coilAbcNum === undefined || coilAbcNum === null)
+            throw new globalThis.Error("The parameter 'coilAbcNum' must be defined.");
+        url_ = url_.replace("{coilAbcNum}", encodeURIComponent("" + coilAbcNum));
+        if (startingPosition === undefined || startingPosition === null)
+            throw new globalThis.Error("The parameter 'startingPosition' must be defined and cannot be null.");
+        else
+            url_ += "startingPosition=" + encodeURIComponent("" + startingPosition) + "&";
+        if (endingPosition === undefined || endingPosition === null)
+            throw new globalThis.Error("The parameter 'endingPosition' must be defined and cannot be null.");
+        else
+            url_ += "endingPosition=" + encodeURIComponent("" + endingPosition) + "&";
+        if (flawCode === undefined || flawCode === null)
+            throw new globalThis.Error("The parameter 'flawCode' must be defined and cannot be null.");
+        else
+            url_ += "flawCode=" + encodeURIComponent("" + flawCode) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeleteCoilQualityFlaw(_response);
+        });
+    }
+    processDeleteCoilQualityFlaw(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -2956,6 +3517,58 @@ export class AbisClient {
         else if (status === 412) {
             return response.text().then((_responseText) => {
                 return throwException("Precondition Failed", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Delete a customer (and its contacts + recovery config). 409 if the customer is referenced by any order, part, coil, or shipment.
+     * @return No Content
+     */
+    deleteCustomer(customerId) {
+        let url_ = this.baseUrl + "/api/customers/{customerId}";
+        if (customerId === undefined || customerId === null)
+            throw new globalThis.Error("The parameter 'customerId' must be defined.");
+        url_ = url_.replace("{customerId}", encodeURIComponent("" + customerId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeleteCustomer(_response);
+        });
+    }
+    processDeleteCustomer(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -3450,6 +4063,186 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Die → shape mappings (which line/die makes which shape), optionally filtered by sheetType (the scheduling lookup), lineNum, or dieId. Enriched with die name + line description.
+     * @param sheetType (optional)
+     * @param lineNum (optional)
+     * @param dieId (optional)
+     * @return OK
+     */
+    getLineDieShapes(sheetType, lineNum, dieId) {
+        let url_ = this.baseUrl + "/api/line-die-shapes?";
+        if (sheetType === null)
+            throw new globalThis.Error("The parameter 'sheetType' cannot be null.");
+        else if (sheetType !== undefined)
+            url_ += "sheetType=" + encodeURIComponent("" + sheetType) + "&";
+        if (lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' cannot be null.");
+        else if (lineNum !== undefined)
+            url_ += "lineNum=" + encodeURIComponent("" + lineNum) + "&";
+        if (dieId === null)
+            throw new globalThis.Error("The parameter 'dieId' cannot be null.");
+        else if (dieId !== undefined)
+            url_ += "dieId=" + encodeURIComponent("" + dieId) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetLineDieShapes(_response);
+        });
+    }
+    processGetLineDieShapes(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(LineDieShape.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Map a shape to a (line, die). 404 if the line or die doesn't exist; 409 'duplicate' if the mapping already exists.
+     * @return Created
+     */
+    addLineDieShape(body) {
+        let url_ = this.baseUrl + "/api/line-die-shapes";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processAddLineDieShape(_response);
+        });
+    }
+    processAddLineDieShape(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Remove a die → shape mapping.
+     * @return No Content
+     */
+    removeLineDieShape(sheetType, lineNum, dieId) {
+        let url_ = this.baseUrl + "/api/line-die-shapes/{sheetType}/{lineNum}/{dieId}";
+        if (sheetType === undefined || sheetType === null)
+            throw new globalThis.Error("The parameter 'sheetType' must be defined.");
+        url_ = url_.replace("{sheetType}", encodeURIComponent("" + sheetType));
+        if (lineNum === undefined || lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' must be defined.");
+        url_ = url_.replace("{lineNum}", encodeURIComponent("" + lineNum));
+        if (dieId === undefined || dieId === null)
+            throw new globalThis.Error("The parameter 'dieId' must be defined.");
+        url_ = url_.replace("{dieId}", encodeURIComponent("" + dieId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processRemoveLineDieShape(_response);
+        });
+    }
+    processRemoveLineDieShape(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Printable sheet-skid tag (HTML with a Code 39 barcode).
      * @return OK
      */
@@ -3661,6 +4454,100 @@ export class AbisClient {
         });
     }
     processInvoiceDocument(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Printable packing list / ticket for a shipment — the header + every line item it carries (sheet / scrap / reject-coil) with weight + piece totals.
+     * @return OK
+     */
+    packingListDocument(packingList) {
+        let url_ = this.baseUrl + "/api/documents/packing-list/{packingList}";
+        if (packingList === undefined || packingList === null)
+            throw new globalThis.Error("The parameter 'packingList' must be defined.");
+        url_ = url_.replace("{packingList}", encodeURIComponent("" + packingList));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processPackingListDocument(_response);
+        });
+    }
+    processPackingListDocument(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Printable bill of lading for a shipment — ship-from / ship-to / carrier + the freight summary (handling units + total net/gross weight) + signature lines.
+     * @return OK
+     */
+    bolDocument(packingList) {
+        let url_ = this.baseUrl + "/api/documents/bol/{packingList}";
+        if (packingList === undefined || packingList === null)
+            throw new globalThis.Error("The parameter 'packingList' must be defined.");
+        url_ = url_.replace("{packingList}", encodeURIComponent("" + packingList));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processBolDocument(_response);
+        });
+    }
+    processBolDocument(response) {
         const status = response.status;
         let _headers = {};
         if (response.headers && response.headers.forEach) {
@@ -7200,6 +8087,272 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Duplicate an order into a new order_abc_num — copies the header, every line item (order_item_num preserved), and each item's blank geometry; only the id and created timestamps are fresh.
+     * @return Created
+     */
+    copyOrder(orderAbcNum) {
+        let url_ = this.baseUrl + "/api/orders/{orderAbcNum}/copy";
+        if (orderAbcNum === undefined || orderAbcNum === null)
+            throw new globalThis.Error("The parameter 'orderAbcNum' must be defined.");
+        url_ = url_.replace("{orderAbcNum}", encodeURIComponent("" + orderAbcNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCopyOrder(_response);
+        });
+    }
+    processCopyOrder(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                let result201 = null;
+                let resultData201 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result201 = OrderDetail.fromJS(resultData201);
+                return result201;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Customer coils earmarked to this order (ORDER_COIL), enriched with coil detail.
+     * @return OK
+     */
+    getOrderCoils(orderAbcNum) {
+        let url_ = this.baseUrl + "/api/orders/{orderAbcNum}/coils";
+        if (orderAbcNum === undefined || orderAbcNum === null)
+            throw new globalThis.Error("The parameter 'orderAbcNum' must be defined.");
+        url_ = url_.replace("{orderAbcNum}", encodeURIComponent("" + orderAbcNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetOrderCoils(_response);
+        });
+    }
+    processGetOrderCoils(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(OrderCoil.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Assign a customer coil to this order (ORDER_COIL). 409 if it's already on this order; 409 with code 'on-another-order' (+ otherOrderAbcNum) when the coil is on a different order — re-submit with confirm=true to proceed (legacy Continue? Yes/No).
+     * @return Created
+     */
+    assignOrderCoil(orderAbcNum, body) {
+        let url_ = this.baseUrl + "/api/orders/{orderAbcNum}/coils";
+        if (orderAbcNum === undefined || orderAbcNum === null)
+            throw new globalThis.Error("The parameter 'orderAbcNum' must be defined.");
+        url_ = url_.replace("{orderAbcNum}", encodeURIComponent("" + orderAbcNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processAssignOrderCoil(_response);
+        });
+    }
+    processAssignOrderCoil(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * The order's-customer coils available to assign (status 1..9), each flagged if already on this order (assignedToThisOrder) or on a different order (otherOrderAbcNum — the dup-org warning).
+     * @return OK
+     */
+    getAvailableCustomerCoils(orderAbcNum) {
+        let url_ = this.baseUrl + "/api/orders/{orderAbcNum}/available-coils";
+        if (orderAbcNum === undefined || orderAbcNum === null)
+            throw new globalThis.Error("The parameter 'orderAbcNum' must be defined.");
+        url_ = url_.replace("{orderAbcNum}", encodeURIComponent("" + orderAbcNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetAvailableCustomerCoils(_response);
+        });
+    }
+    processGetAvailableCustomerCoils(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(AvailableCustomerCoil.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Remove a coil from this order's ORDER_COIL assignment.
+     * @return No Content
+     */
+    removeOrderCoil(orderAbcNum, coilAbcNum) {
+        let url_ = this.baseUrl + "/api/orders/{orderAbcNum}/coils/{coilAbcNum}";
+        if (orderAbcNum === undefined || orderAbcNum === null)
+            throw new globalThis.Error("The parameter 'orderAbcNum' must be defined.");
+        url_ = url_.replace("{orderAbcNum}", encodeURIComponent("" + orderAbcNum));
+        if (coilAbcNum === undefined || coilAbcNum === null)
+            throw new globalThis.Error("The parameter 'coilAbcNum' must be defined.");
+        url_ = url_.replace("{coilAbcNum}", encodeURIComponent("" + coilAbcNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processRemoveOrderCoil(_response);
+        });
+    }
+    processRemoveOrderCoil(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * List part-number master records (paged, sortable; filter by customerId/alloy).
      * @param page (optional)
      * @param pageSize (optional)
@@ -7462,6 +8615,58 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Delete a part and its blank geometry. 409 if the part is referenced by any order line (order_item.part_num_id).
+     * @return No Content
+     */
+    deletePart(partNumId) {
+        let url_ = this.baseUrl + "/api/parts/{partNumId}";
+        if (partNumId === undefined || partNumId === null)
+            throw new globalThis.Error("The parameter 'partNumId' must be defined.");
+        url_ = url_.replace("{partNumId}", encodeURIComponent("" + partNumId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeletePart(_response);
+        });
+    }
+    processDeletePart(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Get a part-master's blank geometry — the shape's dimensions (value + tolerances).
      * @return OK
      */
@@ -7572,6 +8777,235 @@ export class AbisClient {
         else if (status === 409) {
             return response.text().then((_responseText) => {
                 return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Duplicate a part into a new part_num_id — copies every column + its blank geometry verbatim; the id is fresh.
+     * @return Created
+     */
+    copyPart(partNumId) {
+        let url_ = this.baseUrl + "/api/parts/{partNumId}/copy";
+        if (partNumId === undefined || partNumId === null)
+            throw new globalThis.Error("The parameter 'partNumId' must be defined.");
+        url_ = url_.replace("{partNumId}", encodeURIComponent("" + partNumId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCopyPart(_response);
+        });
+    }
+    processCopyPart(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                let result201 = null;
+                let resultData201 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result201 = Part.fromJS(resultData201);
+                return result201;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * A part's routings (line/die/shape + SPM/efficiency standards + edge-trim/stacker flags), enriched with die + line names.
+     * @return OK
+     */
+    getPartRoutings(partNumId) {
+        let url_ = this.baseUrl + "/api/parts/{partNumId}/routings";
+        if (partNumId === undefined || partNumId === null)
+            throw new globalThis.Error("The parameter 'partNumId' must be defined.");
+        url_ = url_.replace("{partNumId}", encodeURIComponent("" + partNumId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetPartRoutings(_response);
+        });
+    }
+    processGetPartRoutings(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(Routing.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Add a routing to a part (edit = delete + re-add). 404 if the part/line/die is unknown; 409 'duplicate' if the same routing already exists.
+     * @return Created
+     */
+    addPartRouting(partNumId, body) {
+        let url_ = this.baseUrl + "/api/parts/{partNumId}/routings";
+        if (partNumId === undefined || partNumId === null)
+            throw new globalThis.Error("The parameter 'partNumId' must be defined.");
+        url_ = url_.replace("{partNumId}", encodeURIComponent("" + partNumId));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processAddPartRouting(_response);
+        });
+    }
+    processAddPartRouting(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Remove a routing from a part (identified by routing sequence + line + die + sheet type).
+     * @return No Content
+     */
+    deletePartRouting(partNumId, routingSequence, lineNum, dieId, sheetType) {
+        let url_ = this.baseUrl + "/api/parts/{partNumId}/routings/{routingSequence}/{lineNum}/{dieId}/{sheetType}";
+        if (partNumId === undefined || partNumId === null)
+            throw new globalThis.Error("The parameter 'partNumId' must be defined.");
+        url_ = url_.replace("{partNumId}", encodeURIComponent("" + partNumId));
+        if (routingSequence === undefined || routingSequence === null)
+            throw new globalThis.Error("The parameter 'routingSequence' must be defined.");
+        url_ = url_.replace("{routingSequence}", encodeURIComponent("" + routingSequence));
+        if (lineNum === undefined || lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' must be defined.");
+        url_ = url_.replace("{lineNum}", encodeURIComponent("" + lineNum));
+        if (dieId === undefined || dieId === null)
+            throw new globalThis.Error("The parameter 'dieId' must be defined.");
+        url_ = url_.replace("{dieId}", encodeURIComponent("" + dieId));
+        if (sheetType === undefined || sheetType === null)
+            throw new globalThis.Error("The parameter 'sheetType' must be defined.");
+        url_ = url_.replace("{sheetType}", encodeURIComponent("" + sheetType));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeletePartRouting(_response);
+        });
+    }
+    processDeletePartRouting(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -7751,6 +9185,333 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * A coil's QA hold/release history (COIL_TRACK_QA audit, newest first).
+     * @return OK
+     */
+    getCoilQaHistory(coilAbcNum) {
+        let url_ = this.baseUrl + "/api/coils/{coilAbcNum}/qa-history";
+        if (coilAbcNum === undefined || coilAbcNum === null)
+            throw new globalThis.Error("The parameter 'coilAbcNum' must be defined.");
+        url_ = url_.replace("{coilAbcNum}", encodeURIComponent("" + coilAbcNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetCoilQaHistory(_response);
+        });
+    }
+    processGetCoilQaHistory(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(CoilQaTrack.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Place a coil on QA hold (coil_status → 11) and record the audit; 404 unknown, 409 terminal/already-on-hold.
+     * @return OK
+     */
+    placeCoilOnQaHold(coilAbcNum, body) {
+        let url_ = this.baseUrl + "/api/coils/{coilAbcNum}/qa-hold";
+        if (coilAbcNum === undefined || coilAbcNum === null)
+            throw new globalThis.Error("The parameter 'coilAbcNum' must be defined.");
+        url_ = url_.replace("{coilAbcNum}", encodeURIComponent("" + coilAbcNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processPlaceCoilOnQaHold(_response);
+        });
+    }
+    processPlaceCoilOnQaHold(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = CoilQaTransition.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Release a coil from QA hold (restores its pre-hold status, or ToStatus) and record the audit; 404 unknown, 409 if not on hold.
+     * @return OK
+     */
+    releaseCoilFromQaHold(coilAbcNum, body) {
+        let url_ = this.baseUrl + "/api/coils/{coilAbcNum}/qa-release";
+        if (coilAbcNum === undefined || coilAbcNum === null)
+            throw new globalThis.Error("The parameter 'coilAbcNum' must be defined.");
+        url_ = url_.replace("{coilAbcNum}", encodeURIComponent("" + coilAbcNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processReleaseCoilFromQaHold(_response);
+        });
+    }
+    processReleaseCoilFromQaHold(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = CoilQaTransition.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * WinSPC connector status: enabled + reachable (the read-only SPC quality DB).
+     */
+    winSpcHealth() {
+        let url_ = this.baseUrl + "/api/winspc/health";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processWinSpcHealth(_response);
+        });
+    }
+    processWinSpcHealth(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * WinSPC dimensional QC (readings + spec limits + in/out-of-spec) for an ABIS job number.
+     * @return OK
+     */
+    winSpcJobQc(abJobNum) {
+        let url_ = this.baseUrl + "/api/winspc/job/{abJobNum}/qc";
+        if (abJobNum === undefined || abJobNum === null)
+            throw new globalThis.Error("The parameter 'abJobNum' must be defined.");
+        url_ = url_.replace("{abJobNum}", encodeURIComponent("" + abJobNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processWinSpcJobQc(_response);
+        });
+    }
+    processWinSpcJobQc(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = WinSpcQc.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 503) {
+            return response.text().then((_responseText) => {
+                return throwException("Service Unavailable", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * WinSPC dimensional QC for an ABIS coil number (matched on the WinSPC 'Coil #' tag).
+     * @return OK
+     */
+    winSpcCoilQc(coilNum) {
+        let url_ = this.baseUrl + "/api/winspc/coil/{coilNum}/qc";
+        if (coilNum === undefined || coilNum === null)
+            throw new globalThis.Error("The parameter 'coilNum' must be defined.");
+        url_ = url_.replace("{coilNum}", encodeURIComponent("" + coilNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processWinSpcCoilQc(_response);
+        });
+    }
+    processWinSpcCoilQc(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = WinSpcQc.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 503) {
+            return response.text().then((_responseText) => {
+                return throwException("Service Unavailable", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * The scrap/defect type catalog.
      * @return OK
      */
@@ -7904,6 +9665,111 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Configure (upsert) a customer for recovery reporting — customerName + scope flags (allProducts/autoOnly/commOnly, Y/N).
+     * @return OK
+     */
+    upsertRecoveryCustomer(customerId, body) {
+        let url_ = this.baseUrl + "/api/quality/recovery-customers/{customerId}";
+        if (customerId === undefined || customerId === null)
+            throw new globalThis.Error("The parameter 'customerId' must be defined.");
+        url_ = url_.replace("{customerId}", encodeURIComponent("" + customerId));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processUpsertRecoveryCustomer(_response);
+        });
+    }
+    processUpsertRecoveryCustomer(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = RecoveryCustomer.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Remove a customer's recovery-reporting configuration.
+     * @return No Content
+     */
+    deleteRecoveryCustomer(customerId) {
+        let url_ = this.baseUrl + "/api/quality/recovery-customers/{customerId}";
+        if (customerId === undefined || customerId === null)
+            throw new globalThis.Error("The parameter 'customerId' must be defined.");
+        url_ = url_.replace("{customerId}", encodeURIComponent("" + customerId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeleteRecoveryCustomer(_response);
+        });
+    }
+    processDeleteRecoveryCustomer(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * The scrap/defect types a customer tracks.
      * @return OK
      */
@@ -7949,6 +9815,114 @@ export class AbisClient {
         else if (status === 401) {
             return response.text().then((_responseText) => {
                 return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Configure (upsert) a scrap/defect type a customer needs on the recovery report (abcOrMill + autoparts/nonAutoparts). 404 if the scrap type doesn't exist.
+     * @return OK
+     */
+    upsertCustomerScrapType(customerId, scrapTypeId, body) {
+        let url_ = this.baseUrl + "/api/quality/customer-defects/{customerId}/{scrapTypeId}";
+        if (customerId === undefined || customerId === null)
+            throw new globalThis.Error("The parameter 'customerId' must be defined.");
+        url_ = url_.replace("{customerId}", encodeURIComponent("" + customerId));
+        if (scrapTypeId === undefined || scrapTypeId === null)
+            throw new globalThis.Error("The parameter 'scrapTypeId' must be defined.");
+        url_ = url_.replace("{scrapTypeId}", encodeURIComponent("" + scrapTypeId));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processUpsertCustomerScrapType(_response);
+        });
+    }
+    processUpsertCustomerScrapType(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = CustomerDefect.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Remove a scrap/defect type from a customer's recovery-report needs.
+     * @return No Content
+     */
+    deleteCustomerScrapType(customerId, scrapTypeId) {
+        let url_ = this.baseUrl + "/api/quality/customer-defects/{customerId}/{scrapTypeId}";
+        if (customerId === undefined || customerId === null)
+            throw new globalThis.Error("The parameter 'customerId' must be defined.");
+        url_ = url_.replace("{customerId}", encodeURIComponent("" + customerId));
+        if (scrapTypeId === undefined || scrapTypeId === null)
+            throw new globalThis.Error("The parameter 'scrapTypeId' must be defined.");
+        url_ = url_.replace("{scrapTypeId}", encodeURIComponent("" + scrapTypeId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeleteCustomerScrapType(_response);
+        });
+    }
+    processDeleteCustomerScrapType(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -8679,6 +10653,56 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Remove a coil from a job's recovery worksheet (deletes only the recovery overlay row; the processed coil is untouched).
+     * @return No Content
+     */
+    deleteRecoveryCoil(abJobNum, coilAbcNum) {
+        let url_ = this.baseUrl + "/api/recovery/jobs/{abJobNum}/coils/{coilAbcNum}";
+        if (abJobNum === undefined || abJobNum === null)
+            throw new globalThis.Error("The parameter 'abJobNum' must be defined.");
+        url_ = url_.replace("{abJobNum}", encodeURIComponent("" + abJobNum));
+        if (coilAbcNum === undefined || coilAbcNum === null)
+            throw new globalThis.Error("The parameter 'coilAbcNum' must be defined.");
+        url_ = url_.replace("{coilAbcNum}", encodeURIComponent("" + coilAbcNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeleteRecoveryCoil(_response);
+        });
+    }
+    processDeleteRecoveryCoil(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Daily recovery report for a job: each recovery coil's ship / scrap / rejected weights and yield. Weights come from the live f_get_coil_* functions on Oracle.
      * @return OK
      */
@@ -9082,6 +11106,148 @@ export class AbisClient {
                     result200 = [];
                     for (let item of resultData200)
                         result200.push(DowntimeByCauseRow.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Line uptime (legacy w_report_uptime): over WORKED shifts, uptime hours = (shift length − dt_total seconds)/3600, plus scheduled/downtime hours and uptime %. groupBy = line (default) | shift | day, optionally one line. Defaults to the last 365 days when unbounded.
+     * @param from (optional)
+     * @param to (optional)
+     * @param lineNum (optional)
+     * @param groupBy (optional)
+     * @return OK
+     */
+    getUptime(from, to, lineNum, groupBy) {
+        let url_ = this.baseUrl + "/api/reporting/uptime?";
+        if (from === null)
+            throw new globalThis.Error("The parameter 'from' cannot be null.");
+        else if (from !== undefined)
+            url_ += "from=" + encodeURIComponent(from ? "" + from.toISOString() : "") + "&";
+        if (to === null)
+            throw new globalThis.Error("The parameter 'to' cannot be null.");
+        else if (to !== undefined)
+            url_ += "to=" + encodeURIComponent(to ? "" + to.toISOString() : "") + "&";
+        if (lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' cannot be null.");
+        else if (lineNum !== undefined)
+            url_ += "lineNum=" + encodeURIComponent("" + lineNum) + "&";
+        if (groupBy === null)
+            throw new globalThis.Error("The parameter 'groupBy' cannot be null.");
+        else if (groupBy !== undefined)
+            url_ += "groupBy=" + encodeURIComponent("" + groupBy) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetUptime(_response);
+        });
+    }
+    processGetUptime(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(UptimeRow.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Downtime rolled up along one dimension (legacy daily-prod downtime pivots): occurrences + minutes grouped by groupBy = cause (default) | job | line | shift | day | month | year, optionally one line. Defaults to the last 365 days when unbounded.
+     * @param from (optional)
+     * @param to (optional)
+     * @param lineNum (optional)
+     * @param groupBy (optional)
+     * @return OK
+     */
+    getDowntimePivot(from, to, lineNum, groupBy) {
+        let url_ = this.baseUrl + "/api/reporting/downtime-pivot?";
+        if (from === null)
+            throw new globalThis.Error("The parameter 'from' cannot be null.");
+        else if (from !== undefined)
+            url_ += "from=" + encodeURIComponent(from ? "" + from.toISOString() : "") + "&";
+        if (to === null)
+            throw new globalThis.Error("The parameter 'to' cannot be null.");
+        else if (to !== undefined)
+            url_ += "to=" + encodeURIComponent(to ? "" + to.toISOString() : "") + "&";
+        if (lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' cannot be null.");
+        else if (lineNum !== undefined)
+            url_ += "lineNum=" + encodeURIComponent("" + lineNum) + "&";
+        if (groupBy === null)
+            throw new globalThis.Error("The parameter 'groupBy' cannot be null.");
+        else if (groupBy !== undefined)
+            url_ += "groupBy=" + encodeURIComponent("" + groupBy) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetDowntimePivot(_response);
+        });
+    }
+    processGetDowntimePivot(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(DowntimePivotRow.fromJS(item));
                 }
                 else {
                     result200 = null;
@@ -12527,6 +14693,123 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Record that an 856 or desadv was generated for a shipment — stamps edi_req/edi_triggered + the file id + date (docType = 856 default | desadv). Bookkeeping only; the modern stack never transmits EDI.
+     * @return OK
+     */
+    markShipmentEdiTriggered(packingList, body) {
+        let url_ = this.baseUrl + "/api/shipments/{packingList}/edi-trigger";
+        if (packingList === undefined || packingList === null)
+            throw new globalThis.Error("The parameter 'packingList' must be defined.");
+        url_ = url_.replace("{packingList}", encodeURIComponent("" + packingList));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processMarkShipmentEdiTriggered(_response);
+        });
+    }
+    processMarkShipmentEdiTriggered(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = Shipment.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * A shipment's status-change audit trail (legacy SHIPMENT_TRACK) — before/after shipment + vehicle status (and customer/ship-to) with who/when, newest first.
+     * @return OK
+     */
+    getShipmentHistory(packingList) {
+        let url_ = this.baseUrl + "/api/shipments/{packingList}/history";
+        if (packingList === undefined || packingList === null)
+            throw new globalThis.Error("The parameter 'packingList' must be defined.");
+        url_ = url_.replace("{packingList}", encodeURIComponent("" + packingList));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetShipmentHistory(_response);
+        });
+    }
+    processGetShipmentHistory(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(ShipmentTrackRow.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Close out a shipment / BOL — mark it shipped and stamp the sent + actual dates.
      * @return OK
      */
@@ -12559,6 +14842,186 @@ export class AbisClient {
                 let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
                 result200 = Shipment.fromJS(resultData200);
                 return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * List the line items on a packing list (shipment) — SHEET (finished-sheet skids, enriched with weight/pieces/part/PO/coil — the same content the 856 (ASN) reports), SCRAP (scrap skids), and REJECT_COIL (rejected coils), each tagged with its itemType.
+     * @return OK
+     */
+    listPackingItems(packingList) {
+        let url_ = this.baseUrl + "/api/shipments/{packingList}/items";
+        if (packingList === undefined || packingList === null)
+            throw new globalThis.Error("The parameter 'packingList' must be defined.");
+        url_ = url_.replace("{packingList}", encodeURIComponent("" + packingList));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processListPackingItems(_response);
+        });
+    }
+    processListPackingItems(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(PackingLineItem.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Add a line item to a packing list — itemType SHEET (finished sheet) / SCRAP (scrap) with refNum = the skid number, or REJECT_COIL with refNum = the coil abc number. The item id + packaging ticket are server-assigned. 400 bad type; 404 if the shipment or skid/coil is missing; 409 if it's already on this list. Config/data only — nothing transmits.
+     * @return Created
+     */
+    addPackingItem(packingList, body) {
+        let url_ = this.baseUrl + "/api/shipments/{packingList}/items";
+        if (packingList === undefined || packingList === null)
+            throw new globalThis.Error("The parameter 'packingList' must be defined.");
+        url_ = url_.replace("{packingList}", encodeURIComponent("" + packingList));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processAddPackingItem(_response);
+        });
+    }
+    processAddPackingItem(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                let result201 = null;
+                let resultData201 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result201 = PackingLineItem.fromJS(resultData201);
+                return result201;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Remove a line item (by itemType SHEET/SCRAP + its id) from a packing list.
+     * @return No Content
+     */
+    deletePackingItem(packingList, itemType, itemId) {
+        let url_ = this.baseUrl + "/api/shipments/{packingList}/items/{itemType}/{itemId}";
+        if (packingList === undefined || packingList === null)
+            throw new globalThis.Error("The parameter 'packingList' must be defined.");
+        url_ = url_.replace("{packingList}", encodeURIComponent("" + packingList));
+        if (itemType === undefined || itemType === null)
+            throw new globalThis.Error("The parameter 'itemType' must be defined.");
+        url_ = url_.replace("{itemType}", encodeURIComponent("" + itemType));
+        if (itemId === undefined || itemId === null)
+            throw new globalThis.Error("The parameter 'itemId' must be defined.");
+        url_ = url_.replace("{itemId}", encodeURIComponent("" + itemId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeletePackingItem(_response);
+        });
+    }
+    processDeletePackingItem(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
             });
         }
         else if (status === 401) {
@@ -13010,6 +15473,58 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Delete a sheet skid (and its detail + dimension-check rows), guarded: 409 if it's on a shipment; 404 if unknown; 204 on delete.
+     * @return No Content
+     */
+    deleteSheetSkid(sheetSkidNum) {
+        let url_ = this.baseUrl + "/api/sheet-skids/{sheetSkidNum}";
+        if (sheetSkidNum === undefined || sheetSkidNum === null)
+            throw new globalThis.Error("The parameter 'sheetSkidNum' must be defined.");
+        url_ = url_.replace("{sheetSkidNum}", encodeURIComponent("" + sheetSkidNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeleteSheetSkid(_response);
+        });
+    }
+    processDeleteSheetSkid(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * List scrap skids (paged, sortable).
      * @param page (optional)
      * @param pageSize (optional)
@@ -13169,6 +15684,162 @@ export class AbisClient {
                 let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
                 result200 = ScrapSkid.fromJS(resultData200);
                 return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Delete a scrap skid, guarded: 409 if it's on a shipment; 404 if unknown; 204 on delete.
+     * @return No Content
+     */
+    deleteScrapSkid(scrapSkidNum) {
+        let url_ = this.baseUrl + "/api/scrap-skids/{scrapSkidNum}";
+        if (scrapSkidNum === undefined || scrapSkidNum === null)
+            throw new globalThis.Error("The parameter 'scrapSkidNum' must be defined.");
+        url_ = url_.replace("{scrapSkidNum}", encodeURIComponent("" + scrapSkidNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeleteScrapSkid(_response);
+        });
+    }
+    processDeleteScrapSkid(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Return (un-scrap) a scrap skid — restores its scrapped sheet-skid/production rows to the live tables and removes the scrap records (legacy F_CONVERT_BACK_TO_SHEET). 404 if the scrap skid is unknown.
+     * @return OK
+     */
+    returnScrapSkid(scrapSkidNum) {
+        let url_ = this.baseUrl + "/api/scrap-skids/{scrapSkidNum}/return";
+        if (scrapSkidNum === undefined || scrapSkidNum === null)
+            throw new globalThis.Error("The parameter 'scrapSkidNum' must be defined.");
+        url_ = url_.replace("{scrapSkidNum}", encodeURIComponent("" + scrapSkidNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processReturnScrapSkid(_response);
+        });
+    }
+    processReturnScrapSkid(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = ReturnScrapResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Convert a sheet skid to scrap (legacy F_CONVERT_TO_SCRAP) — mints a scrap skid, moves the skid + its production items to the scraped_* mirror tables, credits each item as a return_scrap_item, and removes the live sheet-skid rows. 404 if the sheet skid is unknown. Reversible via /scrap-skids/{n}/return.
+     * @return Created
+     */
+    makeScrapSkid(sheetSkidNum) {
+        let url_ = this.baseUrl + "/api/sheet-skids/{sheetSkidNum}/make-scrap";
+        if (sheetSkidNum === undefined || sheetSkidNum === null)
+            throw new globalThis.Error("The parameter 'sheetSkidNum' must be defined.");
+        url_ = url_.replace("{sheetSkidNum}", encodeURIComponent("" + sheetSkidNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processMakeScrapSkid(_response);
+        });
+    }
+    processMakeScrapSkid(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                let result201 = null;
+                let resultData201 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result201 = MakeScrapResult.fromJS(resultData201);
+                return result201;
             });
         }
         else if (status === 401) {
@@ -13520,6 +16191,66 @@ export class AbisClient {
         else if (status === 401) {
             return response.text().then((_responseText) => {
                 return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Record a posted mechanical test result (pst_test_result) for a coil — YTS/UTS/elongation/n/r + thickness/width at a sample position. coilAbcNum + position are required; created_date is stamped server-side. 404 if the coil is missing. This is the write that lets the read-only test-results list populate.
+     * @return Created
+     */
+    createTestResult(body) {
+        let url_ = this.baseUrl + "/api/test-results";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCreateTestResult(_response);
+        });
+    }
+    processCreateTestResult(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                let result201 = null;
+                let resultData201 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result201 = TestResult.fromJS(resultData201);
+                return result201;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -14335,6 +17066,108 @@ export class AuditEntryPagedResult {
         return data;
     }
 }
+export class AvailableCustomerCoil {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.coilOrgNum = _data["coilOrgNum"];
+            this.coilMidNum = _data["coilMidNum"];
+            this.coilAlloy2 = _data["coilAlloy2"];
+            this.coilTemper = _data["coilTemper"];
+            this.coilGauge = _data["coilGauge"];
+            this.coilWidth = _data["coilWidth"];
+            this.netWt = _data["netWt"];
+            this.netWtBalance = _data["netWtBalance"];
+            this.coilStatus = _data["coilStatus"];
+            this.customerId = _data["customerId"];
+            this.coilFromCustId = _data["coilFromCustId"];
+            this.dateReceived = _data["dateReceived"] ? new Date(_data["dateReceived"].toString()) : undefined;
+            this.assignedToThisOrder = _data["assignedToThisOrder"];
+            this.otherOrderAbcNum = _data["otherOrderAbcNum"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new AvailableCustomerCoil();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["coilOrgNum"] = this.coilOrgNum;
+        data["coilMidNum"] = this.coilMidNum;
+        data["coilAlloy2"] = this.coilAlloy2;
+        data["coilTemper"] = this.coilTemper;
+        data["coilGauge"] = this.coilGauge;
+        data["coilWidth"] = this.coilWidth;
+        data["netWt"] = this.netWt;
+        data["netWtBalance"] = this.netWtBalance;
+        data["coilStatus"] = this.coilStatus;
+        data["customerId"] = this.customerId;
+        data["coilFromCustId"] = this.coilFromCustId;
+        data["dateReceived"] = this.dateReceived ? this.dateReceived.toISOString() : undefined;
+        data["assignedToThisOrder"] = this.assignedToThisOrder;
+        data["otherOrderAbcNum"] = this.otherOrderAbcNum;
+        return data;
+    }
+}
+export class BulkCoilStatusResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.requested = _data["requested"];
+            this.updated = _data["updated"];
+            if (Array.isArray(_data["updatedCoils"])) {
+                this.updatedCoils = [];
+                for (let item of _data["updatedCoils"])
+                    this.updatedCoils.push(item);
+            }
+            if (Array.isArray(_data["skipped"])) {
+                this.skipped = [];
+                for (let item of _data["skipped"])
+                    this.skipped.push(SkippedCoil.fromJS(item));
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new BulkCoilStatusResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["requested"] = this.requested;
+        data["updated"] = this.updated;
+        if (Array.isArray(this.updatedCoils)) {
+            data["updatedCoils"] = [];
+            for (let item of this.updatedCoils)
+                data["updatedCoils"].push(item);
+        }
+        if (Array.isArray(this.skipped)) {
+            data["skipped"] = [];
+            for (let item of this.skipped)
+                data["skipped"].push(item ? item.toJSON() : undefined);
+        }
+        return data;
+    }
+}
 export class Carrier {
     constructor(data) {
         if (data) {
@@ -14350,8 +17183,12 @@ export class Carrier {
             this.scac = _data["scac"];
             this.carrierFullName = _data["carrierFullName"];
             this.carrierTypeCode = _data["carrierTypeCode"];
+            this.carrierStreet = _data["carrierStreet"];
             this.carrierCity = _data["carrierCity"];
             this.carrierState = _data["carrierState"];
+            this.carrierZip = _data["carrierZip"];
+            this.carrierCountry = _data["carrierCountry"];
+            this.carrierDunsNumber = _data["carrierDunsNumber"];
             this.carrierPhoneNumber = _data["carrierPhoneNumber"];
             this.status = _data["status"];
         }
@@ -14368,8 +17205,12 @@ export class Carrier {
         data["scac"] = this.scac;
         data["carrierFullName"] = this.carrierFullName;
         data["carrierTypeCode"] = this.carrierTypeCode;
+        data["carrierStreet"] = this.carrierStreet;
         data["carrierCity"] = this.carrierCity;
         data["carrierState"] = this.carrierState;
+        data["carrierZip"] = this.carrierZip;
+        data["carrierCountry"] = this.carrierCountry;
+        data["carrierDunsNumber"] = this.carrierDunsNumber;
         data["carrierPhoneNumber"] = this.carrierPhoneNumber;
         data["status"] = this.status;
         return data;
@@ -14431,8 +17272,12 @@ export class CarrierWrite {
             this.scac = _data["scac"];
             this.carrierFullName = _data["carrierFullName"];
             this.carrierTypeCode = _data["carrierTypeCode"];
+            this.carrierStreet = _data["carrierStreet"];
             this.carrierCity = _data["carrierCity"];
             this.carrierState = _data["carrierState"];
+            this.carrierZip = _data["carrierZip"];
+            this.carrierCountry = _data["carrierCountry"];
+            this.carrierDunsNumber = _data["carrierDunsNumber"];
             this.carrierPhoneNumber = _data["carrierPhoneNumber"];
             this.status = _data["status"];
         }
@@ -14448,8 +17293,12 @@ export class CarrierWrite {
         data["scac"] = this.scac;
         data["carrierFullName"] = this.carrierFullName;
         data["carrierTypeCode"] = this.carrierTypeCode;
+        data["carrierStreet"] = this.carrierStreet;
         data["carrierCity"] = this.carrierCity;
         data["carrierState"] = this.carrierState;
+        data["carrierZip"] = this.carrierZip;
+        data["carrierCountry"] = this.carrierCountry;
+        data["carrierDunsNumber"] = this.carrierDunsNumber;
         data["carrierPhoneNumber"] = this.carrierPhoneNumber;
         data["status"] = this.status;
         return data;
@@ -14544,6 +17393,40 @@ export class Coil {
         data["netWt"] = this.netWt;
         data["netWtBalance"] = this.netWtBalance;
         data["piecesPerCase"] = this.piecesPerCase;
+        return data;
+    }
+}
+export class CoilBulkStatusWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            if (Array.isArray(_data["coilAbcNums"])) {
+                this.coilAbcNums = [];
+                for (let item of _data["coilAbcNums"])
+                    this.coilAbcNums.push(item);
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CoilBulkStatusWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        if (Array.isArray(this.coilAbcNums)) {
+            data["coilAbcNums"] = [];
+            for (let item of this.coilAbcNums)
+                data["coilAbcNums"].push(item);
+        }
         return data;
     }
 }
@@ -14896,6 +17779,360 @@ export class CoilProcessing {
         data["processQuantity"] = this.processQuantity;
         data["jobStatus"] = this.jobStatus;
         data["jobLineNum"] = this.jobLineNum;
+        return data;
+    }
+}
+export class CoilQaHoldWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.modifiedBy = _data["modifiedBy"];
+            this.note = _data["note"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CoilQaHoldWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["modifiedBy"] = this.modifiedBy;
+        data["note"] = this.note;
+        return data;
+    }
+}
+export var CoilQaOutcome;
+(function (CoilQaOutcome) {
+    CoilQaOutcome[CoilQaOutcome["_0"] = 0] = "_0";
+    CoilQaOutcome[CoilQaOutcome["_1"] = 1] = "_1";
+    CoilQaOutcome[CoilQaOutcome["_2"] = 2] = "_2";
+    CoilQaOutcome[CoilQaOutcome["_3"] = 3] = "_3";
+    CoilQaOutcome[CoilQaOutcome["_4"] = 4] = "_4";
+})(CoilQaOutcome || (CoilQaOutcome = {}));
+export class CoilQaReleaseWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.modifiedBy = _data["modifiedBy"];
+            this.note = _data["note"];
+            this.toStatus = _data["toStatus"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CoilQaReleaseWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["modifiedBy"] = this.modifiedBy;
+        data["note"] = this.note;
+        data["toStatus"] = this.toStatus;
+        return data;
+    }
+}
+export class CoilQaTrack {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.coilTrackDate = _data["coilTrackDate"] ? new Date(_data["coilTrackDate"].toString()) : undefined;
+            this.coilPreStatus = _data["coilPreStatus"];
+            this.coilCurStatus = _data["coilCurStatus"];
+            this.coilModifiedBy = _data["coilModifiedBy"];
+            this.note = _data["note"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CoilQaTrack();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["coilTrackDate"] = this.coilTrackDate ? this.coilTrackDate.toISOString() : undefined;
+        data["coilPreStatus"] = this.coilPreStatus;
+        data["coilCurStatus"] = this.coilCurStatus;
+        data["coilModifiedBy"] = this.coilModifiedBy;
+        data["note"] = this.note;
+        return data;
+    }
+}
+export class CoilQaTransition {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.outcome = _data["outcome"];
+            this.coil = _data["coil"] ? Coil.fromJS(_data["coil"]) : undefined;
+            this.track = _data["track"] ? CoilQaTrack.fromJS(_data["track"]) : undefined;
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CoilQaTransition();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["outcome"] = this.outcome;
+        data["coil"] = this.coil ? this.coil.toJSON() : undefined;
+        data["track"] = this.track ? this.track.toJSON() : undefined;
+        return data;
+    }
+}
+export class CoilQuality {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.coilOrgNum = _data["coilOrgNum"];
+            this.partNum = _data["partNum"];
+            this.materialGrade = _data["materialGrade"];
+            this.preTreatmentFlag = _data["preTreatmentFlag"];
+            this.cashDate = _data["cashDate"] ? new Date(_data["cashDate"].toString()) : undefined;
+            this.millId = _data["millId"];
+            this.netCoilLength = _data["netCoilLength"];
+            this.netCoilLengthUom = _data["netCoilLengthUom"];
+            this.coilWidth = _data["coilWidth"];
+            this.coilWeight = _data["coilWeight"];
+            this.materialThikness = _data["materialThikness"];
+            this.cashLineId = _data["cashLineId"];
+            this.samplingRequired = _data["samplingRequired"];
+            this.pccNumber = _data["pccNumber"];
+            this.revisionLevel = _data["revisionLevel"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CoilQuality();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["coilOrgNum"] = this.coilOrgNum;
+        data["partNum"] = this.partNum;
+        data["materialGrade"] = this.materialGrade;
+        data["preTreatmentFlag"] = this.preTreatmentFlag;
+        data["cashDate"] = this.cashDate ? this.cashDate.toISOString() : undefined;
+        data["millId"] = this.millId;
+        data["netCoilLength"] = this.netCoilLength;
+        data["netCoilLengthUom"] = this.netCoilLengthUom;
+        data["coilWidth"] = this.coilWidth;
+        data["coilWeight"] = this.coilWeight;
+        data["materialThikness"] = this.materialThikness;
+        data["cashLineId"] = this.cashLineId;
+        data["samplingRequired"] = this.samplingRequired;
+        data["pccNumber"] = this.pccNumber;
+        data["revisionLevel"] = this.revisionLevel;
+        return data;
+    }
+}
+export class CoilQualityDetail {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.header = _data["header"] ? CoilQuality.fromJS(_data["header"]) : undefined;
+            if (Array.isArray(_data["flaws"])) {
+                this.flaws = [];
+                for (let item of _data["flaws"])
+                    this.flaws.push(CoilQualityFlaw.fromJS(item));
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CoilQualityDetail();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["header"] = this.header ? this.header.toJSON() : undefined;
+        if (Array.isArray(this.flaws)) {
+            data["flaws"] = [];
+            for (let item of this.flaws)
+                data["flaws"].push(item ? item.toJSON() : undefined);
+        }
+        return data;
+    }
+}
+export class CoilQualityFlaw {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.coilOrgNum = _data["coilOrgNum"];
+            this.startingPosition = _data["startingPosition"];
+            this.endingPosition = _data["endingPosition"];
+            this.flawCode = _data["flawCode"];
+            this.startingPositionUom = _data["startingPositionUom"];
+            this.endingPositionUom = _data["endingPositionUom"];
+            this.handlingCode = _data["handlingCode"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CoilQualityFlaw();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["coilOrgNum"] = this.coilOrgNum;
+        data["startingPosition"] = this.startingPosition;
+        data["endingPosition"] = this.endingPosition;
+        data["flawCode"] = this.flawCode;
+        data["startingPositionUom"] = this.startingPositionUom;
+        data["endingPositionUom"] = this.endingPositionUom;
+        data["handlingCode"] = this.handlingCode;
+        return data;
+    }
+}
+export class CoilQualityFlawWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.startingPosition = _data["startingPosition"];
+            this.endingPosition = _data["endingPosition"];
+            this.flawCode = _data["flawCode"];
+            this.startingPositionUom = _data["startingPositionUom"];
+            this.endingPositionUom = _data["endingPositionUom"];
+            this.handlingCode = _data["handlingCode"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CoilQualityFlawWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["startingPosition"] = this.startingPosition;
+        data["endingPosition"] = this.endingPosition;
+        data["flawCode"] = this.flawCode;
+        data["startingPositionUom"] = this.startingPositionUom;
+        data["endingPositionUom"] = this.endingPositionUom;
+        data["handlingCode"] = this.handlingCode;
+        return data;
+    }
+}
+export class CoilQualityWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.coilOrgNum = _data["coilOrgNum"];
+            this.partNum = _data["partNum"];
+            this.materialGrade = _data["materialGrade"];
+            this.preTreatmentFlag = _data["preTreatmentFlag"];
+            this.cashDate = _data["cashDate"] ? new Date(_data["cashDate"].toString()) : undefined;
+            this.millId = _data["millId"];
+            this.netCoilLength = _data["netCoilLength"];
+            this.netCoilLengthUom = _data["netCoilLengthUom"];
+            this.coilWidth = _data["coilWidth"];
+            this.coilWeight = _data["coilWeight"];
+            this.materialThikness = _data["materialThikness"];
+            this.cashLineId = _data["cashLineId"];
+            this.samplingRequired = _data["samplingRequired"];
+            this.pccNumber = _data["pccNumber"];
+            this.revisionLevel = _data["revisionLevel"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CoilQualityWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["coilOrgNum"] = this.coilOrgNum;
+        data["partNum"] = this.partNum;
+        data["materialGrade"] = this.materialGrade;
+        data["preTreatmentFlag"] = this.preTreatmentFlag;
+        data["cashDate"] = this.cashDate ? this.cashDate.toISOString() : undefined;
+        data["millId"] = this.millId;
+        data["netCoilLength"] = this.netCoilLength;
+        data["netCoilLengthUom"] = this.netCoilLengthUom;
+        data["coilWidth"] = this.coilWidth;
+        data["coilWeight"] = this.coilWeight;
+        data["materialThikness"] = this.materialThikness;
+        data["cashLineId"] = this.cashLineId;
+        data["samplingRequired"] = this.samplingRequired;
+        data["pccNumber"] = this.pccNumber;
+        data["revisionLevel"] = this.revisionLevel;
         return data;
     }
 }
@@ -15509,6 +18746,36 @@ export class CustomerPagedResult {
         return data;
     }
 }
+export class CustomerScrapTypeWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.abcOrMill = _data["abcOrMill"];
+            this.autoparts = _data["autoparts"];
+            this.nonAutoparts = _data["nonAutoparts"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CustomerScrapTypeWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["abcOrMill"] = this.abcOrMill;
+        data["autoparts"] = this.autoparts;
+        data["nonAutoparts"] = this.nonAutoparts;
+        return data;
+    }
+}
 export class CustomerShipmentRow {
     constructor(data) {
         if (data) {
@@ -16111,6 +19378,36 @@ export class DowntimeInstanceWrite {
         return data;
     }
 }
+export class DowntimePivotRow {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.bucket = _data["bucket"];
+            this.occurrences = _data["occurrences"];
+            this.downtimeMinutes = _data["downtimeMinutes"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new DowntimePivotRow();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["bucket"] = this.bucket;
+        data["occurrences"] = this.occurrences;
+        data["downtimeMinutes"] = this.downtimeMinutes;
+        return data;
+    }
+}
 export class DowntimeSegment {
     constructor(data) {
         if (data) {
@@ -16325,6 +19622,7 @@ export class Edi870FileResult {
             this.ediFileId = _data["ediFileId"];
             this.ediFileName = _data["ediFileName"];
             this.abJobNum = _data["abJobNum"];
+            this.coilAbcNum = _data["coilAbcNum"];
             this.itemCount = _data["itemCount"];
             this.scrapCount = _data["scrapCount"];
             this.hlCount = _data["hlCount"];
@@ -16342,6 +19640,7 @@ export class Edi870FileResult {
         data["ediFileId"] = this.ediFileId;
         data["ediFileName"] = this.ediFileName;
         data["abJobNum"] = this.abJobNum;
+        data["coilAbcNum"] = this.coilAbcNum;
         data["itemCount"] = this.itemCount;
         data["scrapCount"] = this.scrapCount;
         data["hlCount"] = this.hlCount;
@@ -17635,6 +20934,102 @@ export class JobPatch {
         return data;
     }
 }
+export class JobQcBoard {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.abJobNum = _data["abJobNum"];
+            this.totalSkids = _data["totalSkids"];
+            this.inSpecSkids = _data["inSpecSkids"];
+            this.outOfSpecSkids = _data["outOfSpecSkids"];
+            this.uncheckedSkids = _data["uncheckedSkids"];
+            this.goodPieces = _data["goodPieces"];
+            this.outOfSpecPieces = _data["outOfSpecPieces"];
+            this.goodWeight = _data["goodWeight"];
+            this.outOfSpecWeight = _data["outOfSpecWeight"];
+            if (Array.isArray(_data["skids"])) {
+                this.skids = [];
+                for (let item of _data["skids"])
+                    this.skids.push(JobQcSkid.fromJS(item));
+            }
+            this.winSpc = _data["winSpc"] ? WinSpcJobSummary.fromJS(_data["winSpc"]) : undefined;
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new JobQcBoard();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["abJobNum"] = this.abJobNum;
+        data["totalSkids"] = this.totalSkids;
+        data["inSpecSkids"] = this.inSpecSkids;
+        data["outOfSpecSkids"] = this.outOfSpecSkids;
+        data["uncheckedSkids"] = this.uncheckedSkids;
+        data["goodPieces"] = this.goodPieces;
+        data["outOfSpecPieces"] = this.outOfSpecPieces;
+        data["goodWeight"] = this.goodWeight;
+        data["outOfSpecWeight"] = this.outOfSpecWeight;
+        if (Array.isArray(this.skids)) {
+            data["skids"] = [];
+            for (let item of this.skids)
+                data["skids"].push(item ? item.toJSON() : undefined);
+        }
+        data["winSpc"] = this.winSpc ? this.winSpc.toJSON() : undefined;
+        return data;
+    }
+}
+export class JobQcSkid {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.sheetSkidNum = _data["sheetSkidNum"];
+            this.sheetSkidDisplayNum = _data["sheetSkidDisplayNum"];
+            this.skidPieces = _data["skidPieces"];
+            this.sheetNetWt = _data["sheetNetWt"];
+            this.skidSheetStatus = _data["skidSheetStatus"];
+            this.checkCount = _data["checkCount"];
+            this.inSpecCount = _data["inSpecCount"];
+            this.outOfSpecCount = _data["outOfSpecCount"];
+            this.status = _data["status"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new JobQcSkid();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["sheetSkidNum"] = this.sheetSkidNum;
+        data["sheetSkidDisplayNum"] = this.sheetSkidDisplayNum;
+        data["skidPieces"] = this.skidPieces;
+        data["sheetNetWt"] = this.sheetNetWt;
+        data["skidSheetStatus"] = this.skidSheetStatus;
+        data["checkCount"] = this.checkCount;
+        data["inSpecCount"] = this.inSpecCount;
+        data["outOfSpecCount"] = this.outOfSpecCount;
+        data["status"] = this.status;
+        return data;
+    }
+}
 export class JobWrite {
     constructor(data) {
         if (data) {
@@ -17676,6 +21071,70 @@ export class JobWrite {
         data["dueDate"] = this.dueDate ? this.dueDate.toISOString() : undefined;
         data["jobNotes"] = this.jobNotes;
         data["sketchJobNote"] = this.sketchJobNote;
+        return data;
+    }
+}
+export class LineDieShape {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.sheetType = _data["sheetType"];
+            this.lineNum = _data["lineNum"];
+            this.dieId = _data["dieId"];
+            this.dieName = _data["dieName"];
+            this.lineDesc = _data["lineDesc"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new LineDieShape();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["sheetType"] = this.sheetType;
+        data["lineNum"] = this.lineNum;
+        data["dieId"] = this.dieId;
+        data["dieName"] = this.dieName;
+        data["lineDesc"] = this.lineDesc;
+        return data;
+    }
+}
+export class LineDieShapeWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.sheetType = _data["sheetType"];
+            this.lineNum = _data["lineNum"];
+            this.dieId = _data["dieId"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new LineDieShapeWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["sheetType"] = this.sheetType;
+        data["lineNum"] = this.lineNum;
+        data["dieId"] = this.dieId;
         return data;
     }
 }
@@ -17985,6 +21444,34 @@ export class MaintLogWrite {
         return data;
     }
 }
+export class MakeScrapResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.found = _data["found"];
+            this.scrapSkidNum = _data["scrapSkidNum"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new MakeScrapResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["found"] = this.found;
+        data["scrapSkidNum"] = this.scrapSkidNum;
+        return data;
+    }
+}
 export class MintResult {
     constructor(data) {
         if (data) {
@@ -18238,6 +21725,84 @@ export class OpenShipmentRow {
         data["shipmentScheduledDateTime"] = this.shipmentScheduledDateTime ? this.shipmentScheduledDateTime.toISOString() : undefined;
         data["vehicleId"] = this.vehicleId;
         data["shipmentNotes"] = this.shipmentNotes;
+        return data;
+    }
+}
+export class OrderCoil {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.orderAbcNum = _data["orderAbcNum"];
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.coilOrgNum = _data["coilOrgNum"];
+            this.coilMidNum = _data["coilMidNum"];
+            this.coilAlloy2 = _data["coilAlloy2"];
+            this.coilTemper = _data["coilTemper"];
+            this.coilGauge = _data["coilGauge"];
+            this.coilWidth = _data["coilWidth"];
+            this.netWt = _data["netWt"];
+            this.netWtBalance = _data["netWtBalance"];
+            this.coilStatus = _data["coilStatus"];
+            this.customerId = _data["customerId"];
+            this.dateReceived = _data["dateReceived"] ? new Date(_data["dateReceived"].toString()) : undefined;
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new OrderCoil();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["orderAbcNum"] = this.orderAbcNum;
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["coilOrgNum"] = this.coilOrgNum;
+        data["coilMidNum"] = this.coilMidNum;
+        data["coilAlloy2"] = this.coilAlloy2;
+        data["coilTemper"] = this.coilTemper;
+        data["coilGauge"] = this.coilGauge;
+        data["coilWidth"] = this.coilWidth;
+        data["netWt"] = this.netWt;
+        data["netWtBalance"] = this.netWtBalance;
+        data["coilStatus"] = this.coilStatus;
+        data["customerId"] = this.customerId;
+        data["dateReceived"] = this.dateReceived ? this.dateReceived.toISOString() : undefined;
+        return data;
+    }
+}
+export class OrderCoilAssignRequest {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.confirm = _data["confirm"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new OrderCoilAssignRequest();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["confirm"] = this.confirm;
         return data;
     }
 }
@@ -18768,6 +22333,94 @@ export class OrderItemWrite {
         data["finishedGoodsMaterialNum"] = this.finishedGoodsMaterialNum;
         data["custProdLineId"] = this.custProdLineId;
         data["billtoAlbl"] = this.billtoAlbl;
+        return data;
+    }
+}
+export class PackingItemWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.itemType = _data["itemType"];
+            this.refNum = _data["refNum"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new PackingItemWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["itemType"] = this.itemType;
+        data["refNum"] = this.refNum;
+        return data;
+    }
+}
+export class PackingLineItem {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.packingItemId = _data["packingItemId"];
+            this.packingList = _data["packingList"];
+            this.itemType = _data["itemType"];
+            this.refNum = _data["refNum"];
+            this.packagingTicket = _data["packagingTicket"];
+            this.skidDisplayNum = _data["skidDisplayNum"];
+            this.netWeight = _data["netWeight"];
+            this.tareWeight = _data["tareWeight"];
+            this.grossWeight = _data["grossWeight"];
+            this.pieces = _data["pieces"];
+            this.abJobNum = _data["abJobNum"];
+            this.enduserPartNum = _data["enduserPartNum"];
+            this.origCustomerPo = _data["origCustomerPo"];
+            this.coilOrgNum = _data["coilOrgNum"];
+            this.lotNum = _data["lotNum"];
+            this.alloy = _data["alloy"];
+            this.temper = _data["temper"];
+            this.scrapType = _data["scrapType"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new PackingLineItem();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["packingItemId"] = this.packingItemId;
+        data["packingList"] = this.packingList;
+        data["itemType"] = this.itemType;
+        data["refNum"] = this.refNum;
+        data["packagingTicket"] = this.packagingTicket;
+        data["skidDisplayNum"] = this.skidDisplayNum;
+        data["netWeight"] = this.netWeight;
+        data["tareWeight"] = this.tareWeight;
+        data["grossWeight"] = this.grossWeight;
+        data["pieces"] = this.pieces;
+        data["abJobNum"] = this.abJobNum;
+        data["enduserPartNum"] = this.enduserPartNum;
+        data["origCustomerPo"] = this.origCustomerPo;
+        data["coilOrgNum"] = this.coilOrgNum;
+        data["lotNum"] = this.lotNum;
+        data["alloy"] = this.alloy;
+        data["temper"] = this.temper;
+        data["scrapType"] = this.scrapType;
         return data;
     }
 }
@@ -19994,6 +23647,38 @@ export class RecoveryCustomer {
         return data;
     }
 }
+export class RecoveryCustomerWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.customerName = _data["customerName"];
+            this.allProducts = _data["allProducts"];
+            this.autoOnly = _data["autoOnly"];
+            this.commOnly = _data["commOnly"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new RecoveryCustomerWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["customerName"] = this.customerName;
+        data["allProducts"] = this.allProducts;
+        data["autoOnly"] = this.autoOnly;
+        data["commOnly"] = this.commOnly;
+        return data;
+    }
+}
 export class RecoveryJobCoil {
     constructor(data) {
         if (data) {
@@ -20155,6 +23840,138 @@ export class RecoveryScrapDefectRow {
         data["netWt"] = this.netWt;
         data["pieces"] = this.pieces;
         data["pct"] = this.pct;
+        return data;
+    }
+}
+export class ReturnScrapResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.found = _data["found"];
+            this.restoredSkids = _data["restoredSkids"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new ReturnScrapResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["found"] = this.found;
+        data["restoredSkids"] = this.restoredSkids;
+        return data;
+    }
+}
+export class Routing {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.routingSequence = _data["routingSequence"];
+            this.customerId = _data["customerId"];
+            this.partNumId = _data["partNumId"];
+            this.lineNum = _data["lineNum"];
+            this.dieId = _data["dieId"];
+            this.sheetType = _data["sheetType"];
+            this.spmStandard = _data["spmStandard"];
+            this.spmPlanned = _data["spmPlanned"];
+            this.numberOfPeople = _data["numberOfPeople"];
+            this.edgeTrimYN = _data["edgeTrimYN"];
+            this.stackerYN = _data["stackerYN"];
+            this.efficPercentStandard = _data["efficPercentStandard"];
+            this.efficPercentPlanned = _data["efficPercentPlanned"];
+            this.itemRouting = _data["itemRouting"];
+            this.dieName = _data["dieName"];
+            this.lineDesc = _data["lineDesc"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new Routing();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["routingSequence"] = this.routingSequence;
+        data["customerId"] = this.customerId;
+        data["partNumId"] = this.partNumId;
+        data["lineNum"] = this.lineNum;
+        data["dieId"] = this.dieId;
+        data["sheetType"] = this.sheetType;
+        data["spmStandard"] = this.spmStandard;
+        data["spmPlanned"] = this.spmPlanned;
+        data["numberOfPeople"] = this.numberOfPeople;
+        data["edgeTrimYN"] = this.edgeTrimYN;
+        data["stackerYN"] = this.stackerYN;
+        data["efficPercentStandard"] = this.efficPercentStandard;
+        data["efficPercentPlanned"] = this.efficPercentPlanned;
+        data["itemRouting"] = this.itemRouting;
+        data["dieName"] = this.dieName;
+        data["lineDesc"] = this.lineDesc;
+        return data;
+    }
+}
+export class RoutingWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.routingSequence = _data["routingSequence"];
+            this.lineNum = _data["lineNum"];
+            this.dieId = _data["dieId"];
+            this.sheetType = _data["sheetType"];
+            this.spmStandard = _data["spmStandard"];
+            this.spmPlanned = _data["spmPlanned"];
+            this.numberOfPeople = _data["numberOfPeople"];
+            this.edgeTrimYN = _data["edgeTrimYN"];
+            this.stackerYN = _data["stackerYN"];
+            this.efficPercentStandard = _data["efficPercentStandard"];
+            this.efficPercentPlanned = _data["efficPercentPlanned"];
+            this.itemRouting = _data["itemRouting"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new RoutingWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["routingSequence"] = this.routingSequence;
+        data["lineNum"] = this.lineNum;
+        data["dieId"] = this.dieId;
+        data["sheetType"] = this.sheetType;
+        data["spmStandard"] = this.spmStandard;
+        data["spmPlanned"] = this.spmPlanned;
+        data["numberOfPeople"] = this.numberOfPeople;
+        data["edgeTrimYN"] = this.edgeTrimYN;
+        data["stackerYN"] = this.stackerYN;
+        data["efficPercentStandard"] = this.efficPercentStandard;
+        data["efficPercentPlanned"] = this.efficPercentPlanned;
+        data["itemRouting"] = this.itemRouting;
         return data;
     }
 }
@@ -21711,6 +25528,13 @@ export class Shipment {
             this.dateSent = _data["dateSent"] ? new Date(_data["dateSent"].toString()) : undefined;
             this.shipmentActualedDateTime = _data["shipmentActualedDateTime"] ? new Date(_data["shipmentActualedDateTime"].toString()) : undefined;
             this.shipmentNotes = _data["shipmentNotes"];
+            this.ediReq = _data["ediReq"];
+            this.ediTriggered = _data["ediTriggered"];
+            this.ediFileId856 = _data["ediFileId856"];
+            this.ediFileIdDesadv = _data["ediFileIdDesadv"];
+            this.shipmentEdi856Date = _data["shipmentEdi856Date"] ? new Date(_data["shipmentEdi856Date"].toString()) : undefined;
+            this.shipmentDesEdi856Date = _data["shipmentDesEdi856Date"] ? new Date(_data["shipmentDesEdi856Date"].toString()) : undefined;
+            this.shipmentDesadvDate = _data["shipmentDesadvDate"] ? new Date(_data["shipmentDesadvDate"].toString()) : undefined;
         }
     }
     static fromJS(data) {
@@ -21733,6 +25557,41 @@ export class Shipment {
         data["dateSent"] = this.dateSent ? this.dateSent.toISOString() : undefined;
         data["shipmentActualedDateTime"] = this.shipmentActualedDateTime ? this.shipmentActualedDateTime.toISOString() : undefined;
         data["shipmentNotes"] = this.shipmentNotes;
+        data["ediReq"] = this.ediReq;
+        data["ediTriggered"] = this.ediTriggered;
+        data["ediFileId856"] = this.ediFileId856;
+        data["ediFileIdDesadv"] = this.ediFileIdDesadv;
+        data["shipmentEdi856Date"] = this.shipmentEdi856Date ? this.shipmentEdi856Date.toISOString() : undefined;
+        data["shipmentDesEdi856Date"] = this.shipmentDesEdi856Date ? this.shipmentDesEdi856Date.toISOString() : undefined;
+        data["shipmentDesadvDate"] = this.shipmentDesadvDate ? this.shipmentDesadvDate.toISOString() : undefined;
+        return data;
+    }
+}
+export class ShipmentEdiTriggerRequest {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.docType = _data["docType"];
+            this.ediFileId = _data["ediFileId"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new ShipmentEdiTriggerRequest();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["docType"] = this.docType;
+        data["ediFileId"] = this.ediFileId;
         return data;
     }
 }
@@ -21809,6 +25668,52 @@ export class ShipmentStatusPatch {
         data["dateSent"] = this.dateSent ? this.dateSent.toISOString() : undefined;
         data["shipmentActualedDateTime"] = this.shipmentActualedDateTime ? this.shipmentActualedDateTime.toISOString() : undefined;
         data["shipmentNotes"] = this.shipmentNotes;
+        return data;
+    }
+}
+export class ShipmentTrackRow {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.logDate = _data["logDate"] ? new Date(_data["logDate"].toString()) : undefined;
+            this.packingListNo = _data["packingListNo"];
+            this.preShipmentStatus = _data["preShipmentStatus"];
+            this.curShipmentStatus = _data["curShipmentStatus"];
+            this.preVehicleStatus = _data["preVehicleStatus"];
+            this.curVehicleStatus = _data["curVehicleStatus"];
+            this.preCustId = _data["preCustId"];
+            this.curCustId = _data["curCustId"];
+            this.preShipToId = _data["preShipToId"];
+            this.curShipToId = _data["curShipToId"];
+            this.modifiedBy = _data["modifiedBy"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new ShipmentTrackRow();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["logDate"] = this.logDate ? this.logDate.toISOString() : undefined;
+        data["packingListNo"] = this.packingListNo;
+        data["preShipmentStatus"] = this.preShipmentStatus;
+        data["curShipmentStatus"] = this.curShipmentStatus;
+        data["preVehicleStatus"] = this.preVehicleStatus;
+        data["curVehicleStatus"] = this.curVehicleStatus;
+        data["preCustId"] = this.preCustId;
+        data["curCustId"] = this.curCustId;
+        data["preShipToId"] = this.preShipToId;
+        data["curShipToId"] = this.curShipToId;
+        data["modifiedBy"] = this.modifiedBy;
         return data;
     }
 }
@@ -21987,6 +25892,34 @@ export class SkidInventoryRow {
         data["skidSheetStatus"] = this.skidSheetStatus;
         data["skidCount"] = this.skidCount;
         data["totalNetWt"] = this.totalNetWt;
+        return data;
+    }
+}
+export class SkippedCoil {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.reason = _data["reason"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new SkippedCoil();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["reason"] = this.reason;
         return data;
     }
 }
@@ -22201,6 +26134,52 @@ export class TestResultPagedResult {
         data["pageSize"] = this.pageSize;
         data["totalCount"] = this.totalCount;
         data["totalPages"] = this.totalPages;
+        return data;
+    }
+}
+export class TestResultWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.position = _data["position"];
+            this.testType = _data["testType"];
+            this.sourceId = _data["sourceId"];
+            this.ytsVal = _data["ytsVal"];
+            this.utsVal = _data["utsVal"];
+            this.elongVal = _data["elongVal"];
+            this.nVal = _data["nVal"];
+            this.rVal = _data["rVal"];
+            this.thickness = _data["thickness"];
+            this.width = _data["width"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new TestResultWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["position"] = this.position;
+        data["testType"] = this.testType;
+        data["sourceId"] = this.sourceId;
+        data["ytsVal"] = this.ytsVal;
+        data["utsVal"] = this.utsVal;
+        data["elongVal"] = this.elongVal;
+        data["nVal"] = this.nVal;
+        data["rVal"] = this.rVal;
+        data["thickness"] = this.thickness;
+        data["width"] = this.width;
         return data;
     }
 }
@@ -22533,6 +26512,168 @@ export class UnmatchedCoilRow {
         data["coilLocation"] = this.coilLocation;
         data["customerId"] = this.customerId;
         data["netWtBalance"] = this.netWtBalance;
+        return data;
+    }
+}
+export class UptimeRow {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.bucket = _data["bucket"];
+            this.lineNum = _data["lineNum"];
+            this.lineDesc = _data["lineDesc"];
+            this.shiftCount = _data["shiftCount"];
+            this.scheduledHours = _data["scheduledHours"];
+            this.downtimeHours = _data["downtimeHours"];
+            this.uptimeHours = _data["uptimeHours"];
+            this.uptimePct = _data["uptimePct"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new UptimeRow();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["bucket"] = this.bucket;
+        data["lineNum"] = this.lineNum;
+        data["lineDesc"] = this.lineDesc;
+        data["shiftCount"] = this.shiftCount;
+        data["scheduledHours"] = this.scheduledHours;
+        data["downtimeHours"] = this.downtimeHours;
+        data["uptimeHours"] = this.uptimeHours;
+        data["uptimePct"] = this.uptimePct;
+        return data;
+    }
+}
+export class WinSpcJobSummary {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.hasData = _data["hasData"];
+            this.totalReadings = _data["totalReadings"];
+            this.inSpecReadings = _data["inSpecReadings"];
+            this.outOfSpecReadings = _data["outOfSpecReadings"];
+            this.overallInSpec = _data["overallInSpec"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new WinSpcJobSummary();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["hasData"] = this.hasData;
+        data["totalReadings"] = this.totalReadings;
+        data["inSpecReadings"] = this.inSpecReadings;
+        data["outOfSpecReadings"] = this.outOfSpecReadings;
+        data["overallInSpec"] = this.overallInSpec;
+        return data;
+    }
+}
+export class WinSpcQc {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.key = _data["key"];
+            this.keyKind = _data["keyKind"];
+            this.totalReadings = _data["totalReadings"];
+            this.inSpecReadings = _data["inSpecReadings"];
+            this.outOfSpecReadings = _data["outOfSpecReadings"];
+            if (Array.isArray(_data["readings"])) {
+                this.readings = [];
+                for (let item of _data["readings"])
+                    this.readings.push(WinSpcReading.fromJS(item));
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new WinSpcQc();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["key"] = this.key;
+        data["keyKind"] = this.keyKind;
+        data["totalReadings"] = this.totalReadings;
+        data["inSpecReadings"] = this.inSpecReadings;
+        data["outOfSpecReadings"] = this.outOfSpecReadings;
+        if (Array.isArray(this.readings)) {
+            data["readings"] = [];
+            for (let item of this.readings)
+                data["readings"].push(item ? item.toJSON() : undefined);
+        }
+        return data;
+    }
+}
+export class WinSpcReading {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.readingAt = _data["readingAt"] ? new Date(_data["readingAt"].toString()) : undefined;
+            this.partName = _data["partName"];
+            this.characteristic = _data["characteristic"];
+            this.dimension = _data["dimension"];
+            this.reading = _data["reading"];
+            this.lsl = _data["lsl"];
+            this.target = _data["target"];
+            this.usl = _data["usl"];
+            this.units = _data["units"];
+            this.inSpec = _data["inSpec"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new WinSpcReading();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["readingAt"] = this.readingAt ? this.readingAt.toISOString() : undefined;
+        data["partName"] = this.partName;
+        data["characteristic"] = this.characteristic;
+        data["dimension"] = this.dimension;
+        data["reading"] = this.reading;
+        data["lsl"] = this.lsl;
+        data["target"] = this.target;
+        data["usl"] = this.usl;
+        data["units"] = this.units;
+        data["inSpec"] = this.inSpec;
         return data;
     }
 }
