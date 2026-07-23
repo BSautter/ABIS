@@ -36,7 +36,13 @@ public interface IAbisRepository
     Task<BulkCoilStatusResult> SetCoilsReadyForTransferAsync(IReadOnlyList<long> coilAbcNums, CancellationToken ct);
     /// <summary>Delete a coil, guarded: refuses (InUse) a coil that's been applied to a job
     /// (process_coil rows) or is terminal (done/shipped/transferred); NotFound if it doesn't exist.</summary>
-    Task<CoilDeleteResult> DeleteCoilAsync(long coilAbcNum, CancellationToken ct);
+    Task<DeleteResult> DeleteCoilAsync(long coilAbcNum, CancellationToken ct);
+    /// <summary>Delete a sheet skid (and its per-skid detail + dimension-check rows), guarded:
+    /// refuses (InUse) a skid that's on a shipment (sheet_packing_item); NotFound if unknown.</summary>
+    Task<DeleteResult> DeleteSheetSkidAsync(long sheetSkidNum, CancellationToken ct);
+    /// <summary>Delete a scrap skid, guarded: refuses (InUse) one that's on a shipment
+    /// (scrap_packing_item); NotFound if unknown.</summary>
+    Task<DeleteResult> DeleteScrapSkidAsync(long scrapSkidNum, CancellationToken ct);
 
     // ---- Orders (read + write) -----------------------------------------
     Task<PagedResult<CustomerOrder>> GetOrdersAsync(int page, int pageSize, long? customerId, string? po, string? orderBy, CancellationToken ct);

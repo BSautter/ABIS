@@ -10644,6 +10644,38 @@
             "description": "Unauthorized"
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "Skids"
+        ],
+        "summary": "Delete a sheet skid (and its detail + dimension-check rows), guarded: 409 if it's on a shipment; 404 if unknown; 204 on delete.",
+        "operationId": "DeleteSheetSkid",
+        "parameters": [
+          {
+            "name": "sheetSkidNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
       }
     },
     "/api/scrap-skids": {
@@ -10787,6 +10819,38 @@
           },
           "404": {
             "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Skids"
+        ],
+        "summary": "Delete a scrap skid, guarded: 409 if it's on a shipment; 404 if unknown; 204 on delete.",
+        "operationId": "DeleteScrapSkid",
+        "parameters": [
+          {
+            "name": "scrapSkidNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
           },
           "401": {
             "description": "Unauthorized"

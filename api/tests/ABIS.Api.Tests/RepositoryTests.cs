@@ -1428,6 +1428,50 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task DeleteSheetSkid_removes_children_and_is_guarded_when_on_a_shipment()
+    {
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO sheet_skid (sheet_skid_num, ab_job_num, sheet_skid_display_num, sheet_net_wt, sheet_tare_wt) VALUES (77300, 55700, 'A', 1000, 50);
+                INSERT INTO sheet_skid_detail (sheet_skid_num, prod_item_num) VALUES (77300, 90001);
+                INSERT INTO sheet_skid_dimension_check (dimension_check_num, sheet_skid_num, pc_number, in_spec) VALUES (77301, 77300, 1, 1);
+                INSERT INTO sheet_skid (sheet_skid_num, ab_job_num, sheet_skid_display_num, sheet_net_wt, sheet_tare_wt) VALUES (77310, 55700, 'B', 1000, 50);
+                INSERT INTO sheet_packing_item (sh_packing_item, packing_list, sheet_skid_num, sheet_packaging_ticket) VALUES (1, 88800, 77310, 5);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+        Assert.Equal(Abis.Api.Models.DeleteOutcome.NotFound, (await _repo.DeleteSheetSkidAsync(999998, CancellationToken.None)).Outcome);
+        // On a shipment → InUse.
+        Assert.Equal(Abis.Api.Models.DeleteOutcome.InUse, (await _repo.DeleteSheetSkidAsync(77310, CancellationToken.None)).Outcome);
+        // Free skid → deleted, children gone.
+        Assert.Equal(Abis.Api.Models.DeleteOutcome.Deleted, (await _repo.DeleteSheetSkidAsync(77300, CancellationToken.None)).Outcome);
+        Assert.Empty(await _repo.GetDimensionChecksAsync(77300, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task DeleteScrapSkid_is_guarded_when_on_a_shipment()
+    {
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO scrap_skid (scrap_skid_num, scrap_ab_job_num, scrap_net_wt, scrap_tare_wt) VALUES (77400, '55700', 500, 40);
+                INSERT INTO scrap_skid (scrap_skid_num, scrap_ab_job_num, scrap_net_wt, scrap_tare_wt) VALUES (77410, '55700', 500, 40);
+                INSERT INTO scrap_packing_item (sc_packing_item, packing_list, scrap_skid_num, scrap_packaging_ticket) VALUES (1, 88800, 77410, 6);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+        Assert.Equal(Abis.Api.Models.DeleteOutcome.NotFound, (await _repo.DeleteScrapSkidAsync(999998, CancellationToken.None)).Outcome);
+        Assert.Equal(Abis.Api.Models.DeleteOutcome.InUse, (await _repo.DeleteScrapSkidAsync(77410, CancellationToken.None)).Outcome);
+        Assert.Equal(Abis.Api.Models.DeleteOutcome.Deleted, (await _repo.DeleteScrapSkidAsync(77400, CancellationToken.None)).Outcome);
+        Assert.Null(await _repo.GetScrapSkidAsync(77400, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task DeleteCoil_is_guarded_against_in_use_and_terminal_coils()
     {
         using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
@@ -1443,13 +1487,13 @@ public sealed class RepositoryTests : IDisposable
             cmd.ExecuteNonQuery();
         }
         // Unknown → NotFound.
-        Assert.Equal(Abis.Api.Models.CoilDeleteOutcome.NotFound, (await _repo.DeleteCoilAsync(999998, CancellationToken.None)).Outcome);
+        Assert.Equal(Abis.Api.Models.DeleteOutcome.NotFound, (await _repo.DeleteCoilAsync(999998, CancellationToken.None)).Outcome);
         // Applied to a job (process_coil row) → InUse.
-        Assert.Equal(Abis.Api.Models.CoilDeleteOutcome.InUse, (await _repo.DeleteCoilAsync(77201, CancellationToken.None)).Outcome);
+        Assert.Equal(Abis.Api.Models.DeleteOutcome.InUse, (await _repo.DeleteCoilAsync(77201, CancellationToken.None)).Outcome);
         // Terminal (transferred) → InUse.
-        Assert.Equal(Abis.Api.Models.CoilDeleteOutcome.InUse, (await _repo.DeleteCoilAsync(77202, CancellationToken.None)).Outcome);
+        Assert.Equal(Abis.Api.Models.DeleteOutcome.InUse, (await _repo.DeleteCoilAsync(77202, CancellationToken.None)).Outcome);
         // Fresh, unused → Deleted, then gone.
-        Assert.Equal(Abis.Api.Models.CoilDeleteOutcome.Deleted, (await _repo.DeleteCoilAsync(77200, CancellationToken.None)).Outcome);
+        Assert.Equal(Abis.Api.Models.DeleteOutcome.Deleted, (await _repo.DeleteCoilAsync(77200, CancellationToken.None)).Outcome);
         Assert.Null(await _repo.GetCoilAsync(77200, CancellationToken.None));
     }
 

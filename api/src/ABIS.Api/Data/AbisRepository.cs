@@ -897,27 +897,66 @@ public sealed class AbisRepository : IAbisRepository
         };
     }
 
-    public async Task<CoilDeleteResult> DeleteCoilAsync(long coilAbcNum, CancellationToken ct)
+    public async Task<DeleteResult> DeleteCoilAsync(long coilAbcNum, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
         var status = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(
             "SELECT coil_status FROM coil WHERE coil_abc_num = :id", new { id = coilAbcNum }, cancellationToken: ct));
         if (status is null && await conn.ExecuteScalarAsync<long>(new CommandDefinition(
                 "SELECT COUNT(*) FROM coil WHERE coil_abc_num = :id", new { id = coilAbcNum }, cancellationToken: ct)) == 0)
-            return new CoilDeleteResult(CoilDeleteOutcome.NotFound);
+            return new DeleteResult(DeleteOutcome.NotFound);
 
         if (status is 0 or 10 or 13)
-            return new CoilDeleteResult(CoilDeleteOutcome.InUse,
+            return new DeleteResult(DeleteOutcome.InUse,
                 $"Coil {coilAbcNum} is {status switch { 0 => "done", 10 => "shipped", _ => "transferred" }} and cannot be deleted.");
 
         var used = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
             "SELECT COUNT(*) FROM process_coil WHERE coil_abc_num = :id", new { id = coilAbcNum }, cancellationToken: ct));
         if (used > 0)
-            return new CoilDeleteResult(CoilDeleteOutcome.InUse, $"Coil {coilAbcNum} has been applied to a job and cannot be deleted.");
+            return new DeleteResult(DeleteOutcome.InUse, $"Coil {coilAbcNum} has been applied to a job and cannot be deleted.");
 
         await conn.ExecuteAsync(new CommandDefinition(
             "DELETE FROM coil WHERE coil_abc_num = :id", new { id = coilAbcNum }, cancellationToken: ct));
-        return new CoilDeleteResult(CoilDeleteOutcome.Deleted);
+        return new DeleteResult(DeleteOutcome.Deleted);
+    }
+
+    public async Task<DeleteResult> DeleteSheetSkidAsync(long sheetSkidNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        if (await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+                "SELECT COUNT(*) FROM sheet_skid WHERE sheet_skid_num = :id", new { id = sheetSkidNum }, cancellationToken: ct)) == 0)
+            return new DeleteResult(DeleteOutcome.NotFound);
+        // A skid that's been packed onto a shipment is off-limits.
+        if (await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+                "SELECT COUNT(*) FROM sheet_packing_item WHERE sheet_skid_num = :id", new { id = sheetSkidNum }, cancellationToken: ct)) > 0)
+            return new DeleteResult(DeleteOutcome.InUse, $"Sheet skid {sheetSkidNum} is on a shipment and cannot be deleted.");
+
+        // Remove the skid and its per-skid children (detail links + dimensional QC) in one transaction.
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        foreach (var sql in new[]
+        {
+            "DELETE FROM sheet_skid_dimension_check WHERE sheet_skid_num = :id",
+            "DELETE FROM sheet_skid_detail WHERE sheet_skid_num = :id",
+            "DELETE FROM sheet_skid WHERE sheet_skid_num = :id",
+        })
+            await conn.ExecuteAsync(new CommandDefinition(sql, new { id = sheetSkidNum }, tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+        return new DeleteResult(DeleteOutcome.Deleted);
+    }
+
+    public async Task<DeleteResult> DeleteScrapSkidAsync(long scrapSkidNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        if (await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+                "SELECT COUNT(*) FROM scrap_skid WHERE scrap_skid_num = :id", new { id = scrapSkidNum }, cancellationToken: ct)) == 0)
+            return new DeleteResult(DeleteOutcome.NotFound);
+        if (await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+                "SELECT COUNT(*) FROM scrap_packing_item WHERE scrap_skid_num = :id", new { id = scrapSkidNum }, cancellationToken: ct)) > 0)
+            return new DeleteResult(DeleteOutcome.InUse, $"Scrap skid {scrapSkidNum} is on a shipment and cannot be deleted.");
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM scrap_skid WHERE scrap_skid_num = :id", new { id = scrapSkidNum }, cancellationToken: ct));
+        return new DeleteResult(DeleteOutcome.Deleted);
     }
 
     public async Task<CustomerOrder> CreateOrderAsync(CustomerOrderWrite body, CancellationToken ct)

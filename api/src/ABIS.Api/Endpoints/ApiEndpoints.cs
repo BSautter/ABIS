@@ -440,15 +440,7 @@ public static class ApiEndpoints
            .Produces<BulkCoilStatusResult>().ProducesValidationProblem();
 
         api.MapDelete("/coils/{coilAbcNum:long}", async (long coilAbcNum, IAbisRepository repo, CancellationToken ct) =>
-            {
-                var r = await repo.DeleteCoilAsync(coilAbcNum, ct);
-                return r.Outcome switch
-                {
-                    CoilDeleteOutcome.Deleted => Results.NoContent(),
-                    CoilDeleteOutcome.NotFound => Results.NotFound(),
-                    _ => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Coil in use", detail: r.Reason),
-                };
-            })
+                DeleteResultToHttp(await repo.DeleteCoilAsync(coilAbcNum, ct), "Coil in use"))
            .WithName("DeleteCoil").WithTags("Coils")
            .WithSummary("Delete a coil, guarded: 409 if it's been applied to a job or is done/shipped/transferred; 404 if unknown; 204 on delete.")
            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
@@ -1832,6 +1824,12 @@ public static class ApiEndpoints
            .WithSummary("Create a finished sheet skid (its job must belong to an order).")
            .Produces<SheetSkid>(StatusCodes.Status201Created).ProducesValidationProblem();
 
+        api.MapDelete("/sheet-skids/{sheetSkidNum:long}", async (long sheetSkidNum, IAbisRepository repo, CancellationToken ct) =>
+                DeleteResultToHttp(await repo.DeleteSheetSkidAsync(sheetSkidNum, ct), "Skid in use"))
+           .WithName("DeleteSheetSkid").WithTags("Skids")
+           .WithSummary("Delete a sheet skid (and its detail + dimension-check rows), guarded: 409 if it's on a shipment; 404 if unknown; 204 on delete.")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
+
         // Warehouse-side update of a finished sheet skid (the legacy w_wh_* windows):
         // location / warehouse ticket / status. Partial — only non-null fields apply.
         api.MapPatch("/sheet-skids/{sheetSkidNum:long}/warehouse", async (long sheetSkidNum, SheetSkidWarehousePatch body, IAbisRepository repo, CancellationToken ct) =>
@@ -2811,6 +2809,12 @@ public static class ApiEndpoints
            .WithSummary("Create a scrap skid.")
            .Produces<ScrapSkid>(StatusCodes.Status201Created).ProducesValidationProblem();
 
+        api.MapDelete("/scrap-skids/{scrapSkidNum:long}", async (long scrapSkidNum, IAbisRepository repo, CancellationToken ct) =>
+                DeleteResultToHttp(await repo.DeleteScrapSkidAsync(scrapSkidNum, ct), "Scrap skid in use"))
+           .WithName("DeleteScrapSkid").WithTags("Skids")
+           .WithSummary("Delete a scrap skid, guarded: 409 if it's on a shipment; 404 if unknown; 204 on delete.")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
+
         api.MapGet("/partial-skids", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, string? sort = null, string? dir = null) =>
             {
@@ -3299,6 +3303,14 @@ public static class ApiEndpoints
             }
         }
     }
+
+    // Map a guarded-delete outcome to HTTP: 204 deleted, 404 not found, 409 in use.
+    private static IResult DeleteResultToHttp(DeleteResult r, string inUseTitle) => r.Outcome switch
+    {
+        DeleteOutcome.Deleted => Results.NoContent(),
+        DeleteOutcome.NotFound => Results.NotFound(),
+        _ => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: inUseTitle, detail: r.Reason),
+    };
 
     private static IResult WinSpcDisabled() => Results.Problem(
         statusCode: StatusCodes.Status503ServiceUnavailable, title: "WinSPC not configured",
