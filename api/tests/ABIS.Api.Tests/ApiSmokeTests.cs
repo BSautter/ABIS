@@ -564,6 +564,22 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Make_scrap_endpoint_converts_and_reverses()
+    {
+        // Unknown sheet skid -> 404.
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync("/api/sheet-skids/999999/make-scrap", null)).StatusCode);
+
+        // Convert sheet skid 2990 -> 201 with a new scrap skid number.
+        var resp = await _client.PostAsync("/api/sheet-skids/2990/make-scrap", null);
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        var scrapNum = (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("scrapSkidNum").GetInt64();
+        Assert.True(scrapNum > 0);
+
+        // Reverse it so the shared fixture is left as it was (also verifies the round-trip).
+        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsync($"/api/scrap-skids/{scrapNum}/return", null)).StatusCode);
+    }
+
+    [Fact]
     public async Task Customer_guarded_delete_flow()
     {
         // 4001 is referenced by orders/parts/coils -> 409; the unreferenced 4099 -> 204 then 404.

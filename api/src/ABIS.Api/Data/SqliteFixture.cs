@@ -288,7 +288,7 @@ public static class SqliteFixture
                 scrap_skid_num INTEGER PRIMARY KEY, scrap_ab_job_num TEXT, scrap_alloy2 TEXT, scrap_temper TEXT,
                 scrap_type INTEGER, scrap_net_wt REAL NOT NULL, scrap_tare_wt REAL NOT NULL, scrap_location TEXT,
                 scrap_notes TEXT, skid_scrap_status INTEGER, scrap_date TEXT,
-                scrap_skid_display_num TEXT, scrap_cust_po TEXT);
+                scrap_skid_display_num TEXT, scrap_cust_po TEXT, customer_id INTEGER);
 
             -- Finished production items rolled onto a job (legacy production_sheet_item): the
             -- invoice's "processed weight" bucket = SUM(prod_item_net_wt). Decimals are REAL.

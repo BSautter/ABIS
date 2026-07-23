@@ -12144,6 +12144,44 @@
         }
       }
     },
+    "/api/sheet-skids/{sheetSkidNum}/make-scrap": {
+      "post": {
+        "tags": [
+          "Skids"
+        ],
+        "summary": "Convert a sheet skid to scrap (legacy F_CONVERT_TO_SCRAP) — mints a scrap skid, moves the skid + its production items to the scraped_* mirror tables, credits each item as a return_scrap_item, and removes the live sheet-skid rows. 404 if the sheet skid is unknown. Reversible via /scrap-skids/{n}/return.",
+        "operationId": "MakeScrapSkid",
+        "parameters": [
+          {
+            "name": "sheetSkidNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MakeScrapResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/partial-skids": {
       "get": {
         "tags": [
@@ -17655,6 +17693,19 @@
             "type": "number",
             "format": "double",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MakeScrapResult": {
+        "type": "object",
+        "properties": {
+          "found": {
+            "type": "boolean"
+          },
+          "scrapSkidNum": {
+            "type": "integer",
+            "format": "int64"
           }
         },
         "additionalProperties": false

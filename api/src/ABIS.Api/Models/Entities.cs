@@ -492,6 +492,11 @@ public sealed class CoilQualityDetail
 /// sheet skids were restored from the scrapped mirror tables.</summary>
 public sealed record ReturnScrapResult(bool Found, int RestoredSkids);
 
+/// <summary>Outcome of converting a sheet skid to scrap (legacy <c>F_CONVERT_TO_SCRAP</c>):
+/// <see cref="Found"/> is false when the sheet skid doesn't exist; otherwise <see cref="ScrapSkidNum"/>
+/// is the newly-minted scrap skid.</summary>
+public sealed record MakeScrapResult(bool Found, long ScrapSkidNum);
+
 /// <summary>Outcome of a guarded delete (coil / sheet-skid / scrap-skid), so the endpoint can map it
 /// to the right HTTP status: 204 Deleted, 404 NotFound, 409 InUse.</summary>
 public enum DeleteOutcome { Deleted, NotFound, InUse }

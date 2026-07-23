@@ -1071,6 +1071,125 @@ public sealed class AbisRepository : IAbisRepository
         return new ReturnScrapResult(true, restored);
     }
 
+    private sealed class ScrapHdr
+    {
+        public long? CustomerId { get; set; }
+        public string? CustomerPo { get; set; }
+        public string? Alloy2 { get; set; }
+        public string? Temper { get; set; }
+        public long? AbJob { get; set; }
+        public decimal? NetWt { get; set; }
+        public decimal? TareWt { get; set; }
+    }
+
+    // Faithful port of F_CONVERT_TO_SCRAP (the inverse of ReturnScrapSkidAsync): mint a scrap skid,
+    // copy the sheet skid + its production items / partial skids / detail into the scraped_* mirror
+    // tables (tagged with the new scrap skid), credit each production item as a return_scrap_item,
+    // then delete the live sheet-skid rows. One transaction, copy-before-delete.
+    public async Task<MakeScrapResult> MakeScrapSkidAsync(long sheetSkidNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        if (await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+                "SELECT COUNT(*) FROM sheet_skid WHERE sheet_skid_num = :n", new { n = sheetSkidNum }, cancellationToken: ct)) == 0)
+            return new MakeScrapResult(false, 0);
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var scrapSkidNum = await NextIdAsync(conn, tx, "scrap_skid", "scrap_skid_num", ct);
+        var arg = new { n = sheetSkidNum, s = scrapSkidNum };
+
+        // Header lookups (null-tolerant — a skid with no order/job yields nulls instead of NO_DATA_FOUND).
+        var hdr = await conn.QueryFirstOrDefaultAsync<ScrapHdr>(new CommandDefinition(
+            """
+            SELECT (SELECT co.orig_customer_id FROM customer_order co WHERE co.order_abc_num = ss.ref_order_abc_num) AS CustomerId,
+                   (SELECT co.orig_customer_po FROM customer_order co WHERE co.order_abc_num = ss.ref_order_abc_num) AS CustomerPo,
+                   (SELECT oi.alloy2 FROM order_item oi JOIN ab_job aj ON oi.order_item_num = aj.order_item_num
+                        AND oi.order_abc_num = aj.order_abc_num WHERE aj.ab_job_num = ss.ab_job_num) AS Alloy2,
+                   (SELECT oi.temper FROM order_item oi JOIN ab_job aj ON oi.order_item_num = aj.order_item_num
+                        AND oi.order_abc_num = aj.order_abc_num WHERE aj.ab_job_num = ss.ab_job_num) AS Temper,
+                   ss.ab_job_num AS AbJob, ss.sheet_net_wt AS NetWt, ss.sheet_tare_wt AS TareWt
+            FROM sheet_skid ss WHERE ss.sheet_skid_num = :n
+            """, new { n = sheetSkidNum }, transaction: tx, cancellationToken: ct));
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO scrap_skid (scrap_skid_num, customer_id, scrap_type, scrap_temper, scrap_net_wt, scrap_tare_wt,
+                scrap_cust_po, scrap_ab_job_num, scrap_date, skid_scrap_status, scrap_notes, scrap_alloy2)
+            VALUES (:num, :cust, 1, :temper, :net, :tare, :po, :job, :now, 2, :notes, :alloy)
+            """,
+            new { num = scrapSkidNum, cust = hdr!.CustomerId, temper = hdr.Temper, net = hdr.NetWt ?? 0m, tare = hdr.TareWt ?? 0m,
+                  po = hdr.CustomerPo, job = hdr.AbJob, now = (DateTime?)DateTime.UtcNow, notes = $"SK # {sheetSkidNum}", alloy = hdr.Alloy2 },
+            tx, cancellationToken: ct));
+
+        // sheet_skid -> scraped_sheet_skid (all columns + the new scrap skid).
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO scraped_sheet_skid (sheet_skid_num, ab_job_num, sheet_net_wt, sheet_tare_wt, skid_edi856_date,
+                skid_location, skid_date, skid_sheet_status, skid_pieces, sheet_theoretical_wt, skid_from_if_whed,
+                skid_ticket_if_whed, ref_order_abc_num, skid_type_if_whed, ref_order_abc_item, skid_sheet_status_held_by_qc, scrap_skid_num)
+            SELECT sheet_skid_num, ab_job_num, sheet_net_wt, sheet_tare_wt, skid_edi856_date, skid_location, skid_date,
+                skid_sheet_status, skid_pieces, sheet_theoretical_wt, skid_from_if_whed, skid_ticket_if_whed,
+                ref_order_abc_num, skid_type_if_whed, ref_order_abc_item, skid_sheet_status_held_by_qc, :s
+            FROM sheet_skid WHERE sheet_skid_num = :n
+            """, arg, tx, cancellationToken: ct));
+
+        // production_sheet_item (via sheet_skid_detail) -> scraped_production_sheet_item (+ scrap skid).
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO scraped_production_sheet_item (prod_item_num, coil_abc_num, ab_job_num, prod_item_status, prod_item_pieces,
+                prod_item_net_wt, prod_item_theoretical_wt, prod_item_edi870_date, prod_item_date, prod_item_note, prod_item_placement, scrap_skid_num)
+            SELECT psi.prod_item_num, psi.coil_abc_num, psi.ab_job_num, psi.prod_item_status, psi.prod_item_pieces,
+                psi.prod_item_net_wt, psi.prod_item_theoretical_wt, psi.prod_item_edi870_date, psi.prod_item_date, psi.prod_item_note, psi.prod_item_placement, :s
+            FROM production_sheet_item psi JOIN sheet_skid_detail ssd ON ssd.prod_item_num = psi.prod_item_num
+            WHERE ssd.sheet_skid_num = :n
+            """, arg, tx, cancellationToken: ct));
+
+        // Credit each production item as a return_scrap_item + link it to the scrap skid (per-row, needs a fresh id).
+        var items = (await conn.QueryAsync<(long CoilAbcNum, long AbJobNum, decimal NetWt)>(new CommandDefinition(
+            """
+            SELECT psi.coil_abc_num AS CoilAbcNum, psi.ab_job_num AS AbJobNum, psi.prod_item_net_wt AS NetWt
+            FROM production_sheet_item psi JOIN sheet_skid_detail ssd ON ssd.prod_item_num = psi.prod_item_num
+            WHERE ssd.sheet_skid_num = :n
+            """, new { n = sheetSkidNum }, transaction: tx, cancellationToken: ct))).AsList();
+        foreach (var it in items)
+        {
+            var rsid = await NextIdAsync(conn, tx, "return_scrap_item", "return_scrap_item_num", ct);
+            await conn.ExecuteAsync(new CommandDefinition(
+                """
+                INSERT INTO return_scrap_item (return_scrap_item_num, coil_abc_num, ab_job_num, return_item_net_wt, return_item_date)
+                VALUES (:id, :coil, :job, :wt, :now)
+                """,
+                new { id = rsid, coil = it.CoilAbcNum, job = it.AbJobNum, wt = it.NetWt, now = (DateTime?)DateTime.UtcNow },
+                tx, cancellationToken: ct));
+            await conn.ExecuteAsync(new CommandDefinition(
+                "INSERT INTO scrap_skid_detail (scrap_skid_num, return_scrap_item_num) VALUES (:s, :id)",
+                new { s = scrapSkidNum, id = rsid }, tx, cancellationToken: ct));
+        }
+
+        // process_partial_skid -> scraped_process_partial_skid; sheet_skid_detail -> scraped_sheet_skid_detail.
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO scraped_process_partial_skid (ab_job_num, sheet_skid_num, partial_skid_ab_job_num, partial_sheet_net_wt,
+                partial_skid_location, partial_skid_date, partial_skid_pieces, partial_sheet_theoretical_wt, scrap_skid_num)
+            SELECT ab_job_num, sheet_skid_num, partial_skid_ab_job_num, partial_sheet_net_wt, partial_skid_location,
+                partial_skid_date, partial_skid_pieces, partial_sheet_theoretical_wt, :s
+            FROM process_partial_skid WHERE sheet_skid_num = :n
+            """, arg, tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            "INSERT INTO scraped_sheet_skid_detail (prod_item_num, sheet_skid_num, scrap_skid_num) SELECT prod_item_num, sheet_skid_num, :s FROM sheet_skid_detail WHERE sheet_skid_num = :n",
+            arg, tx, cancellationToken: ct));
+
+        // Delete the live sheet-skid rows (details + prod items for this skid, partial skids, the skid).
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM production_sheet_item WHERE prod_item_num IN (SELECT prod_item_num FROM sheet_skid_detail WHERE sheet_skid_num = :n)",
+            new { n = sheetSkidNum }, tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition("DELETE FROM sheet_skid_detail WHERE sheet_skid_num = :n", new { n = sheetSkidNum }, tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition("DELETE FROM process_partial_skid WHERE sheet_skid_num = :n", new { n = sheetSkidNum }, tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition("DELETE FROM sheet_skid WHERE sheet_skid_num = :n", new { n = sheetSkidNum }, tx, cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
+        return new MakeScrapResult(true, scrapSkidNum);
+    }
+
     private const string CoilQualityCols =
         "coil_abc_num AS CoilAbcNum, coil_org_num AS CoilOrgNum, part_num AS PartNum, material_grade AS MaterialGrade, " +
         "pre_treatment_flag AS PreTreatmentFlag, cash_date AS CashDate, mill_id AS MillId, net_coil_length AS NetCoilLength, " +

@@ -3100,6 +3100,17 @@ public static class ApiEndpoints
            .WithSummary("Return (un-scrap) a scrap skid — restores its scrapped sheet-skid/production rows to the live tables and removes the scrap records (legacy F_CONVERT_BACK_TO_SHEET). 404 if the scrap skid is unknown.")
            .Produces<ReturnScrapResult>().Produces(StatusCodes.Status404NotFound);
 
+        api.MapPost("/sheet-skids/{sheetSkidNum:long}/make-scrap", async (long sheetSkidNum, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var r = await repo.MakeScrapSkidAsync(sheetSkidNum, ct);
+                return r.Found
+                    ? Results.Created($"/api/scrap-skids/{r.ScrapSkidNum}", r)
+                    : Results.NotFound(new { message = $"Sheet skid {sheetSkidNum} not found." });
+            })
+           .WithName("MakeScrapSkid").WithTags("Skids")
+           .WithSummary("Convert a sheet skid to scrap (legacy F_CONVERT_TO_SCRAP) — mints a scrap skid, moves the skid + its production items to the scraped_* mirror tables, credits each item as a return_scrap_item, and removes the live sheet-skid rows. 404 if the sheet skid is unknown. Reversible via /scrap-skids/{n}/return.")
+           .Produces<MakeScrapResult>(StatusCodes.Status201Created).Produces(StatusCodes.Status404NotFound);
+
         api.MapGet("/partial-skids", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, string? sort = null, string? dir = null) =>
             {

@@ -2249,6 +2249,27 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task MakeScrap_converts_a_sheet_skid_and_round_trips()
+    {
+        // Unknown sheet skid -> not found.
+        Assert.False((await _repo.MakeScrapSkidAsync(999999, CancellationToken.None)).Found);
+
+        // Sheet skid 2990 (job 990) has one production item (990) via sheet_skid_detail. Convert it.
+        var made = await _repo.MakeScrapSkidAsync(2990, CancellationToken.None);
+        Assert.True(made.Found);
+        Assert.True(made.ScrapSkidNum > 0);
+
+        // It's reversible: returning that scrap skid restores the sheet skid (1 restored) — which proves
+        // the scraped_* mirror rows + scrap records were all created correctly.
+        var back = await _repo.ReturnScrapSkidAsync(made.ScrapSkidNum, CancellationToken.None);
+        Assert.True(back.Found);
+        Assert.Equal(1, back.RestoredSkids);
+
+        // After the round-trip the live rows are back, so it can be scrapped again.
+        Assert.True((await _repo.MakeScrapSkidAsync(2990, CancellationToken.None)).Found);
+    }
+
+    [Fact]
     public async Task Carrier_address_fields_roundtrip_and_customer_guarded_delete()
     {
         // Carrier: the new street/zip/country/DUNS fields round-trip on create + update.
