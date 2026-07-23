@@ -840,6 +840,14 @@ public sealed class Shipment
     public DateTime? DateSent { get; set; }
     public DateTime? ShipmentActualedDateTime { get; set; }
     public string? ShipmentNotes { get; set; }
+    // EDI trigger state (legacy shipment.EDI_* — the 856/desadv pipeline prereq). Flags are Y/N text.
+    public string? EdiReq { get; set; }
+    public string? EdiTriggered { get; set; }
+    public long? EdiFileId856 { get; set; }
+    public long? EdiFileIdDesadv { get; set; }
+    public DateTime? ShipmentEdi856Date { get; set; }
+    public DateTime? ShipmentDesEdi856Date { get; set; }
+    public DateTime? ShipmentDesadvDate { get; set; }
 }
 
 /// <summary>One line item on a packing list (shipment) — what the shipment carries. <see cref="ItemType"/>

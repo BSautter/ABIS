@@ -967,6 +967,20 @@ public static class ApiEndpoints
            .WithSummary("Get one shipment by packing-list number.")
            .Produces<Shipment>().Produces(StatusCodes.Status404NotFound);
 
+        // Mark a shipment EDI-triggered (856 / desadv) — stamps the trigger fields; NEVER transmits.
+        api.MapPost("/shipments/{packingList:long}/edi-trigger", async (long packingList, ShipmentEdiTriggerRequest body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var docType = (body.DocType ?? "856").Trim().ToLowerInvariant();
+                if (docType != "856" && docType != "desadv")
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["docType"] = new[] { "docType must be '856' or 'desadv'." } });
+                return await repo.MarkShipmentEdiTriggeredAsync(packingList, docType, body.EdiFileId, ct) is { } s
+                    ? Results.Ok(s)
+                    : Results.NotFound(new { message = $"Shipment {packingList} not found." });
+            })
+           .WithName("MarkShipmentEdiTriggered").WithTags("Shipments")
+           .WithSummary("Record that an 856 or desadv was generated for a shipment — stamps edi_req/edi_triggered + the file id + date (docType = 856 default | desadv). Bookkeeping only; the modern stack never transmits EDI.")
+           .Produces<Shipment>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
         api.MapPost("/shipments", async (ShipmentWrite body, IAbisRepository repo, CancellationToken ct) =>
             {
                 if (Validate(body) is { } problems)

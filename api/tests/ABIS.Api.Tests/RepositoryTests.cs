@@ -2210,6 +2210,28 @@ public sealed class RepositoryTests : IDisposable
         Assert.Empty(await _repo.GetRoutingsByPartAsync(copy.PartNumId, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task ShipmentEdiTrigger_stamps_856_then_desadv_state()
+    {
+        // 856 trigger stamps edi_req/edi_triggered + the 856 file id + date.
+        var s856 = await _repo.MarkShipmentEdiTriggeredAsync(8801, "856", 555001, CancellationToken.None);
+        Assert.NotNull(s856);
+        Assert.Equal("Y", s856!.EdiReq);
+        Assert.Equal("Y", s856.EdiTriggered);
+        Assert.Equal(555001, s856.EdiFileId856);
+        Assert.NotNull(s856.ShipmentEdi856Date);
+        Assert.Null(s856.ShipmentDesadvDate);
+
+        // desadv trigger stamps the desadv file id + date, leaving the 856 fields intact.
+        var sDes = await _repo.MarkShipmentEdiTriggeredAsync(8801, "desadv", 555002, CancellationToken.None);
+        Assert.Equal(555002, sDes!.EdiFileIdDesadv);
+        Assert.NotNull(sDes.ShipmentDesadvDate);
+        Assert.Equal(555001, sDes.EdiFileId856);   // 856 state preserved
+
+        // Unknown shipment -> null.
+        Assert.Null(await _repo.MarkShipmentEdiTriggeredAsync(99999999, "856", null, CancellationToken.None));
+    }
+
     // ---- customer contacts & sketches ----------------------------------
 
     [Fact]

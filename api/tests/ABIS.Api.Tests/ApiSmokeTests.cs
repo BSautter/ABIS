@@ -534,6 +534,23 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Shipment_edi_trigger_flow()
+    {
+        // Default docType 856: stamps the trigger fields on shipment 8802.
+        var r = await _client.PostAsJsonAsync("/api/shipments/8802/edi-trigger", new { ediFileId = 777001 });
+        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        var s = await r.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Y", s.GetProperty("ediTriggered").GetString());
+        Assert.Equal(777001, s.GetProperty("ediFileId856").GetInt64());
+
+        // Invalid docType -> 400; unknown shipment -> 404.
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _client.PostAsJsonAsync("/api/shipments/8802/edi-trigger", new { docType = "999" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await _client.PostAsJsonAsync("/api/shipments/99999999/edi-trigger", new { docType = "856" })).StatusCode);
+    }
+
+    [Fact]
     public async Task Piece_weight_calculator_computes_by_shape_and_density()
     {
         // Rectangle 48x48 x gauge 0.1 x explicit density 0.1 = 2304 * 0.1 * 0.1 = 23.04 lb.

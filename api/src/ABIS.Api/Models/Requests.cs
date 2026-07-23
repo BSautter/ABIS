@@ -193,6 +193,15 @@ public sealed class DieWrite
     public int? AverageDieChangeMinutes { get; set; }
 }
 
+/// <summary>Mark a shipment as EDI-triggered (legacy shipment.EDI_* stamping). <see cref="DocType"/>
+/// is "856" (default) or "desadv"; <see cref="EdiFileId"/> is the generated EDI file id (optional).
+/// No transmission — this only records that the doc was generated for the shipment.</summary>
+public sealed class ShipmentEdiTriggerRequest
+{
+    public string? DocType { get; set; }
+    public long? EdiFileId { get; set; }
+}
+
 /// <summary>Configure a customer for recovery reporting (legacy <c>recovery_report_customer</c> setup).
 /// <see cref="CustomerName"/> is required. The scope flags are Y/N text (the modern read contract).</summary>
 public sealed class RecoveryCustomerWrite

@@ -245,7 +245,10 @@ public sealed class AbisRepository : IAbisRepository
         customer_id AS CustomerId, des_sh_cust_id AS DesShCustId, vehicle_id AS VehicleId,
         vehicle_status AS VehicleStatus, shipment_status AS ShipmentStatus,
         shipment_scheduled_date_time AS ShipmentScheduledDateTime, date_sent AS DateSent,
-        shipment_actualed_date_time AS ShipmentActualedDateTime, shipment_notes AS ShipmentNotes
+        shipment_actualed_date_time AS ShipmentActualedDateTime, shipment_notes AS ShipmentNotes,
+        edi_req AS EdiReq, edi_triggered AS EdiTriggered, edi_file_id_856 AS EdiFileId856,
+        edi_file_id_desadv AS EdiFileIdDesadv, shipment_edi856_date AS ShipmentEdi856Date,
+        shipment_des_edi856_date AS ShipmentDesEdi856Date, shipment_desadv_date AS ShipmentDesadvDate
         """;
 
     private const string ReceivingBolCols = """
@@ -4220,6 +4223,23 @@ public sealed class AbisRepository : IAbisRepository
         await using var conn = await OpenAsync(ct);
         return await conn.QuerySingleOrDefaultAsync<Shipment>(new CommandDefinition(
             $"SELECT {ShipmentCols} FROM shipment WHERE packing_list = :id", new { id = packingList }, cancellationToken: ct));
+    }
+
+    // Stamp a shipment's EDI trigger state (legacy shipment.EDI_*) — records that an 856 or desadv was
+    // generated for it (edi_req + edi_triggered = 'Y', the file id, and the date). No transmission.
+    // Null if the shipment doesn't exist. docType is validated by the endpoint ("856" | "desadv").
+    public async Task<Shipment?> MarkShipmentEdiTriggeredAsync(long packingList, string docType, long? ediFileId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM shipment WHERE packing_list = :pl", new { pl = packingList }, cancellationToken: ct));
+        if (exists == 0) return null;
+        var now = (DateTime?)DateTime.UtcNow;
+        var sql = docType == "desadv"
+            ? "UPDATE shipment SET edi_req = 'Y', edi_triggered = 'Y', edi_file_id_desadv = :fid, shipment_desadv_date = :now WHERE packing_list = :pl"
+            : "UPDATE shipment SET edi_req = 'Y', edi_triggered = 'Y', edi_file_id_856 = :fid, shipment_edi856_date = :now WHERE packing_list = :pl";
+        await conn.ExecuteAsync(new CommandDefinition(sql, new { fid = ediFileId, now, pl = packingList }, cancellationToken: ct));
+        return await GetShipmentAsync(packingList, ct);
     }
 
     public async Task<Shipment> CreateShipmentAsync(ShipmentWrite body, CancellationToken ct)

@@ -391,7 +391,11 @@ public static class SqliteFixture
                 packing_list INTEGER PRIMARY KEY, bill_of_lading INTEGER, carrier_id INTEGER,
                 customer_id INTEGER, des_sh_cust_id INTEGER, vehicle_id TEXT, vehicle_status INTEGER,
                 shipment_status INTEGER, shipment_scheduled_date_time TEXT, date_sent TEXT,
-                shipment_actualed_date_time TEXT, shipment_notes TEXT);
+                shipment_actualed_date_time TEXT, shipment_notes TEXT,
+                -- EDI trigger state (legacy shipment.EDI_*): whether the shipment needs EDI (edi_req),
+                -- whether a doc was generated (edi_triggered), the generated 856/desadv file ids + dates.
+                edi_req TEXT, edi_triggered TEXT, edi_file_id_856 INTEGER, edi_file_id_desadv INTEGER,
+                shipment_edi856_date TEXT, shipment_des_edi856_date TEXT, shipment_desadv_date TEXT);
 
             CREATE TABLE receiving_bol (
                 receiving_bol_id INTEGER PRIMARY KEY, bol TEXT, customer_id INTEGER,

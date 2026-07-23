@@ -11217,6 +11217,64 @@
         }
       }
     },
+    "/api/shipments/{packingList}/edi-trigger": {
+      "post": {
+        "tags": [
+          "Shipments"
+        ],
+        "summary": "Record that an 856 or desadv was generated for a shipment — stamps edi_req/edi_triggered + the file id + date (docType = 856 default | desadv). Bookkeeping only; the modern stack never transmits EDI.",
+        "operationId": "MarkShipmentEdiTriggered",
+        "parameters": [
+          {
+            "name": "packingList",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShipmentEdiTriggerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Shipment"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/shipments/{packingList}/close": {
       "post": {
         "tags": [
@@ -21970,6 +22028,54 @@
           },
           "shipmentNotes": {
             "type": "string",
+            "nullable": true
+          },
+          "ediReq": {
+            "type": "string",
+            "nullable": true
+          },
+          "ediTriggered": {
+            "type": "string",
+            "nullable": true
+          },
+          "ediFileId856": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "ediFileIdDesadv": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "shipmentEdi856Date": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "shipmentDesEdi856Date": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "shipmentDesadvDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ShipmentEdiTriggerRequest": {
+        "type": "object",
+        "properties": {
+          "docType": {
+            "type": "string",
+            "nullable": true
+          },
+          "ediFileId": {
+            "type": "integer",
+            "format": "int64",
             "nullable": true
           }
         },

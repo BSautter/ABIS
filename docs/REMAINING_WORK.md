@@ -87,7 +87,7 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [ ] **C** BOL / combi-form / packing-ticket printing (the `rpabco` document engine)
 - [ ] **H** Sketch image storage (`sketch_view` LONG RAW) + display + job/part linkage + DAS/e-folder render
 - [~] **H** Die → shape mapping — done (#254): `GET/POST /line-die-shapes` + `DELETE /line-die-shapes/{shape}/{line}/{die}` over `LINE_DIE_4SHEET_TYPE` (composite PK), so scheduling can resolve the eligible line/die for a shape (filter by sheetType/lineNum/dieId; add guards line/die-exist + dup). Dies page gained a mapping panel. Still TODO: **die label/report print**.
-- [ ] **M** Shipment header EDI-trigger fields (`edi_req`/`triggered`/`file_id_856`/`desadv` — prereq for the 856)
+- [x] **M** Shipment header EDI-trigger fields — done (#259): the shipment read now carries `edi_req`/`edi_triggered`/`edi_file_id_856`/`edi_file_id_desadv` + the 856/desadv/des-856 dates, and `POST /shipments/{pl}/edi-trigger` (docType 856|desadv + optional file id) stamps them (bookkeeping only — never transmits). Surfacing on the shipping UI is a follow-up.
 - [ ] **M** Manual EDI send/resend from UI; view archived EDI payload; X12 map maintenance
 - [ ] **L** Shipment status-change history (`SHIPMENT_TRACK`); carrier DUNS/street/zip/country fields
 
