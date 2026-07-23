@@ -72,6 +72,7 @@ const NAV: NavGroup[] = [
     { id: 'jobs', label: 'Jobs & floor', href: '/ui/jobs.html', feature: 'Production Control', icon: I.jobs },
     { id: 'shifts', label: 'Shifts', href: '/ui/shifts.html', feature: 'Shift Control', icon: I.shift },
     { id: 'coils', label: 'Coil inventory', href: '/ui/coil-inventory.html', feature: 'Inventory(Coil)', icon: I.coil },
+    { id: 'coil-quality', label: 'Coil quality', href: '/ui/coil-quality.html', feature: 'Inventory(Coil)', icon: I.coil },
     { id: 'skids', label: 'Sheet skids', href: '/ui/skids.html', feature: 'Inventory(Skid)', icon: I.skid },
     { id: 'stacker', label: 'Stacker board', href: '/ui/stacker.html', feature: 'Warehouse', icon: I.stacker },
     { id: 'warehouse', label: 'Warehouse', href: '/ui/warehouse.html', feature: 'Warehouse', icon: I.wh },

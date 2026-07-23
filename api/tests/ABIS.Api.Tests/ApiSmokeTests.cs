@@ -1007,6 +1007,23 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Coil_quality_page_is_served_and_round_trips()
+    {
+        // Header GET on an unknown coil returns an empty detail (header null, no flaws).
+        var d = await _client.GetFromJsonAsync<JsonElement>("/api/coils/999654/quality");
+        Assert.Equal(JsonValueKind.Null, d.GetProperty("header").ValueKind);
+        Assert.Equal(0, d.GetProperty("flaws").GetArrayLength());
+        // Upsert on an unknown coil → 404.
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await _client.PutAsJsonAsync("/api/coils/999654/quality", new { coilOrgNum = "X" })).StatusCode);
+
+        var bare = _factory.CreateClient();
+        var page = await bare.GetAsync("/ui/coil-quality.html");
+        page.EnsureSuccessStatusCode();
+        Assert.Contains("coil-quality.js", await page.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task Qc_board_returns_a_board_and_the_page_is_served()
     {
         // An unknown job yields an empty board (200), not an error.
