@@ -76,7 +76,7 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [ ] **C** Quote pricing/cost model (CirclePro $/lb + job cost + ROS; SheetPro rectangular) — quotation emits yield-% only, "not a quote"
 - [ ] **C** Quote editor (`PUT /sales/quotes` + tabbed spec/pricing/inventory/shipment body) + save/reload + print + email
 - [x] **H** Order edit-in-UI — done (#249): order-detail Edit toggle wires the existing `PUT /orders/{o}` + item PUT (editable header + per-line part/alloy/sheet/gauge/qty; full-replace-safe via spread)
-- [ ] **H** Assign customer coils to an order (`/orders/{id}/coils`, dup-org warning)
+- [x] **H** Assign customer coils to an order — done (#253): `GET/POST /orders/{id}/coils` + `DELETE /orders/{id}/coils/{coil}` + `GET /orders/{id}/available-coils` (legacy `ORDER_COIL` / `w_order_entry_coil_list`). Re-adding to the same order is blocked; a coil already on another order needs `confirm=true` (the dup-org warning, `otherOrderAbcNum`). Order-entry detail gained an assigned-coils panel + available-coil picker.
 - [ ] **H** Part revisions (version + re-point open items); routing sequences per part
 - [ ] **M** Part delete / copy; order copy/duplicate; obsolete-in-use guard; end-user change cascade; order-entry part picker
 - [ ] **H/M** Sector consistency validation; edge-trim tolerance gate + override + `f_add_system_log_tran` audit

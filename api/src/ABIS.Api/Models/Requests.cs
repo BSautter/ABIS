@@ -256,6 +256,14 @@ public sealed class CustomerOrderWrite
     public string? EdiCode { get; set; }
 }
 
+/// <summary>Assign a customer coil to an order (legacy <c>ORDER_COIL</c>). Set <see cref="Confirm"/>
+/// to proceed when the coil is already earmarked to a different order (the dup-org warning).</summary>
+public sealed class OrderCoilAssignRequest
+{
+    public long CoilAbcNum { get; set; }
+    public bool Confirm { get; set; }
+}
+
 /// <summary>Create or replace an order line item (table <c>order_item</c>).
 /// <see cref="EnduserPartNum"/> is required. <c>item_created_dttm</c> is set
 /// server-side on create.</summary>

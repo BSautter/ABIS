@@ -383,6 +383,45 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Order_coil_assignment_flow()
+    {
+        // Order 9001 (customer 4001): seed has coil 4802 assigned, coil 4801 on another order (9002).
+        var assigned = await _client.GetFromJsonAsync<JsonElement>("/api/orders/9001/coils");
+        Assert.Equal(1, assigned.GetArrayLength());
+        Assert.Equal(4802, assigned[0].GetProperty("coilAbcNum").GetInt64());
+
+        // The available picker flags coil 4801 as already on order 9002 (the dup-org warning).
+        var avail = await _client.GetFromJsonAsync<JsonElement>("/api/orders/9001/available-coils");
+        JsonElement c4801 = default; var found = false;
+        foreach (var e in avail.EnumerateArray())
+            if (e.GetProperty("coilAbcNum").GetInt64() == 4801) { c4801 = e; found = true; break; }
+        Assert.True(found);
+        Assert.False(c4801.GetProperty("assignedToThisOrder").GetBoolean());
+        Assert.Equal(9002, c4801.GetProperty("otherOrderAbcNum").GetInt64());
+
+        // Assigning 4801 without confirm -> 409 "on-another-order"; with confirm -> 201.
+        var conflict = await _client.PostAsJsonAsync("/api/orders/9001/coils", new { coilAbcNum = 4801, confirm = false });
+        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
+        var cbody = await conflict.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("on-another-order", cbody.GetProperty("code").GetString());
+        var ok = await _client.PostAsJsonAsync("/api/orders/9001/coils", new { coilAbcNum = 4801, confirm = true });
+        Assert.Equal(HttpStatusCode.Created, ok.StatusCode);
+
+        // Re-adding a coil already on this order -> 409 "already-on-this-order".
+        var dup = await _client.PostAsJsonAsync("/api/orders/9001/coils", new { coilAbcNum = 4802, confirm = true });
+        Assert.Equal(HttpStatusCode.Conflict, dup.StatusCode);
+        Assert.Equal("already-on-this-order", (await dup.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+
+        // Remove is idempotent-aware: 204 then 404.
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync("/api/orders/9001/coils/4801")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.DeleteAsync("/api/orders/9001/coils/4801")).StatusCode);
+
+        // Unknown order -> 404.
+        var noOrder = await _client.PostAsJsonAsync("/api/orders/999999/coils", new { coilAbcNum = 4801, confirm = true });
+        Assert.Equal(HttpStatusCode.NotFound, noOrder.StatusCode);
+    }
+
+    [Fact]
     public async Task Piece_weight_calculator_computes_by_shape_and_density()
     {
         // Rectangle 48x48 x gauge 0.1 x explicit density 0.1 = 2304 * 0.1 * 0.1 = 23.04 lb.

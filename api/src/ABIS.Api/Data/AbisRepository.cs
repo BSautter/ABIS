@@ -1175,6 +1175,87 @@ public sealed class AbisRepository : IAbisRepository
         return n == 0 ? null : await GetOrderAsync(orderAbcNum, ct);
     }
 
+    // ---- Order-coil assignment (legacy ORDER_COIL / w_order_entry_coil_list) ----
+
+    // Coil columns shared by the assigned-list and available-picker queries.
+    private const string OrderCoilCoilCols =
+        "c.coil_org_num AS CoilOrgNum, c.coil_mid_num AS CoilMidNum, c.coil_alloy2 AS CoilAlloy2, " +
+        "c.coil_temper AS CoilTemper, c.coil_gauge AS CoilGauge, c.coil_width AS CoilWidth, " +
+        "c.net_wt AS NetWt, c.net_wt_balance AS NetWtBalance, c.coil_status AS CoilStatus, " +
+        "c.customer_id AS CustomerId, c.date_received AS DateReceived";
+
+    // Coils earmarked to an order (ORDER_COIL ⋈ coil), enriched with coil detail.
+    public async Task<IReadOnlyList<OrderCoil>> GetOrderCoilsAsync(long orderAbcNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<OrderCoil>(new CommandDefinition(
+            $"""
+            SELECT oc.order_abc_num AS OrderAbcNum, oc.coil_abc_num AS CoilAbcNum, {OrderCoilCoilCols}
+            FROM order_coil oc JOIN coil c ON c.coil_abc_num = oc.coil_abc_num
+            WHERE oc.order_abc_num = :ord
+            ORDER BY oc.coil_abc_num
+            """, new { ord = orderAbcNum }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    // The order's-customer coils available to assign (legacy d_coil_cust_available): customer's coils
+    // with coil_status in 1..9, each flagged if already on THIS order or on a different order (the
+    // dup-org warning). Correlated subqueries keep it one row per coil (a coil can be on many orders).
+    public async Task<IReadOnlyList<AvailableCustomerCoil>> GetAvailableCustomerCoilsAsync(long orderAbcNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<AvailableCustomerCoil>(new CommandDefinition(
+            $"""
+            SELECT c.coil_abc_num AS CoilAbcNum, c.coil_from_cust_id AS CoilFromCustId, {OrderCoilCoilCols},
+                   CASE WHEN EXISTS (SELECT 1 FROM order_coil oc WHERE oc.coil_abc_num = c.coil_abc_num AND oc.order_abc_num = :ord)
+                        THEN 1 ELSE 0 END AS AssignedToThisOrder,
+                   (SELECT MIN(oc.order_abc_num) FROM order_coil oc WHERE oc.coil_abc_num = c.coil_abc_num AND oc.order_abc_num <> :ord) AS OtherOrderAbcNum
+            FROM coil c
+            WHERE c.customer_id = (SELECT orig_customer_id FROM customer_order WHERE order_abc_num = :ord)
+              AND c.coil_status > 0 AND c.coil_status < 10
+            ORDER BY c.coil_abc_num DESC
+            """, new { ord = orderAbcNum }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    // Assign a coil to an order. Guards: order/coil must exist; re-adding to the same order is
+    // blocked; a coil already on a different order needs confirm=true (legacy "Continue? Yes/No").
+    public async Task<AssignCoilResult> AssignOrderCoilAsync(long orderAbcNum, long coilAbcNum, bool confirm, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var orderExists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM customer_order WHERE order_abc_num = :ord", new { ord = orderAbcNum }, cancellationToken: ct)) > 0;
+        if (!orderExists) return new AssignCoilResult { Outcome = AssignCoilOutcome.OrderNotFound };
+        var coilExists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM coil WHERE coil_abc_num = :coil", new { coil = coilAbcNum }, cancellationToken: ct)) > 0;
+        if (!coilExists) return new AssignCoilResult { Outcome = AssignCoilOutcome.CoilNotFound };
+
+        var onThis = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM order_coil WHERE order_abc_num = :ord AND coil_abc_num = :coil",
+            new { ord = orderAbcNum, coil = coilAbcNum }, cancellationToken: ct)) > 0;
+        if (onThis) return new AssignCoilResult { Outcome = AssignCoilOutcome.AlreadyOnThisOrder };
+
+        var otherOrder = await conn.ExecuteScalarAsync<long?>(new CommandDefinition(
+            "SELECT MIN(order_abc_num) FROM order_coil WHERE coil_abc_num = :coil AND order_abc_num <> :ord",
+            new { ord = orderAbcNum, coil = coilAbcNum }, cancellationToken: ct));
+        if (otherOrder is not null && !confirm)
+            return new AssignCoilResult { Outcome = AssignCoilOutcome.NeedsConfirmOtherOrder, OtherOrderAbcNum = otherOrder };
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            "INSERT INTO order_coil (order_abc_num, coil_abc_num) VALUES (:ord, :coil)",
+            new { ord = orderAbcNum, coil = coilAbcNum }, cancellationToken: ct));
+        return new AssignCoilResult { Outcome = AssignCoilOutcome.Assigned, OtherOrderAbcNum = otherOrder };
+    }
+
+    public async Task<bool> RemoveOrderCoilAsync(long orderAbcNum, long coilAbcNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM order_coil WHERE order_abc_num = :ord AND coil_abc_num = :coil",
+            new { ord = orderAbcNum, coil = coilAbcNum }, cancellationToken: ct));
+        return n > 0;
+    }
+
     public async Task<OrderItem> CreateOrderItemAsync(long orderAbcNum, OrderItemWrite body, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

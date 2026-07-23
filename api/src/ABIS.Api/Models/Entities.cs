@@ -280,6 +280,68 @@ public sealed class CustomerOrder
     public string? EdiCode { get; set; }
 }
 
+/// <summary>A customer coil earmarked to an order (legacy <c>ORDER_COIL</c> link, composite PK
+/// <c>(order_abc_num, coil_abc_num)</c>), enriched with the coil's detail — the "coils on this order"
+/// list from <c>w_order_entry_coil_list</c>.</summary>
+public sealed class OrderCoil
+{
+    public long OrderAbcNum { get; set; }
+    public long CoilAbcNum { get; set; }
+    public string? CoilOrgNum { get; set; }
+    public string? CoilMidNum { get; set; }
+    public string? CoilAlloy2 { get; set; }
+    public string? CoilTemper { get; set; }
+    public decimal? CoilGauge { get; set; }
+    public decimal? CoilWidth { get; set; }
+    public decimal? NetWt { get; set; }
+    public decimal? NetWtBalance { get; set; }
+    public int? CoilStatus { get; set; }
+    public long? CustomerId { get; set; }
+    public DateTime? DateReceived { get; set; }
+}
+
+/// <summary>A customer coil available to assign to an order (legacy <c>d_coil_cust_available</c>):
+/// the order's customer's coils with <c>coil_status</c> in 1..9. <see cref="AssignedToThisOrder"/>
+/// flags a coil already on this order (re-adding is blocked); <see cref="OtherOrderAbcNum"/> is a
+/// different order the coil is already earmarked to (the dup-org warning — assigning is allowed with
+/// confirmation).</summary>
+public sealed class AvailableCustomerCoil
+{
+    public long CoilAbcNum { get; set; }
+    public string? CoilOrgNum { get; set; }
+    public string? CoilMidNum { get; set; }
+    public string? CoilAlloy2 { get; set; }
+    public string? CoilTemper { get; set; }
+    public decimal? CoilGauge { get; set; }
+    public decimal? CoilWidth { get; set; }
+    public decimal? NetWt { get; set; }
+    public decimal? NetWtBalance { get; set; }
+    public int? CoilStatus { get; set; }
+    public long? CustomerId { get; set; }
+    public long? CoilFromCustId { get; set; }
+    public DateTime? DateReceived { get; set; }
+    public bool AssignedToThisOrder { get; set; }
+    public long? OtherOrderAbcNum { get; set; }
+}
+
+/// <summary>Outcome of assigning a coil to an order (<see cref="OrderCoil"/>).</summary>
+public enum AssignCoilOutcome
+{
+    Assigned,
+    OrderNotFound,
+    CoilNotFound,
+    AlreadyOnThisOrder,
+    /// <summary>The coil is already on a different order (<see cref="AssignCoilResult.OtherOrderAbcNum"/>);
+    /// the caller must re-submit with confirm=true (legacy "Continue? Yes/No").</summary>
+    NeedsConfirmOtherOrder,
+}
+
+public sealed class AssignCoilResult
+{
+    public AssignCoilOutcome Outcome { get; set; }
+    public long? OtherOrderAbcNum { get; set; }
+}
+
 /// <summary>An order line item (table <c>order_item</c>). The composite PK
 /// <c>(order_abc_num, order_item_num)</c> is confirmed against the real legacy
 /// DataWindows (both carry <c>key=yes</c> in <c>d_order_item_detail</c>).</summary>

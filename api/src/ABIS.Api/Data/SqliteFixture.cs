@@ -139,6 +139,12 @@ public static class SqliteFixture
                 lot_num TEXT NOT NULL, net_wt REAL NOT NULL, net_wt_balance REAL NOT NULL, pieces_per_case INTEGER,
                 consumed_coil_num TEXT, vo TEXT, customer_po TEXT, production_desc_code TEXT, lfeed REAL);
 
+            -- Customer coils earmarked to an order (legacy ORDER_COIL, composite PK). The order-entry
+            -- coil picker (w_order_entry_coil_list / w_cust_coil_list) writes this link.
+            CREATE TABLE order_coil (
+                order_abc_num INTEGER NOT NULL, coil_abc_num INTEGER NOT NULL,
+                PRIMARY KEY (order_abc_num, coil_abc_num));
+
             -- Partial-skid suffix ledger (legacy split_skid) — the Constellium 870 reads a skid's letter from here.
             -- Empty in the fixture; the modern engine reads but never writes it (REF*SE suffix falls back to none).
             CREATE TABLE split_skid (
@@ -901,6 +907,35 @@ public static class SqliteFixture
                 coil_alloy2, net_wt, net_wt_balance, vo, customer_po, production_desc_code)
             VALUES (4962, 'CLF-COIL-B', 0.06, 52, 12, 3061, 'CLF-LOT-B', 'CLF6061', 10000, 9500, 'VO-B', 'PO-B', '01')
             """);
+
+        // Customer-4001 coils for the order-coil assignment picker (order 9001 is customer 4001).
+        // 4801 status 2 + 4802 status 5 are "available" (status 1..9); 4803 status 13 is NOT.
+        conn.Execute(
+            """
+            INSERT INTO coil (coil_abc_num, coil_org_num, coil_mid_num, coil_gauge, coil_width, coil_status, customer_id,
+                lot_num, coil_alloy2, coil_temper, net_wt, net_wt_balance)
+            VALUES (:CoilAbcNum, :CoilOrgNum, :CoilMidNum, :CoilGauge, :CoilWidth, :CoilStatus, :CustomerId,
+                :LotNum, :CoilAlloy2, :CoilTemper, :NetWt, :NetWtBalance)
+            """,
+            new[]
+            {
+                // Alloy "AB99" is unique to these three so they don't perturb the alloy-rollup tests;
+                // the two on-hand weights sit inside the existing 9000..12000 band so the net_wt sort
+                // tests keep their min/max coils.
+                new { CoilAbcNum = 4801L, CoilOrgNum = "AB-COIL-1", CoilMidNum = "MID-1", CoilGauge = 0.05, CoilWidth = 48.0, CoilStatus = 2, CustomerId = 4001L, LotNum = "AB-LOT-1", CoilAlloy2 = "AB99", CoilTemper = "H14", NetWt = 10000.0, NetWtBalance = 10000.0 },
+                new { CoilAbcNum = 4802L, CoilOrgNum = "AB-COIL-2", CoilMidNum = "MID-2", CoilGauge = 0.05, CoilWidth = 48.0, CoilStatus = 5, CustomerId = 4001L, LotNum = "AB-LOT-2", CoilAlloy2 = "AB99", CoilTemper = "H14", NetWt = 10200.0, NetWtBalance = 10200.0 },
+                new { CoilAbcNum = 4803L, CoilOrgNum = "AB-COIL-3", CoilMidNum = "MID-3", CoilGauge = 0.05, CoilWidth = 48.0, CoilStatus = 13, CustomerId = 4001L, LotNum = "AB-LOT-3", CoilAlloy2 = "AB99", CoilTemper = "H14", NetWt = 10500.0, NetWtBalance = 0.0 }
+            });
+
+        // Seed links: 4802 is on order 9001; 4801 is on a DIFFERENT order (9002) — exercises the
+        // "assigned to another order" warning when assigning 4801 to 9001.
+        conn.Execute(
+            "INSERT INTO order_coil (order_abc_num, coil_abc_num) VALUES (:OrderAbcNum, :CoilAbcNum)",
+            new[]
+            {
+                new { OrderAbcNum = 9001L, CoilAbcNum = 4802L },
+                new { OrderAbcNum = 9002L, CoilAbcNum = 4801L }
+            });
 
         // EDI trading-partner profiles (the config backbone) seeded from the legacy per-customer procs:
         // Novelis (1153/1459/2582) + Aleris (1980) 861s, and the Aleris 870. Each customer's envelope +

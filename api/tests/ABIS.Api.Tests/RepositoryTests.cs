@@ -1999,6 +1999,51 @@ public sealed class RepositoryTests : IDisposable
         Assert.Equal("2", only2.Bucket);
     }
 
+    [Fact]
+    public async Task OrderCoil_assign_lists_warns_on_other_order_and_removes()
+    {
+        // Seed: coil 4802 is on order 9001; coil 4801 is on order 9002. Customer 4001 owns 4801/4802/4803.
+        var assigned = await _repo.GetOrderCoilsAsync(9001, CancellationToken.None);
+        Assert.Single(assigned);
+        Assert.Equal(4802, assigned[0].CoilAbcNum);
+
+        // Available picker = customer 4001 coils with status 1..9 (4803 is status 13 -> excluded).
+        var avail = await _repo.GetAvailableCustomerCoilsAsync(9001, CancellationToken.None);
+        Assert.DoesNotContain(avail, a => a.CoilAbcNum == 4803);   // status 13 is out of the 1..9 window
+        var a4802 = Assert.Single(avail, a => a.CoilAbcNum == 4802);
+        Assert.True(a4802.AssignedToThisOrder);
+        Assert.Null(a4802.OtherOrderAbcNum);
+        var a4801 = Assert.Single(avail, a => a.CoilAbcNum == 4801);
+        Assert.False(a4801.AssignedToThisOrder);
+        Assert.Equal(9002, a4801.OtherOrderAbcNum);   // the dup-org warning source
+
+        // Re-adding 4802 to its own order is blocked.
+        Assert.Equal(AssignCoilOutcome.AlreadyOnThisOrder,
+            (await _repo.AssignOrderCoilAsync(9001, 4802, false, CancellationToken.None)).Outcome);
+
+        // 4801 is on another order -> needs confirm; with confirm it assigns (now on both orders).
+        var warn = await _repo.AssignOrderCoilAsync(9001, 4801, false, CancellationToken.None);
+        Assert.Equal(AssignCoilOutcome.NeedsConfirmOtherOrder, warn.Outcome);
+        Assert.Equal(9002, warn.OtherOrderAbcNum);
+        Assert.Equal(AssignCoilOutcome.Assigned,
+            (await _repo.AssignOrderCoilAsync(9001, 4801, true, CancellationToken.None)).Outcome);
+        Assert.Equal(2, (await _repo.GetOrderCoilsAsync(9001, CancellationToken.None)).Count);
+
+        // Assigning a fresh coil (4803, not on any order) succeeds without confirm.
+        Assert.Equal(AssignCoilOutcome.Assigned,
+            (await _repo.AssignOrderCoilAsync(9001, 4803, false, CancellationToken.None)).Outcome);
+
+        // Unknown order / coil are distinguished.
+        Assert.Equal(AssignCoilOutcome.OrderNotFound,
+            (await _repo.AssignOrderCoilAsync(999999, 4801, false, CancellationToken.None)).Outcome);
+        Assert.Equal(AssignCoilOutcome.CoilNotFound,
+            (await _repo.AssignOrderCoilAsync(9001, 999999, false, CancellationToken.None)).Outcome);
+
+        // Remove is idempotent-aware: first removes, second is a miss.
+        Assert.True(await _repo.RemoveOrderCoilAsync(9001, 4801, CancellationToken.None));
+        Assert.False(await _repo.RemoveOrderCoilAsync(9001, 4801, CancellationToken.None));
+    }
+
     // ---- customer contacts & sketches ----------------------------------
 
     [Fact]

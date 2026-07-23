@@ -10,11 +10,11 @@ const $ = (sel) => document.querySelector(sel);
 const client = () => new AbisClient('', { fetch: authFetch });
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const numf = (v) => (v == null ? '' : v.toLocaleString());
-const val = (id) => $(id).value.trim();
-let currentDetail = null;
 const setErr = (m) => { $('#err').textContent = m; };
 const setBusy = (b) => document.body.classList.toggle('busy', b);
+const val = (id) => $(id).value.trim();
 let alloys = [];
+let currentDetail = null; // the loaded order detail (header + customer + items) for in-place edit
 function scaffold() {
     return `
   <div class="page">
@@ -125,8 +125,94 @@ function renderDetail() {
     </div>
     <div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="min-width:420px">
       <thead><tr><th>Line</th><th>Part</th><th>Alloy</th><th>Sheet</th><th class="num">Gauge</th><th class="num">Pieces</th></tr></thead>
-      <tbody>${items || '<tr><td colspan="6" class="muted">No line items.</td></tr>'}</tbody></table></div>`;
+      <tbody>${items || '<tr><td colspan="6" class="muted">No line items.</td></tr>'}</tbody></table></div>
+    <div id="coils" style="margin-top:16px"></div>`;
     $('#btnEditOrder').addEventListener('click', renderEditForm);
+    void renderCoils(Number(d.order?.orderAbcNum));
+}
+// Customer coils earmarked to this order (legacy ORDER_COIL): the assigned list + a picker of the
+// customer's available coils (status 1..9). Assigning a coil already on another order prompts a
+// confirm (the dup-org warning) before POSTing with confirm=true. Raw authFetch (no client method).
+async function renderCoils(orderId) {
+    const box = $('#coils');
+    if (!orderId) {
+        box.innerHTML = '';
+        return;
+    }
+    box.innerHTML = '<p class="muted">Loading coils…</p>';
+    try {
+        const [assigned, avail] = await Promise.all([
+            authFetch(`/api/orders/${orderId}/coils`).then((r) => r.json()),
+            authFetch(`/api/orders/${orderId}/available-coils`).then((r) => r.json()),
+        ]);
+        const arows = (assigned ?? []).map((c) => `
+      <tr><td class="mono">${esc(c.coilAbcNum)}</td><td>${esc(c.coilOrgNum)}</td><td>${esc(c.coilAlloy2)}</td>
+        <td class="num">${numf(c.netWtBalance)}</td>
+        <td><button class="btn sm ghost" data-remove-coil="${esc(c.coilAbcNum)}" type="button">Remove</button></td></tr>`).join('');
+        // The picker offers only coils not already on this order.
+        const pick = (avail ?? []).filter((c) => !c.assignedToThisOrder);
+        const prows = pick.map((c) => {
+            const warn = c.otherOrderAbcNum
+                ? ` <span style="color:var(--warn,#b26b00);font-size:11px" title="Already on order ${esc(c.otherOrderAbcNum)}">⚠ on ${esc(c.otherOrderAbcNum)}</span>` : '';
+            return `<tr><td class="mono">${esc(c.coilAbcNum)}${warn}</td><td>${esc(c.coilOrgNum)}</td><td>${esc(c.coilAlloy2)}</td>
+        <td class="num">${numf(c.netWtBalance)}</td>
+        <td><button class="btn sm" data-assign-coil="${esc(c.coilAbcNum)}" data-other="${esc(c.otherOrderAbcNum ?? '')}" type="button">Assign</button></td></tr>`;
+        }).join('');
+        box.innerHTML = `
+      <h3 style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);margin:0 0 8px">Assigned coils</h3>
+      <div style="overflow-x:auto"><table class="tbl" style="min-width:420px">
+        <thead><tr><th>Coil #</th><th>Org #</th><th>Alloy</th><th class="num">Balance wt</th><th></th></tr></thead>
+        <tbody>${arows || '<tr><td colspan="5" class="muted">No coils assigned.</td></tr>'}</tbody></table></div>
+      <h3 style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);margin:16px 0 8px">Available customer coils</h3>
+      <div style="overflow-x:auto"><table class="tbl" style="min-width:420px">
+        <thead><tr><th>Coil #</th><th>Org #</th><th>Alloy</th><th class="num">Balance wt</th><th></th></tr></thead>
+        <tbody>${prows || '<tr><td colspan="5" class="muted">No available coils for this customer.</td></tr>'}</tbody></table></div>
+      <div id="coilMsg" class="ok-note" style="margin-top:8px"></div>`;
+        box.querySelectorAll('[data-remove-coil]').forEach((b) => b.addEventListener('click', () => void removeCoil(orderId, Number(b.getAttribute('data-remove-coil')))));
+        box.querySelectorAll('[data-assign-coil]').forEach((b) => b.addEventListener('click', () => void assignCoil(orderId, Number(b.getAttribute('data-assign-coil')), b.getAttribute('data-other') || '')));
+    }
+    catch (e) {
+        box.innerHTML = `<p class="err">Coils failed: ${esc(e.message)}</p>`;
+    }
+}
+async function assignCoil(orderId, coilNum, otherOrder) {
+    let confirm = false;
+    if (otherOrder) {
+        if (!window.confirm(`Coil ${coilNum} is already earmarked to order ${otherOrder}. Assign it to this order too?`))
+            return;
+        confirm = true; // the dup-org warning was accepted
+    }
+    try {
+        const r = await authFetch(`/api/orders/${orderId}/coils`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coilAbcNum: coilNum, confirm }),
+        });
+        if (!r.ok) {
+            const b = await r.json().catch(() => ({ message: `HTTP ${r.status}` }));
+            const msg = $('#coilMsg');
+            msg.textContent = b.message ?? `Assign failed (${r.status}).`;
+            msg.className = 'err';
+            return;
+        }
+        await renderCoils(orderId);
+    }
+    catch (e) {
+        setErr(`Assign failed: ${e.message}`);
+    }
+}
+async function removeCoil(orderId, coilNum) {
+    if (!window.confirm(`Remove coil ${coilNum} from this order?`))
+        return;
+    try {
+        const r = await authFetch(`/api/orders/${orderId}/coils/${coilNum}`, { method: 'DELETE' });
+        if (!r.ok) {
+            setErr(`Remove failed (${r.status}).`);
+            return;
+        }
+        await renderCoils(orderId);
+    }
+    catch (e) {
+        setErr(`Remove failed: ${e.message}`);
+    }
 }
 // Editable order header + line items. Saves via full-replace PUTs, reconstructing the whole write
 // object from the loaded read model (spread) so unedited fields are preserved.

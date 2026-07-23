@@ -615,6 +615,48 @@ public static class ApiEndpoints
            .WithSummary("Replace an order header. Supports If-Match.")
            .Produces<CustomerOrder>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status412PreconditionFailed).ProducesValidationProblem();
 
+        // ---- Order-coil assignment (legacy ORDER_COIL / w_order_entry_coil_list) ----
+        api.MapGet("/orders/{orderAbcNum:long}/coils", async (long orderAbcNum, IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetOrderCoilsAsync(orderAbcNum, ct)))
+           .WithName("GetOrderCoils").WithTags("Orders")
+           .WithSummary("Customer coils earmarked to this order (ORDER_COIL), enriched with coil detail.")
+           .Produces<IReadOnlyList<OrderCoil>>();
+
+        api.MapGet("/orders/{orderAbcNum:long}/available-coils", async (long orderAbcNum, IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetAvailableCustomerCoilsAsync(orderAbcNum, ct)))
+           .WithName("GetAvailableCustomerCoils").WithTags("Orders")
+           .WithSummary("The order's-customer coils available to assign (status 1..9), each flagged if already on this order (assignedToThisOrder) or on a different order (otherOrderAbcNum — the dup-org warning).")
+           .Produces<IReadOnlyList<AvailableCustomerCoil>>();
+
+        api.MapPost("/orders/{orderAbcNum:long}/coils", async (long orderAbcNum, OrderCoilAssignRequest body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var r = await repo.AssignOrderCoilAsync(orderAbcNum, body.CoilAbcNum, body.Confirm, ct);
+                return r.Outcome switch
+                {
+                    AssignCoilOutcome.Assigned => Results.Created($"/api/orders/{orderAbcNum}/coils/{body.CoilAbcNum}",
+                        new { outcome = "assigned", otherOrderAbcNum = r.OtherOrderAbcNum }),
+                    AssignCoilOutcome.OrderNotFound => Results.NotFound(new { message = $"Order {orderAbcNum} not found." }),
+                    AssignCoilOutcome.CoilNotFound => Results.NotFound(new { message = $"Coil {body.CoilAbcNum} not found." }),
+                    AssignCoilOutcome.AlreadyOnThisOrder => Results.Conflict(new { code = "already-on-this-order",
+                        message = $"Coil {body.CoilAbcNum} is already assigned to order {orderAbcNum}." }),
+                    AssignCoilOutcome.NeedsConfirmOtherOrder => Results.Conflict(new { code = "on-another-order",
+                        otherOrderAbcNum = r.OtherOrderAbcNum,
+                        message = $"Coil {body.CoilAbcNum} is already assigned to order {r.OtherOrderAbcNum}. Re-submit with confirm=true to assign it here too." }),
+                    _ => Results.Problem("Unexpected assignment outcome."),
+                };
+            })
+           .WithName("AssignOrderCoil").WithTags("Orders")
+           .WithSummary("Assign a customer coil to this order (ORDER_COIL). 409 if it's already on this order; 409 with code 'on-another-order' (+ otherOrderAbcNum) when the coil is on a different order — re-submit with confirm=true to proceed (legacy Continue? Yes/No).")
+           .Produces(StatusCodes.Status201Created).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
+
+        api.MapDelete("/orders/{orderAbcNum:long}/coils/{coilAbcNum:long}", async (long orderAbcNum, long coilAbcNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.RemoveOrderCoilAsync(orderAbcNum, coilAbcNum, ct)
+                    ? Results.NoContent()
+                    : Results.NotFound(new { message = $"Coil {coilAbcNum} is not assigned to order {orderAbcNum}." }))
+           .WithName("RemoveOrderCoil").WithTags("Orders")
+           .WithSummary("Remove a coil from this order's ORDER_COIL assignment.")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
+
         // ---- Order items ------------------------------------------------
         api.MapGet("/order-items", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, string? alloy = null, string? sort = null, string? dir = null) =>

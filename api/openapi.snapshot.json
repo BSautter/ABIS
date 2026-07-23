@@ -6060,6 +6060,164 @@
         }
       }
     },
+    "/api/orders/{orderAbcNum}/coils": {
+      "get": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Customer coils earmarked to this order (ORDER_COIL), enriched with coil detail.",
+        "operationId": "GetOrderCoils",
+        "parameters": [
+          {
+            "name": "orderAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrderCoil"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Assign a customer coil to this order (ORDER_COIL). 409 if it's already on this order; 409 with code 'on-another-order' (+ otherOrderAbcNum) when the coil is on a different order — re-submit with confirm=true to proceed (legacy Continue? Yes/No).",
+        "operationId": "AssignOrderCoil",
+        "parameters": [
+          {
+            "name": "orderAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderCoilAssignRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/orders/{orderAbcNum}/available-coils": {
+      "get": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "The order's-customer coils available to assign (status 1..9), each flagged if already on this order (assignedToThisOrder) or on a different order (otherOrderAbcNum — the dup-org warning).",
+        "operationId": "GetAvailableCustomerCoils",
+        "parameters": [
+          {
+            "name": "orderAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AvailableCustomerCoil"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/orders/{orderAbcNum}/coils/{coilAbcNum}": {
+      "delete": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Remove a coil from this order's ORDER_COIL assignment.",
+        "operationId": "RemoveOrderCoil",
+        "parameters": [
+          {
+            "name": "orderAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "coilAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/parts": {
       "get": {
         "tags": [
@@ -12348,6 +12506,80 @@
         },
         "additionalProperties": false
       },
+      "AvailableCustomerCoil": {
+        "type": "object",
+        "properties": {
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "coilOrgNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilMidNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilAlloy2": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilTemper": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilGauge": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "coilWidth": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "netWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "netWtBalance": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "coilStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "customerId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "coilFromCustId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "dateReceived": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "assignedToThisOrder": {
+            "type": "boolean"
+          },
+          "otherOrderAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "BulkCoilStatusResult": {
         "type": "object",
         "properties": {
@@ -16831,6 +17063,84 @@
           "shipmentNotes": {
             "type": "string",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "OrderCoil": {
+        "type": "object",
+        "properties": {
+          "orderAbcNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "coilOrgNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilMidNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilAlloy2": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilTemper": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilGauge": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "coilWidth": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "netWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "netWtBalance": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "coilStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "customerId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "dateReceived": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "OrderCoilAssignRequest": {
+        "type": "object",
+        "properties": {
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "confirm": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false

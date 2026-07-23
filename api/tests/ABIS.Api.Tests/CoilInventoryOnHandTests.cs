@@ -43,7 +43,9 @@ public sealed class CoilInventoryOnHandTests
     {
         using var f = new Factory();
         var body = await Client(f).GetFromJsonAsync<JsonElement>("/api/coils?pageSize=100");
-        Assert.Equal(5, body.GetProperty("totalCount").GetInt32());   // 5001–5004 + the Cliffs 846 coil (4962) on hand; 5005–5008 excluded
+        // 5001–5004 + Cliffs 846 coil 4962 + the two on-hand order-coil coils (4801 status 2, 4802 status 5);
+        // 5005–5008 and 4803 (status 13) excluded.
+        Assert.Equal(7, body.GetProperty("totalCount").GetInt32());
 
         var ids = body.GetProperty("items").EnumerateArray().Select(c => c.GetProperty("coilAbcNum").GetInt64()).ToHashSet();
         Assert.Contains(5001L, ids);
