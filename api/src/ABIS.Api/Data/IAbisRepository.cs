@@ -228,6 +228,9 @@ public interface IAbisRepository
     Task<Die?> GetDieAsync(long dieId, CancellationToken ct);
     Task<Die> CreateDieAsync(DieWrite body, CancellationToken ct);
     Task<Die?> UpdateDieAsync(long dieId, DieWrite body, CancellationToken ct);
+    Task<IReadOnlyList<LineDieShape>> GetLineDieShapesAsync(string? sheetType, long? lineNum, long? dieId, CancellationToken ct);
+    Task<LineDieShapeOutcome> AddLineDieShapeAsync(string sheetType, long lineNum, long dieId, CancellationToken ct);
+    Task<bool> RemoveLineDieShapeAsync(string sheetType, long lineNum, long dieId, CancellationToken ct);
     Task<Carrier> CreateCarrierAsync(CarrierWrite body, CancellationToken ct);
     Task<Carrier?> UpdateCarrierAsync(long carrierId, CarrierWrite body, CancellationToken ct);
 

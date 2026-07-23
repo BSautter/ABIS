@@ -850,6 +850,43 @@ public static class ApiEndpoints
            .WithSummary("Replace a die/tooling record. Supports If-Match.")
            .Produces<Die>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status412PreconditionFailed).ProducesValidationProblem();
 
+        // ---- Die -> shape mapping (legacy LINE_DIE_4SHEET_TYPE) ----
+        api.MapGet("/line-die-shapes", async (IAbisRepository repo, CancellationToken ct,
+                string? sheetType = null, long? lineNum = null, long? dieId = null) =>
+                Results.Ok(await repo.GetLineDieShapesAsync(sheetType, lineNum, dieId, ct)))
+           .WithName("GetLineDieShapes").WithTags("Dies")
+           .WithSummary("Die → shape mappings (which line/die makes which shape), optionally filtered by sheetType (the scheduling lookup), lineNum, or dieId. Enriched with die name + line description.")
+           .Produces<IReadOnlyList<LineDieShape>>();
+
+        api.MapPost("/line-die-shapes", async (LineDieShapeWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (string.IsNullOrWhiteSpace(body.SheetType))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["sheetType"] = new[] { "sheetType is required." } });
+                var r = await repo.AddLineDieShapeAsync(body.SheetType.Trim().ToUpperInvariant(), body.LineNum, body.DieId, ct);
+                return r switch
+                {
+                    LineDieShapeOutcome.Added => Results.Created(
+                        $"/api/line-die-shapes?sheetType={Uri.EscapeDataString(body.SheetType.Trim().ToUpperInvariant())}&lineNum={body.LineNum}&dieId={body.DieId}",
+                        new { sheetType = body.SheetType.Trim().ToUpperInvariant(), lineNum = body.LineNum, dieId = body.DieId }),
+                    LineDieShapeOutcome.LineNotFound => Results.NotFound(new { message = $"Line {body.LineNum} not found." }),
+                    LineDieShapeOutcome.DieNotFound => Results.NotFound(new { message = $"Die {body.DieId} not found." }),
+                    LineDieShapeOutcome.Duplicate => Results.Conflict(new { code = "duplicate",
+                        message = $"Shape {body.SheetType} is already mapped to line {body.LineNum} / die {body.DieId}." }),
+                    _ => Results.Problem("Unexpected mapping outcome."),
+                };
+            })
+           .WithName("AddLineDieShape").WithTags("Dies")
+           .WithSummary("Map a shape to a (line, die). 404 if the line or die doesn't exist; 409 'duplicate' if the mapping already exists.")
+           .Produces(StatusCodes.Status201Created).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
+
+        api.MapDelete("/line-die-shapes/{sheetType}/{lineNum:long}/{dieId:long}", async (string sheetType, long lineNum, long dieId, IAbisRepository repo, CancellationToken ct) =>
+                await repo.RemoveLineDieShapeAsync(sheetType.Trim().ToUpperInvariant(), lineNum, dieId, ct)
+                    ? Results.NoContent()
+                    : Results.NotFound(new { message = $"No mapping for shape {sheetType} on line {lineNum} / die {dieId}." }))
+           .WithName("RemoveLineDieShape").WithTags("Dies")
+           .WithSummary("Remove a die → shape mapping.")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
+
         // ---- Shipments -------------------------------------------------
         api.MapGet("/shipments", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, long? customerId = null, string? sort = null, string? dir = null) =>

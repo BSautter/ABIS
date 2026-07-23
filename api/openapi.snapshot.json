@@ -3200,6 +3200,147 @@
         }
       }
     },
+    "/api/line-die-shapes": {
+      "get": {
+        "tags": [
+          "Dies"
+        ],
+        "summary": "Die → shape mappings (which line/die makes which shape), optionally filtered by sheetType (the scheduling lookup), lineNum, or dieId. Enriched with die name + line description.",
+        "operationId": "GetLineDieShapes",
+        "parameters": [
+          {
+            "name": "sheetType",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lineNum",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "dieId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LineDieShape"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Dies"
+        ],
+        "summary": "Map a shape to a (line, die). 404 if the line or die doesn't exist; 409 'duplicate' if the mapping already exists.",
+        "operationId": "AddLineDieShape",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LineDieShapeWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/line-die-shapes/{sheetType}/{lineNum}/{dieId}": {
+      "delete": {
+        "tags": [
+          "Dies"
+        ],
+        "summary": "Remove a die → shape mapping.",
+        "operationId": "RemoveLineDieShape",
+        "parameters": [
+          {
+            "name": "sheetType",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lineNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "dieId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/documents/sheet-skid/{sheetSkidNum}": {
       "get": {
         "tags": [
@@ -16513,6 +16654,50 @@
           "sketchJobNote": {
             "type": "string",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LineDieShape": {
+        "type": "object",
+        "properties": {
+          "sheetType": {
+            "type": "string",
+            "nullable": true
+          },
+          "lineNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "dieId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "dieName": {
+            "type": "string",
+            "nullable": true
+          },
+          "lineDesc": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LineDieShapeWrite": {
+        "type": "object",
+        "properties": {
+          "sheetType": {
+            "type": "string",
+            "nullable": true
+          },
+          "lineNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "dieId": {
+            "type": "integer",
+            "format": "int64"
           }
         },
         "additionalProperties": false

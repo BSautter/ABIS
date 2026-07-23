@@ -784,6 +784,21 @@ public sealed class Die
     public int? AverageDieChangeMinutes { get; set; }
 }
 
+/// <summary>A die → shape mapping (legacy <c>LINE_DIE_4SHEET_TYPE</c>, composite PK
+/// <c>(sheet_type, line_num, die_id)</c>): which (line, die) makes a given shape
+/// (<c>order_item.sheet_type</c>). Enriched with the die name + line description.</summary>
+public sealed class LineDieShape
+{
+    public string SheetType { get; set; } = "";
+    public long LineNum { get; set; }
+    public long DieId { get; set; }
+    public string? DieName { get; set; }
+    public string? LineDesc { get; set; }
+}
+
+/// <summary>Outcome of adding a <see cref="LineDieShape"/> mapping.</summary>
+public enum LineDieShapeOutcome { Added, LineNotFound, DieNotFound, Duplicate }
+
 /// <summary>A shipment / packing list (table <c>shipment</c>; PK <c>packing_list</c>).</summary>
 public sealed class Shipment
 {

@@ -2044,6 +2044,35 @@ public sealed class RepositoryTests : IDisposable
         Assert.False(await _repo.RemoveOrderCoilAsync(9001, 4801, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task LineDieShape_maps_filters_and_guards()
+    {
+        // Seed: RECTANGLE -> {(110,2001),(120,2002)}, TRAPEZOID -> (110,2001).
+        Assert.Equal(3, (await _repo.GetLineDieShapesAsync(null, null, null, CancellationToken.None)).Count);
+
+        // Scheduling lookup: which (line, die) makes RECTANGLE (enriched with die/line names).
+        var rect = await _repo.GetLineDieShapesAsync("RECTANGLE", null, null, CancellationToken.None);
+        Assert.Equal(2, rect.Count);
+        Assert.All(rect, m => Assert.Equal("RECTANGLE", m.SheetType));
+        Assert.Contains(rect, m => m.LineNum == 110 && m.DieId == 2001 && m.DieName == "DIE-ALPHA" && m.LineDesc == "Cut-to-length 1");
+
+        // Filter by line: line 110 makes RECTANGLE + TRAPEZOID.
+        Assert.Equal(2, (await _repo.GetLineDieShapesAsync(null, 110, null, CancellationToken.None)).Count);
+
+        // Add guards: unknown line, unknown die, and the composite-PK duplicate.
+        Assert.Equal(LineDieShapeOutcome.LineNotFound, await _repo.AddLineDieShapeAsync("CIRCLE", 999, 2001, CancellationToken.None));
+        Assert.Equal(LineDieShapeOutcome.DieNotFound, await _repo.AddLineDieShapeAsync("CIRCLE", 110, 9999, CancellationToken.None));
+        Assert.Equal(LineDieShapeOutcome.Duplicate, await _repo.AddLineDieShapeAsync("RECTANGLE", 110, 2001, CancellationToken.None));
+
+        // A fresh mapping is added.
+        Assert.Equal(LineDieShapeOutcome.Added, await _repo.AddLineDieShapeAsync("CIRCLE", 120, 2002, CancellationToken.None));
+        Assert.Equal(4, (await _repo.GetLineDieShapesAsync(null, null, null, CancellationToken.None)).Count);
+
+        // Remove is idempotent-aware.
+        Assert.True(await _repo.RemoveLineDieShapeAsync("CIRCLE", 120, 2002, CancellationToken.None));
+        Assert.False(await _repo.RemoveLineDieShapeAsync("CIRCLE", 120, 2002, CancellationToken.None));
+    }
+
     // ---- customer contacts & sketches ----------------------------------
 
     [Fact]

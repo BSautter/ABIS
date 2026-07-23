@@ -3870,6 +3870,62 @@ public sealed class AbisRepository : IAbisRepository
         return n == 0 ? null : await GetDieAsync(dieId, ct);
     }
 
+    // ---- Die -> shape mapping (legacy LINE_DIE_4SHEET_TYPE) ----
+
+    // Which (line, die) makes which shape, optionally filtered by any of the three keys — enriched
+    // with die name + line description. The sheetType filter is the scheduling lookup ("what can run
+    // this shape"); the lineNum filter answers "what does this line make".
+    public async Task<IReadOnlyList<LineDieShape>> GetLineDieShapesAsync(string? sheetType, long? lineNum, long? dieId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var p = new DynamicParameters();
+        var where = new List<string>();
+        if (!string.IsNullOrWhiteSpace(sheetType)) { where.Add("m.sheet_type = :st"); p.Add("st", sheetType); }
+        if (lineNum is not null) { where.Add("m.line_num = :ln"); p.Add("ln", lineNum); }
+        if (dieId is not null) { where.Add("m.die_id = :di"); p.Add("di", dieId); }
+        var clause = where.Count > 0 ? "WHERE " + string.Join(" AND ", where) : "";
+        var rows = await conn.QueryAsync<LineDieShape>(new CommandDefinition(
+            $"""
+            SELECT m.sheet_type AS SheetType, m.line_num AS LineNum, m.die_id AS DieId,
+                   d.die_name AS DieName, l.line_desc AS LineDesc
+            FROM line_die_4sheet_type m
+            LEFT JOIN die d ON d.die_id = m.die_id
+            LEFT JOIN line l ON l.line_num = m.line_num
+            {clause}
+            ORDER BY m.sheet_type, m.line_num, m.die_id
+            """, p, cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    // Add a mapping. Guards: line + die must exist; the composite PK must be new.
+    public async Task<LineDieShapeOutcome> AddLineDieShapeAsync(string sheetType, long lineNum, long dieId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var lineExists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM line WHERE line_num = :ln", new { ln = lineNum }, cancellationToken: ct)) > 0;
+        if (!lineExists) return LineDieShapeOutcome.LineNotFound;
+        var dieExists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM die WHERE die_id = :di", new { di = dieId }, cancellationToken: ct)) > 0;
+        if (!dieExists) return LineDieShapeOutcome.DieNotFound;
+        var dup = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM line_die_4sheet_type WHERE sheet_type = :st AND line_num = :ln AND die_id = :di",
+            new { st = sheetType, ln = lineNum, di = dieId }, cancellationToken: ct)) > 0;
+        if (dup) return LineDieShapeOutcome.Duplicate;
+        await conn.ExecuteAsync(new CommandDefinition(
+            "INSERT INTO line_die_4sheet_type (sheet_type, line_num, die_id) VALUES (:st, :ln, :di)",
+            new { st = sheetType, ln = lineNum, di = dieId }, cancellationToken: ct));
+        return LineDieShapeOutcome.Added;
+    }
+
+    public async Task<bool> RemoveLineDieShapeAsync(string sheetType, long lineNum, long dieId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM line_die_4sheet_type WHERE sheet_type = :st AND line_num = :ln AND die_id = :di",
+            new { st = sheetType, ln = lineNum, di = dieId }, cancellationToken: ct));
+        return n > 0;
+    }
+
     public Task<PagedResult<Shipment>> GetShipmentsAsync(int page, int pageSize, long? customerId, string? orderBy, CancellationToken ct) =>
         PageAsync<Shipment>(ShipmentCols, "shipment", orderBy ?? "packing_list",
             customerId is null ? null : "customer_id = :customerId",

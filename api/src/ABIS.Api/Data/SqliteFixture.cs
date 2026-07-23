@@ -368,6 +368,12 @@ public static class SqliteFixture
                 engineered_scrap_y_n TEXT, num_of_parts_per_hit INTEGER,
                 angle_change_minutes INTEGER, average_die_change_minutes INTEGER);
 
+            -- Which (line, die) makes which shape (legacy LINE_DIE_4SHEET_TYPE, composite PK) — lets
+            -- scheduling resolve the eligible line/die for a shape (order_item.sheet_type).
+            CREATE TABLE line_die_4sheet_type (
+                sheet_type TEXT NOT NULL, line_num INTEGER NOT NULL, die_id INTEGER NOT NULL,
+                PRIMARY KEY (sheet_type, line_num, die_id));
+
             CREATE TABLE shipment (
                 packing_list INTEGER PRIMARY KEY, bill_of_lading INTEGER, carrier_id INTEGER,
                 customer_id INTEGER, des_sh_cust_id INTEGER, vehicle_id TEXT, vehicle_status INTEGER,
@@ -757,6 +763,16 @@ public static class SqliteFixture
             {
                 new { DieId = 2001L, DieName = "DIE-ALPHA", Owner = "ABC", Status = (int?)1, ToolNum = "T-100", PartName = "BRACKET-A", GrossWeight = (decimal?)1250.0m, Location = "RACK-1", Description = "Alpha progressive die", EngineeredScrapYN = "N", NumOfPartsPerHit = (int?)2, AngleChangeMinutes = (int?)15, AverageDieChangeMinutes = (int?)45 },
                 new { DieId = 2002L, DieName = "DIE-BETA", Owner = "CUST-4002", Status = (int?)0, ToolNum = "T-200", PartName = "PANEL-B", GrossWeight = (decimal?)3400.0m, Location = "RACK-2", Description = "Beta blank die", EngineeredScrapYN = "Y", NumOfPartsPerHit = (int?)1, AngleChangeMinutes = (int?)20, AverageDieChangeMinutes = (int?)60 }
+            });
+
+        // Die → shape mappings: RECTANGLE runs on line 110/die 2001 and line 120/die 2002; TRAPEZOID on 110/2001.
+        conn.Execute(
+            "INSERT INTO line_die_4sheet_type (sheet_type, line_num, die_id) VALUES (:SheetType, :LineNum, :DieId)",
+            new[]
+            {
+                new { SheetType = "RECTANGLE", LineNum = 110L, DieId = 2001L },
+                new { SheetType = "RECTANGLE", LineNum = 120L, DieId = 2002L },
+                new { SheetType = "TRAPEZOID", LineNum = 110L, DieId = 2001L }
             });
 
         conn.Execute("""

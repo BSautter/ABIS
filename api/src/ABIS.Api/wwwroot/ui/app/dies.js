@@ -65,7 +65,96 @@ function scaffold() {
         </div>
       </div></div>
     </div>
+
+    <div class="card" style="margin-top:16px">
+      <header><h2>Die → shape mapping</h2><span class="sub">which line/die makes which shape (scheduling)</span></header>
+      <div class="body">
+        <form id="mapForm" class="frow" style="align-items:flex-end">
+          <div class="fld"><label>Shape (sheet type)</label><input id="mShape" style="width:150px" placeholder="e.g. RECTANGLE" /></div>
+          <div class="fld"><label>Line #</label><input id="mLine" inputmode="numeric" style="width:90px" /></div>
+          <div class="fld"><label>Die id</label><input id="mDie" inputmode="numeric" style="width:90px" /></div>
+          <button class="btn sm" id="btnAddMap" type="button">Add mapping</button>
+          <div class="fld"><label>Filter by shape</label><input id="mFilter" style="width:140px" placeholder="all" /></div>
+          <button class="btn sm ghost" id="btnFilterMap" type="button">Filter</button>
+          <span id="mapMsg" class="ok-note"></span>
+        </form>
+        <div style="overflow-x:auto;margin-top:10px"><table class="tbl" style="min-width:480px">
+          <thead><tr><th>Shape</th><th>Line</th><th>Die</th><th>Die name</th><th></th></tr></thead>
+          <tbody id="maps"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+        </table></div>
+      </div>
+    </div>
   </div>`;
+}
+// Die → shape mappings (legacy LINE_DIE_4SHEET_TYPE). Raw authFetch — no client method.
+async function renderShapeMap() {
+    const filter = v('#mFilter');
+    const qs = filter ? `?sheetType=${encodeURIComponent(filter.toUpperCase())}` : '';
+    try {
+        const rows = (await authFetch(`/api/line-die-shapes${qs}`).then((r) => r.json()));
+        $('#maps').innerHTML = (rows ?? []).length ? (rows ?? []).map((m) => `
+      <tr><td class="mono">${esc(m.sheetType)}</td><td class="mono">${esc(m.lineNum)}</td><td class="mono">${esc(m.dieId)}</td>
+        <td>${esc(m.dieName)}</td>
+        <td><button class="btn sm ghost" data-del-map="${esc(m.sheetType)}|${esc(m.lineNum)}|${esc(m.dieId)}" type="button">Remove</button></td></tr>`).join('')
+            : '<tr><td colspan="5" class="muted">No mappings.</td></tr>';
+        $('#maps').querySelectorAll('[data-del-map]').forEach((b) => b.addEventListener('click', () => void removeShapeMap(b.getAttribute('data-del-map') || '')));
+    }
+    catch (e) {
+        $('#maps').innerHTML = `<tr><td colspan="5" class="err">Load failed: ${esc(e.message)}</td></tr>`;
+    }
+}
+async function addShapeMap() {
+    const msg = $('#mapMsg');
+    const shape = v('#mShape');
+    const line = v('#mLine');
+    const die = v('#mDie');
+    if (!shape || !line || !die) {
+        msg.textContent = 'Shape, line, and die are all required.';
+        msg.className = 'err';
+        return;
+    }
+    try {
+        const r = await authFetch('/api/line-die-shapes', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sheetType: shape, lineNum: Number(line), dieId: Number(die) }),
+        });
+        if (!r.ok) {
+            const b = await r.json().catch(() => ({ message: `HTTP ${r.status}` }));
+            msg.textContent = b.message ?? `Add failed (${r.status}).`;
+            msg.className = 'err';
+            return;
+        }
+        msg.textContent = '✓ Mapping added.';
+        msg.className = 'ok-note';
+        setV('#mShape', '');
+        setV('#mLine', '');
+        setV('#mDie', '');
+        await renderShapeMap();
+    }
+    catch (e) {
+        msg.textContent = `Add failed: ${e.message}`;
+        msg.className = 'err';
+    }
+}
+async function removeShapeMap(key) {
+    const [shape, line, die] = key.split('|');
+    if (!window.confirm(`Remove mapping ${shape} → line ${line} / die ${die}?`))
+        return;
+    try {
+        const r = await authFetch(`/api/line-die-shapes/${encodeURIComponent(shape)}/${line}/${die}`, { method: 'DELETE' });
+        if (!r.ok) {
+            const m = $('#mapMsg');
+            m.textContent = `Remove failed (${r.status}).`;
+            m.className = 'err';
+            return;
+        }
+        await renderShapeMap();
+    }
+    catch (e) {
+        const m = $('#mapMsg');
+        m.textContent = `Remove failed: ${e.message}`;
+        m.className = 'err';
+    }
 }
 async function search() {
     setErr('');
@@ -168,6 +257,10 @@ async function save() {
     $('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); void search(); });
     $('#btnNew').addEventListener('click', newDie);
     $('#btnSave').addEventListener('click', () => void save());
+    $('#btnAddMap').addEventListener('click', () => void addShapeMap());
+    $('#btnFilterMap').addEventListener('click', () => void renderShapeMap());
+    $('#mapForm').addEventListener('submit', (e) => e.preventDefault());
     newDie();
     await search();
+    await renderShapeMap();
 })();

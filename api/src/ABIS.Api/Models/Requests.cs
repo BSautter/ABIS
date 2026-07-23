@@ -193,6 +193,15 @@ public sealed class DieWrite
     public int? AverageDieChangeMinutes { get; set; }
 }
 
+/// <summary>Add a die → shape mapping (legacy <c>LINE_DIE_4SHEET_TYPE</c>): which (line, die)
+/// makes a shape. <see cref="SheetType"/> is required.</summary>
+public sealed class LineDieShapeWrite
+{
+    public string? SheetType { get; set; }
+    public long LineNum { get; set; }
+    public long DieId { get; set; }
+}
+
 /// <summary>Create or fully replace a sketch header. <see cref="SketchName"/> is
 /// required. The binary <c>sketch_view</c> image is not written via this API.</summary>
 public sealed class SketchWrite
