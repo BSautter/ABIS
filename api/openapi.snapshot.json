@@ -7787,6 +7787,128 @@
         }
       }
     },
+    "/api/reporting/uptime": {
+      "get": {
+        "tags": [
+          "Reporting"
+        ],
+        "summary": "Line uptime (legacy w_report_uptime): over WORKED shifts, uptime hours = (shift length − dt_total seconds)/3600, plus scheduled/downtime hours and uptime %. groupBy = line (default) | shift | day, optionally one line. Defaults to the last 365 days when unbounded.",
+        "operationId": "GetUptime",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "lineNum",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "groupBy",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "line"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UptimeRow"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/reporting/downtime-pivot": {
+      "get": {
+        "tags": [
+          "Reporting"
+        ],
+        "summary": "Downtime rolled up along one dimension (legacy daily-prod downtime pivots): occurrences + minutes grouped by groupBy = cause (default) | job | line | shift | day | month | year, optionally one line. Defaults to the last 365 days when unbounded.",
+        "operationId": "GetDowntimePivot",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "lineNum",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "groupBy",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "cause"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DowntimePivotRow"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/reporting/downtime": {
       "get": {
         "tags": [
@@ -14559,6 +14681,24 @@
             "type": "integer",
             "format": "int64",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "DowntimePivotRow": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "nullable": true
+          },
+          "occurrences": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "downtimeMinutes": {
+            "type": "number",
+            "format": "double"
           }
         },
         "additionalProperties": false
@@ -21584,6 +21724,46 @@
             "nullable": true
           },
           "netWtBalance": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "UptimeRow": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "nullable": true
+          },
+          "lineNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "lineDesc": {
+            "type": "string",
+            "nullable": true
+          },
+          "shiftCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "scheduledHours": {
+            "type": "number",
+            "format": "double"
+          },
+          "downtimeHours": {
+            "type": "number",
+            "format": "double"
+          },
+          "uptimeHours": {
+            "type": "number",
+            "format": "double"
+          },
+          "uptimePct": {
             "type": "number",
             "format": "double",
             "nullable": true

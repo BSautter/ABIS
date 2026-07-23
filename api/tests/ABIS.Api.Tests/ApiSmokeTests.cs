@@ -347,6 +347,42 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Uptime_and_downtime_pivot_endpoints_return_expected_rows()
+    {
+        const string window = "from=2026-01-01T00:00:00&to=2027-01-01T00:00:00";
+
+        // Uptime by line: line 110 has at least the seeded 8h worked shift (exact math is asserted in
+        // the isolated repository test; this shared-DB suite only checks the endpoint shape/invariants).
+        var byLine = await _client.GetFromJsonAsync<JsonElement>($"/api/reporting/uptime?{window}&groupBy=line");
+        JsonElement l110 = default; var found = false;
+        foreach (var e in byLine.EnumerateArray())
+            if (e.GetProperty("lineNum").GetInt64() == 110) { l110 = e; found = true; break; }
+        Assert.True(found);
+        var sched = l110.GetProperty("scheduledHours").GetDouble();
+        var up = l110.GetProperty("uptimeHours").GetDouble();
+        Assert.True(sched >= 8.0);            // at least the seeded shift
+        Assert.True(up > 0 && up <= sched);   // uptime never exceeds scheduled
+        Assert.True(l110.GetProperty("uptimePct").GetDouble() is > 0 and <= 100);
+
+        // Downtime pivot by cause: cause 1 = 25 min over 2 events, sorted first (biggest downtime).
+        var byCause = await _client.GetFromJsonAsync<JsonElement>($"/api/reporting/downtime-pivot?{window}&groupBy=cause");
+        var first = byCause[0];
+        Assert.Equal("1", first.GetProperty("bucket").GetString());
+        Assert.Equal(2, first.GetProperty("occurrences").GetInt32());
+        Assert.Equal(25.0, first.GetProperty("downtimeMinutes").GetDouble());
+
+        // Both shifts are schedule_type 1 -> a single "1st Shift" downtime bucket.
+        var byShift = await _client.GetFromJsonAsync<JsonElement>($"/api/reporting/downtime-pivot?{window}&groupBy=shift");
+        Assert.Equal(1, byShift.GetArrayLength());
+        Assert.Equal("1st Shift", byShift[0].GetProperty("bucket").GetString());
+
+        // Pre-data window -> empty for both.
+        var empty = await _client.GetFromJsonAsync<JsonElement>(
+            "/api/reporting/uptime?from=2000-01-01T00:00:00&to=2001-01-01T00:00:00&groupBy=line");
+        Assert.Equal(0, empty.GetArrayLength());
+    }
+
+    [Fact]
     public async Task Piece_weight_calculator_computes_by_shape_and_density()
     {
         // Rectangle 48x48 x gauge 0.1 x explicit density 0.1 = 2304 * 0.1 * 0.1 = 23.04 lb.

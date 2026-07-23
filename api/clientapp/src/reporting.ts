@@ -10,6 +10,7 @@ import { AbisClient } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
 import { statusChip, statusText, lineLabel } from './status-labels.js';
+import { exportXlsx } from './xlsx.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T =>
   document.querySelector(sel) as T;
@@ -31,6 +32,36 @@ const dt = (d: unknown): string => (d == null ? '' : new Date(d as string).toLoc
 
 // A column: header label, a cell accessor, and whether it's numeric (right-aligned + CSV raw).
 interface Col { h: string; f: (r: any) => string; num?: boolean; raw?: (r: any) => unknown; }
+
+// The uptime / downtime-pivot reports are served raw (not through the NSwag client) — a small
+// authFetch helper with the shared from/to window + a groupBy discriminator.
+async function loadJson(path: string): Promise<any[]> {
+  const r = await authFetch(path);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return ((await r.json()) as any[]) ?? [];
+}
+const qwin = (f?: Date, t?: Date, extra: Record<string, string> = {}): string => {
+  const q = new URLSearchParams(extra);
+  if (f) q.set('from', f.toISOString());
+  if (t) q.set('to', t.toISOString());
+  const s = q.toString();
+  return s ? `?${s}` : '';
+};
+// Shared column set for the three uptime groupings — a leading label column + the numeric hours.
+const uptimeCols = (h: string, first: (r: any) => string): Col[] => [
+  { h, f: first },
+  { h: 'Shifts', num: true, f: (r) => num(r.shiftCount), raw: (r) => r.shiftCount },
+  { h: 'Scheduled hrs', num: true, f: (r) => num(r.scheduledHours, 1), raw: (r) => r.scheduledHours },
+  { h: 'Downtime hrs', num: true, f: (r) => num(r.downtimeHours, 1), raw: (r) => r.downtimeHours },
+  { h: 'Uptime hrs', num: true, f: (r) => num(r.uptimeHours, 1), raw: (r) => r.uptimeHours },
+  { h: 'Uptime %', num: true, f: (r) => num(r.uptimePct, 1), raw: (r) => r.uptimePct },
+];
+// Shared column set for the downtime pivots — a leading bucket column + occurrences + minutes.
+const pivotCols = (h: string): Col[] => [
+  { h, f: (r) => esc(r.bucket) },
+  { h: 'Occurrences', num: true, f: (r) => num(r.occurrences), raw: (r) => r.occurrences },
+  { h: 'Downtime min', num: true, f: (r) => num(r.downtimeMinutes, 1), raw: (r) => r.downtimeMinutes },
+];
 
 const REPORTS: Record<string, { note: string; load: (from?: Date, to?: Date) => Promise<any[]>; cols: Col[] }> = {
   summary: {
@@ -186,6 +217,58 @@ const REPORTS: Record<string, { note: string; load: (from?: Date, to?: Date) => 
       { h: 'Total net wt', num: true, f: (r) => num(r.totalNetWt), raw: (r) => r.totalNetWt },
     ],
   },
+  // ---- Uptime (legacy w_report_uptime): worked shifts only, uptime = (shift length − dt_total)/3600 ----
+  'uptime-line': {
+    note: 'Line uptime over worked shifts: scheduled vs downtime hours + uptime %. (legacy w_report_uptime, by line)',
+    load: (f, t) => loadJson(`/api/reporting/uptime${qwin(f, t, { groupBy: 'line' })}`),
+    cols: uptimeCols('Line', (r) => esc(lineLabel(r.lineNum))),
+  },
+  'uptime-shift': {
+    note: 'Uptime by shift (1st / 2nd / 3rd): scheduled vs downtime hours + uptime %.',
+    load: (f, t) => loadJson(`/api/reporting/uptime${qwin(f, t, { groupBy: 'shift' })}`),
+    cols: uptimeCols('Shift', (r) => esc(r.bucket)),
+  },
+  'uptime-day': {
+    note: 'Uptime by day: scheduled vs downtime hours + uptime %.',
+    load: (f, t) => loadJson(`/api/reporting/uptime${qwin(f, t, { groupBy: 'day' })}`),
+    cols: uptimeCols('Day', (r) => esc(r.bucket)),
+  },
+  // ---- Downtime pivots (legacy daily-prod dt_* pivots): occurrences + minutes along one dimension ----
+  'dt-by-cause': {
+    note: 'Downtime minutes + occurrences by cause code (dt_instance_detail.instance_item).',
+    load: (f, t) => loadJson(`/api/reporting/downtime-pivot${qwin(f, t, { groupBy: 'cause' })}`),
+    cols: pivotCols('Cause code'),
+  },
+  'dt-by-job': {
+    note: 'Downtime minutes + occurrences by job.',
+    load: (f, t) => loadJson(`/api/reporting/downtime-pivot${qwin(f, t, { groupBy: 'job' })}`),
+    cols: pivotCols('Job'),
+  },
+  'dt-by-line': {
+    note: 'Downtime minutes + occurrences by line.',
+    load: (f, t) => loadJson(`/api/reporting/downtime-pivot${qwin(f, t, { groupBy: 'line' })}`),
+    cols: pivotCols('Line'),
+  },
+  'dt-by-shift': {
+    note: 'Downtime minutes + occurrences by shift (1st / 2nd / 3rd).',
+    load: (f, t) => loadJson(`/api/reporting/downtime-pivot${qwin(f, t, { groupBy: 'shift' })}`),
+    cols: pivotCols('Shift'),
+  },
+  'dt-by-day': {
+    note: 'Downtime minutes + occurrences by day.',
+    load: (f, t) => loadJson(`/api/reporting/downtime-pivot${qwin(f, t, { groupBy: 'day' })}`),
+    cols: pivotCols('Day'),
+  },
+  'dt-by-month': {
+    note: 'Downtime minutes + occurrences by month (YYYY-MM).',
+    load: (f, t) => loadJson(`/api/reporting/downtime-pivot${qwin(f, t, { groupBy: 'month' })}`),
+    cols: pivotCols('Month'),
+  },
+  'dt-by-year': {
+    note: 'Downtime minutes + occurrences by year.',
+    load: (f, t) => loadJson(`/api/reporting/downtime-pivot${qwin(f, t, { groupBy: 'year' })}`),
+    cols: pivotCols('Year'),
+  },
 };
 
 let current: any[] = [];
@@ -207,12 +290,18 @@ async function run(): Promise<void> {
   finally { setBusy(false); }
 }
 
+// The raw (un-styled) value of a cell for export: numbers stay numeric via `raw`; otherwise the
+// rendered cell has its HTML stripped and basic entities decoded back to text.
+const rawCell = (c: Col, r: any): unknown =>
+  c.raw ? c.raw(r)
+        : c.f(r).replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+
 // CSV export of the current report (raw numeric values, quoted text).
 function exportCsv(): void {
   const rep = REPORTS[currentKey];
   const cell = (v: unknown) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const header = rep.cols.map((c) => cell(c.h)).join(',');
-  const lines = current.map((r) => rep.cols.map((c) => cell(c.raw ? c.raw(r) : c.f(r).replace(/&[a-z]+;/g, ''))).join(','));
+  const lines = current.map((r) => rep.cols.map((c) => cell(rawCell(c, r))).join(','));
   const csv = [header, ...lines].join('\r\n');
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
   const a = document.createElement('a');
@@ -220,9 +309,19 @@ function exportCsv(): void {
   URL.revokeObjectURL(url);
 }
 
+// Native .xlsx export of the current report — same columns as CSV, but numbers stay numeric so
+// Excel sums/sorts them directly (legacy reports were Excel/PDF; CSV alone lost the typing).
+function exportExcel(): void {
+  const rep = REPORTS[currentKey];
+  const headers = rep.cols.map((c) => c.h);
+  const rows = current.map((r) => rep.cols.map((c) => rawCell(c, r) as (number | string | null)));
+  exportXlsx(`${currentKey}-report`, currentKey, headers, rows);
+}
+
 async function init(): Promise<void> {
   $<HTMLFormElement>('#repForm').addEventListener('submit', (e) => { e.preventDefault(); void run(); });
   $('#btnCsv').addEventListener('click', exportCsv);
+  $('#btnXlsx').addEventListener('click', exportExcel);
   await initShell({ active: 'reporting', adopt: true });
   await run();
 }

@@ -171,6 +171,8 @@ public interface IAbisRepository
     Task<IReadOnlyList<CustomerSkidInventoryRow>> GetCustomerSkidInventoryAsync(long customerId, int? status, CancellationToken ct);
     Task<IReadOnlyList<ShiftProductionRow>> GetShiftProductionAsync(DateTime from, DateTime to, long? lineNum, CancellationToken ct);
     Task<IReadOnlyList<DowntimeByCauseRow>> GetDowntimeByCauseAsync(DateTime from, DateTime to, long? lineNum, CancellationToken ct);
+    Task<IReadOnlyList<UptimeRow>> GetUptimeAsync(DateTime? from, DateTime? to, long? lineNum, string groupBy, CancellationToken ct);
+    Task<IReadOnlyList<DowntimePivotRow>> GetDowntimePivotAsync(DateTime? from, DateTime? to, long? lineNum, string groupBy, CancellationToken ct);
     Task<decimal?> GetMetalDensityAsync(string alloy, CancellationToken ct);
     Task<IReadOnlyList<RecoveryJobCoil>> GetRecoveryCoilsByJobAsync(long abJobNum, CancellationToken ct);
     Task<bool> ProcessCoilExistsAsync(long coilAbcNum, long abJobNum, CancellationToken ct);

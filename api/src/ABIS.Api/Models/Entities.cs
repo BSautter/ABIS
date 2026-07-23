@@ -1519,6 +1519,37 @@ public sealed class DowntimeByCauseRow
     public decimal DurationMinutes { get; set; }
 }
 
+/// <summary>Line uptime, grouped by line / shift / day (legacy <c>w_report_uptime</c> +
+/// <c>d_shift_uptime_data_per_line</c>). Faithful to the legacy formula: over WORKED shifts
+/// (<c>operator_initial IS NOT NULL</c>), uptime hours = (scheduled seconds − <c>dt_total</c>) / 3600,
+/// where scheduled seconds = shift length (end − start) and <c>dt_total</c> is the shift's downtime
+/// total <b>in seconds</b>. <see cref="UptimePct"/> is uptime as a % of scheduled time (null when no
+/// scheduled time in the bucket).</summary>
+public sealed class UptimeRow
+{
+    /// <summary>Human bucket label for shift/day groupings (e.g. "1st Shift", "2026-07-14"). Empty for the line grouping — use <see cref="LineNum"/>.</summary>
+    public string Bucket { get; set; } = "";
+    public long? LineNum { get; set; }
+    public string? LineDesc { get; set; }
+    public int ShiftCount { get; set; }
+    public double ScheduledHours { get; set; }
+    public double DowntimeHours { get; set; }
+    public double UptimeHours { get; set; }
+    public double? UptimePct { get; set; }
+}
+
+/// <summary>Downtime rolled up along one dimension (legacy daily-prod downtime pivots
+/// <c>d_daily_prod_dt_*</c> + <c>d_report_dt_summary</c>): occurrences + minutes grouped by
+/// job / day / month / year / shift / line / cause. Minutes = SUM(<c>dt_instance_detail.duration</c>)/60,
+/// occurrences = number of downtime detail segments in the bucket. The window/line filter is applied to
+/// the parent <c>dt_instance</c>.</summary>
+public sealed class DowntimePivotRow
+{
+    public string Bucket { get; set; } = "";
+    public long Occurrences { get; set; }
+    public double DowntimeMinutes { get; set; }
+}
+
 /// <summary>Result of the piece-weight calculator: the resolved blank area (in²), the gauge and
 /// alloy density used, the computed piece weight (lb), and — when a max skid weight was given —
 /// how many pieces fit on a skid.</summary>

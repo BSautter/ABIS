@@ -1942,6 +1942,63 @@ public sealed class RepositoryTests : IDisposable
         Assert.Null(await _repo.GetDowntimeInstanceAsync(999999, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task Uptime_by_line_computes_scheduled_downtime_and_pct()
+    {
+        // Two worked shifts: 7701 (line 110, 8h, dt_total 45s), 7702 (line 120, 8h, dt_total 12s).
+        // uptime hours = (shift seconds - dt_total) / 3600; % = uptime / scheduled.
+        var byLine = await _repo.GetUptimeAsync(null, null, null, "line", CancellationToken.None);
+        var l110 = Assert.Single(byLine, r => r.LineNum == 110);
+        Assert.Equal(1, l110.ShiftCount);
+        Assert.Equal(8.0, l110.ScheduledHours);        // 28800s / 3600
+        Assert.Equal(7.99, l110.UptimeHours);          // (28800-45)/3600 = 7.9875 -> 7.99
+        Assert.Equal(99.8, l110.UptimePct!.Value);     // 7.9875/8*100 = 99.84 -> 99.8
+        var l120 = Assert.Single(byLine, r => r.LineNum == 120);
+        Assert.Equal(8.0, l120.UptimeHours);           // (28800-12)/3600 = 7.9967 -> 8.0
+
+        // The line filter narrows to a single line.
+        Assert.Single(await _repo.GetUptimeAsync(null, null, 110, "line", CancellationToken.None));
+
+        // Both shifts are schedule_type 1 -> one "1st Shift" bucket of both shifts (16h scheduled).
+        var byShift = Assert.Single(await _repo.GetUptimeAsync(null, null, null, "shift", CancellationToken.None));
+        Assert.Equal("1st Shift", byShift.Bucket);
+        Assert.Equal(2, byShift.ShiftCount);
+        Assert.Equal(16.0, byShift.ScheduledHours);
+    }
+
+    [Fact]
+    public async Task DowntimePivot_groups_by_cause_job_shift_and_day()
+    {
+        // Segments: cause 1 = 1200+300 = 1500s (2 events); cause 2 = 600s (1 event). Minutes = /60.
+        var byCause = await _repo.GetDowntimePivotAsync(null, null, null, "cause", CancellationToken.None);
+        Assert.Equal(2, byCause.Count);
+        Assert.Equal("1", byCause[0].Bucket);          // biggest downtime first
+        Assert.Equal(2, byCause[0].Occurrences);
+        Assert.Equal(25.0, byCause[0].DowntimeMinutes);
+        Assert.Equal("2", byCause[1].Bucket);
+        Assert.Equal(10.0, byCause[1].DowntimeMinutes);
+
+        var byJob = await _repo.GetDowntimePivotAsync(null, null, null, "job", CancellationToken.None);
+        var j1001 = Assert.Single(byJob, r => r.Bucket == "1001");
+        Assert.Equal(2, j1001.Occurrences);
+        Assert.Equal(25.0, j1001.DowntimeMinutes);
+
+        // Both instances' shifts are schedule_type 1 -> a single "1st Shift" bucket of all 3 segments.
+        var s1 = Assert.Single(await _repo.GetDowntimePivotAsync(null, null, null, "shift", CancellationToken.None));
+        Assert.Equal("1st Shift", s1.Bucket);
+        Assert.Equal(3, s1.Occurrences);
+        Assert.Equal(35.0, s1.DowntimeMinutes);
+
+        // All three instances fall on 2026-01-02.
+        var day = Assert.Single(await _repo.GetDowntimePivotAsync(null, null, null, "day", CancellationToken.None));
+        Assert.Equal("2026-01-02", day.Bucket);
+        Assert.Equal(35.0, day.DowntimeMinutes);
+
+        // The line filter drops line-110 segments, leaving only cause 2 on line 120.
+        var only2 = Assert.Single(await _repo.GetDowntimePivotAsync(null, null, 120, "cause", CancellationToken.None));
+        Assert.Equal("2", only2.Bucket);
+    }
+
     // ---- customer contacts & sketches ----------------------------------
 
     [Fact]

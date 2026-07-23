@@ -1727,6 +1727,181 @@ public sealed class AbisRepository : IAbisRepository
         return rows.AsList();
     }
 
+    private static string ShiftLabel(int? scheduleType) => scheduleType switch
+    {
+        1 => "1st Shift", 2 => "2nd Shift", 3 => "3rd Shift", null => "Unassigned", _ => $"Shift {scheduleType}"
+    };
+
+    // Line uptime grouped by line / shift / day (legacy w_report_uptime + d_shift_uptime_data_per_line).
+    // Faithful to the legacy formula: over WORKED shifts (operator_initial IS NOT NULL),
+    //   uptime hours = (scheduled seconds - dt_total) / 3600
+    // where scheduled seconds = shift length (end - start) and dt_total is the shift's downtime total
+    // in SECONDS. Shift length is computed in C# (portable — no DB date arithmetic), matching the
+    // monthly/shift-production reports. groupBy: "line" (default) | "shift" (schedule_type) | "day".
+    public async Task<IReadOnlyList<UptimeRow>> GetUptimeAsync(DateTime? from, DateTime? to, long? lineNum, string groupBy, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var p = new DynamicParameters();
+        var where = new List<string> { "s.operator_initial IS NOT NULL", "s.start_time IS NOT NULL", "s.end_time IS NOT NULL" };
+        if (from is not null) { where.Add("s.start_time >= :dfrom"); p.Add("dfrom", from, DbType.DateTime); }
+        if (to is not null) { where.Add("s.start_time < :dto"); p.Add("dto", to, DbType.DateTime); }
+        if (lineNum is not null) { where.Add("s.line_num = :line"); p.Add("line", lineNum); }
+        var raw = await conn.QueryAsync<ShiftUptimeRaw>(new CommandDefinition(
+            $"""
+            SELECT s.line_num AS LineNum, l.line_desc AS LineDesc, s.schedule_type AS ScheduleType,
+                   s.start_time AS StartTime, s.end_time AS EndTime, s.dt_total AS DtTotal
+            FROM shift s LEFT JOIN line l ON l.line_num = s.line_num
+            WHERE {string.Join(" AND ", where)}
+            """, p, cancellationToken: ct));
+
+        var g = (groupBy ?? "line").Trim().ToLowerInvariant();
+        var buckets = new Dictionary<string, UptimeAccum>();
+        foreach (var r in raw)
+        {
+            if (r.StartTime is null || r.EndTime is null) continue;
+            var seconds = (r.EndTime.Value - r.StartTime.Value).TotalSeconds;
+            if (seconds <= 0) continue; // skip bad clock data (negative / zero-length shift)
+            var dtSeconds = (double)(r.DtTotal ?? 0m);
+            string key, label; long? line = null; string? desc = null;
+            switch (g)
+            {
+                case "shift":
+                    key = r.ScheduleType?.ToString() ?? "?";
+                    label = ShiftLabel(r.ScheduleType);
+                    break;
+                case "day":
+                    label = key = r.StartTime.Value.ToString("yyyy-MM-dd");
+                    break;
+                default: // line
+                    line = r.LineNum; desc = r.LineDesc;
+                    key = r.LineNum?.ToString() ?? "?";
+                    label = "";
+                    break;
+            }
+            if (!buckets.TryGetValue(key, out var acc))
+            {
+                acc = new UptimeAccum { Label = label, LineNum = line, LineDesc = desc, SortKey = key };
+                buckets[key] = acc;
+            }
+            acc.ScheduledSeconds += seconds;
+            acc.DowntimeSeconds += dtSeconds;
+            acc.ShiftCount++;
+        }
+        return buckets.Values
+            .OrderBy(a => a.LineNum ?? long.MaxValue).ThenBy(a => a.SortKey, StringComparer.Ordinal)
+            .Select(a =>
+            {
+                var sched = a.ScheduledSeconds / 3600.0;
+                var up = (a.ScheduledSeconds - a.DowntimeSeconds) / 3600.0;
+                return new UptimeRow
+                {
+                    Bucket = a.Label,
+                    LineNum = a.LineNum,
+                    LineDesc = a.LineDesc,
+                    ShiftCount = a.ShiftCount,
+                    ScheduledHours = Math.Round(sched, 2),
+                    DowntimeHours = Math.Round(a.DowntimeSeconds / 3600.0, 2),
+                    UptimeHours = Math.Round(up, 2),
+                    UptimePct = a.ScheduledSeconds > 0 ? Math.Round(up / sched * 100.0, 1) : (double?)null,
+                };
+            })
+            .ToList();
+    }
+
+    // Downtime rolled up along one dimension (legacy daily-prod downtime pivots d_daily_prod_dt_* +
+    // d_report_dt_summary). Pulls the detail segments joined to their instance (+ shift for the shift
+    // grouping) for the window/line, then buckets in C# so day/month/year need no DB date functions.
+    // Minutes = SUM(duration)/60; occurrences = number of detail segments in the bucket.
+    // groupBy: "cause" (default, instance_item) | "job" | "line" | "shift" | "day" | "month" | "year".
+    public async Task<IReadOnlyList<DowntimePivotRow>> GetDowntimePivotAsync(DateTime? from, DateTime? to, long? lineNum, string groupBy, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var p = new DynamicParameters();
+        var where = new List<string>();
+        if (from is not null) { where.Add("i.starting_time >= :dfrom"); p.Add("dfrom", from, DbType.DateTime); }
+        if (to is not null) { where.Add("i.starting_time < :dto"); p.Add("dto", to, DbType.DateTime); }
+        if (lineNum is not null) { where.Add("i.line_num = :line"); p.Add("line", lineNum); }
+        var clause = where.Count > 0 ? "WHERE " + string.Join(" AND ", where) : "";
+        var raw = await conn.QueryAsync<DtPivotRaw>(new CommandDefinition(
+            $"""
+            SELECT d.instance_item AS InstanceItem, i.ab_job_num AS AbJobNum, i.line_num AS LineNum,
+                   l.line_desc AS LineDesc, s.schedule_type AS ScheduleType,
+                   i.starting_time AS StartingTime, d.duration AS Duration
+            FROM dt_instance_detail d
+            JOIN dt_instance i ON i.instance_num = d.instance_num
+            LEFT JOIN shift s ON s.shift_num = i.shift_num
+            LEFT JOIN line l ON l.line_num = i.line_num
+            {clause}
+            """, p, cancellationToken: ct));
+
+        var g = (groupBy ?? "cause").Trim().ToLowerInvariant();
+        var buckets = new Dictionary<string, DtPivotAccum>();
+        foreach (var r in raw)
+        {
+            string key, label;
+            switch (g)
+            {
+                case "job": key = r.AbJobNum?.ToString() ?? "?"; label = r.AbJobNum?.ToString() ?? "(none)"; break;
+                case "line": key = r.LineNum?.ToString() ?? "?"; label = r.LineDesc ?? r.LineNum?.ToString() ?? "(none)"; break;
+                case "shift": key = r.ScheduleType?.ToString() ?? "?"; label = ShiftLabel(r.ScheduleType); break;
+                case "day": label = key = r.StartingTime?.ToString("yyyy-MM-dd") ?? "(undated)"; break;
+                case "month": label = key = r.StartingTime?.ToString("yyyy-MM") ?? "(undated)"; break;
+                case "year": label = key = r.StartingTime?.ToString("yyyy") ?? "(undated)"; break;
+                default: key = r.InstanceItem?.ToString() ?? "?"; label = r.InstanceItem?.ToString() ?? "(uncoded)"; break;
+            }
+            if (!buckets.TryGetValue(key, out var acc)) { acc = new DtPivotAccum { Label = label, SortKey = key }; buckets[key] = acc; }
+            acc.Occurrences++;
+            acc.DurationSeconds += (double)(r.Duration ?? 0m);
+        }
+        // Time buckets sort chronologically; categorical buckets sort by biggest downtime first.
+        var ordered = g is "day" or "month" or "year"
+            ? buckets.Values.OrderBy(a => a.SortKey, StringComparer.Ordinal)
+            : buckets.Values.OrderByDescending(a => a.DurationSeconds).ThenBy(a => a.SortKey, StringComparer.Ordinal);
+        return ordered
+            .Select(a => new DowntimePivotRow { Bucket = a.Label, Occurrences = a.Occurrences, DowntimeMinutes = Math.Round(a.DurationSeconds / 60.0, 2) })
+            .ToList();
+    }
+
+    private sealed class ShiftUptimeRaw
+    {
+        public long? LineNum { get; set; }
+        public string? LineDesc { get; set; }
+        public int? ScheduleType { get; set; }
+        public DateTime? StartTime { get; set; }
+        public DateTime? EndTime { get; set; }
+        public decimal? DtTotal { get; set; }
+    }
+
+    private sealed class UptimeAccum
+    {
+        public string Label = "";
+        public string SortKey = "";
+        public long? LineNum;
+        public string? LineDesc;
+        public double ScheduledSeconds;
+        public double DowntimeSeconds;
+        public int ShiftCount;
+    }
+
+    private sealed class DtPivotRaw
+    {
+        public int? InstanceItem { get; set; }
+        public long? AbJobNum { get; set; }
+        public long? LineNum { get; set; }
+        public string? LineDesc { get; set; }
+        public int? ScheduleType { get; set; }
+        public DateTime? StartingTime { get; set; }
+        public decimal? Duration { get; set; }
+    }
+
+    private sealed class DtPivotAccum
+    {
+        public string Label = "";
+        public string SortKey = "";
+        public long Occurrences;
+        public double DurationSeconds;
+    }
+
     // Alloy density (lb/in^3) for the piece-weight calculator (legacy METAL_DENSITY lookup).
     // Null when the alloy isn't in the table.
     public async Task<decimal?> GetMetalDensityAsync(string alloy, CancellationToken ct)

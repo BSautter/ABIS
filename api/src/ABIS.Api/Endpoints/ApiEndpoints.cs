@@ -1998,6 +1998,24 @@ public static class ApiEndpoints
            .WithSummary("Downtime minutes by cause code (SUM dt_instance_detail.duration/60 via dt_instance), optionally one line. Defaults to the last 365 days when unbounded.")
            .Produces<IReadOnlyList<DowntimeByCauseRow>>();
 
+        api.MapGet("/reporting/uptime", async (DateTime? from, DateTime? to, IAbisRepository repo, CancellationToken ct, long? lineNum = null, string groupBy = "line") =>
+            {
+                var (f, t) = ResolveReportWindow(from, to);
+                return Results.Ok(await repo.GetUptimeAsync(f, t, lineNum, groupBy, ct));
+            })
+           .WithName("GetUptime").WithTags("Reporting")
+           .WithSummary("Line uptime (legacy w_report_uptime): over WORKED shifts, uptime hours = (shift length − dt_total seconds)/3600, plus scheduled/downtime hours and uptime %. groupBy = line (default) | shift | day, optionally one line. Defaults to the last 365 days when unbounded.")
+           .Produces<IReadOnlyList<UptimeRow>>();
+
+        api.MapGet("/reporting/downtime-pivot", async (DateTime? from, DateTime? to, IAbisRepository repo, CancellationToken ct, long? lineNum = null, string groupBy = "cause") =>
+            {
+                var (f, t) = ResolveReportWindow(from, to);
+                return Results.Ok(await repo.GetDowntimePivotAsync(f, t, lineNum, groupBy, ct));
+            })
+           .WithName("GetDowntimePivot").WithTags("Reporting")
+           .WithSummary("Downtime rolled up along one dimension (legacy daily-prod downtime pivots): occurrences + minutes grouped by groupBy = cause (default) | job | line | shift | day | month | year, optionally one line. Defaults to the last 365 days when unbounded.")
+           .Produces<IReadOnlyList<DowntimePivotRow>>();
+
         // ---- Calculator (legacy w_order_entry suggested piece weight) ----
         api.MapPost("/calculator/piece-weight", async (PieceWeightRequest body, IAbisRepository repo, CancellationToken ct) =>
             {

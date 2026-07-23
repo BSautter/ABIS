@@ -57,12 +57,27 @@
             <option value="scrap-summary">Scrap by type</option>
             <option value="scrap-by-job">Scrap by job</option>
           </optgroup>
+          <optgroup label="Uptime">
+            <option value="uptime-line">Uptime by line</option>
+            <option value="uptime-shift">Uptime by shift</option>
+            <option value="uptime-day">Uptime by day</option>
+          </optgroup>
+          <optgroup label="Downtime pivots">
+            <option value="dt-by-cause">Downtime by cause</option>
+            <option value="dt-by-job">Downtime by job</option>
+            <option value="dt-by-line">Downtime by line</option>
+            <option value="dt-by-shift">Downtime by shift</option>
+            <option value="dt-by-day">Downtime by day</option>
+            <option value="dt-by-month">Downtime by month</option>
+            <option value="dt-by-year">Downtime by year</option>
+          </optgroup>
         </select>
       </div>
       <div><label>From</label><br /><input id="from" type="date" /></div>
       <div><label>To</label><br /><input id="to" type="date" /></div>
       <button type="submit">Run report</button>
       <button id="btnCsv" type="button" class="sec">Export CSV</button>
+      <button id="btnXlsx" type="button" class="sec">Export Excel</button>
     </form>
     <div class="muted totals" id="totals"></div>
     <table>
