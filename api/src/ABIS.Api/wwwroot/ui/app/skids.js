@@ -29,8 +29,8 @@ function scaffold() {
       <div class="card" style="margin-bottom:16px">
         <header><h2>Finished sheet skids</h2><span class="sub" id="cSheet"></span></header>
         <div style="overflow-x:auto"><table class="tbl" style="min-width:600px">
-          <thead><tr><th>Skid</th><th>Job</th><th>Display</th><th class="num">Net wt</th><th class="num">Tare</th><th class="num">Pieces</th><th>Date</th></tr></thead>
-          <tbody id="tSheet"><tr><td colspan="7" class="muted">Loading…</td></tr></tbody>
+          <thead><tr><th>Skid</th><th>Job</th><th>Display</th><th class="num">Net wt</th><th class="num">Tare</th><th class="num">Pieces</th><th>Date</th><th></th></tr></thead>
+          <tbody id="tSheet"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
         </table></div>
       </div>
       <div class="card"><header><h2>New sheet skid</h2></header><div class="body">
@@ -49,8 +49,8 @@ function scaffold() {
       <div class="card" style="margin-bottom:16px">
         <header><h2>Scrap skids</h2><span class="sub" id="cScrap"></span></header>
         <div style="overflow-x:auto"><table class="tbl" style="min-width:620px">
-          <thead><tr><th>Skid</th><th>Job</th><th>Alloy</th><th>Temper</th><th>Type</th><th class="num">Net wt</th><th>Location</th><th>Status</th></tr></thead>
-          <tbody id="tScrap"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
+          <thead><tr><th>Skid</th><th>Job</th><th>Alloy</th><th>Temper</th><th>Type</th><th class="num">Net wt</th><th>Location</th><th>Status</th><th></th></tr></thead>
+          <tbody id="tScrap"><tr><td colspan="9" class="muted">Loading…</td></tr></tbody>
         </table></div>
       </div>
       <div class="card"><header><h2>New scrap skid</h2></header><div class="body">
@@ -84,7 +84,8 @@ async function loadSheet() {
         $('#tSheet').innerHTML = (page.items ?? []).length ? (page.items ?? []).map((x) => `<tr>
       <td class="mono">${esc(x.sheetSkidNum)}</td><td class="mono">${esc(x.abJobNum)}</td><td>${esc(x.sheetSkidDisplayNum)}</td>
       <td class="num">${esc(num(x.sheetNetWt))}</td><td class="num">${esc(num(x.sheetTareWt))}</td><td class="num">${esc(x.skidPieces)}</td>
-      <td class="mono">${esc(dShow(x.skidDate))}</td></tr>`).join('') : '<tr><td colspan="7" class="muted">No sheet skids.</td></tr>';
+      <td class="mono">${esc(dShow(x.skidDate))}</td>
+      <td><button class="btn xs ghost" type="button" data-make-scrap="${esc(x.sheetSkidNum)}">Make scrap</button></td></tr>`).join('') : '<tr><td colspan="8" class="muted">No sheet skids.</td></tr>';
         $('#cSheet').textContent = `${(page.totalCount ?? 0).toLocaleString()} total`;
     }
     catch (e) {
@@ -97,7 +98,8 @@ async function loadScrap() {
         $('#tScrap').innerHTML = (page.items ?? []).length ? (page.items ?? []).map((x) => `<tr>
       <td class="mono">${esc(x.scrapSkidNum)}</td><td class="mono">${esc(x.scrapAbJobNum)}</td><td>${esc(x.scrapAlloy2)}</td>
       <td>${esc(x.scrapTemper)}</td><td>${statusChip('scrapType', x.scrapType)}</td><td class="num">${esc(num(x.scrapNetWt))}</td>
-      <td>${esc(x.scrapLocation)}</td><td>${statusChip('skidScrapStatus', x.skidScrapStatus)}</td></tr>`).join('') : '<tr><td colspan="8" class="muted">No scrap skids.</td></tr>';
+      <td>${esc(x.scrapLocation)}</td><td>${statusChip('skidScrapStatus', x.skidScrapStatus)}</td>
+      <td><button class="btn xs ghost" type="button" data-return-scrap="${esc(x.scrapSkidNum)}">Return to sheet</button></td></tr>`).join('') : '<tr><td colspan="9" class="muted">No scrap skids.</td></tr>';
         $('#cScrap').textContent = `${(page.totalCount ?? 0).toLocaleString()} total`;
     }
     catch (e) {
@@ -169,6 +171,42 @@ async function createScrap() {
         setBusy(false);
     }
 }
+async function makeScrap(sheetSkidNum) {
+    if (!confirm(`Convert sheet skid #${sheetSkidNum} to scrap? This moves the skid + its production items to the scrap tables. (Reversible via "Return to sheet".)`))
+        return;
+    setErr('');
+    setOk('');
+    setBusy(true);
+    try {
+        const r = await client().makeScrapSkid(sheetSkidNum);
+        setOk(`✓ Sheet skid #${sheetSkidNum} converted to scrap skid #${r.scrapSkidNum}.`);
+        await Promise.all([loadSheet(), loadScrap()]);
+    }
+    catch (e) {
+        setErr(`Make scrap failed: ${e.message}`);
+    }
+    finally {
+        setBusy(false);
+    }
+}
+async function returnScrap(scrapSkidNum) {
+    if (!confirm(`Return scrap skid #${scrapSkidNum} back to a sheet skid? This restores the scrapped rows and removes the scrap skid.`))
+        return;
+    setErr('');
+    setOk('');
+    setBusy(true);
+    try {
+        const r = await client().returnScrapSkid(scrapSkidNum);
+        setOk(`✓ Scrap skid #${scrapSkidNum} returned to sheet (${r.restoredSkids ?? 0} skid${r.restoredSkids === 1 ? '' : 's'} restored).`);
+        await Promise.all([loadSheet(), loadScrap()]);
+    }
+    catch (e) {
+        setErr(`Return failed: ${e.message}`);
+    }
+    finally {
+        setBusy(false);
+    }
+}
 function showTab(name) {
     ['sheet', 'scrap', 'partials'].forEach((t) => {
         $(`#pane-${t}`).style.display = t === name ? '' : 'none';
@@ -181,6 +219,16 @@ function showTab(name) {
     ['sheet', 'scrap', 'partials'].forEach((t) => $(`#tab-${t}`).addEventListener('click', () => showTab(t)));
     $('#btnSheet').addEventListener('click', () => void createSheet());
     $('#btnScrap').addEventListener('click', () => void createScrap());
+    $('#tSheet').addEventListener('click', (e) => {
+        const n = e.target.closest('[data-make-scrap]')?.dataset.makeScrap;
+        if (n)
+            void makeScrap(Number(n));
+    });
+    $('#tScrap').addEventListener('click', (e) => {
+        const n = e.target.closest('[data-return-scrap]')?.dataset.returnScrap;
+        if (n)
+            void returnScrap(Number(n));
+    });
     showTab('sheet');
     await Promise.all([loadSheet(), loadScrap(), loadPartials()]);
 })();
