@@ -14,8 +14,10 @@ const esc = (s: unknown): string =>
 const numf = (v: number | undefined): string => (v == null ? '' : v.toLocaleString());
 const setErr = (m: string) => { $('#err').textContent = m; };
 const setBusy = (b: boolean) => document.body.classList.toggle('busy', b);
+const val = (id: string) => $<HTMLInputElement>(id).value.trim();
 
 let alloys: string[] = [];
+let currentDetail: any = null;   // the loaded order detail (header + customer + items) for in-place edit
 
 function scaffold(): string {
   return `
@@ -93,22 +95,114 @@ async function search(): Promise<void> {
 async function loadOrder(id: number): Promise<void> {
   setErr(''); setBusy(true);
   try {
-    const d = await client().getOrderDetail(id);
-    const items = (d.items ?? []).map((it) => `
-      <tr><td class="mono">${esc(it.orderItemNum)}</td><td>${esc(it.enduserPartNum)}</td><td>${esc(it.alloy2)}</td>
-        <td>${esc(it.sheetType)}</td><td class="num">${numf(it.gauge)}</td><td class="num">${numf(it.piecesSkid)}</td></tr>`).join('');
-    $('#detail').innerHTML = `
+    currentDetail = await client().getOrderDetail(id);
+    renderDetail();
+  } catch (e) { setErr(`Load failed: ${(e as Error).message}`); }
+  finally { setBusy(false); }
+}
+
+// Read-only order detail with an Edit toggle.
+function renderDetail(): void {
+  const d = currentDetail; if (!d) return;
+  const items = (d.items ?? []).map((it: any) => `
+    <tr><td class="mono">${esc(it.orderItemNum)}</td><td>${esc(it.enduserPartNum)}</td><td>${esc(it.alloy2)}</td>
+      <td>${esc(it.sheetType)}</td><td class="num">${numf(it.gauge)}</td><td class="num">${numf(it.piecesSkid)}</td></tr>`).join('');
+  $('#detail').innerHTML = `
+    <div class="frow" style="justify-content:space-between;align-items:flex-start">
       <div class="kv">
         <span><b>Order</b>${esc(d.order?.orderAbcNum)}</span>
         <span><b>PO</b>${esc(d.order?.origCustomerPo)}</span>
         <span><b>Customer</b>${esc(d.customer?.customerName ?? d.order?.origCustomerId)}</span>
         <span><b>Enduser PO</b>${esc(d.order?.enduserPo)}</span>
       </div>
-      <div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="min-width:420px">
-        <thead><tr><th>Line</th><th>Part</th><th>Alloy</th><th>Sheet</th><th class="num">Gauge</th><th class="num">Pieces</th></tr></thead>
-        <tbody>${items || '<tr><td colspan="6" class="muted">No line items.</td></tr>'}</tbody></table></div>`;
-  } catch (e) { setErr(`Load failed: ${(e as Error).message}`); }
-  finally { setBusy(false); }
+      <button class="btn sm ghost" id="btnEditOrder" type="button">Edit</button>
+    </div>
+    <div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="min-width:420px">
+      <thead><tr><th>Line</th><th>Part</th><th>Alloy</th><th>Sheet</th><th class="num">Gauge</th><th class="num">Pieces</th></tr></thead>
+      <tbody>${items || '<tr><td colspan="6" class="muted">No line items.</td></tr>'}</tbody></table></div>`;
+  $('#btnEditOrder').addEventListener('click', renderEditForm);
+}
+
+// Editable order header + line items. Saves via full-replace PUTs, reconstructing the whole write
+// object from the loaded read model (spread) so unedited fields are preserved.
+function renderEditForm(): void {
+  const d = currentDetail; const o = d.order ?? {};
+  const lines = (d.items ?? []).map((it: any) => `
+    <tr data-item="${esc(it.orderItemNum)}">
+      <td class="mono">${esc(it.orderItemNum)}</td>
+      <td><input class="li-part" value="${esc(it.enduserPartNum)}" style="width:110px" /></td>
+      <td><input class="li-alloy" value="${esc(it.alloy2)}" style="width:70px" /></td>
+      <td><input class="li-sheet" value="${esc(it.sheetType)}" style="width:80px" /></td>
+      <td><input class="li-gauge" type="number" step="0.001" value="${esc(it.gauge)}" style="width:80px" /></td>
+      <td><input class="li-qty" type="number" value="${esc(it.quantity)}" style="width:75px" /></td>
+      <td><button class="btn sm" data-save-line="${esc(it.orderItemNum)}" type="button">Save</button></td>
+    </tr>`).join('');
+  $('#detail').innerHTML = `
+    <div class="frow">
+      <div class="fld"><label>Cust PO</label><input id="eoPo" value="${esc(o.origCustomerPo)}" style="width:150px" /></div>
+      <div class="fld"><label>Enduser PO</label><input id="eoEnduserPo" value="${esc(o.enduserPo)}" style="width:150px" /></div>
+      <div class="fld"><label>Enduser id</label><input id="eoEnduser" inputmode="numeric" value="${esc(o.enduserId)}" style="width:100px" /></div>
+      <div class="fld"><label>Reference</label><input id="eoRef" value="${esc(o.reference)}" style="width:130px" /></div>
+      <div class="fld"><label>Sales order</label><input id="eoSales" value="${esc(o.salesOrder)}" style="width:130px" /></div>
+      <div class="fld" style="flex:1;min-width:180px"><label>Order note</label><input id="eoNote" value="${esc(o.custOrderNote)}" style="width:100%" /></div>
+    </div>
+    <div class="frow" style="margin-top:8px;align-items:center">
+      <button class="btn sm" id="btnSaveOrder" type="button">Save order</button>
+      <button class="btn sm ghost" id="btnCancelEdit" type="button">Cancel</button>
+      <span id="editOk" class="ok-note"></span>
+    </div>
+    <div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="min-width:560px">
+      <thead><tr><th>Line</th><th>Part</th><th>Alloy</th><th>Sheet</th><th>Gauge</th><th>Qty</th><th></th></tr></thead>
+      <tbody>${lines || '<tr><td colspan="7" class="muted">No line items.</td></tr>'}</tbody></table></div>`;
+  $('#btnSaveOrder').addEventListener('click', () => void saveHeader());
+  $('#btnCancelEdit').addEventListener('click', renderDetail);
+  $('#detail').querySelectorAll<HTMLButtonElement>('[data-save-line]').forEach((b) =>
+    b.addEventListener('click', () => void saveLine(Number(b.getAttribute('data-save-line')))));
+}
+
+async function saveHeader(): Promise<void> {
+  const o = currentDetail?.order ?? {};
+  setErr('');
+  const body = {
+    ...o,
+    origCustomerPo: val('#eoPo') || null,
+    enduserPo: val('#eoEnduserPo') || null,
+    enduserId: val('#eoEnduser') ? Number(val('#eoEnduser')) : null,
+    reference: val('#eoRef') || null,
+    salesOrder: val('#eoSales') || null,
+    custOrderNote: val('#eoNote') || null,
+  };
+  try {
+    const r = await authFetch(`/api/orders/${o.orderAbcNum}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    if (!r.ok) { setErr(`Save failed (${r.status}).`); return; }
+    await loadOrder(o.orderAbcNum);
+  } catch (e) { setErr(`Save failed: ${(e as Error).message}`); }
+}
+
+async function saveLine(itemNum: number): Promise<void> {
+  const o = currentDetail?.order ?? {};
+  const item = (currentDetail?.items ?? []).find((it: any) => it.orderItemNum === itemNum);
+  if (!item) return;
+  setErr('');
+  const row = $<HTMLTableRowElement>(`#detail tr[data-item="${itemNum}"]`);
+  const g = (sel: string) => (row.querySelector(sel) as HTMLInputElement).value.trim();
+  const body = {
+    ...item,
+    enduserPartNum: g('.li-part') || null,
+    alloy2: g('.li-alloy') || null,
+    sheetType: g('.li-sheet') || null,
+    gauge: g('.li-gauge') ? Number(g('.li-gauge')) : null,
+    quantity: g('.li-qty') ? Number(g('.li-qty')) : null,
+  };
+  try {
+    const r = await authFetch(`/api/orders/${o.orderAbcNum}/items/${itemNum}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    if (!r.ok) { setErr(`Line ${itemNum} save failed (${r.status}).`); return; }
+    await loadOrder(o.orderAbcNum);
+  } catch (e) { setErr(`Line save failed: ${(e as Error).message}`); }
 }
 
 function lineRow(): HTMLDivElement {
