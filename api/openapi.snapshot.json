@@ -6620,6 +6620,38 @@
             "description": "Unauthorized"
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "Parts"
+        ],
+        "summary": "Delete a part and its blank geometry. 409 if the part is referenced by any order line (order_item.part_num_id).",
+        "operationId": "DeletePart",
+        "parameters": [
+          {
+            "name": "partNumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
       }
     },
     "/api/parts/{partNumId}/shape": {
@@ -6712,6 +6744,44 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/parts/{partNumId}/copy": {
+      "post": {
+        "tags": [
+          "Parts"
+        ],
+        "summary": "Duplicate a part into a new part_num_id — copies every column + its blank geometry verbatim; the id is fresh.",
+        "operationId": "CopyPart",
+        "parameters": [
+          {
+            "name": "partNumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Part"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
           },
           "401": {
             "description": "Unauthorized"

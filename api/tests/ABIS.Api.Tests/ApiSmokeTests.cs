@@ -464,6 +464,26 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Part_copy_and_guarded_delete()
+    {
+        // Copy part 6001 (RECTANGLE) -> 201 with a fresh id + copied geometry.
+        var resp = await _client.PostAsync("/api/parts/6001/copy", null);
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        var copy = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var newId = copy.GetProperty("partNumId").GetInt64();
+        Assert.NotEqual(6001, newId);
+        var shape = await _client.GetFromJsonAsync<JsonElement>($"/api/parts/{newId}/shape");
+        Assert.Equal("RECTANGLE", shape.GetProperty("shapeType").GetString());
+
+        // Delete guard: part 6003 is applied to an order line -> 409.
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.DeleteAsync("/api/parts/6003")).StatusCode);
+
+        // The copy is free -> 204, then 404 (leaves the seed as it was).
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync($"/api/parts/{newId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.DeleteAsync($"/api/parts/{newId}")).StatusCode);
+    }
+
+    [Fact]
     public async Task Piece_weight_calculator_computes_by_shape_and_density()
     {
         // Rectangle 48x48 x gauge 0.1 x explicit density 0.1 = 2304 * 0.1 * 0.1 = 23.04 lb.

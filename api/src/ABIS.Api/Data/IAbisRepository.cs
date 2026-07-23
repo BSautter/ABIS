@@ -218,6 +218,8 @@ public interface IAbisRepository
     Task<Part?> GetPartAsync(long partNumId, CancellationToken ct);
     Task<Part> CreatePartAsync(PartWrite body, CancellationToken ct);
     Task<Part?> UpdatePartAsync(long partNumId, PartWrite body, CancellationToken ct);
+    Task<Part?> CopyPartAsync(long sourcePartNumId, CancellationToken ct);
+    Task<DeleteResult> DeletePartAsync(long partNumId, CancellationToken ct);
     /// <summary>True when any order_item references this part (part_num_id) — the legacy
     /// modify/delete-in-use guard (w_part_num_management): an applied part must be revised,
     /// not edited in place.</summary>

@@ -2105,6 +2105,37 @@ public sealed class RepositoryTests : IDisposable
         Assert.Null(await _repo.CopyOrderAsync(999999, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task CopyPart_duplicates_geometry_and_DeletePart_guards_in_use()
+    {
+        // Part 6001: RECTANGLE with geometry 60 x 30; free (no order line references it).
+        var copy = await _repo.CopyPartAsync(6001, CancellationToken.None);
+        Assert.NotNull(copy);
+        Assert.NotEqual(6001, copy!.PartNumId);
+        Assert.Equal("PN-3003-A", copy.EnduserPartNum);
+        Assert.Equal("RECTANGLE", copy.SheetType);
+        var shape = await _repo.GetPartShapeAsync(copy.PartNumId, CancellationToken.None);
+        Assert.NotNull(shape);
+        Assert.Equal(60m, shape!.Dimensions.Single(d => d.Name == "length").Value);
+        Assert.Equal(30m, shape.Dimensions.Single(d => d.Name == "width").Value);
+
+        // Unknown source -> null.
+        Assert.Null(await _repo.CopyPartAsync(999999, CancellationToken.None));
+
+        // Delete guard: part 6003 is referenced by order line 7003 -> InUse.
+        var inUse = await _repo.DeletePartAsync(6003, CancellationToken.None);
+        Assert.Equal(DeleteOutcome.InUse, inUse.Outcome);
+        Assert.NotNull(await _repo.GetPartAsync(6003, CancellationToken.None));   // still there
+
+        // Part 6002 is free -> Deleted; a second delete is NotFound.
+        Assert.Equal(DeleteOutcome.Deleted, (await _repo.DeletePartAsync(6002, CancellationToken.None)).Outcome);
+        Assert.Equal(DeleteOutcome.NotFound, (await _repo.DeletePartAsync(6002, CancellationToken.None)).Outcome);
+
+        // The copy is free too; deleting it takes its geometry with it.
+        Assert.Equal(DeleteOutcome.Deleted, (await _repo.DeletePartAsync(copy.PartNumId, CancellationToken.None)).Outcome);
+        Assert.Null(await _repo.GetPartShapeAsync(copy.PartNumId, CancellationToken.None));
+    }
+
     // ---- customer contacts & sketches ----------------------------------
 
     [Fact]

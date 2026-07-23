@@ -3866,6 +3866,78 @@ public sealed class AbisRepository : IAbisRepository
             new { id = partNumId }, cancellationToken: ct)) > 0;
     }
 
+    // Every part_num column except the PK — spliced into an INSERT ... SELECT to copy a part verbatim.
+    private const string PartCopyCols =
+        "customer_id, enduser_id, enduser_part_num, item_status, sheet_type, alloy, temper, gauge, gauge_p, gauge_m, " +
+        "surface, flatness, material_end_use, theoretical_unit_wt, incoming_coil_width, trimmed_coil_width, trim_type_code, " +
+        "trimming_required, trimmed_width_overridden, trimmed_width_override_user, sh_tolerance_plus, sh_tolerance_minus, " +
+        "die_id, die_1, die_2, sector, dimpling_code, line_num, spm, efficiency_percent, special_part, autoparts, " +
+        "pieces_skid, pieces_skid_plus, pieces_skid_minus, stacks_skid, max_skid_wt, packaging_bands, oil_stencil_interleave, " +
+        "packaging_spec1, packaging_spec2, packaging_spec3, packaging_spec4, packaging_spec5, packaging_spec6, packaging_spec7, " +
+        "packaging_other_spec, processing_other_spec, supplier_code, item_desc, item_note, item_attachments, govt_contract_num";
+
+    // Duplicate a part into a new part_num_id, including its blank geometry (part_num_<shape> tables,
+    // dimensions only — no dies at the part level). INSERT ... SELECT copies every column verbatim.
+    // Null if the source part doesn't exist.
+    public async Task<Part?> CopyPartAsync(long sourcePartNumId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM part_num WHERE part_num_id = :src", new { src = sourcePartNumId }, cancellationToken: ct));
+        if (exists == 0) return null;
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var newId = await NextIdAsync(conn, tx, "part_num", "part_num_id", ct);
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            $"INSERT INTO part_num (part_num_id, {PartCopyCols}) SELECT :newId, {PartCopyCols} FROM part_num WHERE part_num_id = :src",
+            new { newId, src = sourcePartNumId }, transaction: tx, cancellationToken: ct));
+
+        foreach (var def in ShapeGeometry.All)
+        {
+            var geomCols = new List<string>();
+            foreach (var dm in def.Dims)
+            {
+                geomCols.Add(dm.ValueCol);
+                if (dm.PlusCol is not null) geomCols.Add(dm.PlusCol);
+                if (dm.MinusCol is not null) geomCols.Add(dm.MinusCol);
+            }
+            var cols = string.Join(", ", geomCols);
+            await conn.ExecuteAsync(new CommandDefinition(
+                $"INSERT INTO {def.PartTable} (part_num_id, {cols}) SELECT :newId, {cols} FROM {def.PartTable} WHERE part_num_id = :src",
+                new { newId, src = sourcePartNumId }, transaction: tx, cancellationToken: ct));
+        }
+
+        await tx.CommitAsync(ct);
+        return await GetPartAsync(newId, ct);
+    }
+
+    // Delete a part, refusing when it's in use — referenced by any order line (order_item.part_num_id,
+    // the same guard as legacy w_part_num_management). On delete, the part_num row and its blank-geometry
+    // rows go together.
+    public async Task<DeleteResult> DeletePartAsync(long partNumId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM part_num WHERE part_num_id = :id", new { id = partNumId }, cancellationToken: ct));
+        if (exists == 0) return new DeleteResult(DeleteOutcome.NotFound);
+
+        var used = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM order_item WHERE part_num_id = :id", new { id = partNumId }, cancellationToken: ct));
+        if (used > 0)
+            return new DeleteResult(DeleteOutcome.InUse,
+                $"Part {partNumId} is referenced by {used} order line(s) and cannot be deleted.");
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        foreach (var def in ShapeGeometry.All)
+            await conn.ExecuteAsync(new CommandDefinition(
+                $"DELETE FROM {def.PartTable} WHERE part_num_id = :id", new { id = partNumId }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM part_num WHERE part_num_id = :id", new { id = partNumId }, transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+        return new DeleteResult(DeleteOutcome.Deleted);
+    }
+
     public Task<PagedResult<Die>> GetDiesAsync(int page, int pageSize, int? status, string? orderBy, CancellationToken ct) =>
         PageAsync<Die>(DieCols, "die", orderBy ?? "die_id",
             status is null ? null : "status = :status",

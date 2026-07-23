@@ -818,6 +818,22 @@ public static class ApiEndpoints
            .WithSummary("Set a part-master's blank geometry for its shape (upsert; aligns the part's sheet_type; 409 if the part is applied to any order).")
            .Produces<PartShape>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
 
+        // Duplicate a part (header + blank geometry) into a new part_num_id.
+        api.MapPost("/parts/{partNumId:long}/copy", async (long partNumId, IAbisRepository repo, CancellationToken ct) =>
+                await repo.CopyPartAsync(partNumId, ct) is { } copy
+                    ? Results.Created($"/api/parts/{copy.PartNumId}", copy)
+                    : Results.NotFound(new { message = $"Part {partNumId} not found." }))
+           .WithName("CopyPart").WithTags("Parts")
+           .WithSummary("Duplicate a part into a new part_num_id — copies every column + its blank geometry verbatim; the id is fresh.")
+           .Produces<Part>(StatusCodes.Status201Created).Produces(StatusCodes.Status404NotFound);
+
+        // Delete a part, refusing when it's applied to any order (obsolete-in-use guard).
+        api.MapDelete("/parts/{partNumId:long}", async (long partNumId, IAbisRepository repo, CancellationToken ct) =>
+                DeleteResultToHttp(await repo.DeletePartAsync(partNumId, ct), "Part in use"))
+           .WithName("DeletePart").WithTags("Parts")
+           .WithSummary("Delete a part and its blank geometry. 409 if the part is referenced by any order line (order_item.part_num_id).")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
+
         // ---- Dies (die / tooling) --------------------------------------
         api.MapGet("/dies", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, int? status = null, string? sort = null, string? dir = null) =>
