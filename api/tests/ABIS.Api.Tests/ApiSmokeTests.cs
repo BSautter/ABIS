@@ -510,6 +510,30 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Part_routing_flow()
+    {
+        // Part 6001 has a seed routing.
+        var list = await _client.GetFromJsonAsync<JsonElement>("/api/parts/6001/routings");
+        Assert.Equal(1, list.GetArrayLength());
+
+        // Add a routing (lower-case shape normalized to upper).
+        var ok = await _client.PostAsJsonAsync("/api/parts/6001/routings",
+            new { routingSequence = 2, lineNum = 120, dieId = 2002, sheetType = "rectangle", spmStandard = 50, spmPlanned = 45, numberOfPeople = 3, edgeTrimYN = "Y", stackerYN = "N" });
+        Assert.Equal(HttpStatusCode.Created, ok.StatusCode);
+        Assert.Equal(2, (await _client.GetFromJsonAsync<JsonElement>("/api/parts/6001/routings")).GetArrayLength());
+
+        // Duplicate -> 409; unknown die -> 404.
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsJsonAsync("/api/parts/6001/routings",
+            new { routingSequence = 2, lineNum = 120, dieId = 2002, sheetType = "RECTANGLE", spmStandard = 1, spmPlanned = 1, numberOfPeople = 1 })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/parts/6001/routings",
+            new { routingSequence = 3, lineNum = 110, dieId = 99999, sheetType = "RECTANGLE", spmStandard = 1, spmPlanned = 1, numberOfPeople = 1 })).StatusCode);
+
+        // Delete the added routing -> 204 then 404 (leaves the seed intact).
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync("/api/parts/6001/routings/2/120/2002/RECTANGLE")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.DeleteAsync("/api/parts/6001/routings/2/120/2002/RECTANGLE")).StatusCode);
+    }
+
+    [Fact]
     public async Task Piece_weight_calculator_computes_by_shape_and_density()
     {
         // Rectangle 48x48 x gauge 0.1 x explicit density 0.1 = 2304 * 0.1 * 0.1 = 23.04 lb.

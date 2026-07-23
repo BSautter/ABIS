@@ -88,7 +88,70 @@ function scaffold(): string {
         </div>
       </div>
     </div>
+
+    <div class="card" style="margin-top:16px">
+      <header><h2>Routing</h2><span class="sub" id="routingSub">how the loaded part runs (line/die/shape + SPM &amp; efficiency)</span></header>
+      <div class="body" id="routingBody"><p class="muted">Load a part to see and edit its routings.</p></div>
+    </div>
   </div>`;
+}
+
+// A part's routings (legacy ROUTING). Rendered when a part is loaded; raw authFetch (no client method).
+async function renderRoutings(partId: number | null): Promise<void> {
+  const body = $('#routingBody');
+  if (partId == null) { body.innerHTML = '<p class="muted">Load a part to see and edit its routings.</p>'; return; }
+  try {
+    const rows = (await authFetch(`/api/parts/${partId}/routings`).then((r) => r.json())) as any[];
+    const list = (rows ?? []).map((r) => `
+      <tr><td class="mono">${esc(r.routingSequence)}</td><td class="mono">${esc(r.lineNum)}</td><td class="mono">${esc(r.dieId)}</td>
+        <td>${esc(r.sheetType)}</td><td class="num">${esc(r.spmStandard)}</td><td class="num">${esc(r.spmPlanned)}</td>
+        <td class="num">${esc(r.numberOfPeople)}</td><td>${esc(r.edgeTrimYN)}</td><td>${esc(r.stackerYN)}</td>
+        <td><button class="btn sm ghost" data-del-routing="${esc(r.routingSequence)}|${esc(r.lineNum)}|${esc(r.dieId)}|${esc(r.sheetType)}" type="button">Remove</button></td></tr>`).join('');
+    body.innerHTML = `
+      <div style="overflow-x:auto"><table class="tbl" style="min-width:640px">
+        <thead><tr><th>Seq</th><th>Line</th><th>Die</th><th>Shape</th><th class="num">SPM std</th><th class="num">SPM plan</th><th class="num">People</th><th>Edge trim</th><th>Stacker</th><th></th></tr></thead>
+        <tbody>${list || '<tr><td colspan="10" class="muted">No routings.</td></tr>'}</tbody></table></div>
+      <div class="frow" style="margin-top:10px;align-items:flex-end">
+        ${fld('rSeq', 'Seq', 70, 'num')}${fld('rLine', 'Line #', 80, 'num')}${fld('rDie', 'Die id', 80, 'num')}
+        <div class="fld"><label>Shape</label><input id="rShape" style="width:120px" placeholder="RECTANGLE" /></div>
+        ${fld('rSpmStd', 'SPM std', 80, 'num')}${fld('rSpmPlan', 'SPM plan', 80, 'num')}${fld('rPeople', 'People', 70, 'num')}
+        <div class="fld"><label>Edge trim</label><input id="rEdge" maxlength="1" style="width:70px" placeholder="Y/N" /></div>
+        <div class="fld"><label>Stacker</label><input id="rStacker" maxlength="1" style="width:70px" placeholder="Y/N" /></div>
+        <button class="btn sm" id="btnAddRouting" type="button">Add routing</button>
+        <span id="routingMsg" class="ok-note"></span>
+      </div>`;
+    body.querySelectorAll<HTMLButtonElement>('[data-del-routing]').forEach((b) =>
+      b.addEventListener('click', () => void removeRouting(partId, b.getAttribute('data-del-routing') || '')));
+    $('#btnAddRouting').addEventListener('click', () => void addRouting(partId));
+  } catch (e) { body.innerHTML = `<p class="err">Routings failed: ${esc((e as Error).message)}</p>`; }
+}
+
+async function addRouting(partId: number): Promise<void> {
+  const msg = $('#routingMsg');
+  const need = ['#rSeq', '#rLine', '#rDie', '#rShape', '#rSpmStd', '#rSpmPlan', '#rPeople'];
+  if (need.some((id) => !v(id))) { msg.textContent = 'Seq, line, die, shape, SPM std/plan and people are required.'; msg.className = 'err'; return; }
+  try {
+    const r = await authFetch(`/api/parts/${partId}/routings`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        routingSequence: Number(v('#rSeq')), lineNum: Number(v('#rLine')), dieId: Number(v('#rDie')), sheetType: v('#rShape'),
+        spmStandard: Number(v('#rSpmStd')), spmPlanned: Number(v('#rSpmPlan')), numberOfPeople: Number(v('#rPeople')),
+        edgeTrimYN: v('#rEdge') || undefined, stackerYN: v('#rStacker') || undefined,
+      }),
+    });
+    if (!r.ok) { const b = await r.json().catch(() => ({ message: `HTTP ${r.status}` })); msg.textContent = b.message ?? `Add failed (${r.status}).`; msg.className = 'err'; return; }
+    await renderRoutings(partId);
+  } catch (e) { msg.textContent = `Add failed: ${(e as Error).message}`; msg.className = 'err'; }
+}
+
+async function removeRouting(partId: number, key: string): Promise<void> {
+  const [seq, line, die, shape] = key.split('|');
+  if (!window.confirm(`Remove routing #${seq} (line ${line} / die ${die} / ${shape})?`)) return;
+  try {
+    const r = await authFetch(`/api/parts/${partId}/routings/${seq}/${line}/${die}/${encodeURIComponent(shape)}`, { method: 'DELETE' });
+    if (!r.ok) { const m = $('#routingMsg'); m.textContent = `Remove failed (${r.status}).`; m.className = 'err'; return; }
+    await renderRoutings(partId);
+  } catch (e) { const m = $('#routingMsg'); m.textContent = `Remove failed: ${(e as Error).message}`; m.className = 'err'; }
 }
 
 async function loadCustomers(): Promise<void> {
@@ -140,6 +203,7 @@ async function loadPart(id: number): Promise<void> {
     setV('#pPiecesSkid', p.piecesSkid); setV('#pMaxSkidWt', p.maxSkidWt); setV('#pStacksSkid', p.stacksSkid);
     setV('#pSupplierCode', p.supplierCode); setV('#pPackagingBands', p.packagingBands);
     setV('#pItemDesc', p.itemDesc); setV('#pItemNote', p.itemNote);
+    await renderRoutings(id);
   } catch (e) { setErr(`Load failed: ${(e as Error).message}`); }
   finally { setBusy(false); }
 }
@@ -154,6 +218,7 @@ function newPart(): void {
     '#pPiecesSkid', '#pMaxSkidWt', '#pStacksSkid', '#pSupplierCode', '#pPackagingBands', '#pItemDesc', '#pItemNote']
     .forEach((id) => setV(id, ''));
   setOk(''); setErr('');
+  void renderRoutings(null);
 }
 
 async function save(): Promise<void> {

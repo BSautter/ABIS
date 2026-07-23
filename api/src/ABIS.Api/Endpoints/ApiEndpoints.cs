@@ -834,6 +834,41 @@ public static class ApiEndpoints
            .WithSummary("Delete a part and its blank geometry. 409 if the part is referenced by any order line (order_item.part_num_id).")
            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
 
+        // Part routing (legacy ROUTING) — how a part runs (line/die/shape + SPM & efficiency standards).
+        api.MapGet("/parts/{partNumId:long}/routings", async (long partNumId, IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetRoutingsByPartAsync(partNumId, ct)))
+           .WithName("GetPartRoutings").WithTags("Parts")
+           .WithSummary("A part's routings (line/die/shape + SPM/efficiency standards + edge-trim/stacker flags), enriched with die + line names.")
+           .Produces<IReadOnlyList<Routing>>();
+
+        api.MapPost("/parts/{partNumId:long}/routings", async (long partNumId, RoutingWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (string.IsNullOrWhiteSpace(body.SheetType))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["sheetType"] = new[] { "sheetType is required." } });
+                var r = await repo.AddRoutingAsync(partNumId, body, ct);
+                return r switch
+                {
+                    RoutingOutcome.Added => Results.Created($"/api/parts/{partNumId}/routings", new { partNumId, body.RoutingSequence }),
+                    RoutingOutcome.PartNotFound => Results.NotFound(new { message = $"Part {partNumId} not found." }),
+                    RoutingOutcome.LineNotFound => Results.NotFound(new { message = $"Line {body.LineNum} not found." }),
+                    RoutingOutcome.DieNotFound => Results.NotFound(new { message = $"Die {body.DieId} not found." }),
+                    RoutingOutcome.Duplicate => Results.Conflict(new { code = "duplicate",
+                        message = $"Part {partNumId} already has routing #{body.RoutingSequence} on line {body.LineNum} / die {body.DieId} / {body.SheetType}." }),
+                    _ => Results.Problem("Unexpected routing outcome."),
+                };
+            })
+           .WithName("AddPartRouting").WithTags("Parts")
+           .WithSummary("Add a routing to a part (edit = delete + re-add). 404 if the part/line/die is unknown; 409 'duplicate' if the same routing already exists.")
+           .Produces(StatusCodes.Status201Created).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
+
+        api.MapDelete("/parts/{partNumId:long}/routings/{routingSequence:long}/{lineNum:long}/{dieId:long}/{sheetType}", async (long partNumId, long routingSequence, long lineNum, long dieId, string sheetType, IAbisRepository repo, CancellationToken ct) =>
+                await repo.DeleteRoutingAsync(partNumId, routingSequence, lineNum, dieId, sheetType, ct)
+                    ? Results.NoContent()
+                    : Results.NotFound(new { message = $"No routing #{routingSequence} on line {lineNum} / die {dieId} / {sheetType} for part {partNumId}." }))
+           .WithName("DeletePartRouting").WithTags("Parts")
+           .WithSummary("Remove a routing from a part (identified by routing sequence + line + die + sheet type).")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
+
         // ---- Dies (die / tooling) --------------------------------------
         api.MapGet("/dies", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, int? status = null, string? sort = null, string? dir = null) =>

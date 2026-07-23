@@ -2168,6 +2168,48 @@ public sealed class RepositoryTests : IDisposable
         Assert.Equal(2, (await _repo.GetCustomerDefectsAsync(4001, CancellationToken.None)).Count);
     }
 
+    [Fact]
+    public async Task PartRouting_lists_adds_guards_deletes_and_travels_with_a_copy()
+    {
+        // Seed: part 6001 has one routing (seq 1, line 110, die 2001, RECTANGLE, SPM 60).
+        var routings = await _repo.GetRoutingsByPartAsync(6001, CancellationToken.None);
+        Assert.Single(routings);
+        Assert.Equal(60, routings[0].SpmStandard);
+        Assert.Equal("DIE-ALPHA", routings[0].DieName);
+        Assert.Equal("Cut-to-length 1", routings[0].LineDesc);
+
+        // Add guards: unknown part / line / die.
+        Assert.Equal(RoutingOutcome.PartNotFound, await _repo.AddRoutingAsync(999999,
+            new RoutingWrite { SheetType = "RECTANGLE", LineNum = 110, DieId = 2001, RoutingSequence = 2 }, CancellationToken.None));
+        Assert.Equal(RoutingOutcome.LineNotFound, await _repo.AddRoutingAsync(6001,
+            new RoutingWrite { SheetType = "RECTANGLE", LineNum = 999, DieId = 2001, RoutingSequence = 2 }, CancellationToken.None));
+        Assert.Equal(RoutingOutcome.DieNotFound, await _repo.AddRoutingAsync(6001,
+            new RoutingWrite { SheetType = "RECTANGLE", LineNum = 110, DieId = 9999, RoutingSequence = 2 }, CancellationToken.None));
+        // Duplicate of the seed routing.
+        Assert.Equal(RoutingOutcome.Duplicate, await _repo.AddRoutingAsync(6001,
+            new RoutingWrite { SheetType = "RECTANGLE", LineNum = 110, DieId = 2001, RoutingSequence = 1 }, CancellationToken.None));
+
+        // Add a second routing; customer_id is derived from the part (4001).
+        Assert.Equal(RoutingOutcome.Added, await _repo.AddRoutingAsync(6001,
+            new RoutingWrite { SheetType = "RECTANGLE", LineNum = 120, DieId = 2002, RoutingSequence = 2, SpmStandard = 50, SpmPlanned = 45, NumberOfPeople = 3, EdgeTrimYN = "Y", StackerYN = "N" }, CancellationToken.None));
+        var two = await _repo.GetRoutingsByPartAsync(6001, CancellationToken.None);
+        Assert.Equal(2, two.Count);
+        Assert.All(two, r => Assert.Equal(4001, r.CustomerId));
+
+        // A part copy carries the routings.
+        var copy = await _repo.CopyPartAsync(6001, CancellationToken.None);
+        Assert.Equal(2, (await _repo.GetRoutingsByPartAsync(copy!.PartNumId, CancellationToken.None)).Count);
+
+        // Delete the added routing on the source; a second delete is a miss.
+        Assert.True(await _repo.DeleteRoutingAsync(6001, 2, 120, 2002, "RECTANGLE", CancellationToken.None));
+        Assert.False(await _repo.DeleteRoutingAsync(6001, 2, 120, 2002, "RECTANGLE", CancellationToken.None));
+        Assert.Single(await _repo.GetRoutingsByPartAsync(6001, CancellationToken.None));
+
+        // Deleting the copied part clears its routings too (no orphans).
+        Assert.Equal(DeleteOutcome.Deleted, (await _repo.DeletePartAsync(copy.PartNumId, CancellationToken.None)).Outcome);
+        Assert.Empty(await _repo.GetRoutingsByPartAsync(copy.PartNumId, CancellationToken.None));
+    }
+
     // ---- customer contacts & sketches ----------------------------------
 
     [Fact]

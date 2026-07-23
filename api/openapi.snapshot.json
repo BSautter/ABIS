@@ -6789,6 +6789,162 @@
         }
       }
     },
+    "/api/parts/{partNumId}/routings": {
+      "get": {
+        "tags": [
+          "Parts"
+        ],
+        "summary": "A part's routings (line/die/shape + SPM/efficiency standards + edge-trim/stacker flags), enriched with die + line names.",
+        "operationId": "GetPartRoutings",
+        "parameters": [
+          {
+            "name": "partNumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Routing"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Parts"
+        ],
+        "summary": "Add a routing to a part (edit = delete + re-add). 404 if the part/line/die is unknown; 409 'duplicate' if the same routing already exists.",
+        "operationId": "AddPartRouting",
+        "parameters": [
+          {
+            "name": "partNumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoutingWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/parts/{partNumId}/routings/{routingSequence}/{lineNum}/{dieId}/{sheetType}": {
+      "delete": {
+        "tags": [
+          "Parts"
+        ],
+        "summary": "Remove a routing from a part (identified by routing sequence + line + die + sheet type).",
+        "operationId": "DeletePartRouting",
+        "parameters": [
+          {
+            "name": "partNumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "routingSequence",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "lineNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "dieId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "sheetType",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/prod-folder/jobs/{abJobNum}": {
       "get": {
         "tags": [
@@ -20130,6 +20286,134 @@
           "restoredSkids": {
             "type": "integer",
             "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Routing": {
+        "type": "object",
+        "properties": {
+          "routingSequence": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "customerId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "partNumId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lineNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "dieId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sheetType": {
+            "type": "string",
+            "nullable": true
+          },
+          "spmStandard": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "spmPlanned": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "numberOfPeople": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "edgeTrimYN": {
+            "type": "string",
+            "nullable": true
+          },
+          "stackerYN": {
+            "type": "string",
+            "nullable": true
+          },
+          "efficPercentStandard": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "efficPercentPlanned": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "itemRouting": {
+            "type": "string",
+            "nullable": true
+          },
+          "dieName": {
+            "type": "string",
+            "nullable": true
+          },
+          "lineDesc": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "RoutingWrite": {
+        "type": "object",
+        "properties": {
+          "routingSequence": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lineNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "dieId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sheetType": {
+            "type": "string",
+            "nullable": true
+          },
+          "spmStandard": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "spmPlanned": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "numberOfPeople": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "edgeTrimYN": {
+            "type": "string",
+            "nullable": true
+          },
+          "stackerYN": {
+            "type": "string",
+            "nullable": true
+          },
+          "efficPercentStandard": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "efficPercentPlanned": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "itemRouting": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false

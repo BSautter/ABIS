@@ -374,6 +374,19 @@ public static class SqliteFixture
                 sheet_type TEXT NOT NULL, line_num INTEGER NOT NULL, die_id INTEGER NOT NULL,
                 PRIMARY KEY (sheet_type, line_num, die_id));
 
+            -- Per-part routing (legacy ROUTING): how a part runs — line/die/shape + SPM & efficiency
+            -- standards + edge-trim/stacker flags. Legacy PK is the whole row (an all-column key), so
+            -- the modern surface is list/add/delete (edit = delete + re-add). routing_sequence is the
+            -- routing's ordinal within the part.
+            CREATE TABLE routing (
+                routing_sequence INTEGER NOT NULL, customer_id INTEGER NOT NULL, part_num_id INTEGER NOT NULL,
+                line_num INTEGER NOT NULL, die_id INTEGER NOT NULL, sheet_type TEXT NOT NULL,
+                spm_standard INTEGER NOT NULL, spm_planned INTEGER NOT NULL, number_of_people INTEGER NOT NULL,
+                edge_trim_y_n TEXT NOT NULL, stacker_y_n TEXT NOT NULL,
+                effic_percent_standard INTEGER, effic_percent_planned INTEGER, item_routing TEXT,
+                PRIMARY KEY (routing_sequence, customer_id, part_num_id, line_num, die_id, sheet_type,
+                             spm_standard, spm_planned, number_of_people, edge_trim_y_n, stacker_y_n));
+
             CREATE TABLE shipment (
                 packing_list INTEGER PRIMARY KEY, bill_of_lading INTEGER, carrier_id INTEGER,
                 customer_id INTEGER, des_sh_cust_id INTEGER, vehicle_id TEXT, vehicle_status INTEGER,
@@ -773,6 +786,21 @@ public static class SqliteFixture
                 new { SheetType = "RECTANGLE", LineNum = 110L, DieId = 2001L },
                 new { SheetType = "RECTANGLE", LineNum = 120L, DieId = 2002L },
                 new { SheetType = "TRAPEZOID", LineNum = 110L, DieId = 2001L }
+            });
+
+        // Routing for part 6001 (customer 4001, RECTANGLE on line 110 / die 2001).
+        conn.Execute(
+            """
+            INSERT INTO routing (routing_sequence, customer_id, part_num_id, line_num, die_id, sheet_type,
+                spm_standard, spm_planned, number_of_people, edge_trim_y_n, stacker_y_n,
+                effic_percent_standard, effic_percent_planned, item_routing)
+            VALUES (:Seq, :CustomerId, :PartNumId, :LineNum, :DieId, :SheetType,
+                :SpmStd, :SpmPlan, :People, :EdgeTrim, :Stacker, :EffStd, :EffPlan, :ItemRouting)
+            """,
+            new
+            {
+                Seq = 1L, CustomerId = 4001L, PartNumId = 6001L, LineNum = 110L, DieId = 2001L, SheetType = "RECTANGLE",
+                SpmStd = 60, SpmPlan = 55, People = 2, EdgeTrim = "N", Stacker = "Y", EffStd = 85, EffPlan = 80, ItemRouting = "Y"
             });
 
         conn.Execute("""

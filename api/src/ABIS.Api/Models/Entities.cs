@@ -799,6 +799,32 @@ public sealed class LineDieShape
 /// <summary>Outcome of adding a <see cref="LineDieShape"/> mapping.</summary>
 public enum LineDieShapeOutcome { Added, LineNotFound, DieNotFound, Duplicate }
 
+/// <summary>A part's routing (legacy <c>ROUTING</c>): how the part runs — line/die/shape + SPM &amp;
+/// efficiency standards + edge-trim/stacker flags. The legacy PK is the whole row (an all-column key),
+/// so the modern surface is list/add/delete. Enriched with die name + line description.</summary>
+public sealed class Routing
+{
+    public long RoutingSequence { get; set; }
+    public long CustomerId { get; set; }
+    public long PartNumId { get; set; }
+    public long LineNum { get; set; }
+    public long DieId { get; set; }
+    public string SheetType { get; set; } = "";
+    public int SpmStandard { get; set; }
+    public int SpmPlanned { get; set; }
+    public int NumberOfPeople { get; set; }
+    public string? EdgeTrimYN { get; set; }
+    public string? StackerYN { get; set; }
+    public int? EfficPercentStandard { get; set; }
+    public int? EfficPercentPlanned { get; set; }
+    public string? ItemRouting { get; set; }
+    public string? DieName { get; set; }
+    public string? LineDesc { get; set; }
+}
+
+/// <summary>Outcome of adding a <see cref="Routing"/>.</summary>
+public enum RoutingOutcome { Added, PartNotFound, LineNotFound, DieNotFound, Duplicate }
+
 /// <summary>A shipment / packing list (table <c>shipment</c>; PK <c>packing_list</c>).</summary>
 public sealed class Shipment
 {

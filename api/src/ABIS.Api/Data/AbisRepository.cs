@@ -3980,6 +3980,18 @@ public sealed class AbisRepository : IAbisRepository
                 new { newId, src = sourcePartNumId }, transaction: tx, cancellationToken: ct));
         }
 
+        // Routings travel with the part (same customer; only the part_num_id changes).
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO routing (part_num_id, routing_sequence, customer_id, line_num, die_id, sheet_type,
+                spm_standard, spm_planned, number_of_people, edge_trim_y_n, stacker_y_n,
+                effic_percent_standard, effic_percent_planned, item_routing)
+            SELECT :newId, routing_sequence, customer_id, line_num, die_id, sheet_type,
+                spm_standard, spm_planned, number_of_people, edge_trim_y_n, stacker_y_n,
+                effic_percent_standard, effic_percent_planned, item_routing
+            FROM routing WHERE part_num_id = :src
+            """, new { newId, src = sourcePartNumId }, transaction: tx, cancellationToken: ct));
+
         await tx.CommitAsync(ct);
         return await GetPartAsync(newId, ct);
     }
@@ -4005,9 +4017,89 @@ public sealed class AbisRepository : IAbisRepository
             await conn.ExecuteAsync(new CommandDefinition(
                 $"DELETE FROM {def.PartTable} WHERE part_num_id = :id", new { id = partNumId }, transaction: tx, cancellationToken: ct));
         await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM routing WHERE part_num_id = :id", new { id = partNumId }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
             "DELETE FROM part_num WHERE part_num_id = :id", new { id = partNumId }, transaction: tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
         return new DeleteResult(DeleteOutcome.Deleted);
+    }
+
+    // ---- Part routing (legacy ROUTING) ----
+
+    private const string RoutingCols =
+        "r.routing_sequence AS RoutingSequence, r.customer_id AS CustomerId, r.part_num_id AS PartNumId, " +
+        "r.line_num AS LineNum, r.die_id AS DieId, r.sheet_type AS SheetType, r.spm_standard AS SpmStandard, " +
+        "r.spm_planned AS SpmPlanned, r.number_of_people AS NumberOfPeople, r.edge_trim_y_n AS EdgeTrimYN, " +
+        "r.stacker_y_n AS StackerYN, r.effic_percent_standard AS EfficPercentStandard, " +
+        "r.effic_percent_planned AS EfficPercentPlanned, r.item_routing AS ItemRouting, " +
+        "d.die_name AS DieName, l.line_desc AS LineDesc";
+
+    public async Task<IReadOnlyList<Routing>> GetRoutingsByPartAsync(long partNumId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<Routing>(new CommandDefinition(
+            $"""
+            SELECT {RoutingCols}
+            FROM routing r LEFT JOIN die d ON d.die_id = r.die_id LEFT JOIN line l ON l.line_num = r.line_num
+            WHERE r.part_num_id = :id
+            ORDER BY r.routing_sequence, r.line_num, r.die_id
+            """, new { id = partNumId }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    // Add a routing for a part. customer_id comes from the part; line + die must exist; the natural
+    // key (part, seq, line, die, sheet_type) must be new (a proxy for the legacy all-column PK).
+    public async Task<RoutingOutcome> AddRoutingAsync(long partNumId, RoutingWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var customerId = await conn.ExecuteScalarAsync<long?>(new CommandDefinition(
+            "SELECT customer_id FROM part_num WHERE part_num_id = :id", new { id = partNumId }, cancellationToken: ct));
+        if (customerId is null) return RoutingOutcome.PartNotFound;
+        var lineExists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM line WHERE line_num = :ln", new { ln = body.LineNum }, cancellationToken: ct)) > 0;
+        if (!lineExists) return RoutingOutcome.LineNotFound;
+        var dieExists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM die WHERE die_id = :di", new { di = body.DieId }, cancellationToken: ct)) > 0;
+        if (!dieExists) return RoutingOutcome.DieNotFound;
+
+        var sheetType = (body.SheetType ?? "").Trim().ToUpperInvariant();
+        var dup = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            """
+            SELECT COUNT(*) FROM routing WHERE part_num_id = :pid AND routing_sequence = :seq
+                  AND line_num = :ln AND die_id = :di AND sheet_type = :st
+            """,
+            new { pid = partNumId, seq = body.RoutingSequence, ln = body.LineNum, di = body.DieId, st = sheetType },
+            cancellationToken: ct)) > 0;
+        if (dup) return RoutingOutcome.Duplicate;
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO routing (routing_sequence, customer_id, part_num_id, line_num, die_id, sheet_type,
+                spm_standard, spm_planned, number_of_people, edge_trim_y_n, stacker_y_n,
+                effic_percent_standard, effic_percent_planned, item_routing)
+            VALUES (:seq, :cid, :pid, :ln, :di, :st, :spmS, :spmP, :people, :edge, :stack, :effS, :effP, :item)
+            """,
+            new
+            {
+                seq = body.RoutingSequence, cid = customerId, pid = partNumId, ln = body.LineNum, di = body.DieId, st = sheetType,
+                spmS = body.SpmStandard, spmP = body.SpmPlanned, people = body.NumberOfPeople,
+                edge = body.EdgeTrimYN, stack = body.StackerYN, effS = body.EfficPercentStandard, effP = body.EfficPercentPlanned,
+                item = body.ItemRouting,
+            }, cancellationToken: ct));
+        return RoutingOutcome.Added;
+    }
+
+    public async Task<bool> DeleteRoutingAsync(long partNumId, long routingSequence, long lineNum, long dieId, string sheetType, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            """
+            DELETE FROM routing WHERE part_num_id = :pid AND routing_sequence = :seq
+                  AND line_num = :ln AND die_id = :di AND sheet_type = :st
+            """,
+            new { pid = partNumId, seq = routingSequence, ln = lineNum, di = dieId, st = (sheetType ?? "").Trim().ToUpperInvariant() },
+            cancellationToken: ct));
+        return n > 0;
     }
 
     public Task<PagedResult<Die>> GetDiesAsync(int page, int pageSize, int? status, string? orderBy, CancellationToken ct) =>

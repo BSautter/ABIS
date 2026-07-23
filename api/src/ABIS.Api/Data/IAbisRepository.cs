@@ -224,6 +224,9 @@ public interface IAbisRepository
     Task<Part?> UpdatePartAsync(long partNumId, PartWrite body, CancellationToken ct);
     Task<Part?> CopyPartAsync(long sourcePartNumId, CancellationToken ct);
     Task<DeleteResult> DeletePartAsync(long partNumId, CancellationToken ct);
+    Task<IReadOnlyList<Routing>> GetRoutingsByPartAsync(long partNumId, CancellationToken ct);
+    Task<RoutingOutcome> AddRoutingAsync(long partNumId, RoutingWrite body, CancellationToken ct);
+    Task<bool> DeleteRoutingAsync(long partNumId, long routingSequence, long lineNum, long dieId, string sheetType, CancellationToken ct);
     /// <summary>True when any order_item references this part (part_num_id) — the legacy
     /// modify/delete-in-use guard (w_part_num_management): an applied part must be revised,
     /// not edited in place.</summary>

@@ -212,6 +212,24 @@ public sealed class CustomerScrapTypeWrite
     public string? NonAutoparts { get; set; }
 }
 
+/// <summary>Add a routing to a part (legacy <c>ROUTING</c>). The part supplies <c>customer_id</c> and
+/// <c>part_num_id</c>; <see cref="SheetType"/> is required. Edit = delete + re-add (all-column PK).</summary>
+public sealed class RoutingWrite
+{
+    public long RoutingSequence { get; set; }
+    public long LineNum { get; set; }
+    public long DieId { get; set; }
+    public string? SheetType { get; set; }
+    public int SpmStandard { get; set; }
+    public int SpmPlanned { get; set; }
+    public int NumberOfPeople { get; set; }
+    public string? EdgeTrimYN { get; set; }
+    public string? StackerYN { get; set; }
+    public int? EfficPercentStandard { get; set; }
+    public int? EfficPercentPlanned { get; set; }
+    public string? ItemRouting { get; set; }
+}
+
 /// <summary>Add a die → shape mapping (legacy <c>LINE_DIE_4SHEET_TYPE</c>): which (line, die)
 /// makes a shape. <see cref="SheetType"/> is required.</summary>
 public sealed class LineDieShapeWrite
