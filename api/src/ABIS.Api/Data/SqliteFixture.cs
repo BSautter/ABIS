@@ -47,6 +47,11 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS coil_track_qa;
             DROP TABLE IF EXISTS coil_quality;
             DROP TABLE IF EXISTS coil_quality_flaw_mapping;
+            DROP TABLE IF EXISTS scraped_sheet_skid;
+            DROP TABLE IF EXISTS scraped_production_sheet_item;
+            DROP TABLE IF EXISTS scraped_process_partial_skid;
+            DROP TABLE IF EXISTS scraped_sheet_skid_detail;
+            DROP TABLE IF EXISTS scrap_skid_detail;
             DROP TABLE IF EXISTS customer;
             DROP TABLE IF EXISTS sheet_skid;
             DROP TABLE IF EXISTS scrap_skid;
@@ -269,7 +274,9 @@ public static class SqliteFixture
             CREATE TABLE sheet_skid (
                 sheet_skid_num INTEGER PRIMARY KEY, ab_job_num INTEGER, sheet_skid_display_num TEXT,
                 sheet_net_wt REAL NOT NULL, sheet_tare_wt REAL NOT NULL, skid_pieces INTEGER, skid_date TEXT,
-                skid_location TEXT, skid_sheet_status INTEGER, skid_ticket_if_whed TEXT, skid_from_if_whed TEXT);
+                skid_location TEXT, skid_sheet_status INTEGER, skid_ticket_if_whed TEXT, skid_from_if_whed TEXT,
+                skid_edi856_date TEXT, sheet_theoretical_wt REAL, ref_order_abc_num INTEGER, skid_type_if_whed TEXT,
+                ref_order_abc_item INTEGER, skid_sheet_status_held_by_qc INTEGER);
 
             CREATE TABLE scrap_skid (
                 scrap_skid_num INTEGER PRIMARY KEY, scrap_ab_job_num TEXT, scrap_alloy2 TEXT, scrap_temper TEXT,
@@ -282,7 +289,8 @@ public static class SqliteFixture
             CREATE TABLE production_sheet_item (
                 prod_item_num INTEGER PRIMARY KEY, coil_abc_num INTEGER, ab_job_num INTEGER,
                 prod_item_status INTEGER, prod_item_pieces INTEGER, prod_item_net_wt REAL,
-                prod_item_theoretical_wt REAL, prod_item_date TEXT, prod_item_note TEXT, shift_num INTEGER);
+                prod_item_theoretical_wt REAL, prod_item_date TEXT, prod_item_note TEXT, shift_num INTEGER,
+                prod_item_edi870_date TEXT, prod_item_placement TEXT);
 
             -- Scrap returned against a job (legacy return_scrap_item): the invoice's "total scrap
             -- weight" bucket = SUM(return_item_net_wt).
@@ -307,7 +315,28 @@ public static class SqliteFixture
 
             CREATE TABLE process_partial_skid (
                 sheet_skid_num INTEGER, ab_job_num INTEGER, partial_skid_ab_job_num TEXT,
-                partial_sheet_net_wt REAL, partial_skid_pieces INTEGER, partial_skid_location TEXT, partial_skid_date TEXT);
+                partial_sheet_net_wt REAL, partial_skid_pieces INTEGER, partial_skid_location TEXT, partial_skid_date TEXT,
+                partial_sheet_theoretical_wt REAL);
+
+            -- Scrap mirror + link tables for the return-scrap (un-scrap) flow (legacy F_CONVERT_BACK_TO_SHEET).
+            -- When a skid is scrapped, its live rows are moved to these scraped_* mirrors; return-scrap copies them back.
+            CREATE TABLE scraped_sheet_skid (
+                sheet_skid_num INTEGER, ab_job_num INTEGER, sheet_net_wt REAL, sheet_tare_wt REAL, skid_edi856_date TEXT,
+                skid_location TEXT, skid_date TEXT, skid_sheet_status INTEGER, skid_pieces INTEGER, sheet_theoretical_wt REAL,
+                skid_from_if_whed TEXT, skid_ticket_if_whed TEXT, ref_order_abc_num INTEGER, skid_type_if_whed TEXT,
+                ref_order_abc_item INTEGER, skid_sheet_status_held_by_qc INTEGER, scrap_skid_num INTEGER);
+            CREATE TABLE scraped_production_sheet_item (
+                prod_item_num INTEGER, coil_abc_num INTEGER, ab_job_num INTEGER, prod_item_status INTEGER,
+                prod_item_pieces INTEGER, prod_item_net_wt REAL, prod_item_theoretical_wt REAL, prod_item_edi870_date TEXT,
+                prod_item_date TEXT, prod_item_note TEXT, prod_item_placement TEXT, scrap_skid_num INTEGER);
+            CREATE TABLE scraped_process_partial_skid (
+                ab_job_num INTEGER, sheet_skid_num INTEGER, partial_skid_ab_job_num TEXT, partial_sheet_net_wt REAL,
+                partial_skid_location TEXT, partial_skid_date TEXT, partial_skid_pieces INTEGER,
+                partial_sheet_theoretical_wt REAL, scrap_skid_num INTEGER);
+            CREATE TABLE scraped_sheet_skid_detail (
+                prod_item_num INTEGER, sheet_skid_num INTEGER, scrap_skid_num INTEGER);
+            CREATE TABLE scrap_skid_detail (
+                scrap_skid_num INTEGER, return_scrap_item_num INTEGER);
 
             CREATE TABLE opc_action_log (
                 opc_log_id INTEGER PRIMARY KEY, time_stamp TEXT, source TEXT, success INTEGER, notes TEXT);

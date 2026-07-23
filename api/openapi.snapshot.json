@@ -11076,6 +11076,44 @@
         }
       }
     },
+    "/api/scrap-skids/{scrapSkidNum}/return": {
+      "post": {
+        "tags": [
+          "Skids"
+        ],
+        "summary": "Return (un-scrap) a scrap skid — restores its scrapped sheet-skid/production rows to the live tables and removes the scrap records (legacy F_CONVERT_BACK_TO_SHEET). 404 if the scrap skid is unknown.",
+        "operationId": "ReturnScrapSkid",
+        "parameters": [
+          {
+            "name": "scrapSkidNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReturnScrapResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/partial-skids": {
       "get": {
         "tags": [
@@ -19079,6 +19117,19 @@
           "pct": {
             "type": "number",
             "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReturnScrapResult": {
+        "type": "object",
+        "properties": {
+          "found": {
+            "type": "boolean"
+          },
+          "restoredSkids": {
+            "type": "integer",
+            "format": "int32"
           }
         },
         "additionalProperties": false

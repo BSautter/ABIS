@@ -2861,6 +2861,15 @@ public static class ApiEndpoints
            .WithSummary("Delete a scrap skid, guarded: 409 if it's on a shipment; 404 if unknown; 204 on delete.")
            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
 
+        api.MapPost("/scrap-skids/{scrapSkidNum:long}/return", async (long scrapSkidNum, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var r = await repo.ReturnScrapSkidAsync(scrapSkidNum, ct);
+                return r.Found ? Results.Ok(r) : Results.NotFound();
+            })
+           .WithName("ReturnScrapSkid").WithTags("Skids")
+           .WithSummary("Return (un-scrap) a scrap skid — restores its scrapped sheet-skid/production rows to the live tables and removes the scrap records (legacy F_CONVERT_BACK_TO_SHEET). 404 if the scrap skid is unknown.")
+           .Produces<ReturnScrapResult>().Produces(StatusCodes.Status404NotFound);
+
         api.MapGet("/partial-skids", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, string? sort = null, string? dir = null) =>
             {

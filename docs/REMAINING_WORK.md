@@ -75,7 +75,7 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 ### C1. Commercial — order entry / parts / quoting / customers / accounting
 - [ ] **C** Quote pricing/cost model (CirclePro $/lb + job cost + ROS; SheetPro rectangular) — quotation emits yield-% only, "not a quote"
 - [ ] **C** Quote editor (`PUT /sales/quotes` + tabbed spec/pricing/inventory/shipment body) + save/reload + print + email
-- [ ] **H** Order edit-in-UI — wire `order-entry.ts` to the existing `PUT /orders/{o}` + item endpoints (create+view only today)
+- [x] **H** Order edit-in-UI — done (#249): order-detail Edit toggle wires the existing `PUT /orders/{o}` + item PUT (editable header + per-line part/alloy/sheet/gauge/qty; full-replace-safe via spread)
 - [ ] **H** Assign customer coils to an order (`/orders/{id}/coils`, dup-org warning)
 - [ ] **H** Part revisions (version + re-point open items); routing sequences per part
 - [ ] **M** Part delete / copy; order copy/duplicate; obsolete-in-use guard; end-user change cascade; order-entry part picker
@@ -95,7 +95,7 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [ ] **C** Warehouse skid CRUD + status-20 warehouse-coil mint (+ process_coil/sheet_skid rows, weight recon, package-num)
 - [x] **H** Coil-ownership transfer mint semantics — done (#224): mints a NEW `coil_abc_num` (status 2, from-cust set) + original → status 13; cert carries the new id
 - [x] **H** Bulk "Change status → Ready for transfer" (status 12) — done (#240 `POST /coils/ready-for-transfer` with eligibility guards; #241 picker `readyOnly` filter + coil-ownership mark-ready UI)
-- [~] **H** Scrap-skid + sheet-skid guarded DELETE done (DELETE /scrap-skids/{n}, /sheet-skids/{n} — refuse skids on a shipment; sheet-skid delete cascades its detail + dimension-check rows). Still TODO: return-scrap / credit, sheet-skid modify + weight/piece reconciliation.
+- [~] **H** Scrap-skid + sheet-skid guarded DELETE done (#243). **Return-scrap done** (#XXX): POST /scrap-skids/{n}/return faithfully ports the live F_CONVERT_BACK_TO_SHEET proc — copies the scrapped mirror rows (scraped_sheet_skid/production_sheet_item/process_partial_skid/detail) back to the live tables, deletes the mirrors + scrap_skid(+detail) + credits back the linked return_scrap_item rows. Still TODO: sheet-skid modify + weight/piece reconciliation.
 - [~] **H** Guarded coil delete — done (DELETE /coils/{n}, refuses coils applied to a job or done/shipped/transferred); change-coil-customer-on-BOL cascade still TODO
 - [x] **H** Mint carries full coil attributes — already done in #224: the ownership-transfer mint does a `SELECT *` schema read and copies every coil column (cash_date / part_num / material_num / mid_num / damaged_code / …) to the minted coil
 - [x] **H** Coil-quality capture + flaw mapping (#246 GET/PUT /coils/{n}/quality + POST/DELETE .../quality/flaws) + a **Coil quality** capture page (#247). Inbound status-on-receipt is already handled: MintBolCoilsAsync sets `coil.date_received` at receipt and status 11 (QA-hold) when `receiving_bol_coil.damaged_fault=1` (the damage code lives on receiving_bol_coil, not the coil). Remaining tail: QR/barcode capture feeding the flaw map (needs the handheld/barcode integration).

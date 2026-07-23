@@ -1481,6 +1481,48 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task ReturnScrapSkid_restores_the_scrapped_rows_and_removes_the_scrap_records()
+    {
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO scrap_skid (scrap_skid_num, scrap_ab_job_num, scrap_net_wt, scrap_tare_wt) VALUES (77500, '27704', 2000, 100);
+                INSERT INTO scraped_sheet_skid (sheet_skid_num, ab_job_num, sheet_net_wt, sheet_tare_wt, skid_pieces, skid_sheet_status, ref_order_abc_num, ref_order_abc_item, scrap_skid_num) VALUES (88800, 27704, 2000, 100, 150, 0, 5513, 1, 77500);
+                INSERT INTO scraped_production_sheet_item (prod_item_num, coil_abc_num, ab_job_num, prod_item_status, prod_item_pieces, prod_item_net_wt, scrap_skid_num) VALUES (99900, 4990, 27704, 1, 150, 2000, 77500);
+                INSERT INTO scraped_process_partial_skid (ab_job_num, sheet_skid_num, partial_sheet_net_wt, partial_skid_pieces, scrap_skid_num) VALUES (27704, 88800, 500, 40, 77500);
+                INSERT INTO scraped_sheet_skid_detail (prod_item_num, sheet_skid_num, scrap_skid_num) VALUES (99900, 88800, 77500);
+                INSERT INTO scrap_skid_detail (scrap_skid_num, return_scrap_item_num) VALUES (77500, 12345);
+                INSERT INTO return_scrap_item (return_scrap_item_num, ab_job_num, return_item_net_wt) VALUES (12345, 27704, 500);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+        // Unknown scrap skid → not found.
+        Assert.False((await _repo.ReturnScrapSkidAsync(999998, CancellationToken.None)).Found);
+
+        var res = await _repo.ReturnScrapSkidAsync(77500, CancellationToken.None);
+        Assert.True(res.Found);
+        Assert.Equal(1, res.RestoredSkids);
+
+        // The sheet skid + production rows are restored (with the warehouse ref order preserved).
+        var restored = await _repo.GetSheetSkidAsync(88800, CancellationToken.None);
+        Assert.NotNull(restored);
+        var checks = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create();
+        checks.Open();
+        long Count(string sql) { using var c = checks.CreateCommand(); c.CommandText = sql; return (long)c.ExecuteScalar()!; }
+        Assert.Equal(1, Count("SELECT COUNT(*) FROM production_sheet_item WHERE prod_item_num = 99900"));
+        Assert.Equal(1, Count("SELECT COUNT(*) FROM sheet_skid_detail WHERE prod_item_num = 99900 AND sheet_skid_num = 88800"));
+        Assert.Equal(1, Count("SELECT COUNT(*) FROM process_partial_skid WHERE sheet_skid_num = 88800"));
+        Assert.Equal(5513, Count("SELECT ref_order_abc_num FROM sheet_skid WHERE sheet_skid_num = 88800"));
+        // The scrap + mirror records are gone, and the return_scrap_item was credited back (deleted).
+        Assert.Equal(0, Count("SELECT COUNT(*) FROM scrap_skid WHERE scrap_skid_num = 77500"));
+        Assert.Equal(0, Count("SELECT COUNT(*) FROM scraped_sheet_skid WHERE scrap_skid_num = 77500"));
+        Assert.Equal(0, Count("SELECT COUNT(*) FROM return_scrap_item WHERE return_scrap_item_num = 12345"));
+        checks.Dispose();
+    }
+
+    [Fact]
     public async Task DeleteScrapSkid_is_guarded_when_on_a_shipment()
     {
         using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())

@@ -51,6 +51,10 @@ public interface IAbisRepository
     /// <summary>Delete a scrap skid, guarded: refuses (InUse) one that's on a shipment
     /// (scrap_packing_item); NotFound if unknown.</summary>
     Task<DeleteResult> DeleteScrapSkidAsync(long scrapSkidNum, CancellationToken ct);
+    /// <summary>Return (un-scrap) a scrap skid — legacy F_CONVERT_BACK_TO_SHEET: copy the scrapped
+    /// mirror rows back to the live sheet_skid/production_sheet_item/process_partial_skid/detail tables,
+    /// then delete the scrapped mirrors + the scrap_skid (+ its return_scrap_item rows).</summary>
+    Task<ReturnScrapResult> ReturnScrapSkidAsync(long scrapSkidNum, CancellationToken ct);
 
     // ---- Orders (read + write) -----------------------------------------
     Task<PagedResult<CustomerOrder>> GetOrdersAsync(int page, int pageSize, long? customerId, string? po, string? orderBy, CancellationToken ct);

@@ -426,6 +426,10 @@ public sealed class CoilQualityDetail
     public IReadOnlyList<CoilQualityFlaw> Flaws { get; set; } = [];
 }
 
+/// <summary>Result of returning (un-scrapping) a scrap skid: whether the scrap skid existed and how many
+/// sheet skids were restored from the scrapped mirror tables.</summary>
+public sealed record ReturnScrapResult(bool Found, int RestoredSkids);
+
 /// <summary>Outcome of a guarded delete (coil / sheet-skid / scrap-skid), so the endpoint can map it
 /// to the right HTTP status: 204 Deleted, 404 NotFound, 409 InUse.</summary>
 public enum DeleteOutcome { Deleted, NotFound, InUse }

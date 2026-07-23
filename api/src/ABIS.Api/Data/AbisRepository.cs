@@ -967,6 +967,69 @@ public sealed class AbisRepository : IAbisRepository
         return new DeleteResult(DeleteOutcome.Deleted);
     }
 
+    public async Task<ReturnScrapResult> ReturnScrapSkidAsync(long scrapSkidNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        if (await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+                "SELECT COUNT(*) FROM scrap_skid WHERE scrap_skid_num = :n", new { n = scrapSkidNum }, cancellationToken: ct)) == 0)
+            return new ReturnScrapResult(false, 0);
+
+        // Faithful port of F_CONVERT_BACK_TO_SHEET: copy the scrapped mirror rows back to the live
+        // tables, then remove the mirrors + the scrap records. One transaction, copy-before-delete.
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var arg = new { n = scrapSkidNum };
+
+        var restored = await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO sheet_skid (sheet_skid_num, ab_job_num, sheet_net_wt, sheet_tare_wt, skid_edi856_date,
+                skid_location, skid_date, skid_sheet_status, skid_pieces, sheet_theoretical_wt, skid_from_if_whed,
+                skid_ticket_if_whed, ref_order_abc_num, skid_type_if_whed, ref_order_abc_item, skid_sheet_status_held_by_qc)
+            SELECT sheet_skid_num, ab_job_num, sheet_net_wt, sheet_tare_wt, skid_edi856_date, skid_location, skid_date,
+                skid_sheet_status, skid_pieces, sheet_theoretical_wt, skid_from_if_whed, skid_ticket_if_whed,
+                ref_order_abc_num, skid_type_if_whed, ref_order_abc_item, skid_sheet_status_held_by_qc
+            FROM scraped_sheet_skid WHERE scrap_skid_num = :n
+            """, arg, tx, cancellationToken: ct));
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO production_sheet_item (prod_item_num, coil_abc_num, ab_job_num, prod_item_status, prod_item_pieces,
+                prod_item_net_wt, prod_item_theoretical_wt, prod_item_edi870_date, prod_item_date, prod_item_note, prod_item_placement)
+            SELECT prod_item_num, coil_abc_num, ab_job_num, prod_item_status, prod_item_pieces, prod_item_net_wt,
+                prod_item_theoretical_wt, prod_item_edi870_date, prod_item_date, prod_item_note, prod_item_placement
+            FROM scraped_production_sheet_item WHERE scrap_skid_num = :n
+            """, arg, tx, cancellationToken: ct));
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO process_partial_skid (ab_job_num, sheet_skid_num, partial_skid_ab_job_num, partial_sheet_net_wt,
+                partial_skid_location, partial_skid_date, partial_skid_pieces, partial_sheet_theoretical_wt)
+            SELECT ab_job_num, sheet_skid_num, partial_skid_ab_job_num, partial_sheet_net_wt, partial_skid_location,
+                partial_skid_date, partial_skid_pieces, partial_sheet_theoretical_wt
+            FROM scraped_process_partial_skid WHERE scrap_skid_num = :n
+            """, arg, tx, cancellationToken: ct));
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            "INSERT INTO sheet_skid_detail (prod_item_num, sheet_skid_num) SELECT prod_item_num, sheet_skid_num FROM scraped_sheet_skid_detail WHERE scrap_skid_num = :n",
+            arg, tx, cancellationToken: ct));
+
+        foreach (var del in new[]
+        {
+            "DELETE FROM scraped_sheet_skid_detail WHERE scrap_skid_num = :n",
+            "DELETE FROM scraped_production_sheet_item WHERE scrap_skid_num = :n",
+            "DELETE FROM scraped_process_partial_skid WHERE scrap_skid_num = :n",
+            "DELETE FROM scraped_sheet_skid WHERE scrap_skid_num = :n",
+            // Credit back the returned scrap: remove the return_scrap_item rows linked to this scrap skid
+            // (the legacy proc's comma-string parse is just this IN-subquery).
+            "DELETE FROM return_scrap_item WHERE return_scrap_item_num IN (SELECT return_scrap_item_num FROM scrap_skid_detail WHERE scrap_skid_num = :n)",
+            "DELETE FROM scrap_skid_detail WHERE scrap_skid_num = :n",
+            "DELETE FROM scrap_skid WHERE scrap_skid_num = :n",
+        })
+            await conn.ExecuteAsync(new CommandDefinition(del, arg, tx, cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
+        return new ReturnScrapResult(true, restored);
+    }
+
     private const string CoilQualityCols =
         "coil_abc_num AS CoilAbcNum, coil_org_num AS CoilOrgNum, part_num AS PartNum, material_grade AS MaterialGrade, " +
         "pre_treatment_flag AS PreTreatmentFlag, cash_date AS CashDate, mill_id AS MillId, net_coil_length AS NetCoilLength, " +
