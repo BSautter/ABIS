@@ -120,7 +120,7 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [ ] **M** QA coil photos; QA email notification + "make scrap" action
 
 ### C6. Platform / admin / reports
-- [ ] **C** Scheduler EXECUTION engine (registry `/admin/jobs` is inert) + cron auto-import off the DB host
+- [~] **C** Scheduler EXECUTION engine — DONE: `SchedulerHostedService` (off by default, `Scheduler:Enabled=false`) + `SchedulerService`/`CronSchedule` (5/6-field cron matcher) dispatch enabled+due jobs to an **allowlist** of in-process `IScheduledOperation` handlers (noop/heartbeat seeded); unknown/legacy `target_operation` is recorded "unsupported" and NEVER executed (no shell/legacy path → guardrail intact). `POST /admin/jobs/{id}/run` for manual/on-demand. Still TODO: cron auto-import off the DB host (the server-console DB-host cron card already reads the .230 crontab read-only — see [[abis-230-cron-inventory]]).
 - [ ] **M** Preventive-Maintenance (PM) scheduling subsystem
 - [ ] **M** Maintenance parts/spares inventory; equipment hierarchy cascade + More-Details; log record-nav + maintenance reports
 - [ ] **M** Uptime reports (uptime, uptime-per-line) + downtime pivots (job/day/month/year/part/shift + dt-vs-production ratio)

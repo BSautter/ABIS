@@ -41,6 +41,18 @@ var winSpcOptions = builder.Configuration.GetSection(Abis.Api.Data.WinSpc.WinSpc
 builder.Services.AddSingleton(winSpcOptions);
 builder.Services.AddSingleton<Abis.Api.Data.WinSpc.IWinSpcConnectionFactory, Abis.Api.Data.WinSpc.WinSpcConnectionFactory>();
 builder.Services.AddScoped<Abis.Api.Data.WinSpc.IWinSpcRepository, Abis.Api.Data.WinSpc.WinSpcRepository>();
+
+// Scheduler execution engine. Inert unless Scheduler:Enabled=true, and even then only the registered
+// (allowlisted) operations run — there is no shell/legacy path, so the modern stack can never fire the
+// legacy EDI/cron work (single-owner guardrail). Add new IScheduledOperation implementations to extend it.
+var schedulerOptions = builder.Configuration.GetSection(Abis.Api.Scheduling.SchedulerOptions.SectionName)
+                           .Get<Abis.Api.Scheduling.SchedulerOptions>() ?? new Abis.Api.Scheduling.SchedulerOptions();
+builder.Services.AddSingleton(schedulerOptions);
+builder.Services.AddSingleton<Abis.Api.Scheduling.IScheduledOperation, Abis.Api.Scheduling.NoopOperation>();
+builder.Services.AddSingleton<Abis.Api.Scheduling.IScheduledOperation, Abis.Api.Scheduling.HeartbeatOperation>();
+builder.Services.AddSingleton<Abis.Api.Scheduling.ScheduledOperationRegistry>();
+builder.Services.AddScoped<Abis.Api.Scheduling.SchedulerService>();
+builder.Services.AddHostedService<Abis.Api.Scheduling.SchedulerHostedService>();
 // Bind large CLOB payloads (generated EDI X12) correctly on Oracle 11g — see ClobText.
 Dapper.SqlMapper.AddTypeHandler(new Abis.Api.Data.ClobTextHandler());
 

@@ -2143,8 +2143,21 @@ public static class ApiEndpoints
                 return Results.Ok(await repo.GetScheduledJobRunsAsync(id, ct));
             })
            .WithName("GetScheduledJobRuns").WithTags("Admin")
-           .WithSummary("A job's run history. Empty until a future execution engine records runs.")
+           .WithSummary("A job's run history (populated by the scheduler engine).")
            .Produces<IReadOnlyList<ScheduledJobRun>>().Produces(StatusCodes.Status404NotFound);
+
+        api.MapPost("/admin/jobs/{id:long}/run", async (long id, HttpContext ctx, IAbisRepository repo,
+                Abis.Api.Scheduling.SchedulerService scheduler, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, SchedFeature, 1, ct) is { } deny) return deny;
+                if (await repo.GetScheduledJobAsync(id, ct) is not { } job) return Results.NotFound();
+                // Runs now via the same allowlist-gated path as the engine: an unknown target_operation
+                // is recorded "unsupported" and nothing executes. Works regardless of Scheduler:Enabled.
+                return Results.Ok(await scheduler.RunJobNowAsync(job, ct));
+            })
+           .WithName("RunScheduledJob").WithTags("Admin")
+           .WithSummary("Run a scheduled job now (records a run). Only allowlisted operations execute — an unknown/legacy operation is recorded 'unsupported' and never fires. 404 if the job is unknown.")
+           .Produces<ScheduledJobRun>().Produces(StatusCodes.Status404NotFound);
 
         // ---- Admin: EDI setup config (docs/ADMIN_SUBSYSTEM_PLAN.md #8 setup UI). Manages the
         // trading-partner / transaction-type config that is hand-maintained in DB tables today. This

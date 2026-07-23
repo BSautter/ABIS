@@ -1995,6 +1995,32 @@ public sealed class AbisRepository : IAbisRepository
         return rows.AsList();
     }
 
+    public async Task<ScheduledJobRun> RecordJobRunAsync(long scheduledJobId, DateTime startedUtc, DateTime finishedUtc, string status, int? affectedCount, string? errorText, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var id = await NextIdAsync(conn, tx, "abis_job_run", "job_run_id", ct);
+        var p = new DynamicParameters();
+        p.Add("id", id);
+        p.Add("job", scheduledJobId);
+        p.Add("started", startedUtc, DbType.DateTime);
+        p.Add("finished", finishedUtc, DbType.DateTime);
+        p.Add("status", status);
+        p.Add("affected", affectedCount, DbType.Int32);
+        p.Add("err", errorText);
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO abis_job_run (job_run_id, scheduled_job_id, started_utc, finished_utc, run_status, affected_count, error_text)
+            VALUES (:id, :job, :started, :finished, :status, :affected, :err)
+            """, p, tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+        return new ScheduledJobRun
+        {
+            JobRunId = id, ScheduledJobId = scheduledJobId, StartedUtc = startedUtc, FinishedUtc = finishedUtc,
+            RunStatus = status, AffectedCount = affectedCount, ErrorText = errorText,
+        };
+    }
+
     // Downtime events over a window (optionally one line), joined to the line description.
     public async Task<IReadOnlyList<ProductionDowntimeRow>> GetProductionDowntimeAsync(DateTime? from, DateTime? to, long? lineNum, CancellationToken ct)
     {

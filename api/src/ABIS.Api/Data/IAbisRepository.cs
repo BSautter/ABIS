@@ -185,6 +185,8 @@ public interface IAbisRepository
     Task<ScheduledJob?> UpdateScheduledJobAsync(long scheduledJobId, ScheduledJobWrite body, CancellationToken ct);
     Task<ScheduledJob?> SetScheduledJobEnabledAsync(long scheduledJobId, bool enabled, CancellationToken ct);
     Task<IReadOnlyList<ScheduledJobRun>> GetScheduledJobRunsAsync(long scheduledJobId, CancellationToken ct);
+    /// <summary>Record one run of a scheduled job in abis_job_run (written by the scheduler engine).</summary>
+    Task<ScheduledJobRun> RecordJobRunAsync(long scheduledJobId, DateTime startedUtc, DateTime finishedUtc, string status, int? affectedCount, string? errorText, CancellationToken ct);
     Task<EdiType?> GetEdiTypeAsync(int ediTypeId, string ediVersion, CancellationToken ct);
     Task<bool> EdiTypeExistsAsync(int ediTypeId, string ediVersion, CancellationToken ct);
     Task<EdiType> CreateEdiTypeAsync(EdiTypeWrite body, CancellationToken ct);

@@ -1480,6 +1480,41 @@ public sealed class RepositoryTests : IDisposable
         Assert.Empty(await _repo.GetDimensionChecksAsync(77300, CancellationToken.None));
     }
 
+    private sealed class CountingOp(string name, Action onRun) : Abis.Api.Scheduling.IScheduledOperation
+    {
+        public string Name => name;
+        public Task<int> ExecuteAsync(string? args, CancellationToken ct) { onRun(); return Task.FromResult(1); }
+    }
+
+    [Fact]
+    public async Task Scheduler_runs_allowlisted_ops_and_flags_unknown_as_unsupported()
+    {
+        var ran = 0;
+        var registry = new Abis.Api.Scheduling.ScheduledOperationRegistry(
+            new Abis.Api.Scheduling.IScheduledOperation[] { new CountingOp("count-op", () => ran++) });
+        var svc = new Abis.Api.Scheduling.SchedulerService(_repo, registry,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<Abis.Api.Scheduling.SchedulerService>.Instance);
+
+        var good = await _repo.CreateScheduledJobAsync(new Abis.Api.Models.ScheduledJobWrite { JobName = "sched-good", CronExpression = "* * * * *", TargetOperation = "count-op" }, CancellationToken.None);
+        var bad = await _repo.CreateScheduledJobAsync(new Abis.Api.Models.ScheduledJobWrite { JobName = "sched-bad", CronExpression = "* * * * *", TargetOperation = "legacy-edi-transmit" }, CancellationToken.None);
+
+        // Allowlisted op → runs, recorded success.
+        var run1 = await svc.RunJobNowAsync(good, CancellationToken.None);
+        Assert.Equal("success", run1.RunStatus);
+        Assert.Equal(1, ran);
+        // GUARDRAIL: an unknown/legacy op is recorded 'unsupported' and NEVER executed.
+        var run2 = await svc.RunJobNowAsync(bad, CancellationToken.None);
+        Assert.Equal("unsupported", run2.RunStatus);
+        Assert.Equal(1, ran);
+
+        // Due pass: only enabled, cron-due jobs run. Enable good ("* * * * *" is always due).
+        await _repo.SetScheduledJobEnabledAsync(good.ScheduledJobId, true, CancellationToken.None);
+        var processed = await svc.RunDueJobsAsync(DateTime.UtcNow, CancellationToken.None);
+        Assert.True(processed >= 1);
+        Assert.Equal(2, ran);   // count-op fired again; no other op increments it
+        Assert.Contains(await _repo.GetScheduledJobRunsAsync(good.ScheduledJobId, CancellationToken.None), r => r.RunStatus == "success");
+    }
+
     [Fact]
     public async Task ReturnScrapSkid_restores_the_scrapped_rows_and_removes_the_scrap_records()
     {

@@ -461,7 +461,7 @@
         "tags": [
           "Admin"
         ],
-        "summary": "A job's run history. Empty until a future execution engine records runs.",
+        "summary": "A job's run history (populated by the scheduler engine).",
         "operationId": "GetScheduledJobRuns",
         "parameters": [
           {
@@ -484,6 +484,44 @@
                   "items": {
                     "$ref": "#/components/schemas/ScheduledJobRun"
                   }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/admin/jobs/{id}/run": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Run a scheduled job now (records a run). Only allowlisted operations execute — an unknown/legacy operation is recorded 'unsupported' and never fires. 404 if the job is unknown.",
+        "operationId": "RunScheduledJob",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledJobRun"
                 }
               }
             }

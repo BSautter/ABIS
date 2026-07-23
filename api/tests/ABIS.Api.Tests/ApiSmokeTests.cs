@@ -982,6 +982,27 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Run_scheduled_job_executes_only_allowlisted_ops()
+    {
+        // A noop (allowlisted) job runs → success.
+        var create = await _client.PostAsJsonAsync("/api/admin/jobs", new { jobName = "smoke-noop-job", cronExpression = "*/5 * * * *", targetOperation = "noop" });
+        create.EnsureSuccessStatusCode();
+        var id = (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("scheduledJobId").GetInt64();
+        var run = await _client.PostAsync($"/api/admin/jobs/{id}/run", null);
+        run.EnsureSuccessStatusCode();
+        Assert.Equal("success", (await run.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("runStatus").GetString());
+
+        // An unknown/legacy operation is recorded 'unsupported' and never fires.
+        var badCreate = await _client.PostAsJsonAsync("/api/admin/jobs", new { jobName = "smoke-legacy-job", cronExpression = "*/5 * * * *", targetOperation = "legacy-edi-transmit" });
+        var badId = (await badCreate.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("scheduledJobId").GetInt64();
+        var badRun = await _client.PostAsync($"/api/admin/jobs/{badId}/run", null);
+        Assert.Equal("unsupported", (await badRun.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("runStatus").GetString());
+
+        // Unknown job → 404.
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync("/api/admin/jobs/99999999/run", null)).StatusCode);
+    }
+
+    [Fact]
     public async Task WinSpc_reports_disabled_and_guards_qc_endpoints()
     {
         // The connector is off in the test config → health says disabled, QC endpoints 503.
