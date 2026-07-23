@@ -62,6 +62,7 @@ public interface IAbisRepository
     Task<OrderDetail?> GetOrderDetailAsync(long orderAbcNum, CancellationToken ct);
     Task<CustomerOrder> CreateOrderAsync(CustomerOrderWrite body, CancellationToken ct);
     Task<OrderDetail> CreateOrderWithItemsAsync(OrderCreateWithItems body, CancellationToken ct);
+    Task<OrderDetail?> CopyOrderAsync(long sourceOrderAbcNum, CancellationToken ct);
     Task<CustomerOrder?> UpdateOrderAsync(long orderAbcNum, CustomerOrderWrite body, CancellationToken ct);
     Task<IReadOnlyList<OrderCoil>> GetOrderCoilsAsync(long orderAbcNum, CancellationToken ct);
     Task<IReadOnlyList<AvailableCustomerCoil>> GetAvailableCustomerCoilsAsync(long orderAbcNum, CancellationToken ct);

@@ -3697,6 +3697,54 @@ public sealed class AbisRepository : IAbisRepository
         return (await GetOrderDetailAsync(orderId, ct))!;
     }
 
+    // Duplicate an order into a brand-new order_abc_num: the header, every line item (order_item_num
+    // preserved under the new order), and each item's blank geometry. INSERT ... SELECT copies every
+    // column verbatim (via the shared insert-column lists + the ShapeGeometry registry) so nothing is
+    // silently dropped; only the id + created timestamps are fresh. Null if the source doesn't exist.
+    public async Task<OrderDetail?> CopyOrderAsync(long sourceOrderAbcNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM customer_order WHERE order_abc_num = :src",
+            new { src = sourceOrderAbcNum }, cancellationToken: ct));
+        if (exists == 0) return null;
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var newId = await NextIdAsync(conn, tx, "customer_order", "order_abc_num", ct);
+        var now = (DateTime?)DateTime.UtcNow;
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            $"INSERT INTO customer_order (order_abc_num, created_date, {OrderInsertCols}) " +
+            $"SELECT :newId, :now, {OrderInsertCols} FROM customer_order WHERE order_abc_num = :src",
+            new { newId, now, src = sourceOrderAbcNum }, transaction: tx, cancellationToken: ct));
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            $"INSERT INTO order_item (order_abc_num, order_item_num, item_created_dttm, {OrderItemInsertCols}) " +
+            $"SELECT :newId, order_item_num, :now, {OrderItemInsertCols} FROM order_item WHERE order_abc_num = :src",
+            new { newId, now, src = sourceOrderAbcNum }, transaction: tx, cancellationToken: ct));
+
+        // Per-item blank geometry: copy each shape table's rows (keyed by order+item) under the new order.
+        foreach (var def in ShapeGeometry.All)
+        {
+            var geomCols = new List<string>();
+            foreach (var dm in def.Dims)
+            {
+                geomCols.Add(dm.ValueCol);
+                if (dm.PlusCol is not null) geomCols.Add(dm.PlusCol);
+                if (dm.MinusCol is not null) geomCols.Add(dm.MinusCol);
+            }
+            geomCols.AddRange(def.DieCols);
+            var cols = string.Join(", ", geomCols);
+            await conn.ExecuteAsync(new CommandDefinition(
+                $"INSERT INTO {def.Table} (order_abc_num, order_item_num, {cols}) " +
+                $"SELECT :newId, order_item_num, {cols} FROM {def.Table} WHERE order_abc_num = :src",
+                new { newId, src = sourceOrderAbcNum }, transaction: tx, cancellationToken: ct));
+        }
+
+        await tx.CommitAsync(ct);
+        return await GetOrderDetailAsync(newId, ct);
+    }
+
     public Task<PagedResult<Part>> GetPartsAsync(int page, int pageSize, long? customerId, string? alloy, string? orderBy, CancellationToken ct)
     {
         var p = new DynamicParameters();

@@ -605,6 +605,15 @@ public static class ApiEndpoints
            .WithSummary("Create an order header and its line items in one transaction.")
            .Produces<OrderDetail>(StatusCodes.Status201Created).ProducesValidationProblem();
 
+        // Duplicate an existing order (header + line items + each item's blank geometry) into a new order.
+        api.MapPost("/orders/{orderAbcNum:long}/copy", async (long orderAbcNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.CopyOrderAsync(orderAbcNum, ct) is { } copy
+                    ? Results.Created($"/api/orders/{copy.Order!.OrderAbcNum}", copy)
+                    : Results.NotFound(new { message = $"Order {orderAbcNum} not found." }))
+           .WithName("CopyOrder").WithTags("Orders")
+           .WithSummary("Duplicate an order into a new order_abc_num — copies the header, every line item (order_item_num preserved), and each item's blank geometry; only the id and created timestamps are fresh.")
+           .Produces<OrderDetail>(StatusCodes.Status201Created).Produces(StatusCodes.Status404NotFound);
+
         api.MapPut("/orders/{orderAbcNum:long}", async (long orderAbcNum, CustomerOrderWrite body, IAbisRepository repo, HttpContext ctx, IOptions<JsonOptions> json, CancellationToken ct) =>
             {
                 if (Validate(body) is { } problems)

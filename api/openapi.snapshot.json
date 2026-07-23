@@ -6201,6 +6201,44 @@
         }
       }
     },
+    "/api/orders/{orderAbcNum}/copy": {
+      "post": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Duplicate an order into a new order_abc_num — copies the header, every line item (order_item_num preserved), and each item's blank geometry; only the id and created timestamps are fresh.",
+        "operationId": "CopyOrder",
+        "parameters": [
+          {
+            "name": "orderAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/orders/{orderAbcNum}/coils": {
       "get": {
         "tags": [

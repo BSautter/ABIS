@@ -115,14 +115,32 @@ function renderDetail(): void {
         <span><b>Customer</b>${esc(d.customer?.customerName ?? d.order?.origCustomerId)}</span>
         <span><b>Enduser PO</b>${esc(d.order?.enduserPo)}</span>
       </div>
-      <button class="btn sm ghost" id="btnEditOrder" type="button">Edit</button>
+      <div class="frow" style="gap:6px">
+        <button class="btn sm ghost" id="btnEditOrder" type="button">Edit</button>
+        <button class="btn sm ghost" id="btnCopyOrder" type="button">Duplicate</button>
+      </div>
     </div>
     <div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="min-width:420px">
       <thead><tr><th>Line</th><th>Part</th><th>Alloy</th><th>Sheet</th><th class="num">Gauge</th><th class="num">Pieces</th></tr></thead>
       <tbody>${items || '<tr><td colspan="6" class="muted">No line items.</td></tr>'}</tbody></table></div>
     <div id="coils" style="margin-top:16px"></div>`;
   $('#btnEditOrder').addEventListener('click', renderEditForm);
+  $('#btnCopyOrder').addEventListener('click', () => void copyOrder(Number(d.order?.orderAbcNum)));
   void renderCoils(Number(d.order?.orderAbcNum));
+}
+
+// Duplicate this order (header + line items + geometry) into a new order, then open the copy.
+async function copyOrder(orderId: number): Promise<void> {
+  if (!orderId || !window.confirm(`Duplicate order ${orderId} into a new order?`)) return;
+  setErr(''); setBusy(true);
+  try {
+    const r = await authFetch(`/api/orders/${orderId}/copy`, { method: 'POST' });
+    if (!r.ok) { setErr(`Duplicate failed (${r.status}).`); return; }
+    const copy = await r.json();
+    await search();
+    if (copy?.order?.orderAbcNum) await loadOrder(copy.order.orderAbcNum);
+  } catch (e) { setErr(`Duplicate failed: ${(e as Error).message}`); }
+  finally { setBusy(false); }
 }
 
 // Customer coils earmarked to this order (legacy ORDER_COIL): the assigned list + a picker of the

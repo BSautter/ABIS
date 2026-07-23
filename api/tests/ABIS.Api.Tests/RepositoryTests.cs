@@ -2073,6 +2073,38 @@ public sealed class RepositoryTests : IDisposable
         Assert.False(await _repo.RemoveLineDieShapeAsync("CIRCLE", 120, 2002, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task CopyOrder_duplicates_header_items_and_geometry()
+    {
+        // Order 2990: one RECTANGLE line item (num 1) with geometry 48 x 36.
+        var copy = await _repo.CopyOrderAsync(2990, CancellationToken.None);
+        Assert.NotNull(copy);
+        Assert.NotEqual(2990, copy!.Order!.OrderAbcNum);
+
+        // Header fields copied verbatim.
+        Assert.Equal(1980, copy.Order.OrigCustomerId);
+        Assert.Equal("ALE-CPO-1", copy.Order.OrigCustomerPo);
+
+        // Line item copied (order_item_num preserved under the new order).
+        Assert.Single(copy.Items);
+        Assert.Equal(1, copy.Items[0].OrderItemNum);
+        Assert.Equal("ALE-PART-1", copy.Items[0].EnduserPartNum);
+        Assert.Equal("RECTANGLE", copy.Items[0].SheetType);
+
+        // Blank geometry copied onto the new order/item.
+        var shape = await _repo.GetOrderItemShapeAsync(copy.Order.OrderAbcNum, copy.Items[0].OrderItemNum, CancellationToken.None);
+        Assert.NotNull(shape);
+        Assert.Equal("RECTANGLE", shape!.ShapeType);
+        Assert.Equal(48m, shape.Dimensions.Single(d => d.Name == "length").Value);
+        Assert.Equal(36m, shape.Dimensions.Single(d => d.Name == "width").Value);
+
+        // The source order is untouched.
+        Assert.Single((await _repo.GetOrderDetailAsync(2990, CancellationToken.None))!.Items);
+
+        // Unknown source -> null.
+        Assert.Null(await _repo.CopyOrderAsync(999999, CancellationToken.None));
+    }
+
     // ---- customer contacts & sketches ----------------------------------
 
     [Fact]

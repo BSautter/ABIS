@@ -446,6 +446,24 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
+    public async Task Copy_order_duplicates_into_a_new_order()
+    {
+        var resp = await _client.PostAsync("/api/orders/2990/copy", null);
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        var copy = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var newId = copy.GetProperty("order").GetProperty("orderAbcNum").GetInt64();
+        Assert.NotEqual(2990, newId);
+        Assert.Equal(1, copy.GetProperty("items").GetArrayLength());
+
+        // The new order is retrievable and carries the copied RECTANGLE line.
+        var detail = await _client.GetFromJsonAsync<JsonElement>($"/api/orders/{newId}/full");
+        Assert.Equal("RECTANGLE", detail.GetProperty("items")[0].GetProperty("sheetType").GetString());
+
+        // Unknown source -> 404.
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync("/api/orders/999999/copy", null)).StatusCode);
+    }
+
+    [Fact]
     public async Task Piece_weight_calculator_computes_by_shape_and_density()
     {
         // Rectangle 48x48 x gauge 0.1 x explicit density 0.1 = 2304 * 0.1 * 0.1 = 23.04 lb.
