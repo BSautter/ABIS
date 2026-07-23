@@ -37,6 +37,14 @@ public interface IAbisRepository
     /// <summary>Delete a coil, guarded: refuses (InUse) a coil that's been applied to a job
     /// (process_coil rows) or is terminal (done/shipped/transferred); NotFound if it doesn't exist.</summary>
     Task<DeleteResult> DeleteCoilAsync(long coilAbcNum, CancellationToken ct);
+    /// <summary>A coil's quality capture: header (COIL_QUALITY) + flaw map (COIL_QUALITY_FLAW_MAPPING).</summary>
+    Task<CoilQualityDetail> GetCoilQualityAsync(long coilAbcNum, CancellationToken ct);
+    /// <summary>Upsert a coil's quality header; null if the coil doesn't exist.</summary>
+    Task<CoilQuality?> UpsertCoilQualityAsync(long coilAbcNum, CoilQualityWrite body, CancellationToken ct);
+    /// <summary>Add a flaw segment to a coil's flaw map; null if the coil doesn't exist.</summary>
+    Task<CoilQualityFlaw?> AddCoilQualityFlawAsync(long coilAbcNum, CoilQualityFlawWrite body, CancellationToken ct);
+    /// <summary>Delete a flaw segment by its composite key (coil + start + end + flaw code).</summary>
+    Task<bool> DeleteCoilQualityFlawAsync(long coilAbcNum, decimal startingPosition, decimal endingPosition, string flawCode, CancellationToken ct);
     /// <summary>Delete a sheet skid (and its per-skid detail + dimension-check rows), guarded:
     /// refuses (InUse) a skid that's on a shipment (sheet_packing_item); NotFound if unknown.</summary>
     Task<DeleteResult> DeleteSheetSkidAsync(long sheetSkidNum, CancellationToken ct);

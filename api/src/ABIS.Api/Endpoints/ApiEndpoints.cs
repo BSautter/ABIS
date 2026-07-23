@@ -446,6 +446,51 @@ public static class ApiEndpoints
            .WithSummary("Delete a coil, guarded: 409 if it's been applied to a job or is done/shipped/transferred; 404 if unknown; 204 on delete.")
            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
 
+        // ---- Coil quality capture (COIL_QUALITY + flaw map) -------------
+        api.MapGet("/coils/{coilAbcNum:long}/quality", async (long coilAbcNum, IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetCoilQualityAsync(coilAbcNum, ct)))
+           .WithName("GetCoilQuality").WithTags("Coils")
+           .WithSummary("A coil's quality capture: the header (material grade / dimensions / mill / PCC) + its flaw map.")
+           .Produces<CoilQualityDetail>();
+
+        api.MapPut("/coils/{coilAbcNum:long}/quality", async (long coilAbcNum, CoilQualityWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var e = new Dictionary<string, string[]>();
+                Req(e, "coilOrgNum", body.CoilOrgNum);
+                Max(e, "coilOrgNum", body.CoilOrgNum, 32);
+                Max(e, "materialGrade", body.MaterialGrade, 10);
+                if (e.Count > 0) return Results.ValidationProblem(e);
+                return await repo.UpsertCoilQualityAsync(coilAbcNum, body, ct) is { } h ? Results.Ok(h) : Results.NotFound();
+            })
+           .WithName("UpsertCoilQuality").WithTags("Coils")
+           .WithSummary("Create or replace a coil's quality header (coilOrgNum required); 404 if the coil is unknown.")
+           .Produces<CoilQuality>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
+        api.MapPost("/coils/{coilAbcNum:long}/quality/flaws", async (long coilAbcNum, CoilQualityFlawWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var e = new Dictionary<string, string[]>();
+                if (body.StartingPosition is null) e["startingPosition"] = ["startingPosition is required."];
+                if (body.EndingPosition is null) e["endingPosition"] = ["endingPosition is required."];
+                Req(e, "flawCode", body.FlawCode);
+                Max(e, "flawCode", body.FlawCode, 1);
+                if (body.StartingPosition is { } s && body.EndingPosition is { } en && en < s)
+                    e["endingPosition"] = ["endingPosition must be at or after startingPosition."];
+                if (e.Count > 0) return Results.ValidationProblem(e);
+                return await repo.AddCoilQualityFlawAsync(coilAbcNum, body, ct) is { } f
+                    ? Results.Created($"/api/coils/{coilAbcNum}/quality/flaws", f)
+                    : Results.NotFound();
+            })
+           .WithName("AddCoilQualityFlaw").WithTags("Coils")
+           .WithSummary("Add a flaw segment (start→end position + single-char flaw code) to a coil's flaw map; 404 if the coil is unknown.")
+           .Produces<CoilQualityFlaw>(StatusCodes.Status201Created).Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
+        api.MapDelete("/coils/{coilAbcNum:long}/quality/flaws", async (long coilAbcNum, decimal startingPosition, decimal endingPosition, string flawCode, IAbisRepository repo, CancellationToken ct) =>
+                await repo.DeleteCoilQualityFlawAsync(coilAbcNum, startingPosition, endingPosition, flawCode, ct)
+                    ? Results.NoContent() : Results.NotFound())
+           .WithName("DeleteCoilQualityFlaw").WithTags("Coils")
+           .WithSummary("Delete a flaw segment by its key (startingPosition, endingPosition, flawCode query params); 404 if not found.")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
+
         // ---- Coil QA hold (status 11 + COIL_TRACK_QA audit) --------------
         // The dedicated QA-hold transitions: unlike the generic PatchCoil, these record an audit
         // row for every hold/release and enforce the QA state machine (legacy w_qa_coil).

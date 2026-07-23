@@ -602,6 +602,38 @@ public sealed class TestResultWrite
     public decimal? Width { get; set; }
 }
 
+/// <summary>Upsert a coil's quality header. coilOrgNum is required (NOT NULL in COIL_QUALITY).</summary>
+public sealed class CoilQualityWrite
+{
+    public string? CoilOrgNum { get; set; }
+    public string? PartNum { get; set; }
+    public string? MaterialGrade { get; set; }
+    public string? PreTreatmentFlag { get; set; }
+    public DateTime? CashDate { get; set; }
+    public string? MillId { get; set; }
+    public decimal? NetCoilLength { get; set; }
+    public string? NetCoilLengthUom { get; set; }
+    public decimal? CoilWidth { get; set; }
+    public decimal? CoilWeight { get; set; }
+    public decimal? MaterialThikness { get; set; }
+    public int? CashLineId { get; set; }
+    public string? SamplingRequired { get; set; }
+    public string? PccNumber { get; set; }
+    public string? RevisionLevel { get; set; }
+}
+
+/// <summary>Add a flaw segment to a coil's flaw map. Start/end position + flaw code are required
+/// (composite key); flaw_code is a single character.</summary>
+public sealed class CoilQualityFlawWrite
+{
+    public decimal? StartingPosition { get; set; }
+    public decimal? EndingPosition { get; set; }
+    public string? FlawCode { get; set; }
+    public string? StartingPositionUom { get; set; }
+    public string? EndingPositionUom { get; set; }
+    public string? HandlingCode { get; set; }
+}
+
 /// <summary>Bulk-mark coils as Ready for transfer (coil_status → 12) — the precondition for the
 /// ownership-transfer picker.</summary>
 public sealed class CoilBulkStatusWrite

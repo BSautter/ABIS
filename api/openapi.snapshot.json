@@ -2341,6 +2341,210 @@
         }
       }
     },
+    "/api/coils/{coilAbcNum}/quality": {
+      "get": {
+        "tags": [
+          "Coils"
+        ],
+        "summary": "A coil's quality capture: the header (material grade / dimensions / mill / PCC) + its flaw map.",
+        "operationId": "GetCoilQuality",
+        "parameters": [
+          {
+            "name": "coilAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoilQualityDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Coils"
+        ],
+        "summary": "Create or replace a coil's quality header (coilOrgNum required); 404 if the coil is unknown.",
+        "operationId": "UpsertCoilQuality",
+        "parameters": [
+          {
+            "name": "coilAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoilQualityWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoilQuality"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/coils/{coilAbcNum}/quality/flaws": {
+      "post": {
+        "tags": [
+          "Coils"
+        ],
+        "summary": "Add a flaw segment (start→end position + single-char flaw code) to a coil's flaw map; 404 if the coil is unknown.",
+        "operationId": "AddCoilQualityFlaw",
+        "parameters": [
+          {
+            "name": "coilAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoilQualityFlawWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoilQualityFlaw"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Coils"
+        ],
+        "summary": "Delete a flaw segment by its key (startingPosition, endingPosition, flawCode query params); 404 if not found.",
+        "operationId": "DeleteCoilQualityFlaw",
+        "parameters": [
+          {
+            "name": "coilAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "startingPosition",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          {
+            "name": "endingPosition",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          {
+            "name": "flawCode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/customers": {
       "get": {
         "tags": [
@@ -12693,6 +12897,244 @@
           },
           "track": {
             "$ref": "#/components/schemas/CoilQaTrack"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CoilQuality": {
+        "type": "object",
+        "properties": {
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "coilOrgNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "partNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "materialGrade": {
+            "type": "string",
+            "nullable": true
+          },
+          "preTreatmentFlag": {
+            "type": "string",
+            "nullable": true
+          },
+          "cashDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "millId": {
+            "type": "string",
+            "nullable": true
+          },
+          "netCoilLength": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "netCoilLengthUom": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilWidth": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "coilWeight": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "materialThikness": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "cashLineId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "samplingRequired": {
+            "type": "string",
+            "nullable": true
+          },
+          "pccNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "revisionLevel": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CoilQualityDetail": {
+        "type": "object",
+        "properties": {
+          "header": {
+            "$ref": "#/components/schemas/CoilQuality"
+          },
+          "flaws": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CoilQualityFlaw"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CoilQualityFlaw": {
+        "type": "object",
+        "properties": {
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "coilOrgNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "startingPosition": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "endingPosition": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "flawCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "startingPositionUom": {
+            "type": "string",
+            "nullable": true
+          },
+          "endingPositionUom": {
+            "type": "string",
+            "nullable": true
+          },
+          "handlingCode": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CoilQualityFlawWrite": {
+        "type": "object",
+        "properties": {
+          "startingPosition": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "endingPosition": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "flawCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "startingPositionUom": {
+            "type": "string",
+            "nullable": true
+          },
+          "endingPositionUom": {
+            "type": "string",
+            "nullable": true
+          },
+          "handlingCode": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CoilQualityWrite": {
+        "type": "object",
+        "properties": {
+          "coilOrgNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "partNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "materialGrade": {
+            "type": "string",
+            "nullable": true
+          },
+          "preTreatmentFlag": {
+            "type": "string",
+            "nullable": true
+          },
+          "cashDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "millId": {
+            "type": "string",
+            "nullable": true
+          },
+          "netCoilLength": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "netCoilLengthUom": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilWidth": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "coilWeight": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "materialThikness": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "cashLineId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "samplingRequired": {
+            "type": "string",
+            "nullable": true
+          },
+          "pccNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "revisionLevel": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false

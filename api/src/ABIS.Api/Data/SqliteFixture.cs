@@ -45,6 +45,8 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS part_num_liftgate;
             DROP TABLE IF EXISTS pst_test_result;
             DROP TABLE IF EXISTS coil_track_qa;
+            DROP TABLE IF EXISTS coil_quality;
+            DROP TABLE IF EXISTS coil_quality_flaw_mapping;
             DROP TABLE IF EXISTS customer;
             DROP TABLE IF EXISTS sheet_skid;
             DROP TABLE IF EXISTS scrap_skid;
@@ -241,6 +243,17 @@ public static class SqliteFixture
                 coil_abc_num INTEGER, coil_track_date TEXT, coil_pre_status INTEGER, coil_cur_status INTEGER,
                 coil_modified_by TEXT NOT NULL, note TEXT NOT NULL,
                 PRIMARY KEY (coil_abc_num, coil_track_date));
+
+            CREATE TABLE coil_quality (
+                coil_abc_num INTEGER PRIMARY KEY, coil_org_num TEXT NOT NULL, part_num TEXT, material_grade TEXT,
+                pre_treatment_flag TEXT, cash_date TEXT, mill_id TEXT, net_coil_length REAL, net_coil_length_uom TEXT,
+                coil_width REAL, coil_weight REAL, material_thikness REAL, cash_line_id INTEGER,
+                sampling_required TEXT, pcc_number TEXT, revision_level TEXT);
+
+            CREATE TABLE coil_quality_flaw_mapping (
+                coil_abc_num INTEGER, coil_org_num TEXT NOT NULL, starting_position REAL, ending_position REAL,
+                flaw_code TEXT, starting_position_uom TEXT, ending_position_uom TEXT, handling_code TEXT,
+                PRIMARY KEY (coil_abc_num, starting_position, ending_position, flaw_code));
 
             CREATE TABLE customer (
                 customer_id INTEGER PRIMARY KEY, customer_full_name TEXT, customer_short_name TEXT, customer_type INTEGER,

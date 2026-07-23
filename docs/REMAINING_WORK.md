@@ -98,7 +98,7 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [~] **H** Scrap-skid + sheet-skid guarded DELETE done (DELETE /scrap-skids/{n}, /sheet-skids/{n} — refuse skids on a shipment; sheet-skid delete cascades its detail + dimension-check rows). Still TODO: return-scrap / credit, sheet-skid modify + weight/piece reconciliation.
 - [~] **H** Guarded coil delete — done (DELETE /coils/{n}, refuses coils applied to a job or done/shipped/transferred); change-coil-customer-on-BOL cascade still TODO
 - [x] **H** Mint carries full coil attributes — already done in #224: the ownership-transfer mint does a `SELECT *` schema read and copies every coil column (cash_date / part_num / material_num / mid_num / damaged_code / …) to the minted coil
-- [ ] **H** QR / coil-quality capture + flaw mapping (`coil_quality*`); inbound status-on-receipt (received_time, damage codes)
+- [~] **H** Coil-quality capture + flaw mapping DONE (GET/PUT /coils/{n}/quality header + POST/DELETE .../quality/flaws — COIL_QUALITY + COIL_QUALITY_FLAW_MAPPING, fixture-only tables). Still TODO: QR/barcode capture into it + inbound status-on-receipt (received_time, damage codes) + a capture UI.
 - [~] **M/L** Import-from-BOL / show-archived-BOL browsers; multi-condition coil search (search term over org/lot/mid/notes + temper filter DONE on GET /coils + coil-inventory UI); manual new-coil + live-scale weigh-in — remaining: BOL browsers, gauge/width ranges, live-scale
 
 ### C4. Handheld scanner (RF coil-receiving)

@@ -967,6 +967,117 @@ public sealed class AbisRepository : IAbisRepository
         return new DeleteResult(DeleteOutcome.Deleted);
     }
 
+    private const string CoilQualityCols =
+        "coil_abc_num AS CoilAbcNum, coil_org_num AS CoilOrgNum, part_num AS PartNum, material_grade AS MaterialGrade, " +
+        "pre_treatment_flag AS PreTreatmentFlag, cash_date AS CashDate, mill_id AS MillId, net_coil_length AS NetCoilLength, " +
+        "net_coil_length_uom AS NetCoilLengthUom, coil_width AS CoilWidth, coil_weight AS CoilWeight, " +
+        "material_thikness AS MaterialThikness, cash_line_id AS CashLineId, sampling_required AS SamplingRequired, " +
+        "pcc_number AS PccNumber, revision_level AS RevisionLevel";
+
+    public async Task<CoilQualityDetail> GetCoilQualityAsync(long coilAbcNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var header = await conn.QuerySingleOrDefaultAsync<CoilQuality>(new CommandDefinition(
+            $"SELECT {CoilQualityCols} FROM coil_quality WHERE coil_abc_num = :id", new { id = coilAbcNum }, cancellationToken: ct));
+        var flaws = await conn.QueryAsync<CoilQualityFlaw>(new CommandDefinition(
+            """
+            SELECT coil_abc_num AS CoilAbcNum, coil_org_num AS CoilOrgNum, starting_position AS StartingPosition,
+                   ending_position AS EndingPosition, flaw_code AS FlawCode, starting_position_uom AS StartingPositionUom,
+                   ending_position_uom AS EndingPositionUom, handling_code AS HandlingCode
+            FROM coil_quality_flaw_mapping WHERE coil_abc_num = :id
+            ORDER BY starting_position, ending_position, flaw_code
+            """, new { id = coilAbcNum }, cancellationToken: ct));
+        return new CoilQualityDetail { Header = header, Flaws = flaws.AsList() };
+    }
+
+    public async Task<CoilQuality?> UpsertCoilQualityAsync(long coilAbcNum, CoilQualityWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        if (await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+                "SELECT COUNT(*) FROM coil WHERE coil_abc_num = :id", new { id = coilAbcNum }, cancellationToken: ct)) == 0)
+            return null;
+
+        var p = new DynamicParameters();
+        p.Add("id", coilAbcNum);
+        p.Add("org", body.CoilOrgNum);
+        p.Add("part", body.PartNum);
+        p.Add("grade", body.MaterialGrade);
+        p.Add("pre", body.PreTreatmentFlag);
+        p.Add("cash", body.CashDate, DbType.DateTime);
+        p.Add("mill", body.MillId);
+        p.Add("netlen", body.NetCoilLength, DbType.Decimal);
+        p.Add("netuom", body.NetCoilLengthUom);
+        p.Add("width", body.CoilWidth, DbType.Decimal);
+        p.Add("weight", body.CoilWeight, DbType.Decimal);
+        p.Add("thick", body.MaterialThikness, DbType.Decimal);
+        p.Add("line", body.CashLineId, DbType.Int32);
+        p.Add("sampling", body.SamplingRequired);
+        p.Add("pcc", body.PccNumber);
+        p.Add("rev", body.RevisionLevel);
+
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM coil_quality WHERE coil_abc_num = :id", new { id = coilAbcNum }, cancellationToken: ct)) > 0;
+        var sql = exists
+            ? """
+              UPDATE coil_quality SET coil_org_num = :org, part_num = :part, material_grade = :grade,
+                  pre_treatment_flag = :pre, cash_date = :cash, mill_id = :mill, net_coil_length = :netlen,
+                  net_coil_length_uom = :netuom, coil_width = :width, coil_weight = :weight,
+                  material_thikness = :thick, cash_line_id = :line, sampling_required = :sampling,
+                  pcc_number = :pcc, revision_level = :rev
+              WHERE coil_abc_num = :id
+              """
+            : """
+              INSERT INTO coil_quality (coil_abc_num, coil_org_num, part_num, material_grade, pre_treatment_flag,
+                  cash_date, mill_id, net_coil_length, net_coil_length_uom, coil_width, coil_weight,
+                  material_thikness, cash_line_id, sampling_required, pcc_number, revision_level)
+              VALUES (:id, :org, :part, :grade, :pre, :cash, :mill, :netlen, :netuom, :width, :weight,
+                  :thick, :line, :sampling, :pcc, :rev)
+              """;
+        await conn.ExecuteAsync(new CommandDefinition(sql, p, cancellationToken: ct));
+        return (await GetCoilQualityAsync(coilAbcNum, ct)).Header;
+    }
+
+    public async Task<CoilQualityFlaw?> AddCoilQualityFlawAsync(long coilAbcNum, CoilQualityFlawWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var orgNum = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
+            "SELECT coil_org_num FROM coil WHERE coil_abc_num = :id", new { id = coilAbcNum }, cancellationToken: ct));
+        if (orgNum is null) return null;
+
+        var p = new DynamicParameters();
+        p.Add("id", coilAbcNum);
+        p.Add("org", orgNum);
+        p.Add("start", body.StartingPosition, DbType.Decimal);
+        p.Add("end", body.EndingPosition, DbType.Decimal);
+        p.Add("code", body.FlawCode);
+        p.Add("suom", body.StartingPositionUom);
+        p.Add("euom", body.EndingPositionUom);
+        p.Add("hand", body.HandlingCode);
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO coil_quality_flaw_mapping (coil_abc_num, coil_org_num, starting_position, ending_position,
+                flaw_code, starting_position_uom, ending_position_uom, handling_code)
+            VALUES (:id, :org, :start, :end, :code, :suom, :euom, :hand)
+            """, p, cancellationToken: ct));
+        return new CoilQualityFlaw
+        {
+            CoilAbcNum = coilAbcNum, CoilOrgNum = orgNum, StartingPosition = body.StartingPosition,
+            EndingPosition = body.EndingPosition, FlawCode = body.FlawCode, StartingPositionUom = body.StartingPositionUom,
+            EndingPositionUom = body.EndingPositionUom, HandlingCode = body.HandlingCode,
+        };
+    }
+
+    public async Task<bool> DeleteCoilQualityFlawAsync(long coilAbcNum, decimal startingPosition, decimal endingPosition, string flawCode, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            """
+            DELETE FROM coil_quality_flaw_mapping
+            WHERE coil_abc_num = :id AND starting_position = :start AND ending_position = :end AND flaw_code = :code
+            """, new { id = coilAbcNum, start = startingPosition, end = endingPosition, code = flawCode }, cancellationToken: ct));
+        return n > 0;
+    }
+
     public async Task<CustomerOrder> CreateOrderAsync(CustomerOrderWrite body, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

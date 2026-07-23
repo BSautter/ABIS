@@ -1501,6 +1501,41 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task CoilQuality_upserts_the_header_and_maps_flaws()
+    {
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "INSERT INTO coil (coil_abc_num, coil_org_num, coil_status, customer_id, lot_num, net_wt, net_wt_balance) VALUES (78600, 'ORGQ-1', 2, 4001, 'L', 9000, 9000);";
+            cmd.ExecuteNonQuery();
+        }
+        // Upsert on an unknown coil → null.
+        Assert.Null(await _repo.UpsertCoilQualityAsync(999998, new Abis.Api.Models.CoilQualityWrite { CoilOrgNum = "X" }, CancellationToken.None));
+
+        // Insert then update the header (upsert).
+        var h1 = await _repo.UpsertCoilQualityAsync(78600, new Abis.Api.Models.CoilQualityWrite { CoilOrgNum = "ORGQ-1", MaterialGrade = "5052", MillId = "NOVEL", CoilWidth = 48.5m }, CancellationToken.None);
+        Assert.Equal("5052", h1!.MaterialGrade);
+        var h2 = await _repo.UpsertCoilQualityAsync(78600, new Abis.Api.Models.CoilQualityWrite { CoilOrgNum = "ORGQ-1", MaterialGrade = "6061", MillId = "NOVEL", CoilWidth = 48.5m }, CancellationToken.None);
+        Assert.Equal("6061", h2!.MaterialGrade);   // updated, not duplicated
+
+        // Add two flaws + one on an unknown coil.
+        Assert.Null(await _repo.AddCoilQualityFlawAsync(999998, new Abis.Api.Models.CoilQualityFlawWrite { StartingPosition = 0, EndingPosition = 1, FlawCode = "A" }, CancellationToken.None));
+        await _repo.AddCoilQualityFlawAsync(78600, new Abis.Api.Models.CoilQualityFlawWrite { StartingPosition = 10m, EndingPosition = 12m, FlawCode = "E", HandlingCode = "S" }, CancellationToken.None);
+        await _repo.AddCoilQualityFlawAsync(78600, new Abis.Api.Models.CoilQualityFlawWrite { StartingPosition = 20m, EndingPosition = 22m, FlawCode = "H" }, CancellationToken.None);
+
+        var detail = await _repo.GetCoilQualityAsync(78600, CancellationToken.None);
+        Assert.Equal("6061", detail.Header!.MaterialGrade);
+        Assert.Equal(2, detail.Flaws.Count);
+        Assert.Equal("ORGQ-1", detail.Flaws[0].CoilOrgNum);   // carried from the coil
+
+        // Delete one flaw by its key.
+        Assert.True(await _repo.DeleteCoilQualityFlawAsync(78600, 10m, 12m, "E", CancellationToken.None));
+        Assert.False(await _repo.DeleteCoilQualityFlawAsync(78600, 10m, 12m, "E", CancellationToken.None));
+        Assert.Single((await _repo.GetCoilQualityAsync(78600, CancellationToken.None)).Flaws);
+    }
+
+    [Fact]
     public async Task DeleteCoil_is_guarded_against_in_use_and_terminal_coils()
     {
         using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())

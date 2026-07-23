@@ -383,6 +383,49 @@ public sealed class TestResult
     public decimal? Width { get; set; }
 }
 
+/// <summary>A coil's quality header (legacy COIL_QUALITY): material grade + dimensions + mill/PCC
+/// identifiers captured at receiving, one row per coil.</summary>
+public sealed class CoilQuality
+{
+    public long? CoilAbcNum { get; set; }
+    public string? CoilOrgNum { get; set; }
+    public string? PartNum { get; set; }
+    public string? MaterialGrade { get; set; }
+    public string? PreTreatmentFlag { get; set; }
+    public DateTime? CashDate { get; set; }
+    public string? MillId { get; set; }
+    public decimal? NetCoilLength { get; set; }
+    public string? NetCoilLengthUom { get; set; }
+    public decimal? CoilWidth { get; set; }
+    public decimal? CoilWeight { get; set; }
+    public decimal? MaterialThikness { get; set; }
+    public int? CashLineId { get; set; }
+    public string? SamplingRequired { get; set; }
+    public string? PccNumber { get; set; }
+    public string? RevisionLevel { get; set; }
+}
+
+/// <summary>A flaw segment mapped along a coil (legacy COIL_QUALITY_FLAW_MAPPING): a flaw code over a
+/// start→end position, with an optional handling code.</summary>
+public sealed class CoilQualityFlaw
+{
+    public long? CoilAbcNum { get; set; }
+    public string? CoilOrgNum { get; set; }
+    public decimal? StartingPosition { get; set; }
+    public decimal? EndingPosition { get; set; }
+    public string? FlawCode { get; set; }
+    public string? StartingPositionUom { get; set; }
+    public string? EndingPositionUom { get; set; }
+    public string? HandlingCode { get; set; }
+}
+
+/// <summary>A coil's quality capture: the header (null when none recorded) + its flaw map.</summary>
+public sealed class CoilQualityDetail
+{
+    public CoilQuality? Header { get; set; }
+    public IReadOnlyList<CoilQualityFlaw> Flaws { get; set; } = [];
+}
+
 /// <summary>Outcome of a guarded delete (coil / sheet-skid / scrap-skid), so the endpoint can map it
 /// to the right HTTP status: 204 Deleted, 404 NotFound, 409 InUse.</summary>
 public enum DeleteOutcome { Deleted, NotFound, InUse }
