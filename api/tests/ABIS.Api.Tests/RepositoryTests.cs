@@ -680,12 +680,41 @@ public sealed class RepositoryTests : IDisposable
     [Fact]
     public async Task GetCoils_filters_by_alloy_and_location()
     {
-        var byAlloy = await _repo.GetCoilsAsync(1, 25, null, alloy: "3003", null, null, orderBy: null, CancellationToken.None);
+        var byAlloy = await _repo.GetCoilsAsync(1, 25, null, alloy: "3003", location: null, customerId: null, search: null, temper: null, orderBy: null, CancellationToken.None);
         Assert.Equal(2, byAlloy.TotalCount);
         Assert.All(byAlloy.Items, c => Assert.Equal("3003", c.CoilAlloy2));
 
-        var byLoc = await _repo.GetCoilsAsync(1, 25, null, null, location: "A-", null, orderBy: null, CancellationToken.None);
+        var byLoc = await _repo.GetCoilsAsync(1, 25, null, null, location: "A-", customerId: null, search: null, temper: null, orderBy: null, CancellationToken.None);
         Assert.Equal(2, byLoc.TotalCount);   // A-01, A-02
+    }
+
+    [Fact]
+    public async Task GetCoils_search_matches_org_lot_mid_and_temper_filters()
+    {
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO coil (coil_abc_num, coil_org_num, coil_mid_num, coil_temper, coil_status, customer_id, lot_num, net_wt, net_wt_balance) VALUES (78500, 'ORGZ-991', 'MIDZ-1', 'H14', 2, 4001, 'LOTZ-77', 9000, 9000);
+                INSERT INTO coil (coil_abc_num, coil_org_num, coil_mid_num, coil_temper, coil_status, customer_id, lot_num, net_wt, net_wt_balance) VALUES (78501, 'ORGZ-992', 'MIDZ-2', 'H22', 2, 4001, 'LOTZ-88', 9000, 9000);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+        // Search hits the org number...
+        var byOrg = await _repo.GetCoilsAsync(1, 25, null, null, null, null, search: "ORGZ-991", temper: null, orderBy: null, CancellationToken.None);
+        Assert.Contains(byOrg.Items, c => c.CoilAbcNum == 78500);
+        Assert.DoesNotContain(byOrg.Items, c => c.CoilAbcNum == 78501);
+        // ...the lot number...
+        var byLot = await _repo.GetCoilsAsync(1, 25, null, null, null, null, search: "LOTZ-88", temper: null, orderBy: null, CancellationToken.None);
+        Assert.Contains(byLot.Items, c => c.CoilAbcNum == 78501);
+        // ...the mid number...
+        var byMid = await _repo.GetCoilsAsync(1, 25, null, null, null, null, search: "MIDZ-1", temper: null, orderBy: null, CancellationToken.None);
+        Assert.Contains(byMid.Items, c => c.CoilAbcNum == 78500);
+        // ...and temper filters exactly.
+        var byTemper = await _repo.GetCoilsAsync(1, 25, null, null, null, null, search: null, temper: "H22", orderBy: null, CancellationToken.None);
+        Assert.All(byTemper.Items, c => Assert.Equal("H22", c.CoilTemper));
+        Assert.Contains(byTemper.Items, c => c.CoilAbcNum == 78501);
     }
 
     [Fact]
@@ -713,11 +742,11 @@ public sealed class RepositoryTests : IDisposable
     public async Task GetCoils_orders_by_supplied_clause()
     {
         // net_wt ascending: 9000 (5003), 9500 (5004), 11000 (5002), 12000 (5001).
-        var asc = await _repo.GetCoilsAsync(1, 25, null, null, null, null, orderBy: "net_wt ASC, coil_abc_num", CancellationToken.None);
+        var asc = await _repo.GetCoilsAsync(1, 25, null, null, null, null, search: null, temper: null, orderBy: "net_wt ASC, coil_abc_num", CancellationToken.None);
         Assert.Equal(5003, asc.Items[0].CoilAbcNum);
         Assert.Equal(5001, asc.Items[^1].CoilAbcNum);
 
-        var desc = await _repo.GetCoilsAsync(1, 25, null, null, null, null, orderBy: "net_wt DESC, coil_abc_num", CancellationToken.None);
+        var desc = await _repo.GetCoilsAsync(1, 25, null, null, null, null, search: null, temper: null, orderBy: "net_wt DESC, coil_abc_num", CancellationToken.None);
         Assert.Equal(5001, desc.Items[0].CoilAbcNum);
     }
 

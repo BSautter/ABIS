@@ -24,7 +24,7 @@ public interface IAbisRepository
     Task<AbJob?> PatchJobAsync(long abJobNum, JobPatch patch, CancellationToken ct);
 
     // ---- Coils ----------------------------------------------------------
-    Task<PagedResult<Coil>> GetCoilsAsync(int page, int pageSize, int? status, string? alloy, string? location, long? customerId, string? orderBy, CancellationToken ct);
+    Task<PagedResult<Coil>> GetCoilsAsync(int page, int pageSize, int? status, string? alloy, string? location, long? customerId, string? search, string? temper, string? orderBy, CancellationToken ct);
     Task<Coil?> GetCoilAsync(long coilAbcNum, CancellationToken ct);
     Task<IReadOnlyList<CoilProcessing>> GetCoilProcessingAsync(long coilAbcNum, CancellationToken ct);
     Task<IReadOnlyList<CoilInventoryGroup>> GetCoilInventorySummaryAsync(string groupBy, CancellationToken ct);

@@ -453,7 +453,7 @@ public sealed class AbisRepository : IAbisRepository
         return rows.AsList();
     }
 
-    public Task<PagedResult<Coil>> GetCoilsAsync(int page, int pageSize, int? status, string? alloy, string? location, long? customerId, string? orderBy, CancellationToken ct)
+    public Task<PagedResult<Coil>> GetCoilsAsync(int page, int pageSize, int? status, string? alloy, string? location, long? customerId, string? search, string? temper, string? orderBy, CancellationToken ct)
     {
         var p = new DynamicParameters();
         var conditions = new List<string>();
@@ -464,8 +464,16 @@ public sealed class AbisRepository : IAbisRepository
         if (status is not null) { conditions.Add("coil_status = :status"); p.Add("status", status); }
         else { conditions.Add(OnHandCoilPredicate); }
         if (alloy is not null) { conditions.Add("coil_alloy2 = :alloy"); p.Add("alloy", alloy); }
+        if (temper is not null) { conditions.Add("coil_temper = :temper"); p.Add("temper", temper); }
         if (location is not null) { conditions.Add("coil_location LIKE :location"); p.Add("location", $"%{location}%"); }
         if (customerId is not null) { conditions.Add("customer_id = :customerId"); p.Add("customerId", customerId); }
+        // Free-text term across the identifiers a warehouse user searches by: mill/org coil #,
+        // lot, mid-number, and notes.
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            conditions.Add("(coil_org_num LIKE :q OR lot_num LIKE :q OR coil_mid_num LIKE :q OR coil_notes LIKE :q)");
+            p.Add("q", $"%{search.Trim()}%");
+        }
         var where = conditions.Count > 0 ? string.Join(" AND ", conditions) : null;
         return PageAsync<Coil>(CoilCols, "coil", orderBy ?? "coil_abc_num", where, p, page, pageSize, ct);
     }

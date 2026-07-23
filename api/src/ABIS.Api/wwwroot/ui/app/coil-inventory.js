@@ -30,8 +30,10 @@ function scaffold() {
         <form id="searchForm" class="frow">
           <div class="fld"><label>Status</label><input id="fStatus" inputmode="numeric" style="width:80px" placeholder="any" /></div>
           <div class="fld"><label>Alloy</label><input id="fAlloy" style="width:110px" placeholder="e.g. 3003" /></div>
+          <div class="fld"><label>Temper</label><input id="fTemper" style="width:90px" placeholder="any" /></div>
           <div class="fld"><label>Location</label><input id="fLocation" style="width:120px" placeholder="any" /></div>
           <div class="fld"><label>Customer id</label><input id="fCustomer" inputmode="numeric" style="width:110px" placeholder="any" /></div>
+          <div class="fld"><label>Search (org / lot / mid)</label><input id="fSearch" style="width:150px" placeholder="coil #, lot…" /></div>
           <button class="btn sm" type="submit">Search</button>
         </form>
         <div id="err" class="err" style="margin-top:8px"></div>
@@ -73,12 +75,28 @@ function scaffold() {
 async function search() {
     setErr('');
     setBusy(true);
-    const status = val('#fStatus') ? Number(val('#fStatus')) : undefined;
-    const alloy = val('#fAlloy') || undefined;
-    const location = val('#fLocation') || undefined;
-    const customerId = val('#fCustomer') ? Number(val('#fCustomer')) : undefined;
+    // Raw authFetch (not the generated client) so the search/temper filters work regardless of
+    // client regeneration.
+    const qs = new URLSearchParams({ page: '1', pageSize: '50' });
+    if (val('#fStatus'))
+        qs.set('status', val('#fStatus'));
+    if (val('#fAlloy'))
+        qs.set('alloy', val('#fAlloy'));
+    if (val('#fTemper'))
+        qs.set('temper', val('#fTemper'));
+    if (val('#fLocation'))
+        qs.set('location', val('#fLocation'));
+    if (val('#fCustomer'))
+        qs.set('customerId', val('#fCustomer'));
+    if (val('#fSearch'))
+        qs.set('search', val('#fSearch'));
     try {
-        const page = await client().listCoils(1, 50, status, alloy, location, customerId, undefined, undefined);
+        const r = await authFetch(`/api/coils?${qs.toString()}`);
+        if (!r.ok) {
+            setErr(`Search failed (${r.status}).`);
+            return;
+        }
+        const page = await r.json();
         const items = page.items ?? [];
         $('#coils').innerHTML = items.length ? items.map((c) => `
       <tr class="click" data-id="${c.coilAbcNum}">

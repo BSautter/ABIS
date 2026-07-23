@@ -1938,7 +1938,7 @@
         "tags": [
           "Coils"
         ],
-        "summary": "List raw input coils (paged, filterable, sortable).",
+        "summary": "List raw input coils (paged, filterable, sortable). search matches org/mill coil #, lot, mid-number, or notes; temper filters by coil temper.",
         "operationId": "ListCoils",
         "parameters": [
           {
@@ -1987,6 +1987,20 @@
             "schema": {
               "type": "integer",
               "format": "int64"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "temper",
+            "in": "query",
+            "schema": {
+              "type": "string"
             }
           },
           {

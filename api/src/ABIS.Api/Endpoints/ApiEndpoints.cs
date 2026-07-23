@@ -348,14 +348,15 @@ public static class ApiEndpoints
         api.MapGet("/coils", async (IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, int? status = null,
                 string? alloy = null, string? location = null, long? customerId = null,
+                string? search = null, string? temper = null,
                 string? sort = null, string? dir = null) =>
             {
                 if (!Sort.TryResolve("coils", sort, dir, out var orderBy, out var problems))
                     return Results.ValidationProblem(problems!);
-                return Results.Ok(await repo.GetCoilsAsync(page, pageSize, status, alloy, location, customerId, orderBy, ct));
+                return Results.Ok(await repo.GetCoilsAsync(page, pageSize, status, alloy, location, customerId, search, temper, orderBy, ct));
             })
            .WithName("ListCoils").WithTags("Coils")
-           .WithSummary("List raw input coils (paged, filterable, sortable).")
+           .WithSummary("List raw input coils (paged, filterable, sortable). search matches org/mill coil #, lot, mid-number, or notes; temper filters by coil temper.")
            .Produces<PagedResult<Coil>>().ProducesValidationProblem();
 
         // Inventory rollup: weight on hand grouped by alloy or location.

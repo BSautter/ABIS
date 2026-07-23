@@ -97,9 +97,9 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [x] **H** Bulk "Change status → Ready for transfer" (status 12) — done (#240 `POST /coils/ready-for-transfer` with eligibility guards; #241 picker `readyOnly` filter + coil-ownership mark-ready UI)
 - [~] **H** Scrap-skid + sheet-skid guarded DELETE done (DELETE /scrap-skids/{n}, /sheet-skids/{n} — refuse skids on a shipment; sheet-skid delete cascades its detail + dimension-check rows). Still TODO: return-scrap / credit, sheet-skid modify + weight/piece reconciliation.
 - [~] **H** Guarded coil delete — done (DELETE /coils/{n}, refuses coils applied to a job or done/shipped/transferred); change-coil-customer-on-BOL cascade still TODO
-- [ ] **H** Mint carries full coil attributes (cash_date / part_num / PO / material_num / coil_location / mid_num / damaged_code / …)
+- [x] **H** Mint carries full coil attributes — already done in #224: the ownership-transfer mint does a `SELECT *` schema read and copies every coil column (cash_date / part_num / material_num / mid_num / damaged_code / …) to the minted coil
 - [ ] **H** QR / coil-quality capture + flaw mapping (`coil_quality*`); inbound status-on-receipt (received_time, damage codes)
-- [ ] **M/L** Import-from-BOL / show-archived-BOL browsers; multi-condition coil search; manual new-coil + live-scale weigh-in
+- [~] **M/L** Import-from-BOL / show-archived-BOL browsers; multi-condition coil search (search term over org/lot/mid/notes + temper filter DONE on GET /coils + coil-inventory UI); manual new-coil + live-scale weigh-in — remaining: BOL browsers, gauge/width ranges, live-scale
 
 ### C4. Handheld scanner (RF coil-receiving)
 - [ ] **C** `INBOUND_COIL_STATUS` model + barcode→ABC lookup + mint-decision (already-minted→reprint vs unminted→mint)
