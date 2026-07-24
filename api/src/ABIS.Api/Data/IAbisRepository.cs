@@ -318,6 +318,12 @@ public interface IAbisRepository
     /// through process_coil and the coil, drop the coil off the board, and finish the job when every
     /// coil on it is spent. Null when there is no open run to close.</summary>
     Task<CoilRunResult?> EndCoilRunAsync(long lineNum, long? coilAbcNum, long? abJobNum, decimal endWeight, int? endStatus, string? note, CancellationToken ct);
+    /// <summary>Change the job a line is running without taking the coil off: closes the coil's run on
+    /// the old job at the weight left and opens a fresh run for it on the new job at that weight.</summary>
+    Task<ChangeJobResult?> ChangeLineJobMidCoilAsync(long lineNum, long newJobNum, decimal remainingWeight, int? endStatus, CancellationToken ct);
+    /// <summary>Reverse a wrongly-loaded coil: drop it off the board, delete its (unproduced) run and
+    /// log an error_evt. Refuses a run that has already processed weight.</summary>
+    Task<CoilReverseResult?> ReverseCoilRunAsync(long lineNum, string? errorUser, int? errorTypeId, string? note, CancellationToken ct);
 
     // ---- Stacker line board / error log ---------------------------------
     Task<IReadOnlyList<StackerBoardRow>> GetStackerBoardAsync(long? lineNum, CancellationToken ct);

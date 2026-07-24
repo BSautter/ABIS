@@ -1477,6 +1477,46 @@ public static class ApiEndpoints
            .WithSummary("Finish the coil the line is running: stamps the run's end weight/status + process_wt, rolls the weight through process_coil + the coil, and finishes the job when every coil on it is spent.")
            .Produces<CoilRunResult>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
 
+        api.MapPost("/das/lines/{lineNum:long}/change-job", async (long lineNum, ChangeJobWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (!await repo.LineExistsAsync(lineNum, ct))
+                    return Results.NotFound();
+                if (body.NewJobNum is not { } newJob)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["newJobNum"] = ["newJobNum is required."] });
+                if (body.RemainingWeight is not { } remaining || remaining < 0)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["remainingWeight"] = ["remainingWeight is required and cannot be negative."] });
+                if (await repo.GetJobAsync(newJob, ct) is null)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["newJobNum"] = [$"Job {newJob} does not exist."] });
+                var board = (await repo.GetLineBoardAsync(lineNum, ct)).FirstOrDefault();
+                if (board?.AbJobNum == newJob)
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Already running that job",
+                        detail: $"Line {lineNum} is already running job {newJob}.");
+                return await repo.ChangeLineJobMidCoilAsync(lineNum, newJob, remaining, body.EndStatus, ct) is { } result
+                    ? Results.Ok(result)
+                    : Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Nothing to change",
+                        detail: $"Line {lineNum} needs an open shift, a current job and a loaded coil to change job mid-coil.");
+            })
+           .WithName("ChangeLineJobMidCoil").WithTags("DAS")
+           .WithSummary("Change the job the line is running WITHOUT dropping the coil: splits the coil's weight between the two jobs' runs.")
+           .Produces<ChangeJobResult>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
+
+        api.MapPost("/das/lines/{lineNum:long}/coil-run/reverse", async (long lineNum, CoilReverseWrite body, IAbisRepository repo, HttpContext ctx, CancellationToken ct) =>
+            {
+                if (!await repo.LineExistsAsync(lineNum, ct))
+                    return Results.NotFound();
+                // The correction goes on the record under whoever is signed in, unless told otherwise.
+                var user = string.IsNullOrWhiteSpace(body.ErrorUser) ? ResolveLogin(ctx) : body.ErrorUser;
+                if (await repo.ReverseCoilRunAsync(lineNum, user, body.ErrorTypeId, body.Note, ct) is not { } result)
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Nothing to reverse",
+                        detail: $"Line {lineNum} has no coil run to reverse.");
+                return result.Refused
+                    ? Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Run has produced", detail: result.Reason)
+                    : Results.Ok(result);
+            })
+           .WithName("ReverseCoilRun").WithTags("DAS")
+           .WithSummary("Reverse a wrongly-loaded coil: drops it off the board, deletes its unproduced run and logs an error_evt. 409 once the run has processed weight.")
+           .Produces<CoilReverseResult>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
+
         // ---- Stacker line board / error log (legacy stacker_110) ----
         api.MapGet("/stacker/board", async (IAbisRepository repo, CancellationToken ct, long? lineNum = null) =>
                 Results.Ok(await repo.GetStackerBoardAsync(lineNum, ct)))

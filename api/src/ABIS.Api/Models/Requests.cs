@@ -1154,3 +1154,23 @@ public sealed class LineQueueReorderWrite
 {
     public IReadOnlyList<long>? AbJobNums { get; set; }
 }
+
+/// <summary>Body for POST /api/das/lines/{lineNum}/change-job — change the job the line is running
+/// WITHOUT taking the coil off (legacy <c>split_and_save</c>). <see cref="RemainingWeight"/> is the
+/// weight left on the coil at the changeover: the old job's run closes there and the new job's run
+/// begins there, so one coil feeding two jobs splits its weight honestly between them.</summary>
+public sealed class ChangeJobWrite
+{
+    public long? NewJobNum { get; set; }
+    public decimal? RemainingWeight { get; set; }
+    public int? EndStatus { get; set; }
+}
+
+/// <summary>Body for POST /api/das/lines/{lineNum}/coil-run/reverse — the coil on the mandrel was
+/// loaded in error: drop it and delete its run. Refused once the run has processed weight.</summary>
+public sealed class CoilReverseWrite
+{
+    public string? ErrorUser { get; set; }
+    public int? ErrorTypeId { get; set; }
+    public string? Note { get; set; }
+}

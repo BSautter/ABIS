@@ -87,7 +87,17 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [ ] **C** Coil barcode scan-to-load + actual-weight (`ABCO_COIL_NET_WT`) update
 - [ ] **H** Live shift efficiency % + coil yield % / finish-% (console, 5s cadence)
 - [ ] **H** End-coil recap (ending status + closing weight)
-- [ ] **H** Drop/reverse a wrongly-loaded coil (+`ERROR_EVT`); change-job-mid-coil (split & save remaining wt)
+- [x] **H** Drop/reverse a wrongly-loaded coil (+`ERROR_EVT`); change-job-mid-coil (split & save remaining wt)
+  — done (#286): `POST /das/lines/{n}/change-job` ports legacy `u_coil.split_and_save` — closes the coil's run on
+  the OLD job at the weight left (`process_wt` = begin − remaining), squares up its `process_coil` (status 1, as
+  legacy hard-codes on a split — the coil is still running, just on another job) + runs the job-done cascade,
+  moves the board **and** the `LINE_PRIORITY` queue to the new job, then opens a FRESH run for the SAME coil on
+  the new job beginning at that weight. One deliberate deviation, documented in code: the coil's own balance is
+  persisted (legacy carried it in the in-memory coil object) because the modern path is stateless and the new run
+  would otherwise begin at a stale weight. `POST /das/lines/{n}/coil-run/reverse` drops a wrongly-loaded coil and
+  **deletes** its run — as if it had never been loaded — logging an `error_evt` (with shift/coil/job) so the
+  correction is on the record; **409 once the run has processed weight** (a real pass is corrected by weight, not
+  erased). Console: "Change job (keep coil)" + "↺ Reverse coil".
 - [x] **H** Per-line job queue / `LINE_PRIORITY` sequencing — done (#285): `GET /das/lines/{n}/queue`
   (schedule order, ended jobs hidden unless `includeEnded=true`), `PUT /das/lines/{n}/queue/{job}`
   (add/edit; omitted fields keep their value, a new row lands at the end as Waiting),

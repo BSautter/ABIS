@@ -346,6 +346,73 @@ public sealed class LineBoardTests
     }
 
     [Fact]
+    public async Task Changing_job_mid_coil_splits_the_coils_weight_between_both_jobs()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        // Coil 5003 (9000 lb) runs on job 1001, then the line switches to 1002 with 4000 lb left.
+        (await c.PostAsJsonAsync("/api/das/lines/110/coil-run/start", new { coilAbcNum = 5003, abJobNum = 1001 })).EnsureSuccessStatusCode();
+        var resp = await c.PostAsJsonAsync("/api/das/lines/110/change-job", new { newJobNum = 1002, remainingWeight = 4000, endStatus = 1 });
+        resp.EnsureSuccessStatusCode();
+        var res = await resp.Content.ReadFromJsonAsync<JsonElement>();
+
+        // The old job's run closed at 4000 having processed 5000…
+        var closed = res.GetProperty("closedRun");
+        Assert.Equal(1001, closed.GetProperty("abJobNum").GetInt64());
+        Assert.Equal(4000m, closed.GetProperty("coilEndWt").GetDecimal());
+        Assert.Equal(5000m, closed.GetProperty("processWt").GetDecimal());
+        // …and the same coil opened a fresh run on the new job at that weight.
+        var opened = res.GetProperty("openedRun");
+        Assert.Equal(1002, opened.GetProperty("abJobNum").GetInt64());
+        Assert.Equal(5003, opened.GetProperty("coilAbcNum").GetInt64());
+        Assert.Equal(4000m, opened.GetProperty("coilBeginWt").GetDecimal());
+        Assert.Equal(JsonValueKind.Null, opened.GetProperty("coilEndTime").ValueKind);
+
+        // The coil stays on the mandrel; the board and queue move to the new job.
+        Assert.Equal(5003, res.GetProperty("board").GetProperty("coilAbcNum").GetInt64());
+        Assert.Equal(1002, res.GetProperty("board").GetProperty("abJobNum").GetInt64());
+        var queue = await c.GetFromJsonAsync<JsonElement>("/api/das/lines/110/queue");
+        var byJob = queue.EnumerateArray().ToDictionary(r => r.GetProperty("abJobNum").GetInt64(), r => r.GetProperty("status").GetInt32());
+        Assert.Equal(1, byJob[1002]);
+        Assert.Equal(2, byJob[1001]);
+        // The coil's balance is persisted, so the next run reads the right weight.
+        var coil = await c.GetFromJsonAsync<JsonElement>("/api/coils/5003");
+        Assert.Equal(4000m, coil.GetProperty("netWtBalance").GetDecimal());
+
+        var same = await c.PostAsJsonAsync("/api/das/lines/110/change-job", new { newJobNum = 1002, remainingWeight = 100 });
+        Assert.Equal(HttpStatusCode.Conflict, same.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_wrongly_loaded_coil_is_reversed_and_logged_but_a_produced_run_is_not()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        (await c.PostAsJsonAsync("/api/das/lines/110/coil-run/start", new { coilAbcNum = 5003, abJobNum = 1001 })).EnsureSuccessStatusCode();
+        var reverse = await c.PostAsJsonAsync("/api/das/lines/110/coil-run/reverse", new { errorUser = "op1", errorTypeId = 3, note = "wrong coil" });
+        reverse.EnsureSuccessStatusCode();
+        var res = await reverse.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(3, res.GetProperty("reversedRunNum").GetInt32());
+        Assert.Equal(JsonValueKind.Null, res.GetProperty("board").GetProperty("coilAbcNum").ValueKind);
+
+        // The run is gone — as if the coil had never been loaded on the job…
+        var runs = await c.GetFromJsonAsync<JsonElement>("/api/das/shifts/7701/coil-runs");
+        Assert.Equal(2, runs.EnumerateArray().Count());
+        // …but the correction is on the record.
+        var errors = await c.GetFromJsonAsync<JsonElement>("/api/stacker/line-errors?lineNum=110");
+        Assert.Contains(errors.EnumerateArray(), e => e.GetProperty("title").GetString() == "Coil reversed");
+
+        // A run that has produced weight must be corrected by weight, not erased.
+        (await c.PostAsJsonAsync("/api/das/lines/110/coil-run/start", new { coilAbcNum = 5003, abJobNum = 1001 })).EnsureSuccessStatusCode();
+        (await c.PostAsJsonAsync("/api/das/lines/110/coil-run/end", new { endWeight = 5000 })).EnsureSuccessStatusCode();
+        (await c.PostAsJsonAsync("/api/das/lines/110/current-coil", new { coilAbcNum = 5003 })).EnsureSuccessStatusCode();
+        var produced = await c.PostAsJsonAsync("/api/das/lines/110/coil-run/reverse", new { });
+        Assert.Equal(HttpStatusCode.Conflict, produced.StatusCode);
+    }
+
+    [Fact]
     public async Task Queue_jobs_can_be_added_edited_and_removed()
     {
         using var f = new Factory();

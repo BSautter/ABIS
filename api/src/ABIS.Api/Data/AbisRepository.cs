@@ -6800,6 +6800,137 @@ public sealed class AbisRepository : IAbisRepository
         };
     }
 
+    /// <summary>Change the job the line is running WITHOUT taking the coil off (legacy
+    /// <c>u_coil.split_and_save</c>): the coil's run on the OLD job is closed at the weight left, the
+    /// old job's <c>process_coil</c> is squared up (and finished if that spends it), the board moves
+    /// to the new job, and a FRESH run opens for the same coil on the new job beginning at that same
+    /// weight. That split is what keeps each job's processed weight honest when one coil feeds two.
+    /// <para>Deviation from legacy, deliberate: the coil's own balance is persisted here too. Legacy
+    /// carried it in the in-memory coil object and wrote it on the next save; the modern path is
+    /// stateless, so the new run would otherwise begin at the stale balance.</para>
+    /// Null when the line has no open shift, coil or job; the new job must differ from the old.</summary>
+    public async Task<ChangeJobResult?> ChangeLineJobMidCoilAsync(long lineNum, long newJobNum, decimal remainingWeight, int? endStatus, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var board = await conn.QuerySingleOrDefaultAsync<CoilRunBoardState>(new CommandDefinition(
+            "SELECT shift_num AS ShiftNum, ab_job_num AS AbJobNum, coil_abc_num AS CoilAbcNum FROM line_current_status WHERE line_num = :line",
+            new { line = lineNum }, cancellationToken: ct));
+        if (board?.ShiftNum is not { } shift || board.AbJobNum is not { } oldJob || board.CoilAbcNum is not { } coil)
+            return null;
+
+        var run = await ReadRunAsync(conn, null, shift, oldJob, coil, ct);
+        var now = DateTime.Now;
+        var processWt = Math.Max(0m, (run?.CoilBeginWt ?? remainingWeight) - remainingWeight);
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        if (run is not null)
+            await conn.ExecuteAsync(new CommandDefinition(
+                """
+                UPDATE shift_coil
+                   SET coil_end_status = :estatus, coil_end_wt = :ewt, coil_end_time = :etime, process_wt = :pwt
+                 WHERE shift_num = :shift AND ab_job_num = :job AND coil_abc_num = :coil
+                """,
+                new { estatus = endStatus, ewt = remainingWeight, etime = now, pwt = processWt,
+                      shift, job = oldJob, coil },
+                transaction: tx, cancellationToken: ct));
+        // Legacy hard-codes shift_process_status = 1 on the split: the coil is still running, just on
+        // another job — unlike an end-of-run, which records the operator's ending status.
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE process_coil SET shift_process_status = 1, current_wt = :cwt WHERE coil_abc_num = :coil AND ab_job_num = :job",
+            new { cwt = remainingWeight, coil, job = oldJob }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE coil SET net_wt_balance = :bal, net_wt_balance_from_line = :bal2 WHERE coil_abc_num = :coil",
+            new { bal = remainingWeight, bal2 = remainingWeight, coil }, transaction: tx, cancellationToken: ct));
+
+        var unspent = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM process_coil WHERE ab_job_num = :job AND (current_wt IS NULL OR current_wt <> 0)",
+            new { job = oldJob }, transaction: tx, cancellationToken: ct));
+        var finished = unspent == 0;
+        if (finished)
+        {
+            await conn.ExecuteAsync(new CommandDefinition(
+                "UPDATE ab_job SET time_date_finished = :fin WHERE ab_job_num = :job",
+                new { fin = now, job = oldJob }, transaction: tx, cancellationToken: ct));
+            await conn.ExecuteAsync(new CommandDefinition(
+                "UPDATE line_priority SET status = 0 WHERE ab_job_num = :job",
+                new { job = oldJob }, transaction: tx, cancellationToken: ct));
+        }
+
+        // Move the board + queue to the new job (the wf_set_opc_abjob half), coil untouched.
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE line_current_status SET ab_job_num = :job WHERE line_num = :line",
+            new { job = newJobNum, line = lineNum }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE line_priority SET status = 2 WHERE line_num = :line AND status = 1",
+            new { line = lineNum }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE line_priority SET status = 1 WHERE ab_job_num = :job AND line_num = :line",
+            new { job = newJobNum, line = lineNum }, transaction: tx, cancellationToken: ct));
+
+        // The same coil starts a fresh run on the new job at the weight it has left.
+        var opened = await ReadRunAsync(conn, tx, shift, newJobNum, coil, ct);
+        if (opened is null)
+            await OpenRunAsync(conn, tx, shift, await NextCoilRunNumAsync(conn, tx, shift, ct),
+                newJobNum, coil, remainingWeight, endStatus, now, ct);
+        await tx.CommitAsync(ct);
+
+        return new ChangeJobResult
+        {
+            ClosedRun = run is null ? null : await ReadRunAsync(conn, null, shift, oldJob, coil, ct),
+            OpenedRun = (await ReadRunAsync(conn, null, shift, newJobNum, coil, ct))!,
+            Board = (await GetLineBoardAsync(lineNum, ct)).First(),
+            PreviousJobFinished = finished,
+        };
+    }
+
+    /// <summary>Reverse a wrongly-loaded coil (legacy's Reverse button): drop the coil off the board
+    /// and DELETE its run, so nothing was ever processed against this job — then log an
+    /// <c>error_evt</c> so the correction is on the record. Refuses a run that has already produced
+    /// (any process weight, or a closed run): that is a real pass and must be corrected by weight,
+    /// not erased. Null when the line has no coil, shift, or run to reverse.</summary>
+    public async Task<CoilReverseResult?> ReverseCoilRunAsync(long lineNum, string? errorUser, int? errorTypeId, string? note, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var board = await conn.QuerySingleOrDefaultAsync<CoilRunBoardState>(new CommandDefinition(
+            "SELECT shift_num AS ShiftNum, ab_job_num AS AbJobNum, coil_abc_num AS CoilAbcNum FROM line_current_status WHERE line_num = :line",
+            new { line = lineNum }, cancellationToken: ct));
+        if (board?.ShiftNum is not { } shift || board.AbJobNum is not { } job || board.CoilAbcNum is not { } coil)
+            return null;
+
+        var run = await ReadRunAsync(conn, null, shift, job, coil, ct);
+        if (run is null)
+            return null;
+        if (run.CoilEndTime is not null || (run.ProcessWt ?? 0m) > 0m)
+            return new CoilReverseResult { Refused = true, Reason = "The run has already processed weight — end it with the correct weight instead of reversing it." };
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM shift_coil WHERE shift_num = :shift AND coil_run_num = :run",
+            new { shift, run = run.CoilRunNum }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE line_current_status SET coil_abc_num = NULL, coil_process_rate = NULL WHERE line_num = :line",
+            new { line = lineNum }, transaction: tx, cancellationToken: ct));
+        var evtId = await NextIdAsync(conn, tx, "error_evt", "error_evt_id", ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO error_evt (error_evt_id, evt_time, error_type_id, error_user, error_comment,
+                                   line_id, shift_id, coil_abc_num, ab_job_num, title, message)
+            VALUES (:id, :ts, :type, :usr, :cmt, :line, :shift, :coil, :job, :title, :msg)
+            """,
+            new { id = evtId, ts = DateTime.Now, type = errorTypeId, usr = errorUser, cmt = note,
+                  line = lineNum, shift, coil, job, title = "Coil reversed",
+                  msg = $"Coil {coil} was loaded on job {job} in error; run {run.CoilRunNum} removed." },
+            transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+
+        return new CoilReverseResult
+        {
+            ReversedRunNum = run.CoilRunNum,
+            ErrorEvtId = evtId,
+            Board = (await GetLineBoardAsync(lineNum, ct)).First(),
+        };
+    }
+
     private sealed class CoilRunCoilState
     {
         public decimal? NetWtBalance { get; set; }

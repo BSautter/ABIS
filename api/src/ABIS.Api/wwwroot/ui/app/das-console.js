@@ -98,7 +98,12 @@ function scaffold() {
             <div class="frow" style="margin-top:10px;align-items:flex-end">
               <div class="fld"><label>Weight left on coil</label><input id="opEndWt" class="big" type="number" step="0.01" style="width:150px" /></div>
               <button class="btn sm" id="btnEndCoil" type="button">End coil run</button>
+              <button class="btn sm ghost" id="btnReverse" type="button" title="The coil was loaded in error: drop it and delete its run">↺ Reverse coil</button>
               <span id="opOk" class="ok-note"></span>
+            </div>
+            <div class="frow" style="margin-top:10px;align-items:flex-end">
+              <div class="fld"><label>Change to job #</label><input id="opNewJob" class="big" inputmode="numeric" style="width:130px" /></div>
+              <button class="btn sm" id="btnChangeJob" type="button" title="Keep running the same coil on a different job — uses the weight-left value above">Change job (keep coil)</button>
             </div>
             <div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="min-width:520px"><thead><tr><th>Run</th><th>Coil</th><th>Job</th><th class="num">Begin</th><th class="num">End</th><th class="num">Processed</th><th>Ended</th></tr></thead><tbody id="tRuns"><tr><td colspan="7" class="muted">—</td></tr></tbody></table></div>
             <h3 style="margin:16px 0 6px;font-size:13px">Line queue</h3>
@@ -1026,6 +1031,24 @@ async function pickerBrowse(bases, targetId, path) {
             return;
         }
         void queueWrite(`/api/das/lines/${lineNum}/queue/${Number(j)}`, 'PUT', {}, `Job ${j} queued`).then(() => setV('#qJob', ''));
+    });
+    $('#btnChangeJob').addEventListener('click', () => {
+        const newJob = v('#opNewJob'), wt = v('#opEndWt');
+        if (!newJob) {
+            setErr('Enter the job number to change to.');
+            return;
+        }
+        if (wt === '') {
+            setErr('Enter the weight left on the coil — it splits between the two jobs.');
+            return;
+        }
+        void coilRunAction(`/api/das/lines/${lineNum}/change-job`, { newJobNum: Number(newJob), remainingWeight: Number(wt) }, (r) => `Now running job ${newJob}${r.previousJobFinished ? ' — previous job finished' : ''}`)
+            .then(() => { job = Number(newJob); setV('#fJob', newJob); setV('#opNewJob', ''); void loadJob(); });
+    });
+    $('#btnReverse').addEventListener('click', () => {
+        if (!confirm('Reverse the coil on this line? Its run is deleted as if it had never been loaded, and the correction is logged.'))
+            return;
+        void coilRunAction(`/api/das/lines/${lineNum}/coil-run/reverse`, { note: 'Reversed from the DAS console' }, () => 'Coil reversed and logged');
     });
     $('#btnEndCoil').addEventListener('click', () => {
         const wt = v('#opEndWt');

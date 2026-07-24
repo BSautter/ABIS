@@ -2804,6 +2804,28 @@ public sealed class CoilRunResult
     public bool JobFinished { get; set; }
 }
 
+/// <summary>Result of changing the job a line is running mid-coil (legacy <c>split_and_save</c>):
+/// the run closed on the old job, the fresh run opened for the same coil on the new job, the board
+/// after the move, and whether squaring the old job up finished it.</summary>
+public sealed class ChangeJobResult
+{
+    public ShiftCoilRun? ClosedRun { get; set; }
+    public ShiftCoilRun OpenedRun { get; set; } = new();
+    public LineBoardRow Board { get; set; } = new();
+    public bool PreviousJobFinished { get; set; }
+}
+
+/// <summary>Result of reversing a wrongly-loaded coil. <see cref="Refused"/> is set when the run had
+/// already processed weight — that is a real pass and must be corrected by weight, not erased.</summary>
+public sealed class CoilReverseResult
+{
+    public bool Refused { get; set; }
+    public string? Reason { get; set; }
+    public int ReversedRunNum { get; set; }
+    public long ErrorEvtId { get; set; }
+    public LineBoardRow Board { get; set; } = new();
+}
+
 /// <summary>Result of closing a line's shift (legacy <c>wf_end_shift</c>): which shift was closed,
 /// the downtime rolled into its <c>dt_total</c> (SECONDS, as legacy stores it), and the line's board
 /// after the close.</summary>

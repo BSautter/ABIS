@@ -3691,6 +3691,118 @@
         }
       }
     },
+    "/api/das/lines/{lineNum}/change-job": {
+      "post": {
+        "tags": [
+          "DAS"
+        ],
+        "summary": "Change the job the line is running WITHOUT dropping the coil: splits the coil's weight between the two jobs' runs.",
+        "operationId": "ChangeLineJobMidCoil",
+        "parameters": [
+          {
+            "name": "lineNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeJobWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeJobResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/das/lines/{lineNum}/coil-run/reverse": {
+      "post": {
+        "tags": [
+          "DAS"
+        ],
+        "summary": "Reverse a wrongly-loaded coil: drops it off the board, deletes its unproduced run and logs an error_evt. 409 once the run has processed weight.",
+        "operationId": "ReverseCoilRun",
+        "parameters": [
+          {
+            "name": "lineNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoilReverseWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoilReverseResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/dies": {
       "get": {
         "tags": [
@@ -14953,6 +15065,45 @@
         },
         "additionalProperties": false
       },
+      "ChangeJobResult": {
+        "type": "object",
+        "properties": {
+          "closedRun": {
+            "$ref": "#/components/schemas/ShiftCoilRun"
+          },
+          "openedRun": {
+            "$ref": "#/components/schemas/ShiftCoilRun"
+          },
+          "board": {
+            "$ref": "#/components/schemas/LineBoardRow"
+          },
+          "previousJobFinished": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ChangeJobWrite": {
+        "type": "object",
+        "properties": {
+          "newJobNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "remainingWeight": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "endStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "ChangePasswordRequest": {
         "type": "object",
         "properties": {
@@ -15797,6 +15948,49 @@
             "nullable": true
           },
           "revisionLevel": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CoilReverseResult": {
+        "type": "object",
+        "properties": {
+          "refused": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "reversedRunNum": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "errorEvtId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "board": {
+            "$ref": "#/components/schemas/LineBoardRow"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CoilReverseWrite": {
+        "type": "object",
+        "properties": {
+          "errorUser": {
+            "type": "string",
+            "nullable": true
+          },
+          "errorTypeId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "note": {
             "type": "string",
             "nullable": true
           }
