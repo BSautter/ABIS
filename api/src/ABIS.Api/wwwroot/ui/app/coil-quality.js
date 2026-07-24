@@ -89,6 +89,7 @@ async function load() {
         $('#coiltag').textContent = `coil ${coil}`;
         const d = await r.json();
         const h = d.header;
+        // Prefill the header form (blank when no header yet — the org # can be entered to create one).
         setV('#hOrg', h?.coilOrgNum);
         setV('#hPart', h?.partNum);
         setV('#hGrade', h?.materialGrade);
