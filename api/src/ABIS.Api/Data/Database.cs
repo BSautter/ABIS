@@ -43,6 +43,12 @@ public sealed class DatabaseOptions
     /// concurrency-safe. Set via the <c>Database:MaxIdTables</c> config section.</summary>
     public HashSet<string> MaxIdTables { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Oracle only: on startup, advance any id sequence that has drifted at/below its table's
+    /// MAX(id) to MAX+1, so id-minting writes can't collide (ORA-00001) after a Data Pump refresh
+    /// leaves the sequences behind. Idempotent; default on. Set <c>Database:ResyncSequencesOnStartup</c>
+    /// false only if the app's DB user lacks ALTER SEQUENCE (then run tools/resync_sequences.sql as DBO).</summary>
+    public bool ResyncSequencesOnStartup { get; set; } = true;
+
     public SqlDialect Dialect => Provider.Trim().ToLowerInvariant() switch
     {
         "oracle" => SqlDialect.Oracle,
@@ -76,6 +82,12 @@ public interface IDbConnectionFactory
     /// <summary>Dialect-specific trivial connectivity probe. Oracle requires a FROM
     /// clause (a bare <c>SELECT 1</c> raises ORA-00923), so it uses <c>FROM dual</c>.</summary>
     string PingQuery { get; }
+
+    /// <summary>The Oracle sequence a table's id column is minted from, resolved exactly as
+    /// <see cref="NextIdQuery"/> does — or <c>null</c> when the table uses <c>MAX+1</c> (it is in
+    /// <see cref="DatabaseOptions.MaxIdTables"/>, has no sequence) or the dialect isn't Oracle. Lets
+    /// the startup sequence-resync read the same mapping the inserts use.</summary>
+    string? SequenceFor(string table, string idColumn);
 }
 
 public sealed class DbConnectionFactory : IDbConnectionFactory
@@ -148,6 +160,11 @@ public sealed class DbConnectionFactory : IDbConnectionFactory
             : string.Format(_options.SequenceNameFormat, idColumn);
         return ValidateSequence(name, table);
     }
+
+    public string? SequenceFor(string table, string idColumn) =>
+        Dialect != SqlDialect.Oracle || _options.MaxIdTables.Contains(table)
+            ? null
+            : ResolveSequence(table, idColumn);
 
     /// <summary>Ensures a sequence name is a plain (optionally schema-qualified)
     /// identifier before it is interpolated into SQL.</summary>

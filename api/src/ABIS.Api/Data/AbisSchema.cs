@@ -1,3 +1,4 @@
+using System.Data;
 using System.Data.Common;
 using Dapper;
 using Microsoft.Extensions.Logging;
@@ -486,5 +487,84 @@ public static class AbisSchema
             logger.LogWarning("ABIS-owned schema ensured with {Failed} of {Count} seed statements skipped (see warnings).", failed, owned.Length);
         else
             logger.LogInformation("ABIS-owned schema ensured ({Count} DDL statements applied idempotently).", owned.Length);
+    }
+
+    // Every table whose id column the app mints from a sequence (one row per NextIdAsync call site in
+    // AbisRepository). The sequence NAME is resolved through the factory, so it honours the
+    // Database:Sequences overrides and the {id}_seq default automatically; MaxIdTables resolve to null
+    // (no sequence) and are skipped. KEEP IN STEP with AbisRepository.NextIdAsync + tools/resync_sequences.sql.
+    private static readonly (string Table, string IdColumn)[] SequenceBackedTables =
+    [
+        ("ab_job", "ab_job_num"), ("carrier", "carrier_id"), ("coil", "coil_abc_num"),
+        ("coil_ownership_transfer", "certificate_num"), ("customer", "customer_id"),
+        ("customer_contact", "contact_id"), ("customer_order", "order_abc_num"), ("die", "die_id"),
+        ("dt_instance", "instance_num"), ("error_evt", "error_evt_id"),
+        ("outbound_edi_transaction", "edi_file_id"), ("part_num", "part_num_id"),
+        ("receiving_bol", "receiving_bol_id"), ("return_scrap_item", "return_scrap_item_num"),
+        ("scan_log", "scan_id"), ("scrap_skid", "scrap_skid_num"), ("sheet_skid", "sheet_skid_num"),
+        ("sheet_skid_dimension_check", "dimension_check_num"), ("shift", "shift_num"),
+        ("sketch", "sketch_id"), ("shipment", "packing_list"),
+    ];
+
+    /// <summary>Self-heal the Oracle id sequences on startup: any sequence sitting at or below its
+    /// table's <c>MAX(id)</c> is advanced to <c>MAX+1</c>, so the next insert can't collide (ORA-00001).
+    /// <para>WHY: a Data Pump refresh of the non-prod DB imports the rows but leaves the sequences
+    /// behind their new max (13 of 18 were behind on 2026-07-24, one by 877k), which silently breaks
+    /// every id-minting write. Correcting it here means a redeploy/restart fixes any drift — no manual
+    /// step, no dependence on the refresh script. Idempotent: a healthy sequence is a no-op.</para>
+    /// Oracle only; gated by <c>Database:ResyncSequencesOnStartup</c> (default on). Never throws — a
+    /// per-sequence failure is logged and skipped so it can't block boot. 11g-safe (INCREMENT BY jump).</summary>
+    public static async Task ResyncSequencesAsync(IDbConnectionFactory factory, ILogger logger, CancellationToken ct = default)
+    {
+        if (factory.Dialect != SqlDialect.Oracle) return;
+
+        await using var conn = factory.Create();
+        await conn.OpenAsync(ct);
+        var bumped = 0;
+        foreach (var (table, idColumn) in SequenceBackedTables)
+        {
+            var seq = factory.SequenceFor(table, idColumn);
+            if (seq is null) continue;   // MaxIdTables have no sequence
+            try
+            {
+                // table/column are internal constants; seq is validated by the factory — safe to
+                // interpolate. NEXTVAL first, then jump by the gap if it landed at/below MAX (behind).
+                var p = new DynamicParameters();
+                p.Add("bumped", dbType: DbType.Int32, direction: ParameterDirection.Output);
+                p.Add("newval", dbType: DbType.Int64, direction: ParameterDirection.Output);
+                await conn.ExecuteAsync(new CommandDefinition(
+                    $$"""
+                    DECLARE v_max NUMBER; v_cur NUMBER; v_gap NUMBER;
+                    BEGIN
+                      SELECT NVL(MAX({{idColumn}}), 0) INTO v_max FROM {{table}};
+                      EXECUTE IMMEDIATE 'SELECT {{seq}}.NEXTVAL FROM dual' INTO v_cur;
+                      v_gap := v_max - v_cur;
+                      IF v_gap >= 0 THEN
+                        EXECUTE IMMEDIATE 'ALTER SEQUENCE {{seq}} INCREMENT BY '||(v_gap + 1);
+                        EXECUTE IMMEDIATE 'SELECT {{seq}}.NEXTVAL FROM dual' INTO v_cur;
+                        EXECUTE IMMEDIATE 'ALTER SEQUENCE {{seq}} INCREMENT BY 1';
+                        :bumped := 1;
+                      ELSE
+                        :bumped := 0;
+                      END IF;
+                      :newval := v_cur;
+                    END;
+                    """, p, cancellationToken: ct));
+                if (p.Get<int>("bumped") == 1)
+                {
+                    bumped++;
+                    logger.LogWarning("Sequence {Seq} was behind {Table}.{Col} — advanced to {NewVal}.",
+                        seq, table, idColumn, p.Get<long>("newval"));
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Sequence re-sync skipped for {Table} ({Seq}).", table, seq);
+            }
+        }
+        if (bumped > 0)
+            logger.LogWarning("Startup sequence re-sync advanced {Bumped} drifted sequence(s) (see warnings) — id-minting writes are safe.", bumped);
+        else
+            logger.LogInformation("Startup sequence re-sync: all id sequences already ahead of their tables.");
     }
 }

@@ -213,6 +213,22 @@ if (dbOptions.Dialect == SqlDialect.Oracle)
     {
         app.Logger.LogError(ex, "ABIS-owned schema ensure failed; admin scheduler endpoints will 500 until it succeeds.");
     }
+
+    // Self-heal any id sequences left behind their table max (a Data Pump refresh leaves them drifted,
+    // which breaks every id-minting write with ORA-00001). Doing it on startup means a redeploy fixes
+    // the drift with no manual step. Idempotent — a no-op when the sequences are already ahead.
+    if (dbOptions.ResyncSequencesOnStartup)
+    {
+        try
+        {
+            await AbisSchema.ResyncSequencesAsync(
+                app.Services.GetRequiredService<IDbConnectionFactory>(), app.Logger);
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogError(ex, "Startup sequence re-sync failed; id-minting writes may hit ORA-00001 until it succeeds.");
+        }
+    }
 }
 
 // Opt-in deploy-time email smoke test (Email:SendTestOnStartup). Sends ONE message through the real

@@ -105,6 +105,13 @@ script for a read-only dry run that only reports the gaps. Keep the (sequence, t
 the script in step with `AbisRepository.NextIdAsync` + the `Database:Sequences` overrides in
 `appsettings.json`.
 
+> **Automatic on the app host:** the ABIS API also self-heals this on **every startup** — on Oracle it
+> advances any drifted sequence to `MAX+1` before serving (`AbisSchema.ResyncSequencesAsync`, logged;
+> a no-op when healthy). So a **redeploy or restart of codi-ABIS corrects the drift with no manual
+> step**, and this SQL script is the fallback for a box without the app or a manual run between deploys.
+> Disable the startup pass with `Database:ResyncSequencesOnStartup=false` (e.g. if the app's DB user
+> lacks `ALTER SEQUENCE`); then this script, run as DBO, is the only path.
+
 ---
 
 ## Weekly automation

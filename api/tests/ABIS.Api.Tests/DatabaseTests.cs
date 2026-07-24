@@ -1,5 +1,6 @@
 using Abis.Api.Data;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Abis.Api.Tests;
@@ -80,6 +81,38 @@ public sealed class DatabaseTests
         var factory = Factory("Oracle", o => o.MaxIdTables.Add("abis_truck_appointment"));
         Assert.Equal("SELECT COALESCE(MAX(appointment_id), 0) + 1 FROM abis_truck_appointment",
             factory.NextIdQuery("abis_truck_appointment", "appointment_id"));
+    }
+
+    [Fact]
+    public void SequenceFor_resolves_the_same_name_the_insert_uses_or_null_for_maxid()
+    {
+        // The startup sequence-resync reads SequenceFor to know which sequence a table mints from —
+        // it must match NextIdQuery exactly, honouring the override + the {id}_seq default, and return
+        // null (no sequence, skip) for a MAX+1 table and for SQLite.
+        var oracle = Factory("Oracle", o => o.Sequences["error_evt"] = "error_evt_seq");
+        Assert.Equal("error_evt_seq", oracle.SequenceFor("error_evt", "error_evt_id"));   // override
+        Assert.Equal("coil_abc_num_seq", oracle.SequenceFor("coil", "coil_abc_num"));     // {id}_seq default
+        Assert.Null(Factory("Oracle", o => o.MaxIdTables.Add("maint_log")).SequenceFor("maint_log", "maint_log_id"));
+        Assert.Null(Factory("Sqlite").SequenceFor("coil", "coil_abc_num"));               // not Oracle
+    }
+
+    [Fact]
+    public async Task Sequence_resync_is_a_noop_on_sqlite()
+    {
+        // The self-heal is Oracle-only (SQLite mints ids by MAX+1, no sequences). It must return
+        // cleanly on the SQLite factory without touching anything.
+        await AbisSchema.ResyncSequencesAsync(Factory("Sqlite"), NullLogger.Instance, CancellationToken.None);
+    }
+
+    [Fact]
+    public void Shipped_config_defaults_sequence_resync_on()
+    {
+        var dir = Path.GetDirectoryName(typeof(Program).Assembly.Location)!;
+        var opts = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(dir, "appsettings.json"), optional: false)
+            .Build()
+            .GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>()!;
+        Assert.True(opts.ResyncSequencesOnStartup);
     }
 
     [Fact]
