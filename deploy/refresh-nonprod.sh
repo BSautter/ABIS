@@ -67,6 +67,19 @@ SQL
 echo "coil rows on .230 after:  ${after//[[:space:]]/}   (impdp exit $rc; log dpump_dir/net_${STAMP}.log)"
 
 # ---------------------------------------------------------------------------------------------
+# SEQUENCE RE-SYNC — a table-replace leaves the sequences BEHIND their new table max, so every
+# id-minting INSERT would fail ORA-00001 until they are advanced (13 of 18 were behind on
+# 2026-07-24, COIL_ABC_NUM_SEQ by 877k). Idempotent; run from the repo's tools/ if present, else
+# print the manual command. See docs/DB_REFRESH.md "Part 4".
+RESYNC="${RESYNC_SQL:-$(dirname "$0")/../tools/resync_sequences.sql}"
+if [ -f "$RESYNC" ]; then
+  echo "-- re-syncing sequences via $RESYNC"
+  sqlplus -s "$ORA_LOCAL" @"$RESYNC" || echo "WARNING: sequence re-sync FAILED — id-minting writes will ORA-00001 until it is re-run" >&2
+else
+  echo "*** ACTION REQUIRED: re-sync sequences — sqlplus $ORA_LOCAL @tools/resync_sequences.sql (see docs/DB_REFRESH.md Part 4) ***" >&2
+fi
+
+# ---------------------------------------------------------------------------------------------
 # ADMIN LOGIN RESTORE — this refresh WIPES the ABIS admin login.
 #
 # schemas=DBO + table_exists_action=replace overwrites every DBO table that isn't excluded, and

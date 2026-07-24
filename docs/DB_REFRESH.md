@@ -90,6 +90,21 @@ Verify: `SELECT COUNT(*) FROM outbound_edi_transaction;` on .230 → 87617 (EDI 
 
 After: `EXEC DBMS_STATS.GATHER_SCHEMA_STATS('DBO', DEGREE=>1);` (optional, refreshes optimizer stats).
 
+**Part 4 — re-sync the sequences (REQUIRED after every refresh).** A Data Pump table-replace imports
+the row data but leaves the transactional **sequences behind their new table max** — the export is not
+sequence-consistent. Confirmed 2026-07-24 on .230: **13 of 18 id sequences behind**, `COIL_ABC_NUM_SEQ`
+by 877,220. Until they are advanced, **every id-minting INSERT fails with `ORA-00001`** (unique
+constraint violated): order entry, coil mint, receiving BOLs, shift/skid/scrap creation, EDI
+generation, downtime + error logging. This is the single most impactful post-refresh step for the
+modern app, which runs on .230.
+```bash
+sqlplus dbo/<pwd>@//192.168.1.230:1521/abc11 @tools/resync_sequences.sql
+```
+Idempotent and safe to re-run (a sequence already ahead is skipped). Set `p_apply := FALSE` in the
+script for a read-only dry run that only reports the gaps. Keep the (sequence, table, column) list in
+the script in step with `AbisRepository.NextIdAsync` + the `Database:Sequences` overrides in
+`appsettings.json`.
+
 ---
 
 ## Weekly automation

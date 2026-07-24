@@ -461,6 +461,12 @@ public sealed class LineBoardTests
 
         var stale = await c.GetFromJsonAsync<JsonElement>("/api/das/shifts/open?staleOnly=true");
         Assert.Single(stale.EnumerateArray());
+
+        // The prod DB has ~247 open shifts abandoned back to 2004 but only ~3 on a live board, so the
+        // alert keys on boardOnly. Neither ad-hoc shift here is on a line board -> boardOnly is empty,
+        // even though one is stale.
+        var onBoard = await c.GetFromJsonAsync<JsonElement>("/api/das/shifts/open?staleOnly=true&boardOnly=true");
+        Assert.Empty(onBoard.EnumerateArray());
     }
 
     [Fact]

@@ -3574,11 +3574,19 @@
         "tags": [
           "DAS"
         ],
-        "summary": "Shifts with no end_time, longest-open first; staleOnly=true keeps just those open longer than a day (left open, not worked).",
+        "summary": "Shifts with no end_time, longest-open first. staleOnly=true keeps those open >1 day; boardOnly=true keeps only shifts a line's board still points at (the actionable ones — prod has ~247 open, only ~3 on a board).",
         "operationId": "GetOpenShifts",
         "parameters": [
           {
             "name": "staleOnly",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "boardOnly",
             "in": "query",
             "schema": {
               "type": "boolean",

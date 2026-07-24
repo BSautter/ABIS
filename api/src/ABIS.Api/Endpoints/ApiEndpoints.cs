@@ -1440,10 +1440,10 @@ public static class ApiEndpoints
         // efficiency — the live plant DB had three open for 31 h, 31 h and 103 h. READ-ONLY on purpose:
         // closing one is an operator action, because the legacy DAS station owns shift closure on the
         // production database and a second automatic closer would be a competing writer.
-        api.MapGet("/das/shifts/open", async (IAbisRepository repo, CancellationToken ct, bool staleOnly = false) =>
-                Results.Ok(await repo.GetOpenShiftsAsync(staleOnly, ct)))
+        api.MapGet("/das/shifts/open", async (IAbisRepository repo, CancellationToken ct, bool staleOnly = false, bool boardOnly = false) =>
+                Results.Ok(await repo.GetOpenShiftsAsync(staleOnly, boardOnly, ct)))
            .WithName("GetOpenShifts").WithTags("DAS")
-           .WithSummary("Shifts with no end_time, longest-open first; staleOnly=true keeps just those open longer than a day (left open, not worked).")
+           .WithSummary("Shifts with no end_time, longest-open first. staleOnly=true keeps those open >1 day; boardOnly=true keeps only shifts a line's board still points at (the actionable ones — prod has ~247 open, only ~3 on a board).")
            .Produces<IReadOnlyList<OpenShift>>();
 
         api.MapGet("/das/shifts/{shiftNum:long}/coil-runs/{coilRunNum:int}/recap", async (long shiftNum, int coilRunNum, IAbisRepository repo, CancellationToken ct) =>

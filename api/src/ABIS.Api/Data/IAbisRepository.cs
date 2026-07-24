@@ -325,7 +325,7 @@ public interface IAbisRepository
     /// and yield) using the legacy formulas. Null when the line has no board row.</summary>
     Task<LineLiveMetrics?> GetLineLiveMetricsAsync(long lineNum, CancellationToken ct);
     /// <summary>Shifts with no end_time, longest-open first (optionally only the stale ones).</summary>
-    Task<IReadOnlyList<OpenShift>> GetOpenShiftsAsync(bool staleOnly, CancellationToken ct);
+    Task<IReadOnlyList<OpenShift>> GetOpenShiftsAsync(bool staleOnly, bool boardOnly, CancellationToken ct);
     /// <summary>The end-coil recap for one run: skids, pieces, finished weight, scrap and yield.</summary>
     Task<CoilRunRecap?> GetCoilRunRecapAsync(long shiftNum, int coilRunNum, CancellationToken ct);
     /// <summary>Reverse a wrongly-loaded coil: drop it off the board, delete its (unproduced) run and

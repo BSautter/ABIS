@@ -289,13 +289,15 @@ async function fetchNotifications() {
         }
     }
     catch { /* non-fatal */ }
-    // Shifts nobody closed. One left open never gets its dt_total roll-up and skews its line's
-    // efficiency, so it is worth a nudge — but only past a day, which is longer than any real shift.
+    // A shift a line's board still points at but which has been open past a day is blocking that line:
+    // it never gets its dt_total roll-up and skews its efficiency. Scoped to board-referenced shifts on
+    // purpose — the prod DB has ~247 open shifts abandoned as far back as 2004, but only the handful on a
+    // current board are actionable, so a raw count would be pure noise.
     try {
-        const r = await authFetch('/api/das/shifts/open?staleOnly=true');
+        const r = await authFetch('/api/das/shifts/open?staleOnly=true&boardOnly=true');
         const stale = r.ok ? (await r.json()) : [];
         if (Array.isArray(stale) && stale.length) {
-            items.push({ label: `${stale.length} shift${stale.length === 1 ? '' : 's'} left open (oldest ${Math.max(...stale.map((s) => s.hoursOpen ?? 0))} h)`, tone: 'warn', href: '/ui/shifts.html' });
+            items.push({ label: `${stale.length} line${stale.length === 1 ? '' : 's'} on a shift left open (oldest ${Math.max(...stale.map((s) => s.hoursOpen ?? 0))} h)`, tone: 'warn', href: '/ui/shifts.html' });
         }
     }
     catch { /* non-fatal */ }

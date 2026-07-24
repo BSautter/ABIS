@@ -6808,10 +6808,13 @@ public sealed class AbisRepository : IAbisRepository
     private const long StaleShiftSeconds = 24 * 60 * 60;
 
     /// <summary>Shifts with no <c>end_time</c>, longest-open first. A shift left open never gets its
-    /// <c>dt_total</c> roll-up and skews its line's efficiency — the live plant DB had three open for
-    /// 31 h, 31 h and 103 h. Read-only by design: closing one is an operator action, since the legacy
-    /// DAS station owns shift closure on the production database.</summary>
-    public async Task<IReadOnlyList<OpenShift>> GetOpenShiftsAsync(bool staleOnly, CancellationToken ct)
+    /// <c>dt_total</c> roll-up and skews its line's efficiency. Read-only by design: closing one is an
+    /// operator action, since the legacy DAS station owns shift closure on the production database.
+    /// <para><paramref name="boardOnly"/> keeps only shifts a line's board still points at — the
+    /// genuinely actionable ones. The live prod DB carries <b>247</b> open shifts (many abandoned
+    /// since 2004), of which only <b>3</b> are on a current board; a raw count is noise, so the alert
+    /// keys on this flag.</para></summary>
+    public async Task<IReadOnlyList<OpenShift>> GetOpenShiftsAsync(bool staleOnly, bool boardOnly, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
         var rows = (await conn.QueryAsync<OpenShiftRow>(new CommandDefinition(
@@ -6837,7 +6840,9 @@ public sealed class AbisRepository : IAbisRepository
                 HoursOpen = seconds / 3600, Stale = seconds > StaleShiftSeconds, OnLineBoard = r.BoardRefs > 0,
             };
         });
-        return (staleOnly ? open.Where(o => o.Stale) : open).ToList();
+        if (staleOnly) open = open.Where(o => o.Stale);
+        if (boardOnly) open = open.Where(o => o.OnLineBoard);
+        return open.ToList();
     }
 
     private sealed class OpenShiftRow
