@@ -2756,8 +2756,10 @@ public sealed class LineBoardRow
 }
 
 /// <summary>One job in a line's queue (legacy <c>LINE_PRIORITY</c>, composite PK line+job), with the
-/// job's own status/order. <see cref="Status"/> 1 = the job the line is running now, 2 = already run;
-/// the Operation Panel re-sequences these whenever the line is pointed at a different job.</summary>
+/// job's own status/order. <see cref="Status"/> follows the legacy schedule DataWindow's legend
+/// (<c>d_job_schedule</c>): <b>0 = Ended, 1 = Running, 2 or NULL = Waiting</b>. The Operation Panel
+/// re-sequences these whenever the line is pointed at a different job; only the job-done cascade
+/// sets Ended.</summary>
 public sealed class LineQueueRow
 {
     public long LineNum { get; set; }

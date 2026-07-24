@@ -6332,8 +6332,12 @@ public sealed class AbisRepository : IAbisRepository
         return rows;
     }
 
-    /// <summary>A line's job queue (legacy <c>LINE_PRIORITY</c>), running job first then by priority.</summary>
-    public async Task<IReadOnlyList<LineQueueRow>> GetLineQueueAsync(long lineNum, CancellationToken ct)
+    /// <summary>A line's job queue (legacy <c>LINE_PRIORITY</c>) in schedule order — by priority, as
+    /// <c>d_job_schedule</c> orders it, so the sequence the operator edits is the sequence shown.
+    /// Status legend from that same DataWindow: <b>0 = Ended, 1 = Running, 2 or NULL = Waiting</b>.
+    /// The DAS schedule hides ended rows, so <paramref name="includeEnded"/> is false by default —
+    /// pass true for the full history.</summary>
+    public async Task<IReadOnlyList<LineQueueRow>> GetLineQueueAsync(long lineNum, bool includeEnded, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
         var rows = await conn.QueryAsync<LineQueueRow>(new CommandDefinition(
@@ -6344,9 +6348,99 @@ public sealed class AbisRepository : IAbisRepository
             FROM line_priority lp
             LEFT JOIN ab_job j ON j.ab_job_num = lp.ab_job_num
             WHERE lp.line_num = :line
-            ORDER BY CASE WHEN lp.status = 1 THEN 0 ELSE 1 END, lp.priority_num, lp.ab_job_num
-            """, new { line = lineNum }, cancellationToken: ct));
+              AND (:withEnded = 1 OR lp.status IS NULL OR lp.status <> 0)
+            ORDER BY lp.priority_num, lp.ab_job_num
+            """, new { line = lineNum, withEnded = includeEnded ? 1 : 0 }, cancellationToken: ct));
         return rows.AsList();
+    }
+
+    /// <summary>Add or update one job in a line's queue (legacy <c>LINE_PRIORITY</c> is edited in a
+    /// grid). The priority defaults to the end of the queue; the status defaults to Waiting (2).</summary>
+    public async Task<LineQueueRow?> UpsertLineQueueJobAsync(long lineNum, long abJobNum, LineQueueWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM line_priority WHERE line_num = :line AND ab_job_num = :job",
+            new { line = lineNum, job = abJobNum }, transaction: tx, cancellationToken: ct));
+        if (exists == 0)
+        {
+            var nextPriority = body.PriorityNum ?? (int)await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+                "SELECT COALESCE(MAX(priority_num), 0) + 1 FROM line_priority WHERE line_num = :line",
+                new { line = lineNum }, transaction: tx, cancellationToken: ct));
+            await conn.ExecuteAsync(new CommandDefinition(
+                """
+                INSERT INTO line_priority (line_num, ab_job_num, priority_num, coil_required, note, status)
+                VALUES (:line, :job, :prio, :coilReq, :note, :status)
+                """,
+                new { line = lineNum, job = abJobNum, prio = nextPriority, coilReq = body.CoilRequired,
+                      note = body.Note, status = body.Status ?? 2 },
+                transaction: tx, cancellationToken: ct));
+        }
+        else
+        {
+            // COALESCE keeps an omitted field at its current value — the grid edits one cell at a time.
+            await conn.ExecuteAsync(new CommandDefinition(
+                """
+                UPDATE line_priority
+                   SET priority_num = COALESCE(:prio, priority_num), coil_required = COALESCE(:coilReq, coil_required),
+                       note = COALESCE(:note, note), status = COALESCE(:status, status)
+                 WHERE line_num = :line AND ab_job_num = :job
+                """,
+                new { prio = body.PriorityNum, coilReq = body.CoilRequired, note = body.Note, status = body.Status,
+                      line = lineNum, job = abJobNum },
+                transaction: tx, cancellationToken: ct));
+        }
+        await tx.CommitAsync(ct);
+        return (await GetLineQueueAsync(lineNum, true, ct)).FirstOrDefault(r => r.AbJobNum == abJobNum);
+    }
+
+    /// <summary>Remove a job from a line's queue. Refuses the job the line is RUNNING (status 1) —
+    /// pulling it would leave the board pointing at a job no longer scheduled on the line.</summary>
+    public async Task<DeleteResult> RemoveLineQueueJobAsync(long lineNum, long abJobNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var status = await conn.QuerySingleOrDefaultAsync<int?>(new CommandDefinition(
+            "SELECT status FROM line_priority WHERE line_num = :line AND ab_job_num = :job",
+            new { line = lineNum, job = abJobNum }, cancellationToken: ct));
+        var present = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM line_priority WHERE line_num = :line AND ab_job_num = :job",
+            new { line = lineNum, job = abJobNum }, cancellationToken: ct));
+        if (present == 0)
+            return new DeleteResult(DeleteOutcome.NotFound);
+        if (status == 1)
+            return new DeleteResult(DeleteOutcome.InUse, "The line is running this job.");
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM line_priority WHERE line_num = :line AND ab_job_num = :job",
+            new { line = lineNum, job = abJobNum }, cancellationToken: ct));
+        return new DeleteResult(DeleteOutcome.Deleted);
+    }
+
+    /// <summary>Re-sequence a line's queue: the supplied jobs take priority 1..N in the order given.
+    /// Jobs on the line but absent from the list keep their rows and are pushed after the sequenced
+    /// ones, so a partial reorder can never silently drop work off the schedule.</summary>
+    public async Task<IReadOnlyList<LineQueueRow>> ReorderLineQueueAsync(long lineNum, IReadOnlyList<long> abJobNums, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        // Read the line's current order first so the jobs NOT named can be appended in their existing
+        // sequence — a partial reorder must not renumber them into a different relative order.
+        var current = (await conn.QueryAsync<long>(new CommandDefinition(
+            "SELECT ab_job_num FROM line_priority WHERE line_num = :line ORDER BY priority_num, ab_job_num",
+            new { line = lineNum }, cancellationToken: ct))).AsList();
+        var sequenced = abJobNums.Where(current.Contains).Distinct().ToList();
+        var rest = current.Where(j => !sequenced.Contains(j));
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var priority = 0;
+        foreach (var job in sequenced.Concat(rest))
+        {
+            priority++;
+            await conn.ExecuteAsync(new CommandDefinition(
+                "UPDATE line_priority SET priority_num = :prio WHERE line_num = :line AND ab_job_num = :job",
+                new { prio = priority, line = lineNum, job }, transaction: tx, cancellationToken: ct));
+        }
+        await tx.CommitAsync(ct);
+        return await GetLineQueueAsync(lineNum, true, ct);
     }
 
     public async Task<bool> LineExistsAsync(long lineNum, CancellationToken ct)
@@ -6372,8 +6466,9 @@ public sealed class AbisRepository : IAbisRepository
 
     /// <summary>Point a line at the job it is running — the Operation Panel's job button
     /// (legacy <c>wf_set_opc_abjob</c>). A null job clears it (the legacy "job &lt; 1000" branch).
-    /// Setting a job also re-sequences the line's queue: the job that WAS running drops to status 2
-    /// (ran) and the new one takes status 1 (running), in that order.</summary>
+    /// Setting a job also re-sequences the line's queue: the job that WAS running goes back to
+    /// Waiting (status 2) and the new one takes Running (1), in that order. Only the job-done
+    /// cascade sets Ended (0) — a displaced job is paused, not finished.</summary>
     public async Task<LineBoardRow?> SetLineCurrentJobAsync(long lineNum, long? abJobNum, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

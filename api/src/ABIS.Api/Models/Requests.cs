@@ -1134,3 +1134,23 @@ public sealed class CoilRunEndWrite
     public long? AbJobNum { get; set; }
     public string? Note { get; set; }
 }
+
+/// <summary>Body for PUT /api/das/lines/{lineNum}/queue/{abJobNum} — add or edit one job in a line's
+/// queue (legacy <c>LINE_PRIORITY</c>, edited as a grid). Omitted fields keep their current value; a
+/// new row defaults to the end of the queue and status Waiting. Status legend (legacy
+/// <c>d_job_schedule</c>): <b>0 = Ended, 1 = Running, 2 or null = Waiting</b>.</summary>
+public sealed class LineQueueWrite
+{
+    public int? PriorityNum { get; set; }
+    public int? CoilRequired { get; set; }
+    public string? Note { get; set; }
+    public int? Status { get; set; }
+}
+
+/// <summary>Body for POST /api/das/lines/{lineNum}/queue/reorder — the listed jobs take priority
+/// 1..N in the order given. Jobs on the line but absent from the list keep their rows and follow the
+/// sequenced ones in their existing order, so a partial reorder never drops work off the schedule.</summary>
+public sealed class LineQueueReorderWrite
+{
+    public IReadOnlyList<long>? AbJobNums { get; set; }
+}

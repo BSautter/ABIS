@@ -1495,8 +1495,9 @@ public static class SqliteFixture
                       ShiftNum = (long?)null, LineStatus = (int?)0, CoilProcessRate = (int?)null, Loc0 = (long?)3003L, Loc5 = (long?)null, Stacker1 = (long?)null }
             });
 
-        // Line 110's job queue: 1001 is the job the line is running (status 1), 1002 is queued
-        // (status 0) — pointing the line at 1002 must drop 1001 to "ran" (2) and promote 1002.
+        // Line 110's job queue. Status legend (legacy d_job_schedule): 0 = Ended, 1 = Running,
+        // 2 or NULL = Waiting. 1001 is running and 1002 is waiting — pointing the line at 1002 must
+        // put 1001 back to Waiting and promote 1002 to Running.
         conn.Execute("""
             INSERT INTO line_priority (line_num, ab_job_num, priority_num, coil_required, note, status)
             VALUES (:LineNum, :AbJobNum, :PriorityNum, :CoilRequired, :Note, :Status)
@@ -1504,7 +1505,7 @@ public static class SqliteFixture
             new[]
             {
                 new { LineNum = 110L, AbJobNum = 1001L, PriorityNum = (int?)1, CoilRequired = (int?)1, Note = "running", Status = (int?)1 },
-                new { LineNum = 110L, AbJobNum = 1002L, PriorityNum = (int?)2, CoilRequired = (int?)1, Note = "next up", Status = (int?)0 }
+                new { LineNum = 110L, AbJobNum = 1002L, PriorityNum = (int?)2, CoilRequired = (int?)1, Note = "next up", Status = (int?)2 }
             });
 
         conn.Execute("""

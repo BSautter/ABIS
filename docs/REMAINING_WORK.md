@@ -88,7 +88,16 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [ ] **H** Live shift efficiency % + coil yield % / finish-% (console, 5s cadence)
 - [ ] **H** End-coil recap (ending status + closing weight)
 - [ ] **H** Drop/reverse a wrongly-loaded coil (+`ERROR_EVT`); change-job-mid-coil (split & save remaining wt)
-- [ ] **H** Per-line job queue / `LINE_PRIORITY` sequencing
+- [x] **H** Per-line job queue / `LINE_PRIORITY` sequencing — done (#285): `GET /das/lines/{n}/queue`
+  (schedule order, ended jobs hidden unless `includeEnded=true`), `PUT /das/lines/{n}/queue/{job}`
+  (add/edit; omitted fields keep their value, a new row lands at the end as Waiting),
+  `DELETE .../queue/{job}` (409 for the job the line is RUNNING) and `POST .../queue/reorder`
+  (listed jobs take priority 1..N; jobs left out follow in their existing order, so a partial
+  reorder can't drop work off the schedule). **Status legend recovered from the legacy
+  `d_job_schedule` DataWindow: `0 = Ended, 1 = Running, 2 or NULL = Waiting`** — so a job displaced
+  by the Operation Panel goes back to *Waiting*, and only the job-done cascade sets Ended (an
+  earlier comment in #283 called status 2 "ran"; corrected). Console: a Line-queue table with
+  move-up / remove / queue-a-job.
 - [ ] **H** Line auto-status controls + `noauto` write (lockout); fault/health lamps (DB / OPC `_ErrorCode` / PLC `activefault`)
 - [ ] **H** Stacker dual-station automation (`SHEET_SKID_STACKER_1/2`)
 - [ ] **H/M** Shift lifecycle automation (auto new/end + grace, `DT_TOTAL` rollup, board reset)

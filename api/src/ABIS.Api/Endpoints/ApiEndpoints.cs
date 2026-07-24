@@ -1314,13 +1314,52 @@ public static class ApiEndpoints
            .WithSummary("One line's live board row; 404 when the line has no line_current_status row.")
            .Produces<LineBoardRow>().Produces(StatusCodes.Status404NotFound);
 
-        api.MapGet("/das/lines/{lineNum:long}/queue", async (long lineNum, IAbisRepository repo, CancellationToken ct) =>
+        // ---- Per-line job queue (legacy LINE_PRIORITY / d_job_schedule) ----
+        // Status legend, from the legacy schedule DataWindow: 0 = Ended, 1 = Running, 2 or null = Waiting.
+        api.MapGet("/das/lines/{lineNum:long}/queue", async (long lineNum, IAbisRepository repo, CancellationToken ct, bool includeEnded = false) =>
                 await repo.LineExistsAsync(lineNum, ct)
-                    ? Results.Ok(await repo.GetLineQueueAsync(lineNum, ct))
+                    ? Results.Ok(await repo.GetLineQueueAsync(lineNum, includeEnded, ct))
                     : Results.NotFound())
            .WithName("GetLineQueue").WithTags("DAS")
-           .WithSummary("A line's job queue (line_priority): the running job first, then by priority.")
+           .WithSummary("A line's job queue (line_priority): running job first, then by priority. Ended jobs are hidden unless includeEnded=true.")
            .Produces<IReadOnlyList<LineQueueRow>>().Produces(StatusCodes.Status404NotFound);
+
+        api.MapPut("/das/lines/{lineNum:long}/queue/{abJobNum:long}", async (long lineNum, long abJobNum, LineQueueWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (!await repo.LineExistsAsync(lineNum, ct))
+                    return Results.NotFound();
+                if (await repo.GetJobAsync(abJobNum, ct) is null)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["abJobNum"] = [$"Job {abJobNum} does not exist."] });
+                return await repo.UpsertLineQueueJobAsync(lineNum, abJobNum, body, ct) is { } row
+                    ? Results.Ok(row) : Results.NotFound();
+            })
+           .WithName("UpsertLineQueueJob").WithTags("DAS")
+           .WithSummary("Add or edit one job in a line's queue (omitted fields keep their value; a new row lands at the end, status Waiting).")
+           .Produces<LineQueueRow>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
+        api.MapDelete("/das/lines/{lineNum:long}/queue/{abJobNum:long}", async (long lineNum, long abJobNum, IAbisRepository repo, CancellationToken ct) =>
+                (await repo.RemoveLineQueueJobAsync(lineNum, abJobNum, ct)).Outcome switch
+                {
+                    DeleteOutcome.Deleted => Results.NoContent(),
+                    DeleteOutcome.InUse => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Job is running",
+                        detail: $"Job {abJobNum} is the job line {lineNum} is running — point the line at another job first."),
+                    _ => Results.NotFound(),
+                })
+           .WithName("RemoveLineQueueJob").WithTags("DAS")
+           .WithSummary("Remove a job from a line's queue; refuses (409) the job the line is currently running.")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
+
+        api.MapPost("/das/lines/{lineNum:long}/queue/reorder", async (long lineNum, LineQueueReorderWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (!await repo.LineExistsAsync(lineNum, ct))
+                    return Results.NotFound();
+                if (body.AbJobNums is not { Count: > 0 } jobs)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["abJobNums"] = ["abJobNums must list at least one job."] });
+                return Results.Ok(await repo.ReorderLineQueueAsync(lineNum, jobs, ct));
+            })
+           .WithName("ReorderLineQueue").WithTags("DAS")
+           .WithSummary("Re-sequence a line's queue: the listed jobs take priority 1..N; jobs left out follow in their existing order.")
+           .Produces<IReadOnlyList<LineQueueRow>>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
 
         // ---- DAS Operation Panel: the line's live-board writes (legacy w_da_sheet) ----
         // These are what the DAS station does as it runs: point the line at a job, load or drop the

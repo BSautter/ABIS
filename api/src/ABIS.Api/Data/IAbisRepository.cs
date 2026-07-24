@@ -295,7 +295,10 @@ public interface IAbisRepository
     // ---- Live line board (LINE_CURRENT_STATUS) ---------------------------
     Task<IReadOnlyList<LineBoardRow>> GetLineBoardAsync(long? lineNum, CancellationToken ct);
     Task<bool> LineExistsAsync(long lineNum, CancellationToken ct);
-    Task<IReadOnlyList<LineQueueRow>> GetLineQueueAsync(long lineNum, CancellationToken ct);
+    Task<IReadOnlyList<LineQueueRow>> GetLineQueueAsync(long lineNum, bool includeEnded, CancellationToken ct);
+    Task<LineQueueRow?> UpsertLineQueueJobAsync(long lineNum, long abJobNum, LineQueueWrite body, CancellationToken ct);
+    Task<DeleteResult> RemoveLineQueueJobAsync(long lineNum, long abJobNum, CancellationToken ct);
+    Task<IReadOnlyList<LineQueueRow>> ReorderLineQueueAsync(long lineNum, IReadOnlyList<long> abJobNums, CancellationToken ct);
     /// <summary>Point the line at the job it is running (null clears it) + re-sequence LINE_PRIORITY.</summary>
     Task<LineBoardRow?> SetLineCurrentJobAsync(long lineNum, long? abJobNum, CancellationToken ct);
     /// <summary>Load (or drop) the coil on the mandrel; loading also marks the coil as on-line.</summary>

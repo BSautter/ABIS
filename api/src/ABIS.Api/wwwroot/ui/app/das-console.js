@@ -101,6 +101,12 @@ function scaffold() {
               <span id="opOk" class="ok-note"></span>
             </div>
             <div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="min-width:520px"><thead><tr><th>Run</th><th>Coil</th><th>Job</th><th class="num">Begin</th><th class="num">End</th><th class="num">Processed</th><th>Ended</th></tr></thead><tbody id="tRuns"><tr><td colspan="7" class="muted">—</td></tr></tbody></table></div>
+            <h3 style="margin:16px 0 6px;font-size:13px">Line queue</h3>
+            <div style="overflow-x:auto"><table class="tbl" style="min-width:460px"><thead><tr><th class="num">#</th><th>Job</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody id="tQueue"><tr><td colspan="5" class="muted">—</td></tr></tbody></table></div>
+            <div class="frow" style="margin-top:8px;align-items:flex-end">
+              <div class="fld"><label>Add job #</label><input id="qJob" class="big" inputmode="numeric" style="width:130px" /></div>
+              <button class="btn sm ghost" id="btnQAdd" type="button">Queue job</button>
+            </div>
             <p class="dop-note">Writes the line's live board (shift / job / coil) and the shift's coil-run ledger — the rows the production reports read. "Drop coil" takes a wrongly-loaded coil off the board without recording a run.</p>
           </div>
         </div>
@@ -228,7 +234,71 @@ async function loadOpBoard() {
         opBoard = null;
     }
     renderOpState();
-    await loadCoilRuns();
+    await Promise.all([loadCoilRuns(), loadQueue()]);
+}
+// The line's job queue (line_priority). Status legend from the legacy schedule window:
+// 0 Ended (hidden), 1 Running, 2/null Waiting.
+const QUEUE_STATUS = { '0': 'Ended', '1': 'Running', '2': 'Waiting' };
+async function loadQueue() {
+    const body = $('#tQueue');
+    if (lineNum == null) {
+        body.innerHTML = '<tr><td colspan="5" class="muted">—</td></tr>';
+        return;
+    }
+    try {
+        const r = await authFetch(`/api/das/lines/${lineNum}/queue`);
+        if (!r.ok)
+            throw new Error(String(r.status));
+        const rows = await r.json();
+        body.innerHTML = rows.length ? rows.map((q, i) => `<tr>
+      <td class="num mono">${esc(q.priorityNum)}</td>
+      <td class="mono">${esc(q.abJobNum)}</td>
+      <td>${esc(QUEUE_STATUS[String(q.status ?? 2)] ?? q.status)}</td>
+      <td>${esc(q.note)}</td>
+      <td style="white-space:nowrap">
+        <button class="btn sm ghost" data-up="${q.abJobNum}" type="button"${i === 0 ? ' disabled' : ''}>↑</button>
+        <button class="btn sm ghost" data-rm="${q.abJobNum}" type="button"${q.status === 1 ? ' disabled title="the line is running this job"' : ''}>✕</button>
+      </td></tr>`).join('') : '<tr><td colspan="5" class="muted">No jobs queued on this line.</td></tr>';
+        const order = rows.map((q) => q.abJobNum);
+        body.querySelectorAll('[data-up]').forEach((b) => b.addEventListener('click', () => void moveQueueJob(order, Number(b.dataset.up))));
+        body.querySelectorAll('[data-rm]').forEach((b) => b.addEventListener('click', () => void removeQueueJob(Number(b.dataset.rm))));
+    }
+    catch {
+        body.innerHTML = '<tr><td colspan="5" class="muted">Queue unavailable.</td></tr>';
+    }
+}
+// Moving a job up posts the WHOLE new order, so the server never has to infer the intent.
+async function moveQueueJob(order, job) {
+    const i = order.indexOf(job);
+    if (i < 1)
+        return;
+    const next = order.slice();
+    next.splice(i, 1);
+    next.splice(i - 1, 0, job);
+    await queueWrite(`/api/das/lines/${lineNum}/queue/reorder`, 'POST', { abJobNums: next }, 'Queue re-ordered');
+}
+async function removeQueueJob(job) {
+    await queueWrite(`/api/das/lines/${lineNum}/queue/${job}`, 'DELETE', undefined, `Job ${job} removed from the queue`);
+}
+async function queueWrite(path, method, body, okMsg) {
+    setErr('');
+    $('#opOk').textContent = '';
+    setBusy(true);
+    try {
+        const r = await authFetch(path, body === undefined
+            ? { method }
+            : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!r.ok)
+            throw new Error(`${r.status} ${(await r.text()).slice(0, 200)}`);
+        $('#opOk').textContent = okMsg;
+        await loadQueue();
+    }
+    catch (e) {
+        setErr(`Queue: ${e.message}`);
+    }
+    finally {
+        setBusy(false);
+    }
 }
 // The shift's coil-run ledger (shift_coil) — what this shift has actually processed so far.
 async function loadCoilRuns() {
@@ -948,6 +1018,14 @@ async function pickerBrowse(bases, targetId, path) {
         }
         // Loading opens the coil's run in the shift ledger AND puts it on the board.
         void coilRunAction(`/api/das/lines/${lineNum}/coil-run/start`, { coilAbcNum: runCoil, abJobNum: job }, () => `Coil ${runCoil} loaded — run open`);
+    });
+    $('#btnQAdd').addEventListener('click', () => {
+        const j = v('#qJob');
+        if (!j) {
+            setErr('Enter the job number to queue.');
+            return;
+        }
+        void queueWrite(`/api/das/lines/${lineNum}/queue/${Number(j)}`, 'PUT', {}, `Job ${j} queued`).then(() => setV('#qJob', ''));
     });
     $('#btnEndCoil').addEventListener('click', () => {
         const wt = v('#opEndWt');

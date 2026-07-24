@@ -114,10 +114,10 @@ public sealed class LineBoardTests
 
         var queue = await c.GetFromJsonAsync<JsonElement>("/api/das/lines/110/queue");
         var byJob = queue.EnumerateArray().ToDictionary(r => r.GetProperty("abJobNum").GetInt64(), r => r.GetProperty("status").GetInt32());
-        Assert.Equal(1, byJob[1002]);   // now running
-        Assert.Equal(2, byJob[1001]);   // dropped to "ran"
-        // The running job sorts first whatever its priority number.
-        Assert.Equal(1002, queue.EnumerateArray().First().GetProperty("abJobNum").GetInt64());
+        Assert.Equal(1, byJob[1002]);   // Running
+        Assert.Equal(2, byJob[1001]);   // back to Waiting — displaced, not finished
+        // Pointing at a job does not re-sequence the schedule: it stays in priority order.
+        Assert.Equal(1001, queue.EnumerateArray().First().GetProperty("abJobNum").GetInt64());
     }
 
     [Fact]
@@ -288,8 +288,12 @@ public sealed class LineBoardTests
 
         var job = await c.GetFromJsonAsync<JsonElement>("/api/jobs/1001");
         Assert.NotEqual(JsonValueKind.Null, job.GetProperty("timeDateFinished").ValueKind);
+        // Ended (status 0) drops off the schedule the DAS shows…
         var queue = await c.GetFromJsonAsync<JsonElement>("/api/das/lines/110/queue");
-        Assert.Equal(0, queue.EnumerateArray().First(r => r.GetProperty("abJobNum").GetInt64() == 1001).GetProperty("status").GetInt32());
+        Assert.DoesNotContain(queue.EnumerateArray(), r => r.GetProperty("abJobNum").GetInt64() == 1001);
+        // …but is still there with the history flag on.
+        var full = await c.GetFromJsonAsync<JsonElement>("/api/das/lines/110/queue?includeEnded=true");
+        Assert.Equal(0, full.EnumerateArray().First(r => r.GetProperty("abJobNum").GetInt64() == 1001).GetProperty("status").GetInt32());
     }
 
     [Fact]
@@ -339,6 +343,60 @@ public sealed class LineBoardTests
 
         var noWeight = await c.PostAsJsonAsync("/api/das/lines/110/coil-run/end", new { endStatus = 2 });
         Assert.Equal(HttpStatusCode.BadRequest, noWeight.StatusCode);
+    }
+
+    [Fact]
+    public async Task Queue_jobs_can_be_added_edited_and_removed()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        // Job 1003 is not on line 110's queue yet — a new row lands at the end, Waiting.
+        var add = await c.PutAsJsonAsync("/api/das/lines/110/queue/1003", new { note = "rush" });
+        add.EnsureSuccessStatusCode();
+        var row = await add.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(3, row.GetProperty("priorityNum").GetInt32());
+        Assert.Equal(2, row.GetProperty("status").GetInt32());
+        Assert.Equal("rush", row.GetProperty("note").GetString());
+
+        // An omitted field keeps its current value (the grid edits one cell at a time).
+        var edit = await c.PutAsJsonAsync("/api/das/lines/110/queue/1003", new { coilRequired = 1 });
+        edit.EnsureSuccessStatusCode();
+        var edited = await edit.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("rush", edited.GetProperty("note").GetString());
+        Assert.Equal(1, edited.GetProperty("coilRequired").GetInt32());
+
+        var remove = await c.DeleteAsync("/api/das/lines/110/queue/1003");
+        Assert.Equal(HttpStatusCode.NoContent, remove.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await c.DeleteAsync("/api/das/lines/110/queue/1003")).StatusCode);
+
+        // The job the line is RUNNING cannot be pulled out from under the board.
+        var running = await c.DeleteAsync("/api/das/lines/110/queue/1001");
+        Assert.Equal(HttpStatusCode.Conflict, running.StatusCode);
+
+        var unknownJob = await c.PutAsJsonAsync("/api/das/lines/110/queue/999999", new { });
+        Assert.Equal(HttpStatusCode.BadRequest, unknownJob.StatusCode);
+    }
+
+    [Fact]
+    public async Task Reordering_the_queue_numbers_the_listed_jobs_first()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        (await c.PutAsJsonAsync("/api/das/lines/110/queue/1003", new { note = "third" })).EnsureSuccessStatusCode();
+
+        // Name only 1003 — it takes priority 1, and the jobs left out follow in their existing order.
+        var resp = await c.PostAsJsonAsync("/api/das/lines/110/queue/reorder", new { abJobNums = new[] { 1003 } });
+        resp.EnsureSuccessStatusCode();
+        var queue = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var byJob = queue.EnumerateArray().ToDictionary(r => r.GetProperty("abJobNum").GetInt64(), r => r.GetProperty("priorityNum").GetInt32());
+        Assert.Equal(1, byJob[1003]);
+        Assert.Equal(2, byJob[1001]);   // was priority 1
+        Assert.Equal(3, byJob[1002]);   // was priority 2
+
+        var empty = await c.PostAsJsonAsync("/api/das/lines/110/queue/reorder", new { abJobNums = Array.Empty<long>() });
+        Assert.Equal(HttpStatusCode.BadRequest, empty.StatusCode);
     }
 
     [Fact]
