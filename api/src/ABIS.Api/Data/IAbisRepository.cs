@@ -292,6 +292,9 @@ public interface IAbisRepository
     Task<IReadOnlyList<JobFolderNote>> GetJobFolderNotesAsync(long abJobNum, CancellationToken ct);
     Task<JobFolderNote> AddJobFolderNoteAsync(long abJobNum, long userId, string? notes, CancellationToken ct);
 
+    // ---- Live line board (LINE_CURRENT_STATUS) ---------------------------
+    Task<IReadOnlyList<LineBoardRow>> GetLineBoardAsync(long? lineNum, CancellationToken ct);
+
     // ---- Stacker line board / error log ---------------------------------
     Task<IReadOnlyList<StackerBoardRow>> GetStackerBoardAsync(long? lineNum, CancellationToken ct);
     Task<IReadOnlyList<LineErrorRow>> GetLineErrorsAsync(long? lineNum, DateTime? from, DateTime? to, CancellationToken ct);

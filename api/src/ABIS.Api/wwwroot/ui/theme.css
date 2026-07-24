@@ -348,6 +348,16 @@ tbody tr.click { cursor:pointer; } tbody tr.click:hover { background:var(--surfa
 .das-metrics { display:flex; gap:22px; }
 .das-metrics .m .mn { font-family:var(--font-mono); font-size:22px; font-weight:650; }
 .das-metrics .m .ml { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--das-ink-3); }
+/* Live block on a tile: what LINE_CURRENT_STATUS says the line is doing right now
+   (open shift, coil on the mandrel, and the occupied skid positions). */
+.das-livebox { margin-top:14px; padding-top:12px; border-top:1px solid var(--das-line); display:flex; flex-direction:column; gap:7px; }
+.das-live { display:flex; gap:9px; align-items:baseline; flex-wrap:wrap; font-size:12.5px; }
+.das-live .k { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--das-ink-3); min-width:38px; }
+.das-live .v { color:var(--das-ink); font-family:var(--font-mono); }
+.das-live .v.dim { color:var(--das-ink-2); font-family:var(--font-sans); }
+.das-slots { display:flex; gap:5px; flex-wrap:wrap; }
+.das-slot { display:inline-flex; align-items:center; gap:5px; padding:2px 7px; border-radius:7px; background:var(--das-tile-2); border:1px solid var(--das-line); font-family:var(--font-mono); font-size:11px; color:var(--das-ink-2); }
+.das-slot b { color:var(--accent); font-weight:650; }
 .das-fault { margin-top:14px; padding:9px 11px; border-radius:9px; background:color-mix(in srgb, var(--stop) 14%, transparent); border:1px solid color-mix(in srgb, var(--stop) 34%, transparent); color:#ffd7de; font-size:12px; display:flex; gap:8px; align-items:flex-start; }
 .das-empty { grid-column:1/-1; text-align:center; color:var(--das-ink-3); padding:60px 0; font-size:14px; }
 .das .chip { border:1px solid var(--das-line); }

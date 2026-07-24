@@ -480,6 +480,23 @@ public static class SqliteFixture
             CREATE TABLE line (
                 line_num INTEGER PRIMARY KEY, line_desc TEXT, line_location TEXT);
 
+            -- The DAS live line board (legacy LINE_CURRENT_STATUS): EXACTLY ONE row per line,
+            -- rewritten by the DAS station as it runs (current shift/job/coil, the sheet + scrap
+            -- skid being built) plus the physical skid positions — 19 numbered floor locations
+            -- along the line and the two stacker heads. Column names mirror Oracle.
+            CREATE TABLE line_current_status (
+                line_num INTEGER PRIMARY KEY, scrap_skid_num INTEGER, sheet_skid_num INTEGER,
+                coil_abc_num INTEGER, ab_job_num INTEGER, shift_num INTEGER, line_status INTEGER,
+                coil_process_rate INTEGER,
+                sheet_skid_location_0 INTEGER, sheet_skid_location_1 INTEGER, sheet_skid_location_2 INTEGER,
+                sheet_skid_location_3 INTEGER, sheet_skid_location_4 INTEGER, sheet_skid_location_5 INTEGER,
+                sheet_skid_location_6 INTEGER, sheet_skid_location_7 INTEGER, sheet_skid_location_8 INTEGER,
+                sheet_skid_location_9 INTEGER, sheet_skid_location_10 INTEGER, sheet_skid_location_11 INTEGER,
+                sheet_skid_location_12 INTEGER, sheet_skid_location_13 INTEGER, sheet_skid_location_14 INTEGER,
+                sheet_skid_location_15 INTEGER, sheet_skid_location_16 INTEGER, sheet_skid_location_17 INTEGER,
+                sheet_skid_location_18 INTEGER,
+                sheet_skid_stacker_1 INTEGER, sheet_skid_stacker_2 INTEGER);
+
             CREATE TABLE groupdepartment (
                 groupdepartment_id INTEGER PRIMARY KEY, groupdepartment TEXT, depttype TEXT);
 
@@ -1437,6 +1454,27 @@ public static class SqliteFixture
             {
                 new { LineNum = 110L, LineDesc = "Cut-to-length 1", LineLocation = "Bay A" },
                 new { LineNum = 120L, LineDesc = "Cut-to-length 2", LineLocation = "Bay B" }
+            });
+
+        // Live line board: line 110 is RUNNING (shift 7701, job 1001, coil 5001) with skids on two
+        // floor positions and one stacker head; line 120 is idle between shifts (no shift/job/coil,
+        // one skid still parked on the board) — the two states the board has to render. The stacker
+        // head holds skid 3099, which has NO sheet_skid row yet: the DAS station writes the position
+        // as the stacker fills it, before the skid row is committed, so the board must still show
+        // the slot as occupied (LEFT JOIN, detail null).
+        conn.Execute("""
+            INSERT INTO line_current_status (line_num, scrap_skid_num, sheet_skid_num, coil_abc_num, ab_job_num,
+                                             shift_num, line_status, coil_process_rate,
+                                             sheet_skid_location_0, sheet_skid_location_5, sheet_skid_stacker_1)
+            VALUES (:LineNum, :ScrapSkidNum, :SheetSkidNum, :CoilAbcNum, :AbJobNum,
+                    :ShiftNum, :LineStatus, :CoilProcessRate, :Loc0, :Loc5, :Stacker1)
+            """,
+            new[]
+            {
+                new { LineNum = 110L, ScrapSkidNum = (long?)4001L, SheetSkidNum = (long?)3002L, CoilAbcNum = (long?)5001L, AbJobNum = (long?)1001L,
+                      ShiftNum = (long?)7701L, LineStatus = (int?)1, CoilProcessRate = (int?)42, Loc0 = (long?)3001L, Loc5 = (long?)3002L, Stacker1 = (long?)3099L },
+                new { LineNum = 120L, ScrapSkidNum = (long?)null, SheetSkidNum = (long?)null, CoilAbcNum = (long?)null, AbJobNum = (long?)null,
+                      ShiftNum = (long?)null, LineStatus = (int?)0, CoilProcessRate = (int?)null, Loc0 = (long?)3003L, Loc5 = (long?)null, Stacker1 = (long?)null }
             });
 
         conn.Execute("""

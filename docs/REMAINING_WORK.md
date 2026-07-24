@@ -53,7 +53,14 @@ The VAN SFTP stays the single legacy owner (`GXS.ksh`). Design in `docs/EDI_ENGI
 
 ## B. Architectural program — the live-DAS workflow spine
 The edge read path is live (run-state + piece-count → auto-downtime); the DAS *workflow core* is absent. Buildable in pieces.
-- [ ] **C** `LINE_CURRENT_STATUS` live line board (job/coil/shift, 19 skid locations, 2 stacker skids)
+- [x] **C** `LINE_CURRENT_STATUS` live line board (job/coil/shift, 19 skid locations, 2 stacker skids) — done
+  (#281): `GET /das/line-board` (+ `/{lineNum}`, 404 when the line has no board row) reads the one-row-per-line
+  DAS table joined to `line`/`shift`/`ab_job`/`coil`, and unpivots the 21 flat skid columns
+  (`sheet_skid_location_0..18` + `sheet_skid_stacker_1/2`) into an ordered `skids[]` of occupied slots resolved
+  against `sheet_skid` (LEFT JOIN — a stacker position written before its skid row still reports). The DAS floor
+  board now takes its Running/Idle light from the LINE (coil loaded on an open shift) instead of inferring it from
+  the job list, and shows the open shift, the coil on the mandrel and the physical skid positions per line.
+  **Read-only** — the Operation-Panel write path (next item) owns the mutations.
 - [ ] **C** Current-coil ↔ job/shift binding + `SHIFT_COIL` / `SHIFT_PROCESS_STATUS` ledger write (cross-shift carry)
 - [ ] **C** Operation Panel workflow (new/end coil, end shift, change job)
 - [ ] **C** Live PLC counters (good/reject/stroke/feed-length) posted as coil deltas

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "abis-api",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "api/src/ABIS.Api/ABIS.Api.csproj", "--environment", "Development", "--urls", "http://localhost:5099"],
+      "port": 5099
+    }
+  ]
+}

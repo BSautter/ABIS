@@ -6264,6 +6264,87 @@ public sealed class AbisRepository : IAbisRepository
         return (await GetJobFolderNotesAsync(abJobNum, ct)).Last(n => n.UserId == userId);
     }
 
+    // ---- Live line board (legacy LINE_CURRENT_STATUS) ----
+
+    // Legacy LINE_CURRENT_STATUS holds the skid positions as 21 FLAT columns: 19 numbered floor
+    // locations along the line plus the two stacker heads. Kept as one ordered map so the unpivot
+    // SQL and the slot labels can never drift apart. Slot ordinal keeps the board in line order
+    // (a plain string sort would read 0, 1, 10, 11, 2 …).
+    private static readonly (string Slot, string Column)[] LineBoardSkidColumns =
+    [
+        .. Enumerable.Range(0, 19).Select(i => (i.ToString(CultureInfo.InvariantCulture), $"sheet_skid_location_{i}")),
+        ("STACKER_1", "sheet_skid_stacker_1"),
+        ("STACKER_2", "sheet_skid_stacker_2"),
+    ];
+
+    /// <summary>The live line board: one row per line from <c>line_current_status</c> (what the DAS
+    /// station is running right now) enriched with its line, shift, job and coil, plus every occupied
+    /// skid position. Read-only — the DAS/Operation-Panel write path owns the mutations.</summary>
+    public async Task<IReadOnlyList<LineBoardRow>> GetLineBoardAsync(long? lineNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = (await conn.QueryAsync<LineBoardRow>(new CommandDefinition(
+            """
+            SELECT lcs.line_num AS LineNum, l.line_desc AS LineDesc, l.line_location AS LineLocation,
+                   lcs.line_status AS LineStatus, lcs.coil_process_rate AS CoilProcessRate,
+                   lcs.shift_num AS ShiftNum, s.start_time AS ShiftStartTime, s.end_time AS ShiftEndTime,
+                   s.schedule_type AS ShiftScheduleType, s.operator_initial AS ShiftOperatorInitial,
+                   lcs.ab_job_num AS AbJobNum, j.job_status AS JobStatus, j.order_abc_num AS OrderAbcNum,
+                   lcs.coil_abc_num AS CoilAbcNum, c.coil_org_num AS CoilOrgNum, c.coil_status AS CoilStatus,
+                   c.coil_alloy2 AS CoilAlloy2, c.coil_gauge AS CoilGauge, c.coil_width AS CoilWidth,
+                   c.net_wt_balance AS CoilNetWtBalance,
+                   lcs.scrap_skid_num AS ScrapSkidNum, lcs.sheet_skid_num AS SheetSkidNum
+            FROM line_current_status lcs
+            LEFT JOIN line l ON l.line_num = lcs.line_num
+            LEFT JOIN shift s ON s.shift_num = lcs.shift_num
+            LEFT JOIN ab_job j ON j.ab_job_num = lcs.ab_job_num
+            LEFT JOIN coil c ON c.coil_abc_num = lcs.coil_abc_num
+            WHERE (:line IS NULL OR lcs.line_num = :line)
+            ORDER BY lcs.line_num
+            """, new { line = lineNum }, cancellationToken: ct))).AsList();
+        if (rows.Count == 0)
+            return rows;
+
+        // Unpivot the 21 skid columns in SQL (portable across Oracle + the SQLite fixture; no
+        // list binding, no reflection) and resolve each occupied slot against sheet_skid.
+        var unpivot = string.Join("\n            UNION ALL ", LineBoardSkidColumns.Select((c, i) =>
+            $"SELECT line_num AS LineNum, '{c.Slot}' AS Slot, {i} AS SlotOrd, {c.Column} AS SheetSkidNum " +
+            $"FROM line_current_status WHERE (:line IS NULL OR line_num = :line) AND {c.Column} IS NOT NULL"));
+        var slots = await conn.QueryAsync<LineBoardSkidFlat>(new CommandDefinition(
+            $"""
+            SELECT p.LineNum AS LineNum, p.Slot AS Slot, p.SheetSkidNum AS SheetSkidNum,
+                   ss.sheet_skid_display_num AS SheetSkidDisplayNum, ss.ab_job_num AS AbJobNum,
+                   ss.skid_pieces AS SkidPieces, ss.sheet_net_wt AS SheetNetWt,
+                   ss.skid_sheet_status AS SkidSheetStatus, ss.skid_location AS SkidLocation
+            FROM ({unpivot}) p
+            LEFT JOIN sheet_skid ss ON ss.sheet_skid_num = p.SheetSkidNum
+            ORDER BY p.LineNum, p.SlotOrd
+            """, new { line = lineNum }, cancellationToken: ct));
+
+        var bySlotLine = slots.GroupBy(s => s.LineNum).ToDictionary(g => g.Key, g => (IReadOnlyList<LineBoardSkid>)g.Select(s => new LineBoardSkid
+        {
+            Slot = s.Slot, SheetSkidNum = s.SheetSkidNum, SheetSkidDisplayNum = s.SheetSkidDisplayNum,
+            AbJobNum = s.AbJobNum, SkidPieces = s.SkidPieces, SheetNetWt = s.SheetNetWt,
+            SkidSheetStatus = s.SkidSheetStatus, SkidLocation = s.SkidLocation,
+        }).ToList());
+        foreach (var row in rows)
+            row.Skids = bySlotLine.TryGetValue(row.LineNum, out var s) ? s : [];
+        return rows;
+    }
+
+    private sealed class LineBoardSkidFlat
+    {
+        public long LineNum { get; set; }
+        public string Slot { get; set; } = "";
+        public long SheetSkidNum { get; set; }
+        public string? SheetSkidDisplayNum { get; set; }
+        public long? AbJobNum { get; set; }
+        public int? SkidPieces { get; set; }
+        public decimal? SheetNetWt { get; set; }
+        public int? SkidSheetStatus { get; set; }
+        public string? SkidLocation { get; set; }
+    }
+
     // ---- Stacker line board / error log (legacy stacker_110) ----
 
     // The stacker board is a live line monitor of the jobs *running* on a line. It must

@@ -2695,3 +2695,62 @@ public sealed class LineErrorRow
     public string? Title { get; set; }
     public string? Message { get; set; }
 }
+
+// ---- Live line board (legacy LINE_CURRENT_STATUS — the DAS "what is running right now" monitor) ----
+
+/// <summary>One skid position on a line's board. Legacy <c>LINE_CURRENT_STATUS</c> carries 19
+/// numbered <c>SHEET_SKID_LOCATION_0..18</c> columns (the floor positions along the line) plus the
+/// two stacker heads (<c>SHEET_SKID_STACKER_1/2</c>). <see cref="Slot"/> is <c>"0".."18"</c> for a
+/// floor position and <c>"STACKER_1"</c>/<c>"STACKER_2"</c> for a stacker station. Only occupied
+/// slots are returned; the skid detail is resolved from <c>sheet_skid</c> when the row still exists.</summary>
+public sealed class LineBoardSkid
+{
+    public string Slot { get; set; } = "";
+    public long SheetSkidNum { get; set; }
+    public string? SheetSkidDisplayNum { get; set; }
+    public long? AbJobNum { get; set; }
+    public int? SkidPieces { get; set; }
+    public decimal? SheetNetWt { get; set; }
+    public int? SkidSheetStatus { get; set; }
+    public string? SkidLocation { get; set; }
+}
+
+/// <summary>A line's live board row (legacy <c>LINE_CURRENT_STATUS</c>, one row per line — the
+/// table the DAS station writes as it runs). Carries the line's current shift, job and coil plus
+/// the skid positions, enriched with the line/shift/job/coil detail the operator sees. Read-only:
+/// the DAS write path (Operation Panel) owns the mutations.</summary>
+public sealed class LineBoardRow
+{
+    public long LineNum { get; set; }
+    public string? LineDesc { get; set; }
+    public string? LineLocation { get; set; }
+    public int? LineStatus { get; set; }
+    /// <summary>Coil process rate as the line last reported it (legacy COIL_PROCESS_RATE).</summary>
+    public int? CoilProcessRate { get; set; }
+
+    public long? ShiftNum { get; set; }
+    public DateTime? ShiftStartTime { get; set; }
+    public DateTime? ShiftEndTime { get; set; }
+    public int? ShiftScheduleType { get; set; }
+    public string? ShiftOperatorInitial { get; set; }
+
+    public long? AbJobNum { get; set; }
+    public int? JobStatus { get; set; }
+    public long? OrderAbcNum { get; set; }
+
+    public long? CoilAbcNum { get; set; }
+    public string? CoilOrgNum { get; set; }
+    public int? CoilStatus { get; set; }
+    public string? CoilAlloy2 { get; set; }
+    public decimal? CoilGauge { get; set; }
+    public decimal? CoilWidth { get; set; }
+    /// <summary>Coil weight still on the mandrel (legacy <c>net_wt_balance</c>).</summary>
+    public decimal? CoilNetWtBalance { get; set; }
+
+    /// <summary>The scrap skid currently being filled on this line.</summary>
+    public long? ScrapSkidNum { get; set; }
+    /// <summary>The sheet skid currently being built on this line.</summary>
+    public long? SheetSkidNum { get; set; }
+
+    public IReadOnlyList<LineBoardSkid> Skids { get; set; } = [];
+}

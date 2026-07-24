@@ -3017,6 +3017,81 @@
         }
       }
     },
+    "/api/das/line-board": {
+      "get": {
+        "tags": [
+          "DAS"
+        ],
+        "summary": "The live line board (line_current_status): each line's current shift, job, coil and skid positions.",
+        "operationId": "GetLineBoard",
+        "parameters": [
+          {
+            "name": "lineNum",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LineBoardRow"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/das/line-board/{lineNum}": {
+      "get": {
+        "tags": [
+          "DAS"
+        ],
+        "summary": "One line's live board row; 404 when the line has no line_current_status row.",
+        "operationId": "GetLineBoardForLine",
+        "parameters": [
+          {
+            "name": "lineNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LineBoardRow"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/dies": {
       "get": {
         "tags": [
@@ -18113,6 +18188,165 @@
             "nullable": true
           },
           "sketchJobNote": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LineBoardRow": {
+        "type": "object",
+        "properties": {
+          "lineNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lineDesc": {
+            "type": "string",
+            "nullable": true
+          },
+          "lineLocation": {
+            "type": "string",
+            "nullable": true
+          },
+          "lineStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "coilProcessRate": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "shiftNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "shiftStartTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "shiftEndTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "shiftScheduleType": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "shiftOperatorInitial": {
+            "type": "string",
+            "nullable": true
+          },
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "jobStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "orderAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "coilOrgNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "coilAlloy2": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilGauge": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "coilWidth": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "coilNetWtBalance": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "scrapSkidNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "sheetSkidNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "skids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LineBoardSkid"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LineBoardSkid": {
+        "type": "object",
+        "properties": {
+          "slot": {
+            "type": "string",
+            "nullable": true
+          },
+          "sheetSkidNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sheetSkidDisplayNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "skidPieces": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "sheetNetWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "skidSheetStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "skidLocation": {
             "type": "string",
             "nullable": true
           }

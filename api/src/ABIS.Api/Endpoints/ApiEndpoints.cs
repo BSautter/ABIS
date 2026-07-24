@@ -1299,6 +1299,21 @@ public static class ApiEndpoints
            .WithSummary("Add a note to a job's e-folder (author from the OIDC user or body userId).")
            .Produces<JobFolderNote>(StatusCodes.Status201Created).Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
 
+        // ---- Live line board (legacy LINE_CURRENT_STATUS — the DAS floor monitor) ----
+        api.MapGet("/das/line-board", async (IAbisRepository repo, CancellationToken ct, long? lineNum = null) =>
+                Results.Ok(await repo.GetLineBoardAsync(lineNum, ct)))
+           .WithName("GetLineBoard").WithTags("DAS")
+           .WithSummary("The live line board (line_current_status): each line's current shift, job, coil and skid positions.")
+           .Produces<IReadOnlyList<LineBoardRow>>();
+
+        api.MapGet("/das/line-board/{lineNum:long}", async (long lineNum, IAbisRepository repo, CancellationToken ct) =>
+                (await repo.GetLineBoardAsync(lineNum, ct)).FirstOrDefault() is { } board
+                    ? Results.Ok(board)
+                    : Results.NotFound())
+           .WithName("GetLineBoardForLine").WithTags("DAS")
+           .WithSummary("One line's live board row; 404 when the line has no line_current_status row.")
+           .Produces<LineBoardRow>().Produces(StatusCodes.Status404NotFound);
+
         // ---- Stacker line board / error log (legacy stacker_110) ----
         api.MapGet("/stacker/board", async (IAbisRepository repo, CancellationToken ct, long? lineNum = null) =>
                 Results.Ok(await repo.GetStackerBoardAsync(lineNum, ct)))
