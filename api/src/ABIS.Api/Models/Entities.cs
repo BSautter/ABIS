@@ -2850,6 +2850,43 @@ public sealed class LineLiveMetrics
     public decimal YieldTargetPct { get; set; } = 95m;
 }
 
+/// <summary>An open shift (no <c>end_time</c>) with how long it has been open. The live plant DB
+/// carries several left open for days — a shift nobody closed skews its line's efficiency and never
+/// gets its <c>dt_total</c> roll-up, so they need surfacing. Detection only: closing one is an
+/// operator action, because the legacy DAS station owns shift closure on the production DB.</summary>
+public sealed class OpenShift
+{
+    public long ShiftNum { get; set; }
+    public long? LineNum { get; set; }
+    public string? LineDesc { get; set; }
+    public DateTime? StartTime { get; set; }
+    public int? ScheduleType { get; set; }
+    public string? OperatorInitial { get; set; }
+    public long HoursOpen { get; set; }
+    /// <summary>Open longer than any real shift runs — left open rather than worked.</summary>
+    public bool Stale { get; set; }
+    /// <summary>The line's board still points at this shift (so it is the line's current shift).</summary>
+    public bool OnLineBoard { get; set; }
+    /// <summary>Coil runs recorded against it — how much work would be mis-attributed.</summary>
+    public int CoilRuns { get; set; }
+}
+
+/// <summary>What came off a coil on one job — the end-coil recap (legacy shows the ending status and
+/// closing weight when a coil finishes). Scoped to the (coil, job) pair rather than the single run,
+/// because finished items and scrap are booked against the job, not the run.</summary>
+public sealed class CoilRunRecap
+{
+    public ShiftCoilRun Run { get; set; } = new();
+    public int SkidCount { get; set; }
+    public int PiecesProduced { get; set; }
+    public decimal NetWeightProduced { get; set; }
+    public decimal ScrapWeight { get; set; }
+    /// <summary>Yield on the legacy formula: 1 − scrap / the coil's ORIGINAL net weight.</summary>
+    public decimal? YieldPct { get; set; }
+    public bool YieldBelowTarget { get; set; }
+    public decimal YieldTargetPct { get; set; } = 95m;
+}
+
 /// <summary>Result of changing the job a line is running mid-coil (legacy <c>split_and_save</c>):
 /// the run closed on the old job, the fresh run opened for the same coil on the new job, the board
 /// after the move, and whether squaring the old job up finished it.</summary>

@@ -110,7 +110,19 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   Percentages are **omitted, not zeroed**, when there is no shift or coil. Surfaced on the DAS console
   (Efficiency / Coil finish / Yield / Shift wt cells, red under target, amber while down) and on the
   floor board (Effic + Yield metrics + a coil-finish bar).
-- [ ] **H** End-coil recap (ending status + closing weight)
+- [x] **H** End-coil recap (ending status + closing weight) — done (#289):
+  `GET /das/shifts/{n}/coil-runs/{run}/recap` returns the run plus what came off that coil on that job —
+  skids, pieces, finished weight, scrap and the legacy yield. Scoped to the (coil, job) pair, since finished
+  items are booked against the job and carry no run number. The console shows it the moment a run closes,
+  and the **ending status is now an operator choice**: a picker seeded with the codes the plant actually
+  uses (`shift_coil.coil_end_status` on the COIL_STATUS domain — by frequency over ~108k live runs:
+  Done 83k, InProcess 8.6k, Rebanded 7.9k, New 6.4k, Rejected 1.6k, OnHold 54).
+- [~] **H/M** Shift lifecycle: **stale-shift detection done** (#289) — `GET /das/shifts/open`
+  (`staleOnly=true` for those open longer than a day) + a notification-bell alert. This is the operational
+  defect the live DB exposed: three shifts open 31 h / 31 h / 103 h, none with a `dt_total` roll-up.
+  **Deliberately detection-only, not auto-close**: the legacy DAS station owns shift closure on the
+  production database, and an automatic closer would be a competing writer (same single-owner rule as the
+  EDI transmit seam). Auto new/end + grace stays open pending the DAS ownership decision.
 - [x] **H** Drop/reverse a wrongly-loaded coil (+`ERROR_EVT`); change-job-mid-coil (split & save remaining wt)
   — done (#286): `POST /das/lines/{n}/change-job` ports legacy `u_coil.split_and_save` — closes the coil's run on
   the OLD job at the weight left (`process_wt` = begin − remaining), squares up its `process_coil` (status 1, as
@@ -134,7 +146,6 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   move-up / remove / queue-a-job.
 - [ ] **H** Line auto-status controls + `noauto` write (lockout); fault/health lamps (DB / OPC `_ErrorCode` / PLC `activefault`)
 - [ ] **H** Stacker dual-station automation (`SHEET_SKID_STACKER_1/2`)
-- [ ] **H/M** Shift lifecycle automation (auto new/end + grace, `DT_TOTAL` rollup, board reset)
 - [ ] **M** Stacker physical board (11 shape displays + ~16 conveyor cells + live stack tracking)
 - [ ] **M** Supervisor/role PIN gating (exit / override / drop-coil / maintenance)
 - [ ] **M** Serial scale zero command + scrap-scale/gauge separation

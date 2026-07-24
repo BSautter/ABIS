@@ -379,6 +379,10 @@ tbody tr.click { cursor:pointer; } tbody tr.click:hover { background:var(--surfa
 .dop-op .op-cell.bad .v { color:var(--crit); }
 .dop-op .op-cell.down { border-color:color-mix(in srgb, var(--warn) 55%, transparent); }
 .dop-op .op-cell.down .v { color:var(--warn); }
+/* End-coil recap: what came off the coil, shown the moment its run closes. */
+.dop-recap { margin-top:12px; padding:12px 14px; border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:10px; background:var(--surface-2); display:flex; flex-direction:column; gap:4px; font-size:13px; }
+.dop-recap strong { font-size:14px; }
+.dop-recap b.bad { color:var(--crit); }
 /* The run the line is still processing (no end time) stands out in the shift's ledger. */
 tr.run-open td { background:color-mix(in srgb, var(--accent) 10%, transparent); }
 

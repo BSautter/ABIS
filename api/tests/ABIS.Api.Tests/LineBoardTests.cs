@@ -438,6 +438,52 @@ public sealed class LineBoardTests
     }
 
     [Fact]
+    public async Task Open_shifts_are_listed_with_the_stale_ones_filterable()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        // Seeded shifts are closed; open one 4 days back (like the three on the live plant DB) and
+        // one that started an hour ago (a shift that is simply running).
+        foreach (var (line, sched, start) in new[] { (120, 4, DateTime.Now.AddDays(-4)), (110, 5, DateTime.Now.AddHours(-1)) })
+            (await c.PostAsJsonAsync("/api/shifts", new { lineNum = line, scheduleType = sched, startTime = start })).EnsureSuccessStatusCode();
+
+        var all = await c.GetFromJsonAsync<JsonElement>("/api/das/shifts/open");
+        Assert.Equal(2, all.EnumerateArray().Count());
+        // Longest-open first, and it carries the line's real name.
+        var oldest = all.EnumerateArray().First();
+        Assert.True(oldest.GetProperty("hoursOpen").GetInt64() >= 95);
+        Assert.True(oldest.GetProperty("stale").GetBoolean());
+        Assert.Equal("Cut-to-length 2", oldest.GetProperty("lineDesc").GetString());
+
+        // The hour-old one is running normally, not stale.
+        Assert.False(all.EnumerateArray().Last().GetProperty("stale").GetBoolean());
+
+        var stale = await c.GetFromJsonAsync<JsonElement>("/api/das/shifts/open?staleOnly=true");
+        Assert.Single(stale.EnumerateArray());
+    }
+
+    [Fact]
+    public async Task The_end_coil_recap_reports_what_came_off_the_coil()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        // Seeded run 1 = coil 5001 on job 1001, which has finished items, skids and 30 lb of scrap.
+        var recap = await c.GetFromJsonAsync<JsonElement>("/api/das/shifts/7701/coil-runs/1/recap");
+        Assert.Equal(5001, recap.GetProperty("run").GetProperty("coilAbcNum").GetInt64());
+        Assert.True(recap.GetProperty("skidCount").GetInt32() >= 1);
+        Assert.True(recap.GetProperty("piecesProduced").GetInt32() > 0);
+        Assert.True(recap.GetProperty("netWeightProduced").GetDecimal() > 0m);
+        Assert.Equal(30m, recap.GetProperty("scrapWeight").GetDecimal());
+        // Yield on the legacy formula against the coil's ORIGINAL 12,000 lb: 1 - 30/12000 = 99.75%.
+        Assert.Equal(99.75m, recap.GetProperty("yieldPct").GetDecimal());
+        Assert.False(recap.GetProperty("yieldBelowTarget").GetBoolean());
+
+        Assert.Equal(HttpStatusCode.NotFound, (await c.GetAsync("/api/das/shifts/7701/coil-runs/99/recap")).StatusCode);
+    }
+
+    [Fact]
     public async Task Live_metrics_report_an_idle_line_without_inventing_percentages()
     {
         using var f = new Factory();

@@ -3569,6 +3569,90 @@
         }
       }
     },
+    "/api/das/shifts/open": {
+      "get": {
+        "tags": [
+          "DAS"
+        ],
+        "summary": "Shifts with no end_time, longest-open first; staleOnly=true keeps just those open longer than a day (left open, not worked).",
+        "operationId": "GetOpenShifts",
+        "parameters": [
+          {
+            "name": "staleOnly",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OpenShift"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/das/shifts/{shiftNum}/coil-runs/{coilRunNum}/recap": {
+      "get": {
+        "tags": [
+          "DAS"
+        ],
+        "summary": "End-coil recap: the run plus the skids, pieces, finished weight, scrap and yield that came off that coil on that job.",
+        "operationId": "GetCoilRunRecap",
+        "parameters": [
+          {
+            "name": "shiftNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "coilRunNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoilRunRecap"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/das/lines/{lineNum}/coil-run/start": {
       "post": {
         "tags": [
@@ -16065,6 +16149,43 @@
         },
         "additionalProperties": false
       },
+      "CoilRunRecap": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "$ref": "#/components/schemas/ShiftCoilRun"
+          },
+          "skidCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "piecesProduced": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "netWeightProduced": {
+            "type": "number",
+            "format": "double"
+          },
+          "scrapWeight": {
+            "type": "number",
+            "format": "double"
+          },
+          "yieldPct": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "yieldBelowTarget": {
+            "type": "boolean"
+          },
+          "yieldTargetPct": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
       "CoilRunResult": {
         "type": "object",
         "properties": {
@@ -20070,6 +20191,53 @@
           "description": {
             "type": "string",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "OpenShift": {
+        "type": "object",
+        "properties": {
+          "shiftNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lineNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "lineDesc": {
+            "type": "string",
+            "nullable": true
+          },
+          "startTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "scheduleType": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "operatorInitial": {
+            "type": "string",
+            "nullable": true
+          },
+          "hoursOpen": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "onLineBoard": {
+            "type": "boolean"
+          },
+          "coilRuns": {
+            "type": "integer",
+            "format": "int32"
           }
         },
         "additionalProperties": false

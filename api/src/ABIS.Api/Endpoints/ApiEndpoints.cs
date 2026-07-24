@@ -1436,6 +1436,23 @@ public static class ApiEndpoints
            .WithSummary("The coil runs recorded in a shift (shift_coil), in run order — the shift's production ledger.")
            .Produces<IReadOnlyList<ShiftCoilRun>>().Produces(StatusCodes.Status404NotFound);
 
+        // Shifts nobody closed. A shift left open never gets its dt_total roll-up and skews its line's
+        // efficiency — the live plant DB had three open for 31 h, 31 h and 103 h. READ-ONLY on purpose:
+        // closing one is an operator action, because the legacy DAS station owns shift closure on the
+        // production database and a second automatic closer would be a competing writer.
+        api.MapGet("/das/shifts/open", async (IAbisRepository repo, CancellationToken ct, bool staleOnly = false) =>
+                Results.Ok(await repo.GetOpenShiftsAsync(staleOnly, ct)))
+           .WithName("GetOpenShifts").WithTags("DAS")
+           .WithSummary("Shifts with no end_time, longest-open first; staleOnly=true keeps just those open longer than a day (left open, not worked).")
+           .Produces<IReadOnlyList<OpenShift>>();
+
+        api.MapGet("/das/shifts/{shiftNum:long}/coil-runs/{coilRunNum:int}/recap", async (long shiftNum, int coilRunNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetCoilRunRecapAsync(shiftNum, coilRunNum, ct) is { } recap
+                    ? Results.Ok(recap) : Results.NotFound())
+           .WithName("GetCoilRunRecap").WithTags("DAS")
+           .WithSummary("End-coil recap: the run plus the skids, pieces, finished weight, scrap and yield that came off that coil on that job.")
+           .Produces<CoilRunRecap>().Produces(StatusCodes.Status404NotFound);
+
         api.MapPost("/das/lines/{lineNum:long}/coil-run/start", async (long lineNum, CoilRunStartWrite body, IAbisRepository repo, CancellationToken ct) =>
             {
                 if (!await repo.LineExistsAsync(lineNum, ct))

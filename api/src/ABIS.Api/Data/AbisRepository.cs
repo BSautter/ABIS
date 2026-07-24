@@ -6807,6 +6807,104 @@ public sealed class AbisRepository : IAbisRepository
     /// an open shift means "nobody ended it", not "the line ran that long".</summary>
     private const long StaleShiftSeconds = 24 * 60 * 60;
 
+    /// <summary>Shifts with no <c>end_time</c>, longest-open first. A shift left open never gets its
+    /// <c>dt_total</c> roll-up and skews its line's efficiency — the live plant DB had three open for
+    /// 31 h, 31 h and 103 h. Read-only by design: closing one is an operator action, since the legacy
+    /// DAS station owns shift closure on the production database.</summary>
+    public async Task<IReadOnlyList<OpenShift>> GetOpenShiftsAsync(bool staleOnly, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = (await conn.QueryAsync<OpenShiftRow>(new CommandDefinition(
+            """
+            SELECT s.shift_num AS ShiftNum, s.line_num AS LineNum, l.line_desc AS LineDesc,
+                   s.start_time AS StartTime, s.schedule_type AS ScheduleType, s.operator_initial AS OperatorInitial,
+                   (SELECT COUNT(*) FROM shift_coil sc WHERE sc.shift_num = s.shift_num) AS CoilRuns,
+                   (SELECT COUNT(*) FROM line_current_status lcs WHERE lcs.shift_num = s.shift_num) AS BoardRefs
+            FROM shift s
+            LEFT JOIN line l ON l.line_num = s.line_num
+            WHERE s.end_time IS NULL AND s.start_time IS NOT NULL
+            ORDER BY s.start_time
+            """, cancellationToken: ct))).AsList();
+
+        var now = DateTime.Now;
+        var open = rows.Select(r =>
+        {
+            var seconds = (long)Math.Max(0d, (now - r.StartTime!.Value).TotalSeconds);
+            return new OpenShift
+            {
+                ShiftNum = r.ShiftNum, LineNum = r.LineNum, LineDesc = r.LineDesc, StartTime = r.StartTime,
+                ScheduleType = r.ScheduleType, OperatorInitial = r.OperatorInitial, CoilRuns = r.CoilRuns,
+                HoursOpen = seconds / 3600, Stale = seconds > StaleShiftSeconds, OnLineBoard = r.BoardRefs > 0,
+            };
+        });
+        return (staleOnly ? open.Where(o => o.Stale) : open).ToList();
+    }
+
+    private sealed class OpenShiftRow
+    {
+        public long ShiftNum { get; set; }
+        public long? LineNum { get; set; }
+        public string? LineDesc { get; set; }
+        public DateTime? StartTime { get; set; }
+        public int? ScheduleType { get; set; }
+        public string? OperatorInitial { get; set; }
+        public int CoilRuns { get; set; }
+        public int BoardRefs { get; set; }
+    }
+
+    /// <summary>The end-coil recap: a run plus what came off that coil on that job — skids, pieces,
+    /// finished weight, scrap and the legacy yield. Null when the run does not exist.</summary>
+    public async Task<CoilRunRecap?> GetCoilRunRecapAsync(long shiftNum, int coilRunNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var run = await conn.QuerySingleOrDefaultAsync<ShiftCoilRun>(new CommandDefinition(
+            $"""
+            SELECT {ShiftCoilRunColumns}
+            FROM shift_coil sc LEFT JOIN coil c ON c.coil_abc_num = sc.coil_abc_num
+            WHERE sc.shift_num = :shift AND sc.coil_run_num = :run
+            """, new { shift = shiftNum, run = coilRunNum }, cancellationToken: ct));
+        if (run is null)
+            return null;
+
+        // Finished items are booked against (coil, job) — the run itself is not carried on them, so
+        // the recap is scoped to the pair. Skids are counted through the item→skid detail link.
+        var totals = await conn.QuerySingleOrDefaultAsync<RecapTotals>(new CommandDefinition(
+            """
+            SELECT COALESCE(SUM(psi.prod_item_pieces), 0) AS PiecesProduced,
+                   COALESCE(SUM(psi.prod_item_net_wt), 0) AS NetWeightProduced,
+                   COUNT(DISTINCT ssd.sheet_skid_num) AS SkidCount
+            FROM production_sheet_item psi
+            LEFT JOIN sheet_skid_detail ssd ON ssd.prod_item_num = psi.prod_item_num
+            WHERE psi.coil_abc_num = :coil AND psi.ab_job_num = :job
+            """, new { coil = run.CoilAbcNum, job = run.AbJobNum }, cancellationToken: ct));
+
+        var recap = new CoilRunRecap
+        {
+            Run = run,
+            SkidCount = totals?.SkidCount ?? 0,
+            PiecesProduced = totals?.PiecesProduced ?? 0,
+            NetWeightProduced = totals?.NetWeightProduced ?? 0m,
+            ScrapWeight = await conn.ExecuteScalarAsync<decimal?>(new CommandDefinition(
+                "SELECT SUM(return_item_net_wt) FROM return_scrap_item WHERE coil_abc_num = :coil AND ab_job_num = :job",
+                new { coil = run.CoilAbcNum, job = run.AbJobNum }, cancellationToken: ct)) ?? 0m,
+        };
+        var original = await conn.ExecuteScalarAsync<decimal?>(new CommandDefinition(
+            "SELECT net_wt FROM coil WHERE coil_abc_num = :coil", new { coil = run.CoilAbcNum }, cancellationToken: ct));
+        if (original is { } net && net > 0m)
+        {
+            recap.YieldPct = Math.Round((1m - recap.ScrapWeight / net) * 100m, 2);
+            recap.YieldBelowTarget = recap.YieldPct < recap.YieldTargetPct;
+        }
+        return recap;
+    }
+
+    private sealed class RecapTotals
+    {
+        public int PiecesProduced { get; set; }
+        public decimal NetWeightProduced { get; set; }
+        public int SkidCount { get; set; }
+    }
+
     /// <summary>A line's live production metrics: shift efficiency, the shift's processed weight, and
     /// the loaded coil's finish-% and yield. Both percentages are the LEGACY formulas — efficiency
     /// from <c>d_daily_prod_dt_efficiency</c>, yield from <c>u_coil.of_get_yield</c> — see

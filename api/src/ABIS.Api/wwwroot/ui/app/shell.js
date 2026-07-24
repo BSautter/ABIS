@@ -289,6 +289,16 @@ async function fetchNotifications() {
         }
     }
     catch { /* non-fatal */ }
+    // Shifts nobody closed. One left open never gets its dt_total roll-up and skews its line's
+    // efficiency, so it is worth a nudge — but only past a day, which is longer than any real shift.
+    try {
+        const r = await authFetch('/api/das/shifts/open?staleOnly=true');
+        const stale = r.ok ? (await r.json()) : [];
+        if (Array.isArray(stale) && stale.length) {
+            items.push({ label: `${stale.length} shift${stale.length === 1 ? '' : 's'} left open (oldest ${Math.max(...stale.map((s) => s.hoursOpen ?? 0))} h)`, tone: 'warn', href: '/ui/shifts.html' });
+        }
+    }
+    catch { /* non-fatal */ }
     try {
         const hold = await client().getOnHoldCoils();
         if (hold?.length)

@@ -324,6 +324,10 @@ public interface IAbisRepository
     /// <summary>A line's live production metrics (shift efficiency, processed weight, coil finish-%
     /// and yield) using the legacy formulas. Null when the line has no board row.</summary>
     Task<LineLiveMetrics?> GetLineLiveMetricsAsync(long lineNum, CancellationToken ct);
+    /// <summary>Shifts with no end_time, longest-open first (optionally only the stale ones).</summary>
+    Task<IReadOnlyList<OpenShift>> GetOpenShiftsAsync(bool staleOnly, CancellationToken ct);
+    /// <summary>The end-coil recap for one run: skids, pieces, finished weight, scrap and yield.</summary>
+    Task<CoilRunRecap?> GetCoilRunRecapAsync(long shiftNum, int coilRunNum, CancellationToken ct);
     /// <summary>Reverse a wrongly-loaded coil: drop it off the board, delete its (unproduced) run and
     /// log an error_evt. Refuses a run that has already processed weight.</summary>
     Task<CoilReverseResult?> ReverseCoilRunAsync(long lineNum, string? errorUser, int? errorTypeId, string? note, CancellationToken ct);

@@ -51,6 +51,14 @@ let dtTickTimer: number | null = null;    // 1s banner-timer tick
 let pieceCurrent: number | null = null;   // latest stacker counter read
 let pieceBaseline: number | null = null;  // counter at the start of the skid in progress (null = not seeded)
 
+// The status a coil ends its run in (shift_coil.coil_end_status, on the COIL_STATUS domain). These
+// are the codes the plant actually uses, by frequency over ~108k real runs on the production ledger:
+// Done 83k, InProcess 8.6k, Rebanded 7.9k, New 6.4k, Rejected 1.6k, OnHold 54 — the rest are noise.
+const END_STATUS_OPTIONS = [
+  [0, 'Done — coil ran out'], [1, 'In process — more to run'], [7, 'Rebanded'],
+  [2, 'New — not started'], [3, 'Rejected'], [4, 'On hold'],
+].map(([code, label]) => `<option value="${code}">${label}</option>`).join('');
+
 function scaffold(): string {
   const tab = (id: string, label: string) => `<button id="tab-${id}" type="button">${label}</button>`;
   return `
@@ -103,6 +111,7 @@ function scaffold(): string {
             </div>
             <div class="frow" style="margin-top:10px;align-items:flex-end">
               <div class="fld"><label>Weight left on coil</label><input id="opEndWt" class="big" type="number" step="0.01" style="width:150px" /></div>
+              <div class="fld"><label>Ending status</label><select id="opEndStatus" class="big" style="min-width:150px">${END_STATUS_OPTIONS}</select></div>
               <button class="btn sm" id="btnEndCoil" type="button">End coil run</button>
               <button class="btn sm ghost" id="btnReverse" type="button" title="The coil was loaded in error: drop it and delete its run">↺ Reverse coil</button>
               <span id="opOk" class="ok-note"></span>
@@ -111,6 +120,7 @@ function scaffold(): string {
               <div class="fld"><label>Change to job #</label><input id="opNewJob" class="big" inputmode="numeric" style="width:130px" /></div>
               <button class="btn sm" id="btnChangeJob" type="button" title="Keep running the same coil on a different job — uses the weight-left value above">Change job (keep coil)</button>
             </div>
+            <div id="opRecap" class="dop-recap" hidden></div>
             <div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="min-width:520px"><thead><tr><th>Run</th><th>Coil</th><th>Job</th><th class="num">Begin</th><th class="num">End</th><th class="num">Processed</th><th>Ended</th></tr></thead><tbody id="tRuns"><tr><td colspan="7" class="muted">—</td></tr></tbody></table></div>
             <h3 style="margin:16px 0 6px;font-size:13px">Line queue</h3>
             <div style="overflow-x:auto"><table class="tbl" style="min-width:460px"><thead><tr><th class="num">#</th><th>Job</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody id="tQueue"><tr><td colspan="5" class="muted">—</td></tr></tbody></table></div>
@@ -342,21 +352,44 @@ async function loadCoilRuns(): Promise<void> {
 }
 
 // Opening/closing a run returns { run, board, jobFinished } rather than a bare board.
-async function coilRunAction(path: string, body: unknown, okMsg: (r: { jobFinished: boolean }) => string): Promise<void> {
+type RunResult = { board: OpBoard; jobFinished: boolean; run?: { shiftNum: number; coilRunNum: number } };
+
+async function coilRunAction(path: string, body: unknown, okMsg: (r: RunResult) => string,
+                             then?: (r: RunResult) => void): Promise<void> {
   if (lineNum == null) { setErr('Load a job first — the line comes from the job.'); return; }
   setErr(''); $('#opOk').textContent = '';
   setBusy(true);
   try {
     const r = await authFetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 200)}`);
-    const res = await r.json() as { board: OpBoard; jobFinished: boolean };
+    const res = await r.json() as RunResult;
     opBoard = res.board;
     await loadLive();
     renderOpState();
     $('#opOk').textContent = okMsg(res);
     await Promise.all([loadCoilRuns(), loadCoils()]);
+    then?.(res);
   } catch (e) { setErr(`Coil run: ${(e as Error).message}`); }
   finally { setBusy(false); }
+}
+
+// End-coil recap — what actually came off the coil, shown once its run closes (the legacy DAS
+// showed the ending status and closing weight at this moment).
+async function showRecap(run: { shiftNum: number; coilRunNum: number } | undefined): Promise<void> {
+  const box = $('#opRecap');
+  if (!run) { box.hidden = true; return; }
+  try {
+    const r = await authFetch(`/api/das/shifts/${run.shiftNum}/coil-runs/${run.coilRunNum}/recap`);
+    if (!r.ok) { box.hidden = true; return; }
+    const x = await r.json() as { run: { coilAbcNum: number; coilEndWt?: number; coilEndStatus?: number; processWt?: number };
+      skidCount: number; piecesProduced: number; netWeightProduced: number; scrapWeight: number;
+      yieldPct?: number; yieldBelowTarget?: boolean };
+    box.hidden = false;
+    box.innerHTML = `<strong>Coil #${esc(x.run.coilAbcNum)} recap</strong>
+      <span>Ended ${statusChip('coilStatus', x.run.coilEndStatus)} at ${esc(num(x.run.coilEndWt))} lb · ran ${esc(num(x.run.processWt))} lb</span>
+      <span>${esc(x.skidCount)} skid(s) · ${esc(num(x.piecesProduced))} pcs · ${esc(num(x.netWeightProduced))} lb finished</span>
+      <span>Scrap ${esc(num(x.scrapWeight))} lb · yield <b class="${x.yieldBelowTarget ? 'bad' : ''}">${x.yieldPct == null ? '—' : x.yieldPct.toFixed(2) + '%'}</b></span>`;
+  } catch { box.hidden = true; }
 }
 
 // Every panel action follows the same shape: call, take the returned board as the new truth, report.
@@ -898,8 +931,9 @@ async function pickerBrowse(bases: string[], targetId: string, path: Crumb[]): P
   $('#btnEndCoil').addEventListener('click', () => {
     const wt = v('#opEndWt');
     if (wt === '') { setErr('Enter the weight left on the coil (0 if it ran out).'); return; }
-    void coilRunAction(`/api/das/lines/${lineNum}/coil-run/end`, { endWeight: Number(wt), coilAbcNum: runCoil ?? undefined, abJobNum: job },
-      (r) => `Coil run ended${r.jobFinished ? ' — job finished' : ''}`);
+    void coilRunAction(`/api/das/lines/${lineNum}/coil-run/end`,
+      { endWeight: Number(wt), endStatus: Number(v('#opEndStatus')), coilAbcNum: runCoil ?? undefined, abJobNum: job },
+      (r) => `Coil run ended${r.jobFinished ? ' — job finished' : ''}`, (r) => void showRecap(r.run));
   });
   $('#btnDropCoil').addEventListener('click', () => void opAction(`/api/das/lines/${lineNum}/current-coil`, { coilAbcNum: null }, 'Coil dropped'));
   showTab('skids');
