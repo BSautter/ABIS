@@ -3691,6 +3691,44 @@
         }
       }
     },
+    "/api/das/lines/{lineNum}/live": {
+      "get": {
+        "tags": [
+          "DAS"
+        ],
+        "summary": "A line's live metrics: shift efficiency % (legacy downtime formula), processed weight, and the loaded coil's finish-% and yield % (legacy 95% target).",
+        "operationId": "GetLineLiveMetrics",
+        "parameters": [
+          {
+            "name": "lineNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LineLiveMetrics"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/das/lines/{lineNum}/change-job": {
       "post": {
         "tags": [
@@ -19412,6 +19450,93 @@
           "message": {
             "type": "string",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LineLiveMetrics": {
+        "type": "object",
+        "properties": {
+          "lineNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "shiftNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "shiftStartTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "elapsedSeconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "downtimeSeconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "downtimeOpen": {
+            "type": "boolean"
+          },
+          "efficiencyPct": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "shiftProcessedWeight": {
+            "type": "number",
+            "format": "double"
+          },
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "coilBeginWeight": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "coilCurrentWeight": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "coilProcessedWeight": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "coilFinishPct": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "coilScrapWeight": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "coilYieldPct": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "yieldBelowTarget": {
+            "type": "boolean"
+          },
+          "yieldTargetPct": {
+            "type": "number",
+            "format": "double"
           }
         },
         "additionalProperties": false

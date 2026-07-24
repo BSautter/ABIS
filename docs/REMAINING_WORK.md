@@ -85,7 +85,19 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   end-coil recap screen.
 - [ ] **C** Live PLC counters (good/reject/stroke/feed-length) posted as coil deltas
 - [ ] **C** Coil barcode scan-to-load + actual-weight (`ABCO_COIL_NET_WT`) update
-- [ ] **H** Live shift efficiency % + coil yield % / finish-% (console, 5s cadence)
+- [x] **H** Live shift efficiency % + coil yield % / finish-% (console, 5s cadence) — done (#287):
+  `GET /das/lines/{n}/live`. **Both formulas were recovered from the legacy client, not invented**
+  (there is NO efficiency/yield logic in Oracle PL/SQL — same finding as the PM scheduler):
+  **efficiency** = `(shift seconds − downtime seconds) / shift seconds × 100` from
+  `d_daily_prod_dt_efficiency`, where downtime is `shift.dt_total` once rolled up and the shift's own
+  `dt_instance` rows until then (legacy's `if shift_dt_total > 0` precedence) — live, the shift runs
+  to NOW and an OPEN downtime instance counts up to now, so the number moves while the line is down;
+  **yield** = `(1 − scrap weight / the coil's ORIGINAL net weight) × 100` from `u_coil.of_get_yield`,
+  with the legacy **95% red line** carried in the payload (`yieldTargetPct`) rather than hard-coded in
+  the UI. Also returns coil finish-% against the run's begin weight and the shift's processed weight.
+  Percentages are **omitted, not zeroed**, when there is no shift or coil. Surfaced on the DAS console
+  (Efficiency / Coil finish / Yield / Shift wt cells, red under target, amber while down) and on the
+  floor board (Effic + Yield metrics + a coil-finish bar).
 - [ ] **H** End-coil recap (ending status + closing weight)
 - [x] **H** Drop/reverse a wrongly-loaded coil (+`ERROR_EVT`); change-job-mid-coil (split & save remaining wt)
   — done (#286): `POST /das/lines/{n}/change-job` ports legacy `u_coil.split_and_save` — closes the coil's run on

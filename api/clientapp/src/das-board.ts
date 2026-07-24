@@ -38,7 +38,11 @@ type LineBoard = {
   coilGauge?: number; coilWidth?: number; coilNetWtBalance?: number;
   scrapSkidNum?: number; sheetSkidNum?: number; skids?: BoardSkid[];
 };
-type Line = { line: number; jobs: BoardRow[]; active: BoardRow; coils: number; skids: number; state: State; fault?: ErrRow; live?: LineBoard };
+/// A line's live metrics (legacy formulas: efficiency = uptime share of the shift, yield =
+/// 1 − scrap / the coil's original weight against the 95% target the server sends).
+type LiveMetrics = { lineNum?: number; efficiencyPct?: number; downtimeOpen?: boolean; coilFinishPct?: number;
+  coilYieldPct?: number; yieldBelowTarget?: boolean; shiftProcessedWeight?: number };
+type Line = { line: number; jobs: BoardRow[]; active: BoardRow; coils: number; skids: number; state: State; fault?: ErrRow; live?: LineBoard; metrics?: LiveMetrics };
 type State = 'run' | 'idle' | 'stop' | 'offline';
 const STATE_LABEL: Record<State, string> = { run: 'Running', idle: 'Idle', stop: 'Stopped', offline: 'Offline' };
 
@@ -67,7 +71,7 @@ function stateOf(jobs: BoardRow[], fault: ErrRow | undefined, live: LineBoard | 
   return 'offline';
 }
 
-function buildLines(board: BoardRow[], errs: ErrRow[], live: LineBoard[]): Line[] {
+function buildLines(board: BoardRow[], errs: ErrRow[], live: LineBoard[], metrics: LiveMetrics[]): Line[] {
   const now = Date.now();
   const recentByLine = new Map<number, ErrRow>();
   for (const e of errs) {
@@ -79,6 +83,8 @@ function buildLines(board: BoardRow[], errs: ErrRow[], live: LineBoard[]): Line[
   }
   const liveByLine = new Map<number, LineBoard>();
   for (const l of live) if (l.lineNum != null) liveByLine.set(l.lineNum, l);
+  const metricsByLine = new Map<number, LiveMetrics>();
+  for (const m of metrics) if (m.lineNum != null) metricsByLine.set(m.lineNum, m);
 
   const byLine = new Map<number, BoardRow[]>();
   // A line with a board row but no active job still belongs on the floor (it is between jobs,
@@ -102,7 +108,7 @@ function buildLines(board: BoardRow[], errs: ErrRow[], live: LineBoard[]): Line[
       line, jobs, active,
       coils: jobs.reduce((s, j) => s + (j.coilCount ?? 0), 0),
       skids: jobs.reduce((s, j) => s + (j.skidCount ?? 0), 0),
-      state: stateOf(jobs, fault, lcs), fault, live: lcs,
+      state: stateOf(jobs, fault, lcs), fault, live: lcs, metrics: metricsByLine.get(line),
     });
   }
   return lines.sort((a, b) => a.line - b.line);
@@ -154,7 +160,12 @@ function tile(l: Line): string {
       <div class="m"><div class="mn">${n0(l.coils)}</div><div class="ml">Coils</div></div>
       <div class="m"><div class="mn">${n0(l.skids)}</div><div class="ml">Skids</div></div>
       ${b?.coilProcessRate != null ? `<div class="m"><div class="mn">${n0(b.coilProcessRate)}</div><div class="ml">Rate</div></div>` : ''}
+      ${l.metrics?.efficiencyPct != null ? `<div class="m"><div class="mn${l.metrics.downtimeOpen ? ' warn' : ''}">${l.metrics.efficiencyPct.toFixed(0)}%</div><div class="ml">Effic</div></div>` : ''}
+      ${l.metrics?.coilYieldPct != null ? `<div class="m"><div class="mn${l.metrics.yieldBelowTarget ? ' bad' : ''}">${l.metrics.coilYieldPct.toFixed(1)}%</div><div class="ml">Yield</div></div>` : ''}
     </div>
+    ${l.metrics?.coilFinishPct != null
+      ? `<div class="das-finish" title="How far through the loaded coil this line is"><i style="width:${Math.min(100, l.metrics.coilFinishPct).toFixed(1)}%"></i><span>${l.metrics.coilFinishPct.toFixed(0)}% of coil run</span></div>`
+      : ''}
     ${live}
     ${fault}
   </div>`;
@@ -186,6 +197,18 @@ async function fetchLineBoard(): Promise<LineBoard[]> {
   } catch { return []; }
 }
 
+// Metrics are per line, so they are fetched once the board says which lines exist. One failure
+// (or an older server) costs the percentages, not the board.
+async function fetchLiveMetrics(lines: LineBoard[]): Promise<LiveMetrics[]> {
+  const reads = lines.filter((l) => l.lineNum != null).map(async (l) => {
+    try {
+      const r = await authFetch(`/api/das/lines/${l.lineNum}/live`);
+      return r.ok ? (await r.json()) as LiveMetrics : null;
+    } catch { return null; }
+  });
+  return (await Promise.all(reads)).filter((m): m is LiveMetrics => m != null);
+}
+
 async function load(): Promise<void> {
   try {
     const [board, errs, live] = await Promise.all([
@@ -193,7 +216,8 @@ async function load(): Promise<void> {
       client().getLineErrors(undefined, undefined, undefined) as Promise<ErrRow[]>,
       fetchLineBoard(),
     ]);
-    const lines = buildLines(board ?? [], errs ?? [], live ?? []);
+    const metrics = await fetchLiveMetrics(live ?? []);
+    const lines = buildLines(board ?? [], errs ?? [], live ?? [], metrics);
     renderStrip(lines);
     $('#grid').innerHTML = lines.length ? lines.map(tile).join('') : '<div class="das-empty">No active lines on the floor.</div>';
     $('#updated').textContent = `Updated ${new Date().toLocaleTimeString()}`;

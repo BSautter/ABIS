@@ -2804,6 +2804,45 @@ public sealed class CoilRunResult
     public bool JobFinished { get; set; }
 }
 
+/// <summary>A line's live production metrics — what the operator watches while the shift runs.
+/// <para><b>Efficiency</b> is the legacy shift formula (<c>d_daily_prod_dt_efficiency</c>):
+/// <c>(shift seconds − downtime seconds) / shift seconds × 100</c>, where downtime is
+/// <c>shift.dt_total</c> when it has been rolled up and the shift's own downtime instances until
+/// then. Live, the shift runs to NOW rather than to <c>end_time</c>, and a downtime instance still
+/// open counts up to now — so the number moves while the line is down.</para>
+/// <para><b>Yield</b> is the legacy coil formula (<c>u_coil.of_get_yield</c>):
+/// <c>(1 − scrap weight / the coil's ORIGINAL net weight) × 100</c>. The legacy DAS colours it red
+/// below 95%, which is what <see cref="YieldBelowTarget"/> carries.</para></summary>
+public sealed class LineLiveMetrics
+{
+    public long LineNum { get; set; }
+    public long? ShiftNum { get; set; }
+    public DateTime? ShiftStartTime { get; set; }
+    public long ElapsedSeconds { get; set; }
+    public long DowntimeSeconds { get; set; }
+    /// <summary>True while a downtime instance is still open (the line is down right now).</summary>
+    public bool DowntimeOpen { get; set; }
+    public decimal? EfficiencyPct { get; set; }
+    /// <summary>Weight the shift has processed so far (SUM of its runs' process_wt).</summary>
+    public decimal ShiftProcessedWeight { get; set; }
+
+    public long? CoilAbcNum { get; set; }
+    public long? AbJobNum { get; set; }
+    public decimal? CoilBeginWeight { get; set; }
+    public decimal? CoilCurrentWeight { get; set; }
+    /// <summary>Weight run off the coil since its run opened.</summary>
+    public decimal? CoilProcessedWeight { get; set; }
+    /// <summary>How far through the loaded coil the line is, against the run's begin weight.</summary>
+    public decimal? CoilFinishPct { get; set; }
+    public decimal? CoilScrapWeight { get; set; }
+    public decimal? CoilYieldPct { get; set; }
+    /// <summary>Yield under the legacy 95% line — the DAS shows it red.</summary>
+    public bool YieldBelowTarget { get; set; }
+
+    /// <summary>The legacy yield target (95%), carried so the UI does not hard-code it.</summary>
+    public decimal YieldTargetPct { get; set; } = 95m;
+}
+
 /// <summary>Result of changing the job a line is running mid-coil (legacy <c>split_and_save</c>):
 /// the run closed on the old job, the fresh run opened for the same coil on the new job, the board
 /// after the move, and whether squaring the old job up finished it.</summary>

@@ -348,6 +348,11 @@ tbody tr.click { cursor:pointer; } tbody tr.click:hover { background:var(--surfa
 .das-metrics { display:flex; gap:22px; }
 .das-metrics .m .mn { font-family:var(--font-mono); font-size:22px; font-weight:650; }
 .das-metrics .m .ml { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--das-ink-3); }
+.das-metrics .m .mn.warn { color:var(--idle); } .das-metrics .m .mn.bad { color:var(--stop); }
+/* How far through the loaded coil the line is — a glanceable bar, readable across the floor. */
+.das-finish { margin-top:12px; position:relative; height:20px; border-radius:6px; background:var(--das-tile-2); border:1px solid var(--das-line); overflow:hidden; }
+.das-finish i { position:absolute; left:0; top:0; bottom:0; background:color-mix(in srgb, var(--run) 34%, transparent); }
+.das-finish span { position:relative; display:block; line-height:20px; text-align:center; font-family:var(--font-mono); font-size:10.5px; color:var(--das-ink-2); }
 /* Live block on a tile: what LINE_CURRENT_STATUS says the line is doing right now
    (open shift, coil on the mandrel, and the occupied skid positions). */
 .das-livebox { margin-top:14px; padding-top:12px; border-top:1px solid var(--das-line); display:flex; flex-direction:column; gap:7px; }
@@ -368,6 +373,12 @@ tbody tr.click { cursor:pointer; } tbody tr.click:hover { background:var(--surfa
 .dop-op .op-cell .k { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); }
 .dop-op .op-cell .v { font-family:var(--font-mono); font-size:16px; font-weight:600; }
 .dop-op .op-cell .v.dim { color:var(--ink-3); font-family:var(--font-sans); font-weight:400; font-size:14px; }
+/* Live-metric cells: yield under the legacy 95% line reads red, and the efficiency cell warns
+   while a downtime instance is still open (the line is down as you look at it). */
+.dop-op .op-cell.bad { border-color:color-mix(in srgb, var(--crit) 55%, transparent); }
+.dop-op .op-cell.bad .v { color:var(--crit); }
+.dop-op .op-cell.down { border-color:color-mix(in srgb, var(--warn) 55%, transparent); }
+.dop-op .op-cell.down .v { color:var(--warn); }
 /* The run the line is still processing (no end time) stands out in the shift's ledger. */
 tr.run-open td { background:color-mix(in srgb, var(--accent) 10%, transparent); }
 

@@ -219,15 +219,38 @@ async function opFetch(path: string, init?: RequestInit): Promise<OpBoard | null
   return (await r.json()) as OpBoard;
 }
 
+// Live metrics use the LEGACY formulas (efficiency = uptime share of the shift; yield = 1 - scrap /
+// the coil's original weight, red under the 95% the server sends). Percentages are omitted rather
+// than zeroed when there is no shift or coil — a blank reads as "not running", a 0% reads as "awful".
+type LiveMetrics = {
+  efficiencyPct?: number; downtimeOpen?: boolean; shiftProcessedWeight?: number;
+  coilFinishPct?: number; coilYieldPct?: number; yieldBelowTarget?: boolean; yieldTargetPct?: number;
+};
+let opLive: LiveMetrics | null = null;
+
 function renderOpState(): void {
   const b = opBoard;
   if (!b) { $('#opState').innerHTML = '<span class="muted">Board unavailable for this line.</span>'; return; }
-  const cell = (k: string, v: string, dim = false) =>
-    `<div class="op-cell"><span class="k">${k}</span><span class="v${dim ? ' dim' : ''}">${v}</span></div>`;
+  const cell = (k: string, v: string, dim = false, cls = '') =>
+    `<div class="op-cell ${cls}"><span class="k">${k}</span><span class="v${dim ? ' dim' : ''}">${v}</span></div>`;
+  const pct = (n: number | undefined) => (n == null ? null : `${n.toFixed(1)}%`);
+  const m = opLive ?? {};
   $('#opState').innerHTML =
     cell('Shift', b.shiftNum != null ? `${esc(b.shiftNum)}${b.shiftOperatorInitial ? ' · ' + esc(b.shiftOperatorInitial) : ''}` : 'not started', b.shiftNum == null) +
     cell('Job', b.abJobNum != null ? `#${esc(b.abJobNum)}` : 'none', b.abJobNum == null) +
-    cell('Coil', b.coilAbcNum != null ? `#${esc(b.coilAbcNum)}${b.coilOrgNum ? ' · ' + esc(b.coilOrgNum) : ''}` : 'none', b.coilAbcNum == null);
+    cell('Coil', b.coilAbcNum != null ? `#${esc(b.coilAbcNum)}${b.coilOrgNum ? ' · ' + esc(b.coilOrgNum) : ''}` : 'none', b.coilAbcNum == null) +
+    cell('Efficiency', pct(m.efficiencyPct) ?? '—', m.efficiencyPct == null, m.downtimeOpen ? 'down' : '') +
+    cell('Coil finish', pct(m.coilFinishPct) ?? '—', m.coilFinishPct == null) +
+    cell('Yield', pct(m.coilYieldPct) ?? '—', m.coilYieldPct == null, m.yieldBelowTarget ? 'bad' : '') +
+    cell('Shift wt', m.shiftProcessedWeight != null ? `${num(m.shiftProcessedWeight)} lb` : '—', m.shiftProcessedWeight == null);
+}
+
+async function loadLive(): Promise<void> {
+  if (lineNum == null) { opLive = null; return; }
+  try {
+    const r = await authFetch(`/api/das/lines/${lineNum}/live`);
+    opLive = r.ok ? (await r.json()) as LiveMetrics : null;
+  } catch { opLive = null; }
 }
 
 async function loadOpBoard(): Promise<void> {
@@ -236,6 +259,7 @@ async function loadOpBoard(): Promise<void> {
     opBoard = await opFetch(`/api/das/line-board/${lineNum}`);
     setV('#opShift', opBoard?.shiftNum ?? '');
   } catch { opBoard = null; }
+  await loadLive();
   renderOpState();
   await Promise.all([loadCoilRuns(), loadQueue()]);
 }
@@ -324,7 +348,9 @@ async function coilRunAction(path: string, body: unknown, okMsg: (r: { jobFinish
     const r = await authFetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 200)}`);
     const res = await r.json() as { board: OpBoard; jobFinished: boolean };
-    opBoard = res.board; renderOpState();
+    opBoard = res.board;
+    await loadLive();
+    renderOpState();
     $('#opOk').textContent = okMsg(res);
     await Promise.all([loadCoilRuns(), loadCoils()]);
   } catch (e) { setErr(`Coil run: ${(e as Error).message}`); }

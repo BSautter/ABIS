@@ -346,6 +346,79 @@ public sealed class LineBoardTests
     }
 
     [Fact]
+    public async Task Live_metrics_use_the_legacy_efficiency_and_yield_formulas()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        var live = await c.GetFromJsonAsync<JsonElement>("/api/das/lines/110/live");
+        Assert.Equal(7701, live.GetProperty("shiftNum").GetInt64());
+        // Shift 7701 runs 08:00–16:00 (closed) = 28,800 s. It carries a rolled-up dt_total of 45 s
+        // AND 1,500 s of downtime instances — legacy's "if shift_dt_total > 0" gives dt_total the
+        // precedence, so the roll-up wins once it exists.
+        Assert.Equal(28800, live.GetProperty("elapsedSeconds").GetInt64());
+        Assert.Equal(45, live.GetProperty("downtimeSeconds").GetInt64());
+        // (28800 - 45) / 28800 * 100 = 99.84 — the d_daily_prod_dt_efficiency formula.
+        Assert.Equal(99.84m, live.GetProperty("efficiencyPct").GetDecimal());
+        Assert.False(live.GetProperty("downtimeOpen").GetBoolean());
+        // The shift's runs processed 5,000 + 3,000.
+        Assert.Equal(8000m, live.GetProperty("shiftProcessedWeight").GetDecimal());
+
+        // Coil 5001: original net 12,000 with 30 lb of return scrap booked against job 1001 ->
+        // (1 - 30/12000) * 100 = 99.75%, comfortably above the legacy 95% line. Note the divisor is
+        // the coil's ORIGINAL weight, not the run's begin weight (u_coil.of_get_yield).
+        Assert.Equal(5001, live.GetProperty("coilAbcNum").GetInt64());
+        Assert.Equal(30m, live.GetProperty("coilScrapWeight").GetDecimal());
+        Assert.Equal(99.75m, live.GetProperty("coilYieldPct").GetDecimal());
+        Assert.False(live.GetProperty("yieldBelowTarget").GetBoolean());
+        Assert.Equal(95m, live.GetProperty("yieldTargetPct").GetDecimal());
+        // Run 1 began at 12,000 and the coil is down to 8,000 -> a third of the way through.
+        Assert.Equal(4000m, live.GetProperty("coilProcessedWeight").GetDecimal());
+        Assert.Equal(33.33m, live.GetProperty("coilFinishPct").GetDecimal());
+    }
+
+    [Fact]
+    public async Task Live_efficiency_falls_back_to_the_open_downtime_instances()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        // A shift with no dt_total roll-up yet — which is every shift WHILE it runs.
+        var start = DateTime.Now.AddHours(-2);
+        var made = await c.PostAsJsonAsync("/api/shifts", new { lineNum = 120, scheduleType = 3, startTime = start });
+        made.EnsureSuccessStatusCode();
+        var shiftNum = (await made.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("shiftNum").GetInt64();
+        (await c.PostAsJsonAsync("/api/das/lines/120/shift/start", new { shiftNum })).EnsureSuccessStatusCode();
+        // 10 minutes down, and still down (no ending time) — it must count up to now.
+        (await c.PostAsJsonAsync("/api/downtime", new { lineNum = 120, shiftNum, startingTime = DateTime.Now.AddMinutes(-10) })).EnsureSuccessStatusCode();
+
+        var live = await c.GetFromJsonAsync<JsonElement>("/api/das/lines/120/live");
+        Assert.True(live.GetProperty("downtimeOpen").GetBoolean());
+        // ~2 h elapsed, ~10 min down -> ~91-92%. Asserted as a band: the clock moves during the test.
+        var elapsed = live.GetProperty("elapsedSeconds").GetInt64();
+        var down = live.GetProperty("downtimeSeconds").GetInt64();
+        Assert.InRange(elapsed, 7150, 7250);
+        Assert.InRange(down, 590, 640);
+        Assert.InRange(live.GetProperty("efficiencyPct").GetDecimal(), 90m, 93m);
+    }
+
+    [Fact]
+    public async Task Live_metrics_report_an_idle_line_without_inventing_percentages()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        var idle = await c.GetFromJsonAsync<JsonElement>("/api/das/lines/120/live");
+        Assert.Equal(JsonValueKind.Null, idle.GetProperty("shiftNum").ValueKind);
+        Assert.Equal(0, idle.GetProperty("elapsedSeconds").GetInt64());
+        // No shift and no coil: no efficiency, no yield — not a zero that reads as "terrible".
+        Assert.Equal(JsonValueKind.Null, idle.GetProperty("efficiencyPct").ValueKind);
+        Assert.Equal(JsonValueKind.Null, idle.GetProperty("coilYieldPct").ValueKind);
+
+        Assert.Equal(HttpStatusCode.NotFound, (await c.GetAsync("/api/das/lines/999/live")).StatusCode);
+    }
+
+    [Fact]
     public async Task Changing_job_mid_coil_splits_the_coils_weight_between_both_jobs()
     {
         using var f = new Factory();

@@ -49,7 +49,7 @@ function stateOf(jobs, fault, live) {
         return 'idle';
     return 'offline';
 }
-function buildLines(board, errs, live) {
+function buildLines(board, errs, live, metrics) {
     const now = Date.now();
     const recentByLine = new Map();
     for (const e of errs) {
@@ -66,6 +66,10 @@ function buildLines(board, errs, live) {
     for (const l of live)
         if (l.lineNum != null)
             liveByLine.set(l.lineNum, l);
+    const metricsByLine = new Map();
+    for (const m of metrics)
+        if (m.lineNum != null)
+            metricsByLine.set(m.lineNum, m);
     const byLine = new Map();
     // A line with a board row but no active job still belongs on the floor (it is between jobs,
     // not absent), so seed the map from the live board first.
@@ -93,7 +97,7 @@ function buildLines(board, errs, live) {
             line, jobs, active,
             coils: jobs.reduce((s, j) => s + (j.coilCount ?? 0), 0),
             skids: jobs.reduce((s, j) => s + (j.skidCount ?? 0), 0),
-            state: stateOf(jobs, fault, lcs), fault, live: lcs,
+            state: stateOf(jobs, fault, lcs), fault, live: lcs, metrics: metricsByLine.get(line),
         });
     }
     return lines.sort((a, b) => a.line - b.line);
@@ -144,7 +148,12 @@ function tile(l) {
       <div class="m"><div class="mn">${n0(l.coils)}</div><div class="ml">Coils</div></div>
       <div class="m"><div class="mn">${n0(l.skids)}</div><div class="ml">Skids</div></div>
       ${b?.coilProcessRate != null ? `<div class="m"><div class="mn">${n0(b.coilProcessRate)}</div><div class="ml">Rate</div></div>` : ''}
+      ${l.metrics?.efficiencyPct != null ? `<div class="m"><div class="mn${l.metrics.downtimeOpen ? ' warn' : ''}">${l.metrics.efficiencyPct.toFixed(0)}%</div><div class="ml">Effic</div></div>` : ''}
+      ${l.metrics?.coilYieldPct != null ? `<div class="m"><div class="mn${l.metrics.yieldBelowTarget ? ' bad' : ''}">${l.metrics.coilYieldPct.toFixed(1)}%</div><div class="ml">Yield</div></div>` : ''}
     </div>
+    ${l.metrics?.coilFinishPct != null
+        ? `<div class="das-finish" title="How far through the loaded coil this line is"><i style="width:${Math.min(100, l.metrics.coilFinishPct).toFixed(1)}%"></i><span>${l.metrics.coilFinishPct.toFixed(0)}% of coil run</span></div>`
+        : ''}
     ${live}
     ${fault}
   </div>`;
@@ -177,6 +186,20 @@ async function fetchLineBoard() {
         return [];
     }
 }
+// Metrics are per line, so they are fetched once the board says which lines exist. One failure
+// (or an older server) costs the percentages, not the board.
+async function fetchLiveMetrics(lines) {
+    const reads = lines.filter((l) => l.lineNum != null).map(async (l) => {
+        try {
+            const r = await authFetch(`/api/das/lines/${l.lineNum}/live`);
+            return r.ok ? (await r.json()) : null;
+        }
+        catch {
+            return null;
+        }
+    });
+    return (await Promise.all(reads)).filter((m) => m != null);
+}
 async function load() {
     try {
         const [board, errs, live] = await Promise.all([
@@ -184,7 +207,8 @@ async function load() {
             client().getLineErrors(undefined, undefined, undefined),
             fetchLineBoard(),
         ]);
-        const lines = buildLines(board ?? [], errs ?? [], live ?? []);
+        const metrics = await fetchLiveMetrics(live ?? []);
+        const lines = buildLines(board ?? [], errs ?? [], live ?? [], metrics);
         renderStrip(lines);
         $('#grid').innerHTML = lines.length ? lines.map(tile).join('') : '<div class="das-empty">No active lines on the floor.</div>';
         $('#updated').textContent = `Updated ${new Date().toLocaleTimeString()}`;

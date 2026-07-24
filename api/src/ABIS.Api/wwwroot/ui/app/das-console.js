@@ -213,17 +213,37 @@ async function opFetch(path, init) {
         throw new Error(`${r.status} ${(await r.text()).slice(0, 200)}`);
     return (await r.json());
 }
+let opLive = null;
 function renderOpState() {
     const b = opBoard;
     if (!b) {
         $('#opState').innerHTML = '<span class="muted">Board unavailable for this line.</span>';
         return;
     }
-    const cell = (k, v, dim = false) => `<div class="op-cell"><span class="k">${k}</span><span class="v${dim ? ' dim' : ''}">${v}</span></div>`;
+    const cell = (k, v, dim = false, cls = '') => `<div class="op-cell ${cls}"><span class="k">${k}</span><span class="v${dim ? ' dim' : ''}">${v}</span></div>`;
+    const pct = (n) => (n == null ? null : `${n.toFixed(1)}%`);
+    const m = opLive ?? {};
     $('#opState').innerHTML =
         cell('Shift', b.shiftNum != null ? `${esc(b.shiftNum)}${b.shiftOperatorInitial ? ' · ' + esc(b.shiftOperatorInitial) : ''}` : 'not started', b.shiftNum == null) +
             cell('Job', b.abJobNum != null ? `#${esc(b.abJobNum)}` : 'none', b.abJobNum == null) +
-            cell('Coil', b.coilAbcNum != null ? `#${esc(b.coilAbcNum)}${b.coilOrgNum ? ' · ' + esc(b.coilOrgNum) : ''}` : 'none', b.coilAbcNum == null);
+            cell('Coil', b.coilAbcNum != null ? `#${esc(b.coilAbcNum)}${b.coilOrgNum ? ' · ' + esc(b.coilOrgNum) : ''}` : 'none', b.coilAbcNum == null) +
+            cell('Efficiency', pct(m.efficiencyPct) ?? '—', m.efficiencyPct == null, m.downtimeOpen ? 'down' : '') +
+            cell('Coil finish', pct(m.coilFinishPct) ?? '—', m.coilFinishPct == null) +
+            cell('Yield', pct(m.coilYieldPct) ?? '—', m.coilYieldPct == null, m.yieldBelowTarget ? 'bad' : '') +
+            cell('Shift wt', m.shiftProcessedWeight != null ? `${num(m.shiftProcessedWeight)} lb` : '—', m.shiftProcessedWeight == null);
+}
+async function loadLive() {
+    if (lineNum == null) {
+        opLive = null;
+        return;
+    }
+    try {
+        const r = await authFetch(`/api/das/lines/${lineNum}/live`);
+        opLive = r.ok ? (await r.json()) : null;
+    }
+    catch {
+        opLive = null;
+    }
 }
 async function loadOpBoard() {
     if (lineNum == null) {
@@ -238,6 +258,7 @@ async function loadOpBoard() {
     catch {
         opBoard = null;
     }
+    await loadLive();
     renderOpState();
     await Promise.all([loadCoilRuns(), loadQueue()]);
 }
@@ -345,6 +366,7 @@ async function coilRunAction(path, body, okMsg) {
             throw new Error(`${r.status} ${(await r.text()).slice(0, 200)}`);
         const res = await r.json();
         opBoard = res.board;
+        await loadLive();
         renderOpState();
         $('#opOk').textContent = okMsg(res);
         await Promise.all([loadCoilRuns(), loadCoils()]);

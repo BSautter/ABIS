@@ -321,6 +321,9 @@ public interface IAbisRepository
     /// <summary>Change the job a line is running without taking the coil off: closes the coil's run on
     /// the old job at the weight left and opens a fresh run for it on the new job at that weight.</summary>
     Task<ChangeJobResult?> ChangeLineJobMidCoilAsync(long lineNum, long newJobNum, decimal remainingWeight, int? endStatus, CancellationToken ct);
+    /// <summary>A line's live production metrics (shift efficiency, processed weight, coil finish-%
+    /// and yield) using the legacy formulas. Null when the line has no board row.</summary>
+    Task<LineLiveMetrics?> GetLineLiveMetricsAsync(long lineNum, CancellationToken ct);
     /// <summary>Reverse a wrongly-loaded coil: drop it off the board, delete its (unproduced) run and
     /// log an error_evt. Refuses a run that has already processed weight.</summary>
     Task<CoilReverseResult?> ReverseCoilRunAsync(long lineNum, string? errorUser, int? errorTypeId, string? note, CancellationToken ct);

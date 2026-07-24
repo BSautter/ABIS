@@ -1477,6 +1477,13 @@ public static class ApiEndpoints
            .WithSummary("Finish the coil the line is running: stamps the run's end weight/status + process_wt, rolls the weight through process_coil + the coil, and finishes the job when every coil on it is spent.")
            .Produces<CoilRunResult>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
 
+        api.MapGet("/das/lines/{lineNum:long}/live", async (long lineNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetLineLiveMetricsAsync(lineNum, ct) is { } live
+                    ? Results.Ok(live) : Results.NotFound())
+           .WithName("GetLineLiveMetrics").WithTags("DAS")
+           .WithSummary("A line's live metrics: shift efficiency % (legacy downtime formula), processed weight, and the loaded coil's finish-% and yield % (legacy 95% target).")
+           .Produces<LineLiveMetrics>().Produces(StatusCodes.Status404NotFound);
+
         api.MapPost("/das/lines/{lineNum:long}/change-job", async (long lineNum, ChangeJobWrite body, IAbisRepository repo, CancellationToken ct) =>
             {
                 if (!await repo.LineExistsAsync(lineNum, ct))

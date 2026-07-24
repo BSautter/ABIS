@@ -6800,6 +6800,96 @@ public sealed class AbisRepository : IAbisRepository
         };
     }
 
+    /// <summary>A line's live production metrics: shift efficiency, the shift's processed weight, and
+    /// the loaded coil's finish-% and yield. Both percentages are the LEGACY formulas — efficiency
+    /// from <c>d_daily_prod_dt_efficiency</c>, yield from <c>u_coil.of_get_yield</c> — see
+    /// <see cref="LineLiveMetrics"/>. Assembled from a handful of small reads and computed in C# so
+    /// one code path serves Oracle DATE arithmetic and the SQLite fixture's text timestamps.</summary>
+    public async Task<LineLiveMetrics?> GetLineLiveMetricsAsync(long lineNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var board = await conn.QuerySingleOrDefaultAsync<CoilRunBoardState>(new CommandDefinition(
+            "SELECT shift_num AS ShiftNum, ab_job_num AS AbJobNum, coil_abc_num AS CoilAbcNum FROM line_current_status WHERE line_num = :line",
+            new { line = lineNum }, cancellationToken: ct));
+        if (board is null)
+            return null;
+
+        var m = new LineLiveMetrics
+        {
+            LineNum = lineNum, ShiftNum = board.ShiftNum, AbJobNum = board.AbJobNum, CoilAbcNum = board.CoilAbcNum,
+        };
+        var now = DateTime.Now;
+
+        if (board.ShiftNum is { } shift)
+        {
+            var s = await conn.QuerySingleOrDefaultAsync<ShiftClock>(new CommandDefinition(
+                "SELECT start_time AS StartTime, end_time AS EndTime, dt_total AS DtTotal FROM shift WHERE shift_num = :shift",
+                new { shift }, cancellationToken: ct));
+            m.ShiftStartTime = s?.StartTime;
+            // A running shift is measured to NOW; a closed one to its end_time.
+            var until = s?.EndTime ?? now;
+            m.ElapsedSeconds = s?.StartTime is { } start ? (long)Math.Max(0d, (until - start).TotalSeconds) : 0;
+
+            var spans = (await conn.QueryAsync<DowntimeSpan>(new CommandDefinition(
+                "SELECT starting_time AS StartingTime, ending_time AS EndingTime FROM dt_instance WHERE shift_num = :shift",
+                new { shift }, cancellationToken: ct))).AsList();
+            m.DowntimeOpen = spans.Any(x => x.StartingTime is not null && x.EndingTime is null);
+            // dt_total wins once the shift has been rolled up (legacy: "if shift_dt_total > 0");
+            // until then the instances are the truth, an open one counting up to now.
+            m.DowntimeSeconds = (s?.DtTotal ?? 0m) > 0m
+                ? (long)s!.DtTotal!.Value
+                : (long)spans.Where(x => x.StartingTime is not null)
+                             .Sum(x => Math.Max(0d, ((x.EndingTime ?? now) - x.StartingTime!.Value).TotalSeconds));
+            if (m.ElapsedSeconds > 0)
+                m.EfficiencyPct = Math.Round((decimal)(m.ElapsedSeconds - m.DowntimeSeconds) / m.ElapsedSeconds * 100m, 2);
+
+            m.ShiftProcessedWeight = await conn.ExecuteScalarAsync<decimal?>(new CommandDefinition(
+                "SELECT SUM(process_wt) FROM shift_coil WHERE shift_num = :shift",
+                new { shift }, cancellationToken: ct)) ?? 0m;
+        }
+
+        if (board.CoilAbcNum is { } coil)
+        {
+            var c = await conn.QuerySingleOrDefaultAsync<CoilWeights>(new CommandDefinition(
+                "SELECT net_wt AS NetWt, net_wt_balance AS NetWtBalance FROM coil WHERE coil_abc_num = :coil",
+                new { coil }, cancellationToken: ct));
+            m.CoilCurrentWeight = c?.NetWtBalance;
+            if (board.ShiftNum is { } shiftNum && board.AbJobNum is { } job)
+            {
+                var run = await ReadRunAsync(conn, null, shiftNum, job, coil, ct);
+                m.CoilBeginWeight = run?.CoilBeginWt;
+                if (run?.CoilBeginWt is { } begin && begin > 0m && c?.NetWtBalance is { } left)
+                {
+                    m.CoilProcessedWeight = Math.Max(0m, begin - left);
+                    m.CoilFinishPct = Math.Round(Math.Min(100m, m.CoilProcessedWeight.Value / begin * 100m), 2);
+                }
+                m.CoilScrapWeight = await conn.ExecuteScalarAsync<decimal?>(new CommandDefinition(
+                    "SELECT SUM(return_item_net_wt) FROM return_scrap_item WHERE coil_abc_num = :coil AND ab_job_num = :job",
+                    new { coil, job }, cancellationToken: ct)) ?? 0m;
+            }
+            // Yield is against the coil's ORIGINAL net weight, not the run's begin weight.
+            if (c?.NetWt is { } original && original > 0m)
+            {
+                m.CoilYieldPct = Math.Round((1m - (m.CoilScrapWeight ?? 0m) / original) * 100m, 2);
+                m.YieldBelowTarget = m.CoilYieldPct < m.YieldTargetPct;
+            }
+        }
+        return m;
+    }
+
+    private sealed class ShiftClock
+    {
+        public DateTime? StartTime { get; set; }
+        public DateTime? EndTime { get; set; }
+        public decimal? DtTotal { get; set; }
+    }
+
+    private sealed class CoilWeights
+    {
+        public decimal? NetWt { get; set; }
+        public decimal? NetWtBalance { get; set; }
+    }
+
     /// <summary>Change the job the line is running WITHOUT taking the coil off (legacy
     /// <c>u_coil.split_and_save</c>): the coil's run on the OLD job is closed at the weight left, the
     /// old job's <c>process_coil</c> is squared up (and finished if that spends it), the board moves
