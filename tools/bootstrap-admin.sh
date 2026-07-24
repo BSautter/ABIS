@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # bootstrap-admin.sh — give an ABIS login FULL WRITE access (member of every group + write on every
-# feature). Idempotent; safe to re-run.
+# feature), and ensure the features the modern app gates on exist at all. Idempotent; safe to re-run.
 #
 # WHY THIS EXISTS
 #   A prod -> non-prod DB copy via Oracle Data Pump with TABLE_EXISTS_ACTION=REPLACE overwrites the
@@ -83,6 +83,35 @@ echo "   userId=$USERID"
 echo ">> adding to all groups"
 for GID in $(get "$BASE/api/security/groups" | jq -r '.[].userGroupId'); do
   echo "   group $GID -> $(code_of -X POST "$BASE/api/security/users/$USERID/groups/$GID")"
+done
+
+# 2b) Ensure the features the MODERN app gates on actually exist.
+#
+# The 35 rows in SECURITY_APPLICATION are the LEGACY app's vocabulary. The modernization gates on
+# four names that were never added to it, so they can never be granted — and the failure is silent
+# and misleading:
+#   Part Number       hides the Parts page AND 403s every part write
+#   Scheduler Admin   hides Admin & scheduler — and makes the dashboard card read
+#                     "Registry not provisioned", which looks like missing tables and is not
+#   Server Admin      hides Server console
+#   Maintenance_logs  403s every maintenance/PM write (reads are ungated, so the page looks fine
+#                     until you try to save)
+#
+# Creating them here rather than as a one-off migration is deliberate: the weekly .230 refresh
+# REPLACES SECURITY_* from prod (see docs/DB_REFRESH.md Part 3), so a manual insert would be wiped
+# every week exactly like the admin login. Doing it in the same script that already runs after a
+# refresh makes both self-healing. Adding a feature grants nobody anything on its own — step 3 does
+# that — so this is safe to run anywhere.
+REQUIRED_FEATURES=("Part Number" "Scheduler Admin" "Server Admin" "Maintenance_logs")
+echo ">> ensuring modern-app features exist"
+existing=$(get "$BASE/api/security/applications" | jq -r '.[].applicationName')
+for FEAT in "${REQUIRED_FEATURES[@]}"; do
+  if grep -Fxq "$FEAT" <<<"$existing"; then
+    echo "   '$FEAT' present"
+  else
+    fbody=$(jq -nc --arg n "$FEAT" '{applicationName:$n, applicationNotes:"Created by bootstrap-admin.sh — required by the modern ABIS UI/API gating."}')
+    echo "   '$FEAT' MISSING -> create: $(code_of "${HJ[@]}" -X POST "$BASE/api/security/applications" -d "$fbody")"
+  fi
 done
 
 # 3) Grant WRITE (1) on EVERY feature.
