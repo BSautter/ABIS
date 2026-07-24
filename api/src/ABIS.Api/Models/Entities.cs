@@ -1034,7 +1034,117 @@ public sealed class MaintLog
     public decimal? ProbCost { get; set; }
 }
 
+// ---- Preventive maintenance (legacy w_maint_pm / d_pm_list) ----
+
+/// <summary>A preventive-maintenance definition (table <c>pm</c>) enriched with the names
+/// from its equipment hierarchy. <c>NextDueDate</c> is a STORED field in the legacy model
+/// (hand-entered); the due board reads it and completing a PM advances it.</summary>
+public sealed class PmDefinition
+{
+    public long PmId { get; set; }
+    public string? Pmshift { get; set; }
+    public long? TitleCraftId { get; set; }
+    public string? TitleCraft { get; set; }
+    public string? MaintFreq { get; set; }
+    public long? ItemDeviceId { get; set; }
+    public string? ItemDevice { get; set; }
+    public long? SubsysEquipmentId { get; set; }
+    public string? SubsystemEquipment { get; set; }
+    public long? SysEquipmentId { get; set; }
+    public string? SystemEquipment { get; set; }
+    public long? GroupDepartmentId { get; set; }
+    public string? GroupDepartmentName { get; set; }
+    public string? AssignedToGroup { get; set; }
+    public int? PmStatus { get; set; }
+    public string? PmNotice { get; set; }
+    public DateTime? PmCompleted { get; set; }
+    public string? CompletedBy { get; set; }
+    public decimal? MinsPerUnit { get; set; }
+    public decimal? NumOfUnits { get; set; }
+    public decimal? NumOfTimesPerYear { get; set; }
+    public decimal? DaysBetween { get; set; }
+    public DateTime? LastUpdate { get; set; }
+    public DateTime? NextDueDate { get; set; }
+    public decimal? NumOverdue { get; set; }
+    public decimal? PmRepeat { get; set; }
+    public string? PmReference { get; set; }
+    public decimal? PmCost { get; set; }
+    public string? Author { get; set; }
+    public DateTime? PmEntered { get; set; }
+    /// <summary>Days until <c>NextDueDate</c> — negative when overdue, null when undated.</summary>
+    public int? DaysUntilDue { get; set; }
+    /// <summary>Derived bucket: <c>overdue</c> | <c>due</c> (within the due-soon window) |
+    /// <c>scheduled</c> | <c>undated</c>. Inactive PMs are excluded from the due board entirely.</summary>
+    public string? DueBucket { get; set; }
+}
+
+/// <summary>One checklist item on a PM (table <c>pm_actions</c>). The legacy
+/// <c>item_view</c> BLOB is not modelled.</summary>
+public sealed class PmAction
+{
+    public long PmActionId { get; set; }
+    public long PmId { get; set; }
+    public string? ActionItems { get; set; }
+    public string? ItemDetails { get; set; }
+}
+
+/// <summary>A recorded PM completion (table <c>pmcompletions</c>). Snapshots the equipment
+/// ids as they were at completion time.</summary>
+public sealed class PmCompletion
+{
+    public long PmCompletionId { get; set; }
+    public long? PmId { get; set; }
+    public long? ItemDeviceId { get; set; }
+    public long? SubsysEquipmentId { get; set; }
+    public long? SysEquipmentId { get; set; }
+    public long? GroupDepartmentId { get; set; }
+    public int PmStatus { get; set; }
+    public DateTime CompletedDate { get; set; }
+    public string? AssignedToGroup { get; set; }
+    public string? CompletedBy { get; set; }
+    public string? CompletedNotes { get; set; }
+    public DateTime? RecordedDate { get; set; }
+}
+
 // ---- Lookups (reference/master data for data-entry dropdowns & joins) ----
+
+/// <summary>A top-level equipment system (table <c>systemequipment</c>) — level 2 of the
+/// maintenance hierarchy (groupdepartment → system → subsystem → item/device).</summary>
+public sealed class SystemEquipment
+{
+    public long SysEquipmentId { get; set; }
+    public long? GroupDepartmentId { get; set; }
+    public string? SystemEquipmentName { get; set; }
+}
+
+/// <summary>A subsystem under a system (table <c>subsystemequipment</c>) — level 3.</summary>
+public sealed class SubsystemEquipment
+{
+    public long SubsysEquipmentId { get; set; }
+    public long? SysEquipmentId { get; set; }
+    public long? GroupDepartmentId { get; set; }
+    public string? SubsystemEquipmentName { get; set; }
+}
+
+/// <summary>An item/device under a subsystem (table <c>itemdevice</c>) — level 4, the
+/// finest grain a PM can target.</summary>
+public sealed class ItemDevice
+{
+    public long ItemDeviceId { get; set; }
+    public long? SubsysEquipmentId { get; set; }
+    public long? SysEquipmentId { get; set; }
+    public string? ItemDeviceName { get; set; }
+}
+
+/// <summary>A maintenance craft/trade and its hourly rate (table <c>titlecraft</c>) —
+/// drives a PM's labour cost.</summary>
+public sealed class TitleCraft
+{
+    public long TitleCraftId { get; set; }
+    public long? GroupDepartmentId { get; set; }
+    public string? TitleCraftName { get; set; }
+    public decimal? HourlyRate { get; set; }
+}
 
 /// <summary>A production line (table <c>line</c>). Referenced by jobs, coils, and
 /// downtime via <c>line_num</c>.</summary>

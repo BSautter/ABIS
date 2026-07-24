@@ -367,6 +367,18 @@ public interface IAbisRepository
     Task<IReadOnlyList<string>> GetAlloysAsync(CancellationToken ct);
     Task<IReadOnlyList<ProductionLine>> GetLinesAsync(CancellationToken ct);
     Task<IReadOnlyList<GroupDepartment>> GetGroupDepartmentsAsync(CancellationToken ct);
+
+    // ---- Preventive maintenance ----
+    Task<PagedResult<PmDefinition>> GetPmsAsync(int page, int pageSize, long? groupDepartmentId, int? pmStatus, long? sysEquipmentId, string? orderBy, CancellationToken ct);
+    Task<PmDefinition?> GetPmAsync(long pmId, CancellationToken ct);
+    Task<IReadOnlyList<PmDefinition>> GetPmsDueAsync(int withinDays, long? groupDepartmentId, CancellationToken ct);
+    Task<IReadOnlyList<PmAction>> GetPmActionsAsync(long pmId, CancellationToken ct);
+    Task<IReadOnlyList<PmCompletion>> GetPmCompletionsAsync(long pmId, CancellationToken ct);
+    Task<IReadOnlyList<SystemEquipment>> GetSystemEquipmentAsync(long? groupDepartmentId, CancellationToken ct);
+    Task<IReadOnlyList<SubsystemEquipment>> GetSubsystemEquipmentAsync(long? sysEquipmentId, CancellationToken ct);
+    Task<IReadOnlyList<ItemDevice>> GetItemDevicesAsync(long? subsysEquipmentId, CancellationToken ct);
+    Task<IReadOnlyList<TitleCraft>> GetTitleCraftsAsync(CancellationToken ct);
+    Task<IReadOnlyList<string>> GetPmShiftsAsync(CancellationToken ct);
     Task<IReadOnlyList<DowntimeCause>> GetDowntimeCausesAsync(CancellationToken ct);
     Task<IReadOnlyList<TransportationMethod>> GetTransportationMethodsAsync(CancellationToken ct);
     Task<IReadOnlyList<EquipmentType>> GetEquipmentTypesAsync(CancellationToken ct);

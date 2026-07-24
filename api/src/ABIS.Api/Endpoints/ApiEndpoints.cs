@@ -1512,6 +1512,79 @@ public static class ApiEndpoints
            .WithSummary("Get one maintenance log entry by id.")
            .Produces<MaintLog>().Produces(StatusCodes.Status404NotFound);
 
+        // ---- Preventive maintenance (legacy w_maint_pm / d_pm_list) ----
+        api.MapGet("/pms", async (IAbisRepository repo, CancellationToken ct,
+                int page = 1, int pageSize = 25, long? groupDepartmentId = null, int? pmStatus = null,
+                long? sysEquipmentId = null, string? sort = null, string? dir = null) =>
+            {
+                if (!Sort.TryResolve("pms", sort, dir, out var orderBy, out var problems))
+                    return Results.ValidationProblem(problems!);
+                return Results.Ok(await repo.GetPmsAsync(page, pageSize, groupDepartmentId, pmStatus, sysEquipmentId, orderBy, ct));
+            })
+           .WithName("ListPms").WithTags("Maintenance")
+           .WithSummary("List preventive-maintenance definitions (paged, sortable; filter by groupDepartmentId / pmStatus / sysEquipmentId). Each row carries its equipment-hierarchy names plus the derived daysUntilDue + dueBucket (overdue|due|scheduled|undated).")
+           .Produces<PagedResult<PmDefinition>>().ProducesValidationProblem();
+
+        api.MapGet("/pms/due", async (IAbisRepository repo, CancellationToken ct,
+                int withinDays = 7, long? groupDepartmentId = null) =>
+            {
+                if (withinDays is < 0 or > 3650)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["withinDays"] = ["withinDays must be 0–3650."] });
+                return Results.Ok(await repo.GetPmsDueAsync(withinDays, groupDepartmentId, ct));
+            })
+           .WithName("GetPmsDue").WithTags("Maintenance")
+           .WithSummary("The PM due board: active PMs that are overdue or fall due within withinDays (default 7), most overdue first. A PM counts as inactive only when pm_status = 0; undated PMs never appear.")
+           .Produces<IReadOnlyList<PmDefinition>>().ProducesValidationProblem();
+
+        api.MapGet("/pms/{pmId:long}", async (long pmId, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetPmAsync(pmId, ct) is { } pm ? Results.Ok(pm) : Results.NotFound())
+           .WithName("GetPm").WithTags("Maintenance")
+           .WithSummary("One PM definition with its equipment-hierarchy names and derived due state.")
+           .Produces<PmDefinition>().Produces(StatusCodes.Status404NotFound);
+
+        api.MapGet("/pms/{pmId:long}/actions", async (long pmId, IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetPmActionsAsync(pmId, ct)))
+           .WithName("GetPmActions").WithTags("Maintenance")
+           .WithSummary("A PM's checklist items (pm_actions), in order.")
+           .Produces<IReadOnlyList<PmAction>>();
+
+        api.MapGet("/pms/{pmId:long}/completions", async (long pmId, IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetPmCompletionsAsync(pmId, ct)))
+           .WithName("GetPmCompletions").WithTags("Maintenance")
+           .WithSummary("A PM's completion history (pmcompletions), newest first.")
+           .Produces<IReadOnlyList<PmCompletion>>();
+
+        // ---- Maintenance equipment-hierarchy lookups ----
+        api.MapGet("/lookups/system-equipment", async (IAbisRepository repo, CancellationToken ct, long? groupDepartmentId = null) =>
+                Results.Ok(await repo.GetSystemEquipmentAsync(groupDepartmentId, ct)))
+           .WithName("GetSystemEquipment").WithTags("Lookups")
+           .WithSummary("Equipment systems (level 2 of the maintenance hierarchy), optionally scoped to a group/department.")
+           .Produces<IReadOnlyList<SystemEquipment>>();
+
+        api.MapGet("/lookups/subsystem-equipment", async (IAbisRepository repo, CancellationToken ct, long? sysEquipmentId = null) =>
+                Results.Ok(await repo.GetSubsystemEquipmentAsync(sysEquipmentId, ct)))
+           .WithName("GetSubsystemEquipment").WithTags("Lookups")
+           .WithSummary("Equipment subsystems (level 3), optionally scoped to one system.")
+           .Produces<IReadOnlyList<SubsystemEquipment>>();
+
+        api.MapGet("/lookups/item-devices", async (IAbisRepository repo, CancellationToken ct, long? subsysEquipmentId = null) =>
+                Results.Ok(await repo.GetItemDevicesAsync(subsysEquipmentId, ct)))
+           .WithName("GetItemDevices").WithTags("Lookups")
+           .WithSummary("Items/devices (level 4 — the finest grain a PM can target), optionally scoped to one subsystem.")
+           .Produces<IReadOnlyList<ItemDevice>>();
+
+        api.MapGet("/lookups/title-crafts", async (IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetTitleCraftsAsync(ct)))
+           .WithName("GetTitleCrafts").WithTags("Lookups")
+           .WithSummary("Maintenance crafts/trades and their hourly rates.")
+           .Produces<IReadOnlyList<TitleCraft>>();
+
+        api.MapGet("/lookups/pm-shifts", async (IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetPmShiftsAsync(ct)))
+           .WithName("GetPmShifts").WithTags("Lookups")
+           .WithSummary("The PM shift codes a PM can be assigned to.")
+           .Produces<IReadOnlyList<string>>();
+
         api.MapPost("/maint-logs", async (MaintLogWrite body, IAbisRepository repo, CancellationToken ct) =>
             {
                 if (Validate(body) is { } problems)

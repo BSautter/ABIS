@@ -6080,6 +6080,276 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Equipment systems (level 2 of the maintenance hierarchy), optionally scoped to a group/department.
+     * @param groupDepartmentId (optional)
+     * @return OK
+     */
+    getSystemEquipment(groupDepartmentId) {
+        let url_ = this.baseUrl + "/api/lookups/system-equipment?";
+        if (groupDepartmentId === null)
+            throw new globalThis.Error("The parameter 'groupDepartmentId' cannot be null.");
+        else if (groupDepartmentId !== undefined)
+            url_ += "groupDepartmentId=" + encodeURIComponent("" + groupDepartmentId) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetSystemEquipment(_response);
+        });
+    }
+    processGetSystemEquipment(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(SystemEquipment.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Equipment subsystems (level 3), optionally scoped to one system.
+     * @param sysEquipmentId (optional)
+     * @return OK
+     */
+    getSubsystemEquipment(sysEquipmentId) {
+        let url_ = this.baseUrl + "/api/lookups/subsystem-equipment?";
+        if (sysEquipmentId === null)
+            throw new globalThis.Error("The parameter 'sysEquipmentId' cannot be null.");
+        else if (sysEquipmentId !== undefined)
+            url_ += "sysEquipmentId=" + encodeURIComponent("" + sysEquipmentId) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetSubsystemEquipment(_response);
+        });
+    }
+    processGetSubsystemEquipment(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(SubsystemEquipment.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Items/devices (level 4 — the finest grain a PM can target), optionally scoped to one subsystem.
+     * @param subsysEquipmentId (optional)
+     * @return OK
+     */
+    getItemDevices(subsysEquipmentId) {
+        let url_ = this.baseUrl + "/api/lookups/item-devices?";
+        if (subsysEquipmentId === null)
+            throw new globalThis.Error("The parameter 'subsysEquipmentId' cannot be null.");
+        else if (subsysEquipmentId !== undefined)
+            url_ += "subsysEquipmentId=" + encodeURIComponent("" + subsysEquipmentId) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetItemDevices(_response);
+        });
+    }
+    processGetItemDevices(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(ItemDevice.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Maintenance crafts/trades and their hourly rates.
+     * @return OK
+     */
+    getTitleCrafts() {
+        let url_ = this.baseUrl + "/api/lookups/title-crafts";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetTitleCrafts(_response);
+        });
+    }
+    processGetTitleCrafts(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(TitleCraft.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * The PM shift codes a PM can be assigned to.
+     * @return OK
+     */
+    getPmShifts() {
+        let url_ = this.baseUrl + "/api/lookups/pm-shifts";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetPmShifts(_response);
+        });
+    }
+    processGetPmShifts(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(item);
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * List distinct alloys (reference data for dropdowns).
      * @return OK
      */
@@ -6837,6 +7107,322 @@ export class AbisClient {
         else if (status === 412) {
             return response.text().then((_responseText) => {
                 return throwException("Precondition Failed", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * List preventive-maintenance definitions (paged, sortable; filter by groupDepartmentId / pmStatus / sysEquipmentId). Each row carries its equipment-hierarchy names plus the derived daysUntilDue + dueBucket (overdue|due|scheduled|undated).
+     * @param page (optional)
+     * @param pageSize (optional)
+     * @param groupDepartmentId (optional)
+     * @param pmStatus (optional)
+     * @param sysEquipmentId (optional)
+     * @param sort (optional)
+     * @param dir (optional)
+     * @return OK
+     */
+    listPms(page, pageSize, groupDepartmentId, pmStatus, sysEquipmentId, sort, dir) {
+        let url_ = this.baseUrl + "/api/pms?";
+        if (page === null)
+            throw new globalThis.Error("The parameter 'page' cannot be null.");
+        else if (page !== undefined)
+            url_ += "page=" + encodeURIComponent("" + page) + "&";
+        if (pageSize === null)
+            throw new globalThis.Error("The parameter 'pageSize' cannot be null.");
+        else if (pageSize !== undefined)
+            url_ += "pageSize=" + encodeURIComponent("" + pageSize) + "&";
+        if (groupDepartmentId === null)
+            throw new globalThis.Error("The parameter 'groupDepartmentId' cannot be null.");
+        else if (groupDepartmentId !== undefined)
+            url_ += "groupDepartmentId=" + encodeURIComponent("" + groupDepartmentId) + "&";
+        if (pmStatus === null)
+            throw new globalThis.Error("The parameter 'pmStatus' cannot be null.");
+        else if (pmStatus !== undefined)
+            url_ += "pmStatus=" + encodeURIComponent("" + pmStatus) + "&";
+        if (sysEquipmentId === null)
+            throw new globalThis.Error("The parameter 'sysEquipmentId' cannot be null.");
+        else if (sysEquipmentId !== undefined)
+            url_ += "sysEquipmentId=" + encodeURIComponent("" + sysEquipmentId) + "&";
+        if (sort === null)
+            throw new globalThis.Error("The parameter 'sort' cannot be null.");
+        else if (sort !== undefined)
+            url_ += "sort=" + encodeURIComponent("" + sort) + "&";
+        if (dir === null)
+            throw new globalThis.Error("The parameter 'dir' cannot be null.");
+        else if (dir !== undefined)
+            url_ += "dir=" + encodeURIComponent("" + dir) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processListPms(_response);
+        });
+    }
+    processListPms(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = PmDefinitionPagedResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * The PM due board: active PMs that are overdue or fall due within withinDays (default 7), most overdue first. A PM counts as inactive only when pm_status = 0; undated PMs never appear.
+     * @param withinDays (optional)
+     * @param groupDepartmentId (optional)
+     * @return OK
+     */
+    getPmsDue(withinDays, groupDepartmentId) {
+        let url_ = this.baseUrl + "/api/pms/due?";
+        if (withinDays === null)
+            throw new globalThis.Error("The parameter 'withinDays' cannot be null.");
+        else if (withinDays !== undefined)
+            url_ += "withinDays=" + encodeURIComponent("" + withinDays) + "&";
+        if (groupDepartmentId === null)
+            throw new globalThis.Error("The parameter 'groupDepartmentId' cannot be null.");
+        else if (groupDepartmentId !== undefined)
+            url_ += "groupDepartmentId=" + encodeURIComponent("" + groupDepartmentId) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetPmsDue(_response);
+        });
+    }
+    processGetPmsDue(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(PmDefinition.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * One PM definition with its equipment-hierarchy names and derived due state.
+     * @return OK
+     */
+    getPm(pmId) {
+        let url_ = this.baseUrl + "/api/pms/{pmId}";
+        if (pmId === undefined || pmId === null)
+            throw new globalThis.Error("The parameter 'pmId' must be defined.");
+        url_ = url_.replace("{pmId}", encodeURIComponent("" + pmId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetPm(_response);
+        });
+    }
+    processGetPm(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = PmDefinition.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * A PM's checklist items (pm_actions), in order.
+     * @return OK
+     */
+    getPmActions(pmId) {
+        let url_ = this.baseUrl + "/api/pms/{pmId}/actions";
+        if (pmId === undefined || pmId === null)
+            throw new globalThis.Error("The parameter 'pmId' must be defined.");
+        url_ = url_.replace("{pmId}", encodeURIComponent("" + pmId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetPmActions(_response);
+        });
+    }
+    processGetPmActions(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(PmAction.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * A PM's completion history (pmcompletions), newest first.
+     * @return OK
+     */
+    getPmCompletions(pmId) {
+        let url_ = this.baseUrl + "/api/pms/{pmId}/completions";
+        if (pmId === undefined || pmId === null)
+            throw new globalThis.Error("The parameter 'pmId' must be defined.");
+        url_ = url_.replace("{pmId}", encodeURIComponent("" + pmId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetPmCompletions(_response);
+        });
+    }
+    processGetPmCompletions(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(PmCompletion.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -11197,7 +11783,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Downtime rolled up along one dimension (legacy daily-prod downtime pivots): occurrences + minutes grouped by groupBy = cause (default) | job | line | shift | day | month | year, optionally one line. Defaults to the last 365 days when unbounded.
+     * Downtime rolled up along one dimension (legacy daily-prod downtime pivots): occurrences + minutes grouped by groupBy = cause (default) | job | part | line | shift | day | month | year, optionally one line. Defaults to the last 365 days when unbounded.
      * @param from (optional)
      * @param to (optional)
      * @param lineNum (optional)
@@ -20840,6 +21426,38 @@ export class InvoiceWrite {
         return data;
     }
 }
+export class ItemDevice {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.itemDeviceId = _data["itemDeviceId"];
+            this.subsysEquipmentId = _data["subsysEquipmentId"];
+            this.sysEquipmentId = _data["sysEquipmentId"];
+            this.itemDeviceName = _data["itemDeviceName"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new ItemDevice();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["itemDeviceId"] = this.itemDeviceId;
+        data["subsysEquipmentId"] = this.subsysEquipmentId;
+        data["sysEquipmentId"] = this.sysEquipmentId;
+        data["itemDeviceName"] = this.itemDeviceName;
+        return data;
+    }
+}
 export class JobFolderNote {
     constructor(data) {
         if (data) {
@@ -22959,6 +23577,216 @@ export class PieceWeightResult {
         data["density"] = this.density;
         data["pieceWeight"] = this.pieceWeight;
         data["piecesPerSkid"] = this.piecesPerSkid;
+        return data;
+    }
+}
+export class PmAction {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.pmActionId = _data["pmActionId"];
+            this.pmId = _data["pmId"];
+            this.actionItems = _data["actionItems"];
+            this.itemDetails = _data["itemDetails"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new PmAction();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["pmActionId"] = this.pmActionId;
+        data["pmId"] = this.pmId;
+        data["actionItems"] = this.actionItems;
+        data["itemDetails"] = this.itemDetails;
+        return data;
+    }
+}
+export class PmCompletion {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.pmCompletionId = _data["pmCompletionId"];
+            this.pmId = _data["pmId"];
+            this.itemDeviceId = _data["itemDeviceId"];
+            this.subsysEquipmentId = _data["subsysEquipmentId"];
+            this.sysEquipmentId = _data["sysEquipmentId"];
+            this.groupDepartmentId = _data["groupDepartmentId"];
+            this.pmStatus = _data["pmStatus"];
+            this.completedDate = _data["completedDate"] ? new Date(_data["completedDate"].toString()) : undefined;
+            this.assignedToGroup = _data["assignedToGroup"];
+            this.completedBy = _data["completedBy"];
+            this.completedNotes = _data["completedNotes"];
+            this.recordedDate = _data["recordedDate"] ? new Date(_data["recordedDate"].toString()) : undefined;
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new PmCompletion();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["pmCompletionId"] = this.pmCompletionId;
+        data["pmId"] = this.pmId;
+        data["itemDeviceId"] = this.itemDeviceId;
+        data["subsysEquipmentId"] = this.subsysEquipmentId;
+        data["sysEquipmentId"] = this.sysEquipmentId;
+        data["groupDepartmentId"] = this.groupDepartmentId;
+        data["pmStatus"] = this.pmStatus;
+        data["completedDate"] = this.completedDate ? this.completedDate.toISOString() : undefined;
+        data["assignedToGroup"] = this.assignedToGroup;
+        data["completedBy"] = this.completedBy;
+        data["completedNotes"] = this.completedNotes;
+        data["recordedDate"] = this.recordedDate ? this.recordedDate.toISOString() : undefined;
+        return data;
+    }
+}
+export class PmDefinition {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.pmId = _data["pmId"];
+            this.pmshift = _data["pmshift"];
+            this.titleCraftId = _data["titleCraftId"];
+            this.titleCraft = _data["titleCraft"];
+            this.maintFreq = _data["maintFreq"];
+            this.itemDeviceId = _data["itemDeviceId"];
+            this.itemDevice = _data["itemDevice"];
+            this.subsysEquipmentId = _data["subsysEquipmentId"];
+            this.subsystemEquipment = _data["subsystemEquipment"];
+            this.sysEquipmentId = _data["sysEquipmentId"];
+            this.systemEquipment = _data["systemEquipment"];
+            this.groupDepartmentId = _data["groupDepartmentId"];
+            this.groupDepartmentName = _data["groupDepartmentName"];
+            this.assignedToGroup = _data["assignedToGroup"];
+            this.pmStatus = _data["pmStatus"];
+            this.pmNotice = _data["pmNotice"];
+            this.pmCompleted = _data["pmCompleted"] ? new Date(_data["pmCompleted"].toString()) : undefined;
+            this.completedBy = _data["completedBy"];
+            this.minsPerUnit = _data["minsPerUnit"];
+            this.numOfUnits = _data["numOfUnits"];
+            this.numOfTimesPerYear = _data["numOfTimesPerYear"];
+            this.daysBetween = _data["daysBetween"];
+            this.lastUpdate = _data["lastUpdate"] ? new Date(_data["lastUpdate"].toString()) : undefined;
+            this.nextDueDate = _data["nextDueDate"] ? new Date(_data["nextDueDate"].toString()) : undefined;
+            this.numOverdue = _data["numOverdue"];
+            this.pmRepeat = _data["pmRepeat"];
+            this.pmReference = _data["pmReference"];
+            this.pmCost = _data["pmCost"];
+            this.author = _data["author"];
+            this.pmEntered = _data["pmEntered"] ? new Date(_data["pmEntered"].toString()) : undefined;
+            this.daysUntilDue = _data["daysUntilDue"];
+            this.dueBucket = _data["dueBucket"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new PmDefinition();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["pmId"] = this.pmId;
+        data["pmshift"] = this.pmshift;
+        data["titleCraftId"] = this.titleCraftId;
+        data["titleCraft"] = this.titleCraft;
+        data["maintFreq"] = this.maintFreq;
+        data["itemDeviceId"] = this.itemDeviceId;
+        data["itemDevice"] = this.itemDevice;
+        data["subsysEquipmentId"] = this.subsysEquipmentId;
+        data["subsystemEquipment"] = this.subsystemEquipment;
+        data["sysEquipmentId"] = this.sysEquipmentId;
+        data["systemEquipment"] = this.systemEquipment;
+        data["groupDepartmentId"] = this.groupDepartmentId;
+        data["groupDepartmentName"] = this.groupDepartmentName;
+        data["assignedToGroup"] = this.assignedToGroup;
+        data["pmStatus"] = this.pmStatus;
+        data["pmNotice"] = this.pmNotice;
+        data["pmCompleted"] = this.pmCompleted ? this.pmCompleted.toISOString() : undefined;
+        data["completedBy"] = this.completedBy;
+        data["minsPerUnit"] = this.minsPerUnit;
+        data["numOfUnits"] = this.numOfUnits;
+        data["numOfTimesPerYear"] = this.numOfTimesPerYear;
+        data["daysBetween"] = this.daysBetween;
+        data["lastUpdate"] = this.lastUpdate ? this.lastUpdate.toISOString() : undefined;
+        data["nextDueDate"] = this.nextDueDate ? this.nextDueDate.toISOString() : undefined;
+        data["numOverdue"] = this.numOverdue;
+        data["pmRepeat"] = this.pmRepeat;
+        data["pmReference"] = this.pmReference;
+        data["pmCost"] = this.pmCost;
+        data["author"] = this.author;
+        data["pmEntered"] = this.pmEntered ? this.pmEntered.toISOString() : undefined;
+        data["daysUntilDue"] = this.daysUntilDue;
+        data["dueBucket"] = this.dueBucket;
+        return data;
+    }
+}
+export class PmDefinitionPagedResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            if (Array.isArray(_data["items"])) {
+                this.items = [];
+                for (let item of _data["items"])
+                    this.items.push(PmDefinition.fromJS(item));
+            }
+            this.page = _data["page"];
+            this.pageSize = _data["pageSize"];
+            this.totalCount = _data["totalCount"];
+            this.totalPages = _data["totalPages"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new PmDefinitionPagedResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        if (Array.isArray(this.items)) {
+            data["items"] = [];
+            for (let item of this.items)
+                data["items"].push(item ? item.toJSON() : undefined);
+        }
+        data["page"] = this.page;
+        data["pageSize"] = this.pageSize;
+        data["totalCount"] = this.totalCount;
+        data["totalPages"] = this.totalPages;
         return data;
     }
 }
@@ -25959,6 +26787,68 @@ export class StackerBoardRow {
         return data;
     }
 }
+export class SubsystemEquipment {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.subsysEquipmentId = _data["subsysEquipmentId"];
+            this.sysEquipmentId = _data["sysEquipmentId"];
+            this.groupDepartmentId = _data["groupDepartmentId"];
+            this.subsystemEquipmentName = _data["subsystemEquipmentName"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new SubsystemEquipment();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["subsysEquipmentId"] = this.subsysEquipmentId;
+        data["sysEquipmentId"] = this.sysEquipmentId;
+        data["groupDepartmentId"] = this.groupDepartmentId;
+        data["subsystemEquipmentName"] = this.subsystemEquipmentName;
+        return data;
+    }
+}
+export class SystemEquipment {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.sysEquipmentId = _data["sysEquipmentId"];
+            this.groupDepartmentId = _data["groupDepartmentId"];
+            this.systemEquipmentName = _data["systemEquipmentName"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new SystemEquipment();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["sysEquipmentId"] = this.sysEquipmentId;
+        data["groupDepartmentId"] = this.groupDepartmentId;
+        data["systemEquipmentName"] = this.systemEquipmentName;
+        return data;
+    }
+}
 export class TempTestResult {
     constructor(data) {
         if (data) {
@@ -26180,6 +27070,38 @@ export class TestResultWrite {
         data["rVal"] = this.rVal;
         data["thickness"] = this.thickness;
         data["width"] = this.width;
+        return data;
+    }
+}
+export class TitleCraft {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.titleCraftId = _data["titleCraftId"];
+            this.groupDepartmentId = _data["groupDepartmentId"];
+            this.titleCraftName = _data["titleCraftName"];
+            this.hourlyRate = _data["hourlyRate"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new TitleCraft();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["titleCraftId"] = this.titleCraftId;
+        data["groupDepartmentId"] = this.groupDepartmentId;
+        data["titleCraftName"] = this.titleCraftName;
+        data["hourlyRate"] = this.hourlyRate;
         return data;
     }
 }

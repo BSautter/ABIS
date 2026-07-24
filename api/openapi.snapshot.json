@@ -4806,6 +4806,171 @@
         }
       }
     },
+    "/api/lookups/system-equipment": {
+      "get": {
+        "tags": [
+          "Lookups"
+        ],
+        "summary": "Equipment systems (level 2 of the maintenance hierarchy), optionally scoped to a group/department.",
+        "operationId": "GetSystemEquipment",
+        "parameters": [
+          {
+            "name": "groupDepartmentId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SystemEquipment"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/lookups/subsystem-equipment": {
+      "get": {
+        "tags": [
+          "Lookups"
+        ],
+        "summary": "Equipment subsystems (level 3), optionally scoped to one system.",
+        "operationId": "GetSubsystemEquipment",
+        "parameters": [
+          {
+            "name": "sysEquipmentId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SubsystemEquipment"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/lookups/item-devices": {
+      "get": {
+        "tags": [
+          "Lookups"
+        ],
+        "summary": "Items/devices (level 4 — the finest grain a PM can target), optionally scoped to one subsystem.",
+        "operationId": "GetItemDevices",
+        "parameters": [
+          {
+            "name": "subsysEquipmentId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ItemDevice"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/lookups/title-crafts": {
+      "get": {
+        "tags": [
+          "Lookups"
+        ],
+        "summary": "Maintenance crafts/trades and their hourly rates.",
+        "operationId": "GetTitleCrafts",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TitleCraft"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/lookups/pm-shifts": {
+      "get": {
+        "tags": [
+          "Lookups"
+        ],
+        "summary": "The PM shift codes a PM can be assigned to.",
+        "operationId": "GetPmShifts",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/lookups/alloys": {
       "get": {
         "tags": [
@@ -5288,6 +5453,268 @@
               "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/pms": {
+      "get": {
+        "tags": [
+          "Maintenance"
+        ],
+        "summary": "List preventive-maintenance definitions (paged, sortable; filter by groupDepartmentId / pmStatus / sysEquipmentId). Each row carries its equipment-hierarchy names plus the derived daysUntilDue + dueBucket (overdue|due|scheduled|undated).",
+        "operationId": "ListPms",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 25
+            }
+          },
+          {
+            "name": "groupDepartmentId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "pmStatus",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "sysEquipmentId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dir",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmDefinitionPagedResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/pms/due": {
+      "get": {
+        "tags": [
+          "Maintenance"
+        ],
+        "summary": "The PM due board: active PMs that are overdue or fall due within withinDays (default 7), most overdue first. A PM counts as inactive only when pm_status = 0; undated PMs never appear.",
+        "operationId": "GetPmsDue",
+        "parameters": [
+          {
+            "name": "withinDays",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 7
+            }
+          },
+          {
+            "name": "groupDepartmentId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PmDefinition"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/pms/{pmId}": {
+      "get": {
+        "tags": [
+          "Maintenance"
+        ],
+        "summary": "One PM definition with its equipment-hierarchy names and derived due state.",
+        "operationId": "GetPm",
+        "parameters": [
+          {
+            "name": "pmId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmDefinition"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/pms/{pmId}/actions": {
+      "get": {
+        "tags": [
+          "Maintenance"
+        ],
+        "summary": "A PM's checklist items (pm_actions), in order.",
+        "operationId": "GetPmActions",
+        "parameters": [
+          {
+            "name": "pmId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PmAction"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/pms/{pmId}/completions": {
+      "get": {
+        "tags": [
+          "Maintenance"
+        ],
+        "summary": "A PM's completion history (pmcompletions), newest first.",
+        "operationId": "GetPmCompletions",
+        "parameters": [
+          {
+            "name": "pmId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PmCompletion"
+                  }
                 }
               }
             }
@@ -17138,6 +17565,30 @@
         },
         "additionalProperties": false
       },
+      "ItemDevice": {
+        "type": "object",
+        "properties": {
+          "itemDeviceId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "subsysEquipmentId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "sysEquipmentId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "itemDeviceName": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "JobFolderNote": {
         "type": "object",
         "properties": {
@@ -19589,6 +20040,276 @@
             "type": "integer",
             "format": "int32",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmAction": {
+        "type": "object",
+        "properties": {
+          "pmActionId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pmId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "actionItems": {
+            "type": "string",
+            "nullable": true
+          },
+          "itemDetails": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmCompletion": {
+        "type": "object",
+        "properties": {
+          "pmCompletionId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pmId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "itemDeviceId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "subsysEquipmentId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "sysEquipmentId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "groupDepartmentId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "pmStatus": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "completedDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "assignedToGroup": {
+            "type": "string",
+            "nullable": true
+          },
+          "completedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "completedNotes": {
+            "type": "string",
+            "nullable": true
+          },
+          "recordedDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmDefinition": {
+        "type": "object",
+        "properties": {
+          "pmId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pmshift": {
+            "type": "string",
+            "nullable": true
+          },
+          "titleCraftId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "titleCraft": {
+            "type": "string",
+            "nullable": true
+          },
+          "maintFreq": {
+            "type": "string",
+            "nullable": true
+          },
+          "itemDeviceId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "itemDevice": {
+            "type": "string",
+            "nullable": true
+          },
+          "subsysEquipmentId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "subsystemEquipment": {
+            "type": "string",
+            "nullable": true
+          },
+          "sysEquipmentId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "systemEquipment": {
+            "type": "string",
+            "nullable": true
+          },
+          "groupDepartmentId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "groupDepartmentName": {
+            "type": "string",
+            "nullable": true
+          },
+          "assignedToGroup": {
+            "type": "string",
+            "nullable": true
+          },
+          "pmStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "pmNotice": {
+            "type": "string",
+            "nullable": true
+          },
+          "pmCompleted": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "completedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "minsPerUnit": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "numOfUnits": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "numOfTimesPerYear": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "daysBetween": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "lastUpdate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "nextDueDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "numOverdue": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "pmRepeat": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "pmReference": {
+            "type": "string",
+            "nullable": true
+          },
+          "pmCost": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "author": {
+            "type": "string",
+            "nullable": true
+          },
+          "pmEntered": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "daysUntilDue": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "dueBucket": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmDefinitionPagedResult": {
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "totalCount"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PmDefinition"
+            },
+            "nullable": true
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pageSize": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalPages": {
+            "type": "integer",
+            "format": "int32",
+            "readOnly": true
           }
         },
         "additionalProperties": false
@@ -22596,6 +23317,49 @@
         },
         "additionalProperties": false
       },
+      "SubsystemEquipment": {
+        "type": "object",
+        "properties": {
+          "subsysEquipmentId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sysEquipmentId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "groupDepartmentId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "subsystemEquipmentName": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "SystemEquipment": {
+        "type": "object",
+        "properties": {
+          "sysEquipmentId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "groupDepartmentId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "systemEquipmentName": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "TempTestResult": {
         "type": "object",
         "properties": {
@@ -22845,6 +23609,30 @@
             "nullable": true
           },
           "width": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TitleCraft": {
+        "type": "object",
+        "properties": {
+          "titleCraftId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "groupDepartmentId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "titleCraftName": {
+            "type": "string",
+            "nullable": true
+          },
+          "hourlyRate": {
             "type": "number",
             "format": "double",
             "nullable": true

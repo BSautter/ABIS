@@ -67,6 +67,14 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS receiving_bol;
             DROP TABLE IF EXISTS scan_log;
             DROP TABLE IF EXISTS maint_log;
+            DROP TABLE IF EXISTS pm;
+            DROP TABLE IF EXISTS pm_actions;
+            DROP TABLE IF EXISTS pmcompletions;
+            DROP TABLE IF EXISTS pmshift;
+            DROP TABLE IF EXISTS systemequipment;
+            DROP TABLE IF EXISTS subsystemequipment;
+            DROP TABLE IF EXISTS itemdevice;
+            DROP TABLE IF EXISTS titlecraft;
             DROP TABLE IF EXISTS carrier;
             DROP TABLE IF EXISTS shift;
             DROP TABLE IF EXISTS dt_instance;
@@ -474,6 +482,47 @@ public static class SqliteFixture
 
             CREATE TABLE groupdepartment (
                 groupdepartment_id INTEGER PRIMARY KEY, groupdepartment TEXT, depttype TEXT);
+
+            -- ---- Preventive maintenance (legacy w_maint_pm / d_pm_list) ----------------------
+            -- The 4-level equipment hierarchy a PM hangs off:
+            --   groupdepartment -> systemequipment -> subsystemequipment -> itemdevice
+            CREATE TABLE systemequipment (
+                sysequipment_id INTEGER PRIMARY KEY, groupdepartment_id INTEGER, systemequipment TEXT NOT NULL);
+            CREATE TABLE subsystemequipment (
+                subsysequipment_id INTEGER PRIMARY KEY, sysequipment_id INTEGER, groupdepartment_id INTEGER,
+                subsystemequipment TEXT NOT NULL);
+            CREATE TABLE itemdevice (
+                itemdevice_id INTEGER PRIMARY KEY, subsysequipment_id INTEGER, sysequipment_id INTEGER,
+                itemdevice TEXT NOT NULL);
+            -- Craft/trade + its hourly rate (drives PM labour cost).
+            CREATE TABLE titlecraft (
+                titlecraft_id INTEGER PRIMARY KEY, groupdepartment_id INTEGER, titlecraft TEXT NOT NULL, hourlyrate REAL);
+            CREATE TABLE pmshift (pmshift TEXT PRIMARY KEY);
+
+            -- The PM definition + its stored schedule state. nextduedate is a STORED field in the
+            -- legacy model (hand-entered); the due board reads it, and completing a PM advances it.
+            CREATE TABLE pm (
+                pm_id INTEGER PRIMARY KEY, pmshift TEXT, titlecraft_id INTEGER, maint_freq TEXT,
+                itemdevice_id INTEGER, subsysequipment_id INTEGER, sysequipment_id INTEGER, groupdepartment_id INTEGER,
+                assignedtogroup TEXT, pm_status INTEGER, pm_notice TEXT, pm_completed TEXT, completed_by TEXT,
+                mins_per_unit REAL, num_of_units REAL, numoftimesperyear REAL, pmrange REAL, daysbetween REAL,
+                lastupdate TEXT, lastreaddate TEXT, nextduedate TEXT, numoverdue REAL, numoverdueresetdate TEXT,
+                pm_repeat REAL, nextduereading REAL, completedreading REAL, lastreading REAL,
+                lowrepeat REAL, midrepeat REAL, hignrepeat REAL, pmreference TEXT, pm_cost REAL,
+                author TEXT, scribe TEXT, addedpmhours REAL, pm_entered TEXT, hasimage INTEGER DEFAULT 0,
+                image_path TEXT, sptext TEXT, spyesno INTEGER, spnumber REAL, spdatetime TEXT,
+                display_style INTEGER, pm_action_header TEXT, pm_action_tailer TEXT);
+
+            -- The PM's checklist (ordered action items). item_view is a legacy BLOB — not modelled.
+            CREATE TABLE pm_actions (
+                pm_action_id INTEGER PRIMARY KEY, pm_id INTEGER NOT NULL, action_items TEXT, item_details TEXT);
+
+            -- Completion history. Snapshots the equipment ids as they were at completion time.
+            CREATE TABLE pmcompletions (
+                pmcompletion_id INTEGER PRIMARY KEY, itemdevice_id INTEGER, subsysequipment_id INTEGER,
+                sysequipment_id INTEGER, groupdepartment_id INTEGER, pm_id INTEGER, pm_status INTEGER NOT NULL,
+                completeddate TEXT NOT NULL, assignedtogroup TEXT NOT NULL, completedby TEXT NOT NULL,
+                completed_notes TEXT, recordeddate TEXT);
 
             CREATE TABLE dt_cause (
                 id INTEGER PRIMARY KEY, cause_name TEXT, note TEXT);
@@ -1388,6 +1437,118 @@ public static class SqliteFixture
             {
                 new { GroupDepartmentId = 10L, GroupDepartment = "Maintenance", DeptType = "MECH" },
                 new { GroupDepartmentId = 20L, GroupDepartment = "Electrical", DeptType = "ELEC" }
+            });
+
+        // ---- PM equipment hierarchy + preventive-maintenance seeds -------------------------
+        // PM due dates are anchored to TODAY (not the fixed base date `d`) so the overdue /
+        // due-soon / future buckets on the due board hold no matter when the suite runs.
+        var today = DateTime.Today;
+        var ds = (DateTime x) => x.ToString("yyyy-MM-dd HH:mm:ss");
+        conn.Execute(
+            "INSERT INTO systemequipment (sysequipment_id, groupdepartment_id, systemequipment) VALUES (:SysEquipmentId, :GroupDepartmentId, :SystemEquipment)",
+            new[]
+            {
+                new { SysEquipmentId = 300L, GroupDepartmentId = (long?)10L, SystemEquipment = "Blanking line BL110" },
+                new { SysEquipmentId = 301L, GroupDepartmentId = (long?)20L, SystemEquipment = "Air compressor house" }
+            });
+        conn.Execute(
+            "INSERT INTO subsystemequipment (subsysequipment_id, sysequipment_id, groupdepartment_id, subsystemequipment) VALUES (:SubsysEquipmentId, :SysEquipmentId, :GroupDepartmentId, :SubsystemEquipment)",
+            new[]
+            {
+                new { SubsysEquipmentId = 400L, SysEquipmentId = (long?)300L, GroupDepartmentId = (long?)10L, SubsystemEquipment = "Uncoiler" },
+                new { SubsysEquipmentId = 401L, SysEquipmentId = (long?)300L, GroupDepartmentId = (long?)10L, SubsystemEquipment = "Stacker" },
+                new { SubsysEquipmentId = 402L, SysEquipmentId = (long?)301L, GroupDepartmentId = (long?)20L, SubsystemEquipment = "Compressor #1" }
+            });
+        conn.Execute(
+            "INSERT INTO itemdevice (itemdevice_id, subsysequipment_id, sysequipment_id, itemdevice) VALUES (:ItemDeviceId, :SubsysEquipmentId, :SysEquipmentId, :ItemDevice)",
+            new[]
+            {
+                new { ItemDeviceId = 500L, SubsysEquipmentId = (long?)400L, SysEquipmentId = (long?)300L, ItemDevice = "Mandrel bearing" },
+                new { ItemDeviceId = 501L, SubsysEquipmentId = (long?)401L, SysEquipmentId = (long?)300L, ItemDevice = "Stacker chain" },
+                new { ItemDeviceId = 502L, SubsysEquipmentId = (long?)402L, SysEquipmentId = (long?)301L, ItemDevice = "Intake filter" }
+            });
+        conn.Execute(
+            "INSERT INTO titlecraft (titlecraft_id, groupdepartment_id, titlecraft, hourlyrate) VALUES (:TitleCraftId, :GroupDepartmentId, :TitleCraft, :HourlyRate)",
+            new[]
+            {
+                new { TitleCraftId = 600L, GroupDepartmentId = (long?)10L, TitleCraft = "Millwright", HourlyRate = (decimal?)42.50m },
+                new { TitleCraftId = 601L, GroupDepartmentId = (long?)20L, TitleCraft = "Electrician", HourlyRate = (decimal?)48.00m }
+            });
+        conn.Execute("INSERT INTO pmshift (pmshift) VALUES (:Pmshift)",
+            new[] { new { Pmshift = "1st" }, new { Pmshift = "2nd" }, new { Pmshift = "3rd" }, new { Pmshift = "Any" } });
+
+        conn.Execute("""
+            INSERT INTO pm (pm_id, pmshift, titlecraft_id, maint_freq, itemdevice_id, subsysequipment_id,
+                sysequipment_id, groupdepartment_id, assignedtogroup, pm_status, pm_notice, mins_per_unit,
+                num_of_units, numoftimesperyear, daysbetween, nextduedate, numoverdue, pm_repeat,
+                pmreference, pm_cost, author, pm_entered, hasimage, lastupdate, pm_completed, completed_by)
+            VALUES (:PmId, :Pmshift, :TitleCraftId, :MaintFreq, :ItemDeviceId, :SubsysEquipmentId,
+                :SysEquipmentId, :GroupDepartmentId, :AssignedToGroup, :PmStatus, :PmNotice, :MinsPerUnit,
+                :NumOfUnits, :NumOfTimesPerYear, :DaysBetween, :NextDueDate, :NumOverdue, :PmRepeat,
+                :PmReference, :PmCost, :Author, :PmEntered, :HasImage, :LastUpdate, :PmCompleted, :CompletedBy)
+            """,
+            new[]
+            {
+                // 7001 OVERDUE (due 10 days ago), monthly, on the uncoiler mandrel bearing.
+                new { PmId = 7001L, Pmshift = "1st", TitleCraftId = (long?)600L, MaintFreq = "Monthly", ItemDeviceId = (long?)500L,
+                      SubsysEquipmentId = (long?)400L, SysEquipmentId = (long?)300L, GroupDepartmentId = (long?)10L,
+                      AssignedToGroup = "Maintenance", PmStatus = (int?)1, PmNotice = "Grease mandrel bearing", MinsPerUnit = (decimal?)30m,
+                      NumOfUnits = (decimal?)1m, NumOfTimesPerYear = (decimal?)12m, DaysBetween = (decimal?)30m,
+                      NextDueDate = ds(today.AddDays(-10)), NumOverdue = (decimal?)1m, PmRepeat = (decimal?)1m,
+                      PmReference = "PM-BL110-001", PmCost = (decimal?)21.25m, Author = "tech1", PmEntered = ds(d), HasImage = 0,
+                      LastUpdate = ds(today.AddDays(-40)), PmCompleted = ds(today.AddDays(-40)), CompletedBy = "tech1" },
+                // 7002 DUE SOON (3 days out), weekly, stacker chain.
+                new { PmId = 7002L, Pmshift = "2nd", TitleCraftId = (long?)600L, MaintFreq = "Weekly", ItemDeviceId = (long?)501L,
+                      SubsysEquipmentId = (long?)401L, SysEquipmentId = (long?)300L, GroupDepartmentId = (long?)10L,
+                      AssignedToGroup = "Maintenance", PmStatus = (int?)1, PmNotice = "Inspect + tension stacker chain", MinsPerUnit = (decimal?)15m,
+                      NumOfUnits = (decimal?)2m, NumOfTimesPerYear = (decimal?)52m, DaysBetween = (decimal?)7m,
+                      NextDueDate = ds(today.AddDays(3)), NumOverdue = (decimal?)0m, PmRepeat = (decimal?)1m,
+                      PmReference = "PM-BL110-002", PmCost = (decimal?)21.25m, Author = "tech1", PmEntered = ds(d), HasImage = 0,
+                      LastUpdate = ds(today.AddDays(-4)), PmCompleted = ds(today.AddDays(-4)), CompletedBy = "tech2" },
+                // 7003 FUTURE (90 days out), annual, compressor intake filter, electrical dept.
+                new { PmId = 7003L, Pmshift = "Any", TitleCraftId = (long?)601L, MaintFreq = "Annual", ItemDeviceId = (long?)502L,
+                      SubsysEquipmentId = (long?)402L, SysEquipmentId = (long?)301L, GroupDepartmentId = (long?)20L,
+                      AssignedToGroup = "Electrical", PmStatus = (int?)1, PmNotice = "Replace compressor intake filter", MinsPerUnit = (decimal?)60m,
+                      NumOfUnits = (decimal?)1m, NumOfTimesPerYear = (decimal?)1m, DaysBetween = (decimal?)365m,
+                      NextDueDate = ds(today.AddDays(90)), NumOverdue = (decimal?)0m, PmRepeat = (decimal?)1m,
+                      PmReference = "PM-AIR-001", PmCost = (decimal?)48.00m, Author = "tech3", PmEntered = ds(d), HasImage = 0,
+                      LastUpdate = ds(today.AddDays(-275)), PmCompleted = ds(today.AddDays(-275)), CompletedBy = "tech3" },
+                // 7004 INACTIVE (status 0) — overdue by date, but must NOT appear on the due board.
+                new { PmId = 7004L, Pmshift = "1st", TitleCraftId = (long?)600L, MaintFreq = "Monthly", ItemDeviceId = (long?)500L,
+                      SubsysEquipmentId = (long?)400L, SysEquipmentId = (long?)300L, GroupDepartmentId = (long?)10L,
+                      AssignedToGroup = "Maintenance", PmStatus = (int?)0, PmNotice = "Retired PM", MinsPerUnit = (decimal?)10m,
+                      NumOfUnits = (decimal?)1m, NumOfTimesPerYear = (decimal?)12m, DaysBetween = (decimal?)30m,
+                      NextDueDate = ds(today.AddDays(-5)), NumOverdue = (decimal?)0m, PmRepeat = (decimal?)0m,
+                      PmReference = "PM-OLD-001", PmCost = (decimal?)0m, Author = "tech1", PmEntered = ds(d), HasImage = 0,
+                      LastUpdate = ds(today.AddDays(-400)), PmCompleted = (string?)null, CompletedBy = (string?)null }
+            });
+
+        conn.Execute(
+            "INSERT INTO pm_actions (pm_action_id, pm_id, action_items, item_details) VALUES (:PmActionId, :PmId, :ActionItems, :ItemDetails)",
+            new[]
+            {
+                new { PmActionId = 7101L, PmId = 7001L, ActionItems = "Lock out line", ItemDetails = "Follow LOTO procedure BL110-1" },
+                new { PmActionId = 7102L, PmId = 7001L, ActionItems = "Grease bearing", ItemDetails = "2 shots, EP-2 grease" },
+                new { PmActionId = 7103L, PmId = 7002L, ActionItems = "Check chain tension", ItemDetails = "Deflection max 1/2 inch" }
+            });
+
+        conn.Execute("""
+            INSERT INTO pmcompletions (pmcompletion_id, itemdevice_id, subsysequipment_id, sysequipment_id,
+                groupdepartment_id, pm_id, pm_status, completeddate, assignedtogroup, completedby, completed_notes, recordeddate)
+            VALUES (:PmCompletionId, :ItemDeviceId, :SubsysEquipmentId, :SysEquipmentId, :GroupDepartmentId,
+                :PmId, :PmStatus, :CompletedDate, :AssignedToGroup, :CompletedBy, :CompletedNotes, :RecordedDate)
+            """,
+            new[]
+            {
+                new { PmCompletionId = 7201L, ItemDeviceId = (long?)500L, SubsysEquipmentId = (long?)400L, SysEquipmentId = (long?)300L,
+                      GroupDepartmentId = (long?)10L, PmId = (long?)7001L, PmStatus = 1, CompletedDate = ds(today.AddDays(-40)),
+                      AssignedToGroup = "Maintenance", CompletedBy = "tech1", CompletedNotes = "Greased, no play", RecordedDate = ds(today.AddDays(-40)) },
+                new { PmCompletionId = 7202L, ItemDeviceId = (long?)500L, SubsysEquipmentId = (long?)400L, SysEquipmentId = (long?)300L,
+                      GroupDepartmentId = (long?)10L, PmId = (long?)7001L, PmStatus = 1, CompletedDate = ds(today.AddDays(-70)),
+                      AssignedToGroup = "Maintenance", CompletedBy = "tech2", CompletedNotes = "Replaced seal", RecordedDate = ds(today.AddDays(-70)) },
+                new { PmCompletionId = 7203L, ItemDeviceId = (long?)501L, SubsysEquipmentId = (long?)401L, SysEquipmentId = (long?)300L,
+                      GroupDepartmentId = (long?)10L, PmId = (long?)7002L, PmStatus = 1, CompletedDate = ds(today.AddDays(-4)),
+                      AssignedToGroup = "Maintenance", CompletedBy = "tech2", CompletedNotes = "Tensioned", RecordedDate = ds(today.AddDays(-4)) }
             });
 
         conn.Execute("""

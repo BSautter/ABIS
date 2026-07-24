@@ -6428,6 +6428,167 @@ public sealed class AbisRepository : IAbisRepository
         return n == 0 ? null : await GetMaintLogAsync(maintLogId, ct);
     }
 
+    // ---- Preventive maintenance (legacy w_maint_pm / d_pm_list) --------------------------
+    // The PM read model joins the 4-level equipment hierarchy for display names. Due state
+    // (days-until-due + bucket) is derived in C# rather than SQL: the two engines store the
+    // date differently (Oracle DATE vs the SQLite fixture's TEXT) and date arithmetic isn't
+    // portable between them. The PM table is small (~77 rows live), so this is cheap.
+
+    private const string PmCols =
+        "p.pm_id AS PmId, p.pmshift AS Pmshift, p.titlecraft_id AS TitleCraftId, tc.titlecraft AS TitleCraft, " +
+        "p.maint_freq AS MaintFreq, p.itemdevice_id AS ItemDeviceId, idv.itemdevice AS ItemDevice, " +
+        "p.subsysequipment_id AS SubsysEquipmentId, sub.subsystemequipment AS SubsystemEquipment, " +
+        "p.sysequipment_id AS SysEquipmentId, sys.systemequipment AS SystemEquipment, " +
+        "p.groupdepartment_id AS GroupDepartmentId, gd.groupdepartment AS GroupDepartmentName, " +
+        "p.assignedtogroup AS AssignedToGroup, p.pm_status AS PmStatus, p.pm_notice AS PmNotice, " +
+        "p.pm_completed AS PmCompleted, p.completed_by AS CompletedBy, p.mins_per_unit AS MinsPerUnit, " +
+        "p.num_of_units AS NumOfUnits, p.numoftimesperyear AS NumOfTimesPerYear, p.daysbetween AS DaysBetween, " +
+        "p.lastupdate AS LastUpdate, p.nextduedate AS NextDueDate, p.numoverdue AS NumOverdue, " +
+        "p.pm_repeat AS PmRepeat, p.pmreference AS PmReference, p.pm_cost AS PmCost, p.author AS Author, " +
+        "p.pm_entered AS PmEntered";
+
+    private const string PmFrom =
+        "pm p LEFT JOIN systemequipment sys ON sys.sysequipment_id = p.sysequipment_id " +
+        "LEFT JOIN subsystemequipment sub ON sub.subsysequipment_id = p.subsysequipment_id " +
+        "LEFT JOIN itemdevice idv ON idv.itemdevice_id = p.itemdevice_id " +
+        "LEFT JOIN titlecraft tc ON tc.titlecraft_id = p.titlecraft_id " +
+        "LEFT JOIN groupdepartment gd ON gd.groupdepartment_id = p.groupdepartment_id";
+
+    /// <summary>Default "due soon" horizon (days) for the due board's <c>due</c> bucket.</summary>
+    public const int PmDueSoonDays = 7;
+
+    // Stamp the derived due fields. A PM with no next-due date is "undated" (it never lands on
+    // the board); otherwise negative days => overdue, within the horizon => due, else scheduled.
+    private static void StampDue(PmDefinition pm, DateTime today, int dueSoonDays)
+    {
+        if (pm.NextDueDate is not { } due) { pm.DueBucket = "undated"; return; }
+        var days = (int)(due.Date - today).TotalDays;
+        pm.DaysUntilDue = days;
+        pm.DueBucket = days < 0 ? "overdue" : days <= dueSoonDays ? "due" : "scheduled";
+    }
+
+    public async Task<PagedResult<PmDefinition>> GetPmsAsync(
+        int page, int pageSize, long? groupDepartmentId, int? pmStatus, long? sysEquipmentId, string? orderBy, CancellationToken ct)
+    {
+        var p = new DynamicParameters();
+        var conditions = new List<string>();
+        if (groupDepartmentId is not null) { conditions.Add("p.groupdepartment_id = :dept"); p.Add("dept", groupDepartmentId); }
+        if (pmStatus is not null) { conditions.Add("p.pm_status = :st"); p.Add("st", pmStatus); }
+        if (sysEquipmentId is not null) { conditions.Add("p.sysequipment_id = :sys"); p.Add("sys", sysEquipmentId); }
+        var where = conditions.Count > 0 ? string.Join(" AND ", conditions) : null;
+        var result = await PageAsync<PmDefinition>(PmCols, PmFrom, orderBy ?? "p.pm_id", where, p, page, pageSize, ct);
+        var today = DateTime.Today;
+        foreach (var pm in result.Items) StampDue(pm, today, PmDueSoonDays);
+        return result;
+    }
+
+    public async Task<PmDefinition?> GetPmAsync(long pmId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var pm = await conn.QuerySingleOrDefaultAsync<PmDefinition>(new CommandDefinition(
+            $"SELECT {PmCols} FROM {PmFrom} WHERE p.pm_id = :id", new { id = pmId }, cancellationToken: ct));
+        if (pm is not null) StampDue(pm, DateTime.Today, PmDueSoonDays);
+        return pm;
+    }
+
+    /// <summary>The due board: active PMs that are overdue or fall due within
+    /// <paramref name="withinDays"/>, most overdue first. A PM is treated as INACTIVE only when
+    /// <c>pm_status = 0</c> — NULL counts as active (the NOT-IN-on-a-nullable-column trap).</summary>
+    public async Task<IReadOnlyList<PmDefinition>> GetPmsDueAsync(int withinDays, long? groupDepartmentId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var p = new DynamicParameters();
+        var conditions = new List<string> { "(p.pm_status IS NULL OR p.pm_status <> 0)", "p.nextduedate IS NOT NULL" };
+        if (groupDepartmentId is not null) { conditions.Add("p.groupdepartment_id = :dept"); p.Add("dept", groupDepartmentId); }
+        var rows = await conn.QueryAsync<PmDefinition>(new CommandDefinition(
+            $"SELECT {PmCols} FROM {PmFrom} WHERE {string.Join(" AND ", conditions)}", p, cancellationToken: ct));
+        var today = DateTime.Today;
+        var list = rows.AsList();
+        foreach (var pm in list) StampDue(pm, today, PmDueSoonDays);
+        return list
+            .Where(x => x.DaysUntilDue is { } dd && dd <= withinDays)
+            .OrderBy(x => x.DaysUntilDue)
+            .ThenBy(x => x.PmId)
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<PmAction>> GetPmActionsAsync(long pmId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<PmAction>(new CommandDefinition(
+            "SELECT pm_action_id AS PmActionId, pm_id AS PmId, action_items AS ActionItems, item_details AS ItemDetails " +
+            "FROM pm_actions WHERE pm_id = :id ORDER BY pm_action_id", new { id = pmId }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    public async Task<IReadOnlyList<PmCompletion>> GetPmCompletionsAsync(long pmId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<PmCompletion>(new CommandDefinition(
+            """
+            SELECT pmcompletion_id AS PmCompletionId, pm_id AS PmId, itemdevice_id AS ItemDeviceId,
+                   subsysequipment_id AS SubsysEquipmentId, sysequipment_id AS SysEquipmentId,
+                   groupdepartment_id AS GroupDepartmentId, pm_status AS PmStatus, completeddate AS CompletedDate,
+                   assignedtogroup AS AssignedToGroup, completedby AS CompletedBy, completed_notes AS CompletedNotes,
+                   recordeddate AS RecordedDate
+            FROM pmcompletions WHERE pm_id = :id ORDER BY completeddate DESC, pmcompletion_id DESC
+            """, new { id = pmId }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    // ---- Maintenance equipment-hierarchy lookups ----
+
+    public async Task<IReadOnlyList<SystemEquipment>> GetSystemEquipmentAsync(long? groupDepartmentId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<SystemEquipment>(new CommandDefinition(
+            "SELECT sysequipment_id AS SysEquipmentId, groupdepartment_id AS GroupDepartmentId, " +
+            "systemequipment AS SystemEquipmentName FROM systemequipment " +
+            (groupDepartmentId is null ? "" : "WHERE groupdepartment_id = :dept ") + "ORDER BY systemequipment",
+            new { dept = groupDepartmentId }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    public async Task<IReadOnlyList<SubsystemEquipment>> GetSubsystemEquipmentAsync(long? sysEquipmentId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<SubsystemEquipment>(new CommandDefinition(
+            "SELECT subsysequipment_id AS SubsysEquipmentId, sysequipment_id AS SysEquipmentId, " +
+            "groupdepartment_id AS GroupDepartmentId, subsystemequipment AS SubsystemEquipmentName FROM subsystemequipment " +
+            (sysEquipmentId is null ? "" : "WHERE sysequipment_id = :sys ") + "ORDER BY subsystemequipment",
+            new { sys = sysEquipmentId }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    public async Task<IReadOnlyList<ItemDevice>> GetItemDevicesAsync(long? subsysEquipmentId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<ItemDevice>(new CommandDefinition(
+            "SELECT itemdevice_id AS ItemDeviceId, subsysequipment_id AS SubsysEquipmentId, " +
+            "sysequipment_id AS SysEquipmentId, itemdevice AS ItemDeviceName FROM itemdevice " +
+            (subsysEquipmentId is null ? "" : "WHERE subsysequipment_id = :sub ") + "ORDER BY itemdevice",
+            new { sub = subsysEquipmentId }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    public async Task<IReadOnlyList<TitleCraft>> GetTitleCraftsAsync(CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<TitleCraft>(new CommandDefinition(
+            "SELECT titlecraft_id AS TitleCraftId, groupdepartment_id AS GroupDepartmentId, " +
+            "titlecraft AS TitleCraftName, hourlyrate AS HourlyRate FROM titlecraft ORDER BY titlecraft",
+            cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    public async Task<IReadOnlyList<string>> GetPmShiftsAsync(CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<string>(new CommandDefinition(
+            "SELECT pmshift FROM pmshift ORDER BY pmshift", cancellationToken: ct));
+        return rows.AsList();
+    }
+
     public Task<PagedResult<Carrier>> GetCarriersAsync(int page, int pageSize, int? status, string? orderBy, CancellationToken ct) =>
         PageAsync<Carrier>(CarrierCols, "carrier", orderBy ?? "carrier_id",
             status is null ? null : "status = :status",

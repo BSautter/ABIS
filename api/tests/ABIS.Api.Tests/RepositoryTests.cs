@@ -2153,6 +2153,79 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task Pm_list_carries_equipment_names_and_derived_due_state()
+    {
+        var page = await _repo.GetPmsAsync(1, 50, null, null, null, null, CancellationToken.None);
+        Assert.Equal(4, page.TotalCount);
+
+        // 7001 hangs off the full hierarchy — the read resolves every level's display name.
+        var pm = Assert.Single(page.Items, x => x.PmId == 7001);
+        Assert.Equal("Blanking line BL110", pm.SystemEquipment);
+        Assert.Equal("Uncoiler", pm.SubsystemEquipment);
+        Assert.Equal("Mandrel bearing", pm.ItemDevice);
+        Assert.Equal("Millwright", pm.TitleCraft);
+        Assert.Equal("Maintenance", pm.GroupDepartmentName);
+
+        // Due state is derived, not stored: seeded 10 days in the past -> overdue.
+        Assert.Equal(-10, pm.DaysUntilDue);
+        Assert.Equal("overdue", pm.DueBucket);
+        Assert.Equal("due", Assert.Single(page.Items, x => x.PmId == 7002).DueBucket);        // 3 days out
+        Assert.Equal("scheduled", Assert.Single(page.Items, x => x.PmId == 7003).DueBucket);  // 90 days out
+    }
+
+    [Fact]
+    public async Task Pm_due_board_ranks_overdue_first_and_skips_inactive_and_far_future()
+    {
+        // Default 7-day horizon: 7001 (overdue) + 7002 (due in 3). 7003 is 90 days out and
+        // 7004 is inactive (pm_status 0) even though its date is in the past.
+        var due = await _repo.GetPmsDueAsync(7, null, CancellationToken.None);
+        Assert.Equal(new long[] { 7001, 7002 }, due.Select(x => x.PmId).ToArray());
+        Assert.Equal("overdue", due[0].DueBucket);
+        Assert.DoesNotContain(due, x => x.PmId == 7004);
+
+        // Widening the horizon pulls in the annual PM; the ordering stays most-overdue-first.
+        var wide = await _repo.GetPmsDueAsync(120, null, CancellationToken.None);
+        Assert.Equal(new long[] { 7001, 7002, 7003 }, wide.Select(x => x.PmId).ToArray());
+
+        // Department filter scopes the board (7003 is the only Electrical PM).
+        var elec = await _repo.GetPmsDueAsync(120, 20, CancellationToken.None);
+        Assert.Equal(7003, Assert.Single(elec).PmId);
+    }
+
+    [Fact]
+    public async Task Pm_actions_and_completions_read_in_order()
+    {
+        var actions = await _repo.GetPmActionsAsync(7001, CancellationToken.None);
+        Assert.Equal(2, actions.Count);
+        Assert.Equal("Lock out line", actions[0].ActionItems);
+        Assert.Equal("Grease bearing", actions[1].ActionItems);
+
+        // Completion history is newest-first.
+        var done = await _repo.GetPmCompletionsAsync(7001, CancellationToken.None);
+        Assert.Equal(2, done.Count);
+        Assert.True(done[0].CompletedDate > done[1].CompletedDate);
+        Assert.Equal("tech1", done[0].CompletedBy);
+        Assert.Empty(await _repo.GetPmCompletionsAsync(7003, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Maintenance_hierarchy_lookups_filter_by_parent()
+    {
+        Assert.Equal(2, (await _repo.GetSystemEquipmentAsync(null, CancellationToken.None)).Count);
+        Assert.Equal("Blanking line BL110",
+            Assert.Single(await _repo.GetSystemEquipmentAsync(10, CancellationToken.None)).SystemEquipmentName);
+
+        // Two subsystems hang off the blanking line; one off the compressor house.
+        Assert.Equal(2, (await _repo.GetSubsystemEquipmentAsync(300, CancellationToken.None)).Count);
+        Assert.Equal("Intake filter",
+            Assert.Single(await _repo.GetItemDevicesAsync(402, CancellationToken.None)).ItemDeviceName);
+
+        var crafts = await _repo.GetTitleCraftsAsync(CancellationToken.None);
+        Assert.Equal(48.00m, Assert.Single(crafts, c => c.TitleCraftName == "Electrician").HourlyRate);
+        Assert.Equal(4, (await _repo.GetPmShiftsAsync(CancellationToken.None)).Count);
+    }
+
+    [Fact]
     public async Task RecoveryCoil_upsert_then_delete_removes_only_the_overlay_row()
     {
         // Seed has coil 5001 on job 1001 flagged. Upsert an extra coil onto the worksheet.

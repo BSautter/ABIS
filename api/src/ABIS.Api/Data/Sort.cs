@@ -100,6 +100,13 @@ public static class Sort
             ("probDateTime", "probdatetime"), ("assignedTo", "assignedto")),
             DefaultOrderBy: "maint_log_id DESC", TieBreaker: "maint_log_id"),
 
+        // PM list — columns are qualified because the read joins the equipment hierarchy.
+        ["pms"] = new(Cols(
+            ("pmId", "p.pm_id"), ("nextDueDate", "p.nextduedate"), ("maintFreq", "p.maint_freq"),
+            ("groupDepartmentId", "p.groupdepartment_id"), ("pmStatus", "p.pm_status"),
+            ("systemEquipment", "sys.systemequipment"), ("reference", "p.pmreference")),
+            DefaultOrderBy: "p.pm_id", TieBreaker: "p.pm_id"),
+
         ["carriers"] = new(Cols(
             ("carrierId", "carrier_id"), ("scac", "scac"), ("name", "carrier_full_name"),
             ("state", "carrier_state"), ("status", "status")),
