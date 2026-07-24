@@ -227,7 +227,8 @@ function renderOpState() {
         cell('Shift', b.shiftNum != null ? `${esc(b.shiftNum)}${b.shiftOperatorInitial ? ' · ' + esc(b.shiftOperatorInitial) : ''}` : 'not started', b.shiftNum == null) +
             cell('Job', b.abJobNum != null ? `#${esc(b.abJobNum)}` : 'none', b.abJobNum == null) +
             cell('Coil', b.coilAbcNum != null ? `#${esc(b.coilAbcNum)}${b.coilOrgNum ? ' · ' + esc(b.coilOrgNum) : ''}` : 'none', b.coilAbcNum == null) +
-            cell('Efficiency', pct(m.efficiencyPct) ?? '—', m.efficiencyPct == null, m.downtimeOpen ? 'down' : '') +
+            // A stale shift (left open for days) has no honest efficiency — say so rather than show a number.
+            cell('Efficiency', pct(m.efficiencyPct) ?? (m.shiftStale ? 'shift left open' : '—'), m.efficiencyPct == null, m.downtimeOpen ? 'down' : (m.shiftStale ? 'bad' : '')) +
             cell('Coil finish', pct(m.coilFinishPct) ?? '—', m.coilFinishPct == null) +
             cell('Yield', pct(m.coilYieldPct) ?? '—', m.coilYieldPct == null, m.yieldBelowTarget ? 'bad' : '') +
             cell('Shift wt', m.shiftProcessedWeight != null ? `${num(m.shiftProcessedWeight)} lb` : '—', m.shiftProcessedWeight == null);

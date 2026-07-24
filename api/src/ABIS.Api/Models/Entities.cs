@@ -2822,6 +2822,13 @@ public sealed class LineLiveMetrics
     public long DowntimeSeconds { get; set; }
     /// <summary>True while a downtime instance is still open (the line is down right now).</summary>
     public bool DowntimeOpen { get; set; }
+    /// <summary>The shift has no <c>end_time</c> — it is running, or was never closed.</summary>
+    public bool ShiftOpen { get; set; }
+    /// <summary>The shift has been open longer than any real shift runs, so it was LEFT open rather
+    /// than worked. Efficiency is withheld in that case — see <see cref="EfficiencyPct"/>.</summary>
+    public bool ShiftStale { get; set; }
+    /// <summary>Efficiency %, or null when there is no shift or the shift is stale: a shift nobody
+    /// closed would otherwise report a confident number against a multi-day "shift".</summary>
     public decimal? EfficiencyPct { get; set; }
     /// <summary>Weight the shift has processed so far (SUM of its runs' process_wt).</summary>
     public decimal ShiftProcessedWeight { get; set; }

@@ -223,7 +223,7 @@ async function opFetch(path: string, init?: RequestInit): Promise<OpBoard | null
 // the coil's original weight, red under the 95% the server sends). Percentages are omitted rather
 // than zeroed when there is no shift or coil — a blank reads as "not running", a 0% reads as "awful".
 type LiveMetrics = {
-  efficiencyPct?: number; downtimeOpen?: boolean; shiftProcessedWeight?: number;
+  efficiencyPct?: number; downtimeOpen?: boolean; shiftProcessedWeight?: number; shiftStale?: boolean;
   coilFinishPct?: number; coilYieldPct?: number; yieldBelowTarget?: boolean; yieldTargetPct?: number;
 };
 let opLive: LiveMetrics | null = null;
@@ -239,7 +239,9 @@ function renderOpState(): void {
     cell('Shift', b.shiftNum != null ? `${esc(b.shiftNum)}${b.shiftOperatorInitial ? ' · ' + esc(b.shiftOperatorInitial) : ''}` : 'not started', b.shiftNum == null) +
     cell('Job', b.abJobNum != null ? `#${esc(b.abJobNum)}` : 'none', b.abJobNum == null) +
     cell('Coil', b.coilAbcNum != null ? `#${esc(b.coilAbcNum)}${b.coilOrgNum ? ' · ' + esc(b.coilOrgNum) : ''}` : 'none', b.coilAbcNum == null) +
-    cell('Efficiency', pct(m.efficiencyPct) ?? '—', m.efficiencyPct == null, m.downtimeOpen ? 'down' : '') +
+    // A stale shift (left open for days) has no honest efficiency — say so rather than show a number.
+    cell('Efficiency', pct(m.efficiencyPct) ?? (m.shiftStale ? 'shift left open' : '—'),
+         m.efficiencyPct == null, m.downtimeOpen ? 'down' : (m.shiftStale ? 'bad' : '')) +
     cell('Coil finish', pct(m.coilFinishPct) ?? '—', m.coilFinishPct == null) +
     cell('Yield', pct(m.coilYieldPct) ?? '—', m.coilYieldPct == null, m.yieldBelowTarget ? 'bad' : '') +
     cell('Shift wt', m.shiftProcessedWeight != null ? `${num(m.shiftProcessedWeight)} lb` : '—', m.shiftProcessedWeight == null);

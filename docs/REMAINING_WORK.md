@@ -53,6 +53,18 @@ The VAN SFTP stays the single legacy owner (`GXS.ksh`). Design in `docs/EDI_ENGI
 
 ## B. Architectural program — the live-DAS workflow spine
 The edge read path is live (run-state + piece-count → auto-downtime); the DAS *workflow core* is absent. Buildable in pieces.
+
+> **Validated against the LIVE non-prod Oracle (.230) 2026-07-24** (#288). Every read added by #281–#287
+> was run there read-only — the 21-branch skid unpivot, the line board, the queue, the coil-run ledger and
+> the live-metric reads all execute correctly on Oracle against real data. What the live data changed:
+> (a) the 7 lines are `line_num` 1–7 = **BL 24 / 36 / 60 / 78 / 108 / 110 / 84** (internal codes; the LINE
+> table is the map); (b) the **19 floor skid-position columns are unused in practice** — only a stacker slot
+> was occupied, so the board's skid strip is normally empty; (c) **all three "open" shifts were stale**
+> (31 h, 31 h, 103 h, no `dt_total`), which is why live efficiency is now withheld for a shift left open
+> (§B live-metrics item); (d) real `LINE_PRIORITY` rows carry a **NULL `priority_num`**, which Oracle sorts
+> last and SQLite first — the queue's ORDER BY is now explicit. **Still unvalidated: the WRITE paths**
+> (#283–#286 mutate `line_current_status` / `shift` / `shift_coil` / `line_priority`); exercising those on
+> .230 needs a decision, since the deployed UI reads that same sandbox.
 - [x] **C** `LINE_CURRENT_STATUS` live line board (job/coil/shift, 19 skid locations, 2 stacker skids) — done
   (#281): `GET /das/line-board` (+ `/{lineNum}`, 404 when the line has no board row) reads the one-row-per-line
   DAS table joined to `line`/`shift`/`ab_job`/`coil`, and unpivots the 21 flat skid columns

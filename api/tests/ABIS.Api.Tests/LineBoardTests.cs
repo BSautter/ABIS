@@ -403,6 +403,41 @@ public sealed class LineBoardTests
     }
 
     [Fact]
+    public async Task A_shift_left_open_for_days_reports_no_efficiency()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        // The live .230 ledger carries shifts open for 31 h and 103 h with no dt_total roll-up —
+        // nobody ended them. Measuring efficiency across that would publish a confident fiction.
+        var made = await c.PostAsJsonAsync("/api/shifts", new { lineNum = 120, scheduleType = 3, startTime = DateTime.Now.AddDays(-4) });
+        made.EnsureSuccessStatusCode();
+        var shiftNum = (await made.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("shiftNum").GetInt64();
+        (await c.PostAsJsonAsync("/api/das/lines/120/shift/start", new { shiftNum })).EnsureSuccessStatusCode();
+
+        var live = await c.GetFromJsonAsync<JsonElement>("/api/das/lines/120/live");
+        Assert.True(live.GetProperty("shiftOpen").GetBoolean());
+        Assert.True(live.GetProperty("shiftStale").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, live.GetProperty("efficiencyPct").ValueKind);
+        // The elapsed/downtime figures still report — only the derived percentage is withheld.
+        Assert.True(live.GetProperty("elapsedSeconds").GetInt64() > 24 * 60 * 60);
+    }
+
+    [Fact]
+    public async Task An_unsequenced_queue_job_sorts_last_on_both_engines()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        // The live DB has LINE_PRIORITY rows with a NULL priority_num. Oracle sorts NULLs last on
+        // ASC and SQLite sorts them first, so the ordering must be explicit, not implicit.
+        (await c.PutAsJsonAsync("/api/das/lines/110/queue/1003", new { priorityNum = (int?)null, note = "unsequenced" })).EnsureSuccessStatusCode();
+        var queue = await c.GetFromJsonAsync<JsonElement>("/api/das/lines/110/queue");
+        var jobs = queue.EnumerateArray().Select(r => r.GetProperty("abJobNum").GetInt64()).ToList();
+        Assert.Equal(1003, jobs[^1]);
+    }
+
+    [Fact]
     public async Task Live_metrics_report_an_idle_line_without_inventing_percentages()
     {
         using var f = new Factory();

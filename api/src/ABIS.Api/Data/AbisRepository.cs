@@ -6334,6 +6334,9 @@ public sealed class AbisRepository : IAbisRepository
 
     /// <summary>A line's job queue (legacy <c>LINE_PRIORITY</c>) in schedule order — by priority, as
     /// <c>d_job_schedule</c> orders it, so the sequence the operator edits is the sequence shown.
+    /// An unsequenced job (NULL <c>priority_num</c> — the live DB has them) sorts LAST explicitly:
+    /// Oracle defaults NULLs last on ASC and SQLite defaults them first, so leaving it implicit would
+    /// order the queue differently on the two engines.
     /// Status legend from that same DataWindow: <b>0 = Ended, 1 = Running, 2 or NULL = Waiting</b>.
     /// The DAS schedule hides ended rows, so <paramref name="includeEnded"/> is false by default —
     /// pass true for the full history.</summary>
@@ -6349,7 +6352,7 @@ public sealed class AbisRepository : IAbisRepository
             LEFT JOIN ab_job j ON j.ab_job_num = lp.ab_job_num
             WHERE lp.line_num = :line
               AND (:withEnded = 1 OR lp.status IS NULL OR lp.status <> 0)
-            ORDER BY lp.priority_num, lp.ab_job_num
+            ORDER BY CASE WHEN lp.priority_num IS NULL THEN 1 ELSE 0 END, lp.priority_num, lp.ab_job_num
             """, new { line = lineNum, withEnded = includeEnded ? 1 : 0 }, cancellationToken: ct));
         return rows.AsList();
     }
@@ -6800,6 +6803,10 @@ public sealed class AbisRepository : IAbisRepository
         };
     }
 
+    /// <summary>Longer than any plant shift runs (they start ~05:00 on an 8-hour schedule). Past this
+    /// an open shift means "nobody ended it", not "the line ran that long".</summary>
+    private const long StaleShiftSeconds = 24 * 60 * 60;
+
     /// <summary>A line's live production metrics: shift efficiency, the shift's processed weight, and
     /// the loaded coil's finish-% and yield. Both percentages are the LEGACY formulas — efficiency
     /// from <c>d_daily_prod_dt_efficiency</c>, yield from <c>u_coil.of_get_yield</c> — see
@@ -6828,7 +6835,12 @@ public sealed class AbisRepository : IAbisRepository
             m.ShiftStartTime = s?.StartTime;
             // A running shift is measured to NOW; a closed one to its end_time.
             var until = s?.EndTime ?? now;
+            m.ShiftOpen = s?.EndTime is null;
             m.ElapsedSeconds = s?.StartTime is { } start ? (long)Math.Max(0d, (until - start).TotalSeconds) : 0;
+            // A shift open longer than any real shift runs was LEFT open, not worked — the live .230
+            // ledger carries several (103 h, 31 h, 31 h, none with a dt_total roll-up). Measuring
+            // "efficiency" over that reports a confident fiction, so it is withheld below.
+            m.ShiftStale = m.ShiftOpen && m.ElapsedSeconds > StaleShiftSeconds;
 
             var spans = (await conn.QueryAsync<DowntimeSpan>(new CommandDefinition(
                 "SELECT starting_time AS StartingTime, ending_time AS EndingTime FROM dt_instance WHERE shift_num = :shift",
@@ -6840,7 +6852,7 @@ public sealed class AbisRepository : IAbisRepository
                 ? (long)s!.DtTotal!.Value
                 : (long)spans.Where(x => x.StartingTime is not null)
                              .Sum(x => Math.Max(0d, ((x.EndingTime ?? now) - x.StartingTime!.Value).TotalSeconds));
-            if (m.ElapsedSeconds > 0)
+            if (m.ElapsedSeconds > 0 && !m.ShiftStale)
                 m.EfficiencyPct = Math.Round((decimal)(m.ElapsedSeconds - m.DowntimeSeconds) / m.ElapsedSeconds * 100m, 2);
 
             m.ShiftProcessedWeight = await conn.ExecuteScalarAsync<decimal?>(new CommandDefinition(

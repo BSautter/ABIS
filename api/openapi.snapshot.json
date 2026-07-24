@@ -19482,6 +19482,12 @@
           "downtimeOpen": {
             "type": "boolean"
           },
+          "shiftOpen": {
+            "type": "boolean"
+          },
+          "shiftStale": {
+            "type": "boolean"
+          },
           "efficiencyPct": {
             "type": "number",
             "format": "double",
