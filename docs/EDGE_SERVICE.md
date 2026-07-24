@@ -280,3 +280,36 @@ unknown/bad read or a counter rollback** (current < baseline) — the field stay
 > `/piece-count` returns `configured:false` and the console shows "Stacker: not configured" —
 > the operator hand-enters pieces exactly as before (the feature is purely additive). The
 > `MockTagSource` simulates any `…count` tag as a climbing integer for testing without hardware.
+
+## Real plant tag map (discovered live 2026-07-24 via `/opc/browse` on `.170`)
+
+The INGEAR address space, browsed live off the edge. Ready-to-use config is in
+[`edge/appsettings.Plant.example.json`](../edge/appsettings.Plant.example.json). The three
+**networked** press lines each expose an identical `PLC5-BL<n>.*` tag set; `BL110` and `BL84` also
+have a stacker branch.
+
+| line_num | Label | PLC branch | Stacker branch |
+|---|---|---|---|
+| 4 | BL 78 | `PLC5-BL78` | — (no networked stacker) |
+| 6 | BL 110 | `PLC5-BL110` | `stacker110` |
+| 7 | BL 84 | `PLC5-BL84` | `stacker84` |
+
+**Per press line (`PLC5-BL<n>.<tag>`):** `strokecnt` (run signal — climbing = running, the plant's
+`RunStateMode=Changed`), `goodpartcnt`, `rejectpartcnt`, `feedlength`, `rejectlength`, `autorunning`
+(boolean run bit), `activefault` (fault lamp), `noauto` (auto-status lockout), `coilwidth`, `partno`,
+`feedreject`, plus the PLC's own view of the current work: `abcoil` / `abjob` / `abshift` / `abskid`
+(these are **writable** OPC items the legacy DAS pushed to keep the press display in sync — a future
+edge *write* path would set them; the edge is read-only today).
+
+**Per stacker (`stacker<n>.<tag>`):** `station1_stack_counter` / `station2_stack_counter` (the piece
+counters), `ScaleSkidWt` / `ScaleSkidId` (the stacker scale), and the conveyor/wrapper station-tracking
+bits (`StackOnConveyor1..3`, `StackEntering/LeavingWrapper1/2`, `Sta1/2StackComplete`, …) that would
+feed the **stacker physical board** (§B). **`Device110`** carries device-level `spm` / `spm2`
+(strokes-per-minute), `strokecnt1..3`, and `cntreset1/2`.
+
+**How the DAS console addresses a line** — pass the line's tags as query params (the picker fills
+these): `/run-state?tag=PLC5-BL110.strokecnt`, `/piece-count?tag=stacker110.station1_stack_counter`,
+`/counters?good=PLC5-BL110.goodpartcnt&reject=PLC5-BL110.rejectpartcnt&stroke=PLC5-BL110.strokecnt&feed=PLC5-BL110.feedlength`.
+Live values confirmed flowing 2026-07-24 (e.g. `PLC5-BL110.strokecnt=31`, `PLC5-BL84.strokecnt=4110`,
+`PLC5-BL78.strokecnt=4432`). **The deployed edge currently polls only the strokecnt + stacker counters**;
+add `goodpartcnt`/`rejectpartcnt`/`feedlength` (per the example config) and redeploy so `/counters` answers.

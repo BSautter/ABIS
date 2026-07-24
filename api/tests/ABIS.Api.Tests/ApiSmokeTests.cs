@@ -1343,10 +1343,11 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     }
 
     [Fact]
-    public async Task Get_job_coils_returns_two()
+    public async Task Get_job_coils_returns_the_jobs_process_coils()
     {
         var body = await _client.GetFromJsonAsync<JsonElement>("/api/jobs/1001/coils");
-        Assert.Equal(2, body.GetArrayLength());
+        // 5001 + 5002 + 5003 (5003 is the spare the DAS coil-run tests load onto job 1001).
+        Assert.Equal(3, body.GetArrayLength());
     }
 
     [Fact]

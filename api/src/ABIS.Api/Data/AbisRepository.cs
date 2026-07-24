@@ -6453,6 +6453,17 @@ public sealed class AbisRepository : IAbisRepository
             "SELECT COUNT(*) FROM line WHERE line_num = :line", new { line = lineNum }, cancellationToken: ct)) > 0;
     }
 
+    /// <summary>Is a coil assigned to a job (a <c>process_coil</c> row for the pair)? shift_coil FKs
+    /// (coil, job) to process_coil, so a coil run — including a change-job — can only open for a pair
+    /// that exists there, else ORA-02291. The endpoints check this to return a clean 409, not a 500.</summary>
+    public async Task<bool> CoilIsOnJobAsync(long coilAbcNum, long abJobNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM process_coil WHERE coil_abc_num = :coil AND ab_job_num = :job",
+            new { coil = coilAbcNum, job = abJobNum }, cancellationToken: ct)) > 0;
+    }
+
     // Legacy ships one LINE_CURRENT_STATUS row per line, pre-created by hand. The modern write path
     // creates the row on first use instead (a deliberate addition): a line that has never run under
     // ABIS otherwise could never be pointed at a job.
@@ -6701,9 +6712,13 @@ public sealed class AbisRepository : IAbisRepository
                 beginWeight ?? coil?.NetWtBalance, beginStatus ?? coil?.CoilStatus, DateTime.Now, ct);
         }
         // Loading a coil is also a board write (wf_set_opc_abcoil) — same statements, one transaction.
+        // Set the board's JOB to the run's job too: end/reverse derive (coil, job) from the board, so
+        // if start recorded the run under a job the board didn't reflect (e.g. the operator loaded a
+        // coil without first pressing "Run this job"), those would fail to find the run. Keeping the
+        // board's job in step with the open run closes that gap.
         await conn.ExecuteAsync(new CommandDefinition(
-            "UPDATE line_current_status SET coil_abc_num = :coil, coil_process_rate = 0 WHERE line_num = :line",
-            new { coil = coilAbcNum, line = lineNum }, transaction: tx, cancellationToken: ct));
+            "UPDATE line_current_status SET coil_abc_num = :coil, ab_job_num = :job, coil_process_rate = 0 WHERE line_num = :line",
+            new { coil = coilAbcNum, job = abJobNum, line = lineNum }, transaction: tx, cancellationToken: ct));
         await conn.ExecuteAsync(new CommandDefinition(
             "UPDATE coil SET coil_status_from_line = 1 WHERE coil_abc_num = :coil",
             new { coil = coilAbcNum }, transaction: tx, cancellationToken: ct));
@@ -7122,7 +7137,11 @@ public sealed class AbisRepository : IAbisRepository
                                    line_id, shift_id, coil_abc_num, ab_job_num, title, message)
             VALUES (:id, :ts, :type, :usr, :cmt, :line, :shift, :coil, :job, :title, :msg)
             """,
-            new { id = evtId, ts = DateTime.Now, type = errorTypeId, usr = errorUser, cmt = note,
+            // error_user AND error_type_id are both NOT NULL on the live DB (ORA-01400 otherwise). A
+            // kiosk / API-key caller has no login → fall back to the station identity; an unspecified
+            // type defaults to 1 = OPERATOR (a coil reversal is an operator correction, per error_type).
+            new { id = evtId, ts = DateTime.Now, type = errorTypeId ?? 1,
+                  usr = string.IsNullOrWhiteSpace(errorUser) ? "das" : errorUser, cmt = note,
                   line = lineNum, shift, coil, job, title = "Coil reversed",
                   msg = $"Coil {coil} was loaded on job {job} in error; run {run.CoilRunNum} removed." },
             transaction: tx, cancellationToken: ct));

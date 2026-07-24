@@ -295,6 +295,7 @@ public interface IAbisRepository
     // ---- Live line board (LINE_CURRENT_STATUS) ---------------------------
     Task<IReadOnlyList<LineBoardRow>> GetLineBoardAsync(long? lineNum, CancellationToken ct);
     Task<bool> LineExistsAsync(long lineNum, CancellationToken ct);
+    Task<bool> CoilIsOnJobAsync(long coilAbcNum, long abJobNum, CancellationToken ct);
     Task<IReadOnlyList<LineQueueRow>> GetLineQueueAsync(long lineNum, bool includeEnded, CancellationToken ct);
     Task<LineQueueRow?> UpsertLineQueueJobAsync(long lineNum, long abJobNum, LineQueueWrite body, CancellationToken ct);
     Task<DeleteResult> RemoveLineQueueJobAsync(long lineNum, long abJobNum, CancellationToken ct);

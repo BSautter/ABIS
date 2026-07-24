@@ -54,7 +54,15 @@ The VAN SFTP stays the single legacy owner (`GXS.ksh`). Design in `docs/EDI_ENGI
 ## B. Architectural program — the live-DAS workflow spine
 The edge read path is live (run-state + piece-count → auto-downtime); the DAS *workflow core* is absent. Buildable in pieces.
 
-> **Validated against the LIVE non-prod Oracle (.230) 2026-07-24** (#288). Every read added by #281–#287
+> **WRITE paths validated on the LIVE non-prod Oracle (.230) 2026-07-24** (#292), after the sequence
+> re-sync (see [[abis-230-sequence-drift]]) was RUN on .230: the full DAS write suite — shift
+> create/start/end, coil-run start/end, change-job, reverse, and the LINE_PRIORITY queue upsert/reorder/
+> delete — all execute correctly on Oracle. Two Oracle-only bugs SQLite CI couldn't show were found + fixed:
+> `ERROR_EVT.ERROR_USER`/`ERROR_TYPE_ID` are NOT NULL (reverse now defaults them to `das` / `1 OPERATOR`),
+> and `shift_coil` FKs (coil, job) to `process_coil` so coil-run/change-job now guard with a clean 409
+> instead of ORA-02291. Real INGEAR tag ids discovered live + captured in `edge/appsettings.Plant.example.json`.
+>
+> **READ paths validated on the LIVE non-prod Oracle (.230) 2026-07-24** (#288). Every read added by #281–#287
 > was run there read-only — the 21-branch skid unpivot, the line board, the queue, the coil-run ledger and
 > the live-metric reads all execute correctly on Oracle against real data. What the live data changed:
 > (a) the 7 lines are `line_num` 1–7 = **BL 24 / 36 / 60 / 78 / 108 / 110 / 84** (internal codes; the LINE

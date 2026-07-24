@@ -551,7 +551,9 @@ public sealed class LineBoardTests
         var c = Client(f);
 
         (await c.PostAsJsonAsync("/api/das/lines/110/coil-run/start", new { coilAbcNum = 5003, abJobNum = 1001 })).EnsureSuccessStatusCode();
-        var reverse = await c.PostAsJsonAsync("/api/das/lines/110/coil-run/reverse", new { errorUser = "op1", errorTypeId = 3, note = "wrong coil" });
+        // No errorUser: the API-key/kiosk caller has no login, and error_evt.error_user is NOT NULL on
+        // the live DB — the reverse must fall back to a station identity, not 500 (ORA-01400).
+        var reverse = await c.PostAsJsonAsync("/api/das/lines/110/coil-run/reverse", new { errorTypeId = 3, note = "wrong coil" });
         reverse.EnsureSuccessStatusCode();
         var res = await reverse.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(3, res.GetProperty("reversedRunNum").GetInt32());
@@ -570,6 +572,34 @@ public sealed class LineBoardTests
         (await c.PostAsJsonAsync("/api/das/lines/110/current-coil", new { coilAbcNum = 5003 })).EnsureSuccessStatusCode();
         var produced = await c.PostAsJsonAsync("/api/das/lines/110/coil-run/reverse", new { });
         Assert.Equal(HttpStatusCode.Conflict, produced.StatusCode);
+    }
+
+    [Fact]
+    public async Task Starting_a_coil_run_sets_the_board_job_so_reverse_and_end_find_it()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        // An idle line whose board has NO job yet: create + start a shift (which sets no job), then
+        // open a coil run WITHOUT first pressing "Run this job". End/reverse derive the job from the
+        // board, so start must set it — else this reproduces the live 409/500 (board job null).
+        var made = await c.PostAsJsonAsync("/api/shifts", new { lineNum = 120, scheduleType = 2, startTime = DateTime.Now });
+        made.EnsureSuccessStatusCode();
+        var shiftNum = (await made.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("shiftNum").GetInt64();
+        (await c.PostAsJsonAsync("/api/das/lines/120/shift/start", new { shiftNum })).EnsureSuccessStatusCode();
+
+        var start = await c.PostAsJsonAsync("/api/das/lines/120/coil-run/start", new { coilAbcNum = 5003, abJobNum = 1003 });
+        start.EnsureSuccessStatusCode();
+        // The board now reflects the run's job (not just its coil).
+        var board = await c.GetFromJsonAsync<JsonElement>("/api/das/line-board/120");
+        Assert.Equal(1003, board.GetProperty("abJobNum").GetInt64());
+        Assert.Equal(5003, board.GetProperty("coilAbcNum").GetInt64());
+
+        // Reverse can now find the run purely from the board — no prior current-job call needed.
+        var reverse = await c.PostAsJsonAsync("/api/das/lines/120/coil-run/reverse", new { note = "wrong coil" });
+        reverse.EnsureSuccessStatusCode();
+        var runs = await c.GetFromJsonAsync<JsonElement>($"/api/das/shifts/{shiftNum}/coil-runs");
+        Assert.Empty(runs.EnumerateArray());
     }
 
     [Fact]

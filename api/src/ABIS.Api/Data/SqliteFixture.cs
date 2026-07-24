@@ -1309,8 +1309,14 @@ public static class SqliteFixture
                 // A prior process pass of coil 5003 (a smaller quantity, on the Done job 1003) so the
                 // invoice billed-weight rule's "max prior-process qty" term (< this job's 60) resolves
                 // to 40 — exercises the correlated subquery in GetInvoiceCoilsAsync.
-                new { AbJobNum = 1003L, CoilAbcNum = 5003L, ProcessCoilStatus = (int?)1, ProcessDate = (DateTime?)d.AddHours(2), ProcessEndWt = 0m, ProcessQuantity = 40m }
+                new { AbJobNum = 1003L, CoilAbcNum = 5003L, ProcessCoilStatus = (int?)1, ProcessDate = (DateTime?)d.AddHours(2), ProcessEndWt = 0m, ProcessQuantity = 40m },
+                // Coil 5003 is ALSO assigned to job 1001 (the "spare" the coil-run tests load). A
+                // zero-weight, already-spent pass: shift_coil FKs (coil, job) to process_coil, so the
+                // pair must exist for a run to open (Oracle ORA-02291) — while current_wt=0 keeps it out
+                // of job 1001's unspent count, so the job-done cascade is unaffected.
+                new { AbJobNum = 1001L, CoilAbcNum = 5003L, ProcessCoilStatus = (int?)2, ProcessDate = (DateTime?)d.AddHours(4), ProcessEndWt = 0m, ProcessQuantity = 0m }
             });
+        conn.Execute("UPDATE process_coil SET current_wt = 0 WHERE ab_job_num = 1001 AND coil_abc_num = 5003");
 
         conn.Execute("""
             INSERT INTO pst_test_result (coil_abc_num, source_id, created_date, test_type, position, yts_val, uts_val, elong_val, n_val, r_val, thickness, width)

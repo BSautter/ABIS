@@ -158,7 +158,7 @@ public sealed class RepositoryTests : IDisposable
     public async Task GetJobCoils_joins_coil_attributes()
     {
         var coils = await _repo.GetJobCoilsAsync(1001, CancellationToken.None);
-        Assert.Equal(2, coils.Count);
+        Assert.Equal(3, coils.Count);   // 5001 + 5002 + 5003 (the spare loaded by the coil-run tests)
         var first = coils.First();
         Assert.Equal(5001, first.CoilAbcNum);
         Assert.Equal("3003", first.CoilAlloy2);   // came from the LEFT JOIN to coil

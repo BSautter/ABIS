@@ -1468,6 +1468,11 @@ public static class ApiEndpoints
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["abJobNum"] = ["abJobNum is required (the line has no current job)."] });
                 if (await repo.GetJobAsync(abJobNum, ct) is null)
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["abJobNum"] = [$"Job {abJobNum} does not exist."] });
+                // shift_coil FKs (coil, job) to process_coil — the coil must be assigned to the job, or
+                // the run INSERT throws ORA-02291. Guard it here for a clean 409 instead of a 500.
+                if (!await repo.CoilIsOnJobAsync(coil, abJobNum, ct))
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Coil not on that job",
+                        detail: $"Coil {coil} is not assigned to job {abJobNum} (no process_coil row) — assign it to the job first.");
                 return await repo.StartCoilRunAsync(lineNum, coil, abJobNum, body.BeginWeight, body.BeginStatus, ct) is { } result
                     ? Results.Ok(result)
                     : Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "No open shift",
@@ -1515,6 +1520,11 @@ public static class ApiEndpoints
                 if (board?.AbJobNum == newJob)
                     return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Already running that job",
                         detail: $"Line {lineNum} is already running job {newJob}.");
+                // The coil keeps running on the new job — which means it must be assigned to it, or the
+                // new run's shift_coil INSERT throws ORA-02291 (FK to process_coil). Clean 409 instead.
+                if (board?.CoilAbcNum is { } onCoil && !await repo.CoilIsOnJobAsync(onCoil, newJob, ct))
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Coil not on that job",
+                        detail: $"Coil {onCoil} is not assigned to job {newJob} (no process_coil row) — assign it to the job before changing to it.");
                 return await repo.ChangeLineJobMidCoilAsync(lineNum, newJob, remaining, body.EndStatus, ct) is { } result
                     ? Results.Ok(result)
                     : Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Nothing to change",
