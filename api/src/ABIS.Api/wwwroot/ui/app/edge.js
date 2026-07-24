@@ -133,3 +133,31 @@ export async function fetchCounters(bases) {
     }
     return { reachable: false, via: '', good: NO_COUNTER, reject: NO_COUNTER, stroke: NO_COUNTER, feed: NO_COUNTER };
 }
+const NO_STATION = { configured: false, count: null, complete: null };
+/**
+ * Read a line's two stacker stations (live piece count + stack-complete) and the stacker scale, in
+ * one call across the edge hosts (primary→fallback). The DAS console pairs each station's live count
+ * with the skid AT that head from the line board. null values mean "unknown" — never fabricated.
+ */
+export async function fetchStacker(bases) {
+    const station = (s) => ({
+        configured: !!(s?.count?.configured || s?.done?.configured),
+        count: s?.count?.count ?? null,
+        complete: s?.done?.complete ?? null,
+    });
+    for (let i = 0; i < bases.length; i++) {
+        try {
+            const r = await fetchWithTimeout(`${bases[i]}/stacker`, 2000);
+            if (!r.ok)
+                continue;
+            const s = await r.json();
+            return {
+                reachable: true, via: i > 0 ? ' (fallback)' : '',
+                station1: station(s.station1), station2: station(s.station2),
+                scaleWeight: s.scale?.weight?.count ?? null, scaleSkidId: s.scale?.skidId?.count ?? null,
+            };
+        }
+        catch { /* unreachable/timeout → try the next host */ }
+    }
+    return { reachable: false, via: '', station1: NO_STATION, station2: NO_STATION, scaleWeight: null, scaleSkidId: null };
+}

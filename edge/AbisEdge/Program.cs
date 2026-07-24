@@ -80,6 +80,17 @@ var countersCfg = new CountersConfig(
 foreach (var t in countersCfg.Tags)
     if (!opcTags.Contains(t)) opcTags = opcTags.Append(t).ToArray();
 
+// Dual-station stacker: the two heads' live piece counters + stack-complete bits + the stacker scale.
+var stackerCfg = new StackerConfig(
+    opcCfg.GetValue<string?>("StackerStation1CountTag", null),
+    opcCfg.GetValue<string?>("StackerStation2CountTag", null),
+    opcCfg.GetValue<string?>("StackerStation1DoneTag", null),
+    opcCfg.GetValue<string?>("StackerStation2DoneTag", null),
+    opcCfg.GetValue<string?>("StackerScaleWeightTag", null),
+    opcCfg.GetValue<string?>("StackerScaleSkidIdTag", null));
+foreach (var t in stackerCfg.Tags)
+    if (!opcTags.Contains(t)) opcTags = opcTags.Append(t).ToArray();
+
 builder.Services.AddSingleton<ITagSource>(sp => opcProvider.ToLowerInvariant() switch
 {
     "opcua" => new OpcUaTagSource(
@@ -105,6 +116,7 @@ builder.Services.AddSingleton(new TagSet(opcTags));
 builder.Services.AddSingleton(new RunStateConfig(runStateTag, runningValues, runStateMode, runStateThreshold));
 builder.Services.AddSingleton(new PieceCountConfig(pieceCountTag));
 builder.Services.AddSingleton(countersCfg);
+builder.Services.AddSingleton(stackerCfg);
 builder.Services.AddSingleton<LatestTags>();
 builder.Services.AddHostedService<TagPump>();
 
@@ -209,6 +221,40 @@ app.MapGet("/counters", (LatestTags tags, CountersConfig cfg, string? good, stri
         reject = One(reject, cfg.RejectTag, true),
         stroke = One(stroke, cfg.StrokeTag, true),
         feed = One(feed, cfg.FeedTag, false),
+    });
+});
+
+// A line's two stacker stations in one read: each head's live piece counter + its stack-complete
+// bit, plus the stacker scale (weight + skid id). The DAS console pairs the live count with the skid
+// AT each head (LINE_CURRENT_STATUS.SHEET_SKID_STACKER_1/2, resolved by the API's line board). The
+// edge stays stateless — raw current values only. ?s1count=/?s2count=/?s1done=/?s2done=/?scalewt=/
+// ?scaleid= override the configured tags per line, mirroring /counters.
+app.MapGet("/stacker", (LatestTags tags, StackerConfig cfg,
+    string? s1count, string? s2count, string? s1done, string? s2done, string? scalewt, string? scaleid) =>
+{
+    object Count(string? o, string? c)
+    {
+        var t = string.IsNullOrWhiteSpace(o) ? c : o;
+        if (string.IsNullOrWhiteSpace(t)) return new { configured = false, tag = (string?)null, count = (long?)null, quality = (string?)null, at = (DateTimeOffset?)null };
+        var r = tags.Get(t);
+        return new { configured = true, tag = t, count = PieceCount.Parse(r?.Value, r?.Quality), quality = r?.Quality, at = r?.At };
+    }
+    object Done(string? o, string? c)
+    {
+        var t = string.IsNullOrWhiteSpace(o) ? c : o;
+        if (string.IsNullOrWhiteSpace(t)) return new { configured = false, tag = (string?)null, complete = (bool?)null, quality = (string?)null, at = (DateTimeOffset?)null };
+        var r = tags.Get(t);
+        return new { configured = true, tag = t, complete = StackDone.Parse(r?.Value, r?.Quality), quality = r?.Quality, at = r?.At };
+    }
+    return Results.Ok(new
+    {
+        station1 = new { count = Count(s1count, cfg.Station1CountTag), done = Done(s1done, cfg.Station1DoneTag) },
+        station2 = new { count = Count(s2count, cfg.Station2CountTag), done = Done(s2done, cfg.Station2DoneTag) },
+        scale = new
+        {
+            weight = Count(scalewt, cfg.ScaleWeightTag),   // reuse whole-number parse; skid weight is a count-scale integer
+            skidId = Count(scaleid, cfg.ScaleSkidIdTag),
+        },
     });
 });
 

@@ -161,7 +161,16 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   earlier comment in #283 called status 2 "ran"; corrected). Console: a Line-queue table with
   move-up / remove / queue-a-job.
 - [ ] **H** Line auto-status controls + `noauto` write (lockout); fault/health lamps (DB / OPC `_ErrorCode` / PLC `activefault`)
-- [ ] **H** Stacker dual-station automation (`SHEET_SKID_STACKER_1/2`)
+- [~] **H** Stacker dual-station automation (`SHEET_SKID_STACKER_1/2`) — **live dual-station view done**
+  (#294): edge `GET /stacker` exposes each head's live piece counter + stack-complete bit + the stacker
+  scale (legacy `stacker<n>.station1/2_stack_counter` / `Sta1/2StackComplete` / `ScaleSkidWt/Id`), and the
+  DAS console gained a **"Stacker stations"** panel showing both heads side by side — each with the skid
+  AT it (from the line board's `SHEET_SKID_STACKER_1/2` slots, already resolved) + its live count + a
+  stack-complete badge. Same edge primary→fallback pattern; validated end-to-end vs a mock edge (station 1
+  showed the seeded stacker skid + live count). Config in `edge/appsettings.Plant.example.json`; **needs
+  the edge on .170/.175 REDEPLOYED** (the `/stacker` endpoint postdates the last edge build → 404). Still
+  TODO here: the **stack-complete → auto-save skid** write (legacy `ue_sta1/2_complete` finalizes the skid
+  at the head + clears the `SHEET_SKID_STACKER` slot) — the automation's write half.
 - [ ] **M** Stacker physical board (11 shape displays + ~16 conveyor cells + live stack tracking)
 - [ ] **M** Supervisor/role PIN gating (exit / override / drop-coil / maintenance)
 - [ ] **M** Serial scale zero command + scrap-scale/gauge separation

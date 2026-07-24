@@ -87,6 +87,13 @@ COM port. The web screens (or the API) consume readings over HTTP on the LAN.
     `FeedLengthTag` settings; the query params override per line (the console's tag picker). The DAS
     console baselines these at coil-run start and shows the delta as **this coil run's production**
     (legacy `goodpartcnt` / `rejectpartcnt` / `strokecnt` / `feedlength`).
+  - `GET /stacker[?s1count=&s2count=&s1done=&s2done=&scalewt=&scaleid=]` → a line's two stacker
+    stations in one read: `{ station1, station2, scale }`, each station `{ count{…}, done{…} }` where
+    `count.count` is the head's running piece count and `done.complete` its stack-complete bit (null =
+    unknown). The DAS console pairs the live count with the skid **at** each head
+    (`LINE_CURRENT_STATUS.SHEET_SKID_STACKER_1/2`, resolved by the API line board). Defaults from the
+    `Stacker*` settings; per-line via the query params (legacy `stacker<n>.station1/2_stack_counter` /
+    `Sta1/2StackComplete` / `ScaleSkidWt` / `ScaleSkidId`).
   - `GET /opc/browse?node=<id>` → browse the OPC address space one level for tag discovery
     (UA + Classic-DA + the mock's canned tree); `501` if the provider can't browse, `502`
     with the error if a live browse fails
@@ -110,6 +117,7 @@ COM port. The web screens (or the API) consume readings over HTTP on the LAN.
 | `Edge:Opc:RunStateTag` | a node/item id | the DEFAULT run-state tag when `/run-state` is called without `?tag=`. For multiple lines, pass `?tag=<item>` per line instead. |
 | `Edge:Opc:PieceCountTag` | a node/item id | the DEFAULT stacker piece-counter tag when `/piece-count` is called without `?tag=`. The stacker's running/cumulative count; the DAS console derives pieces-per-skid from it. For multiple lines, pass `?tag=<item>` per line instead. |
 | `Edge:Opc:GoodCountTag` / `RejectCountTag` / `StrokeCountTag` / `FeedLengthTag` | node/item ids | the DEFAULT counter tags for `/counters` (legacy `goodpartcnt`/`rejectpartcnt`/`strokecnt`/`feedlength`). Each optional — an unset one reports `configured:false`. Auto-added to the polled set. Per line, pass `?good=`/`?reject=`/`?stroke=`/`?feed=` instead. |
+| `Edge:Opc:StackerStation1CountTag` / `Station2CountTag` / `Station1DoneTag` / `Station2DoneTag` / `StackerScaleWeightTag` / `StackerScaleSkidIdTag` | node/item ids | the DEFAULT stacker tags for `/stacker` (legacy `stacker<n>.station1/2_stack_counter` / `Sta1/2StackComplete` / `ScaleSkidWt` / `ScaleSkidId`). Each optional. Auto-added to the polled set. Per line, pass `?s1count=`/`?s2count=`/`?s1done=`/`?s2done=`/`?scalewt=`/`?scaleid=` instead. |
 | `Edge:Opc:RunStateMode` | `Equals` (default) / `NotEquals` / `GreaterThan` / **`Changed`** | how to judge it: a running boolean/word (`Equals`), an inverted idle bit (`NotEquals`), a numeric like strokes/min (`GreaterThan`), or a **cumulative counter that stops climbing** (`Changed` — e.g. a stroke count; **this is the plant's signal**). |
 | `Edge:Opc:RunStateThreshold` | number, default `0` | `GreaterThan` cut-off (e.g. `spm > 0`); or, for `Changed`, the **no-change window in seconds** (default 10) before declaring stopped. |
 | `Edge:Opc:RunningValues` | array, default `RUNNING,RUN,ON,START,STARTED,1,TRUE` | Equals/NotEquals value set (case-insensitive). For `NotEquals` list the *stopped/idle* values (e.g. `1,TRUE` for an idle bit) |

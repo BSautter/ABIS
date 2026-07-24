@@ -414,6 +414,16 @@ tr.run-open td { background:color-mix(in srgb, var(--accent) 10%, transparent); 
 .dop-counter .cn span { font-size:14px; color:var(--ink-3); margin-left:4px; font-weight:500; }
 .dop-counter .cl { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); margin-top:6px; }
 .dop-counter.bad .cn { color:var(--crit); }
+/* Dual-station stacker: the two heads side by side, each with its live count + the skid on it. */
+.dop-stations { display:flex; gap:14px; flex-wrap:wrap; }
+.dop-station { flex:1 1 200px; min-width:200px; background:var(--surface-2); border:1px solid var(--line); border-radius:12px; padding:16px; }
+.dop-station.done { border-color:color-mix(in srgb, var(--ok) 55%, transparent); background:color-mix(in srgb, var(--ok) 8%, var(--surface-2)); }
+.dop-station .sh { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); display:flex; align-items:center; gap:8px; }
+.dop-station .sh .done-badge { font-size:10px; letter-spacing:.04em; color:var(--ok); border:1px solid color-mix(in srgb, var(--ok) 45%, transparent); border-radius:999px; padding:1px 8px; }
+.dop-station .sc { font-family:var(--font-mono); font-size:34px; font-weight:700; line-height:1; margin:8px 0 6px; }
+.dop-station .sc span { font-size:14px; color:var(--ink-3); margin-left:5px; font-weight:500; }
+.dop-station .ss { font-size:12.5px; color:var(--ink-2); }
+.dop-station .ss.dim { color:var(--ink-3); }
 .dop-tabs { display:flex; gap:8px; flex-wrap:wrap; }
 .dop-tabs button { flex:1 1 130px; min-height:52px; border-radius:12px; background:var(--surface); border:1px solid var(--line); color:var(--ink); font-size:15px; font-weight:600; }
 .dop-tabs button.active { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }

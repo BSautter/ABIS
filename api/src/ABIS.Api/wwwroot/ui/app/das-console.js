@@ -14,7 +14,7 @@
 import { AbisClient, SheetSkidWrite, ScrapSkidWrite, DowntimeInstanceWrite } from './generated/abis-client.js';
 import { initAuth, authFetch } from './auth.js';
 import { statusChip, lineLabel, loadLineNames } from './status-labels.js';
-import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount, fetchCounters, browseEdgeTags } from './edge.js';
+import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount, fetchCounters, fetchStacker, browseEdgeTags } from './edge.js';
 const $ = (sel) => document.querySelector(sel);
 const client = () => new AbisClient('', { fetch: authFetch });
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -47,6 +47,9 @@ let pieceCurrent = null; // latest stacker counter read
 let pieceBaseline = null; // counter at the start of the skid in progress (null = not seeded)
 let counterCurrent = null;
 let counterBaseline = null;
+// Dual-station stacker (edge /stacker). Each head's LIVE piece count + stack-complete, paired in the
+// panel with the skid AT that head (from the line board's STACKER_1/STACKER_2 slots).
+let stackerLive = null;
 // The status a coil ends its run in (shift_coil.coil_end_status, on the COIL_STATUS domain). These
 // are the codes the plant actually uses, by frequency over ~108k real runs on the production ledger:
 // Done 83k, InProcess 8.6k, Rebanded 7.9k, New 6.4k, Rejected 1.6k, OnHold 54 — the rest are noise.
@@ -93,6 +96,10 @@ function scaffold() {
 
         <div class="card" id="counterCard" hidden><header><h2>Coil run counters</h2><span class="sub">live from the line PLC · since this coil loaded</span></header>
           <div class="body"><div class="dop-counters" id="tCounters"></div></div>
+        </div>
+
+        <div class="card" id="stackerCard" hidden><header><h2>Stacker stations</h2><span class="sub" id="stackerSub">both heads · live from the stacker PLC</span></header>
+          <div class="body"><div class="dop-stations" id="tStations"></div></div>
         </div>
 
         <div class="card" id="opPanel"><header><h2>Operation panel</h2><span class="sub" id="opSub">what the line is running</span></header>
@@ -278,6 +285,7 @@ async function loadOpBoard() {
     }
     await loadLive();
     renderOpState();
+    renderStacker(); // the skid-at-head comes from the board; refresh the stations when it changes
     await Promise.all([loadCoilRuns(), loadQueue()]);
 }
 // The line's job queue (line_priority). Status legend from the legacy schedule window:
@@ -670,7 +678,7 @@ function startRunStatePoll() {
     }
     // The same 3s tick drives run-state (auto-downtime), the stacker piece count, and the coil-run
     // production counters (good/reject/strokes/feed).
-    const tick = () => { void pollRunState(bases, runTag); void pollPieceCount(bases, pieceTag); void pollCounters(bases); };
+    const tick = () => { void pollRunState(bases, runTag); void pollPieceCount(bases, pieceTag); void pollCounters(bases); void pollStacker(bases); };
     runPollTimer = window.setInterval(tick, 3000);
     tick();
 }
@@ -784,6 +792,46 @@ async function pollCounters(bases) {
         }
     }
     renderCounters();
+}
+// ---- Dual-station stacker (edge /stacker → both heads' live count + complete, paired with the
+// skid at each head from the line board) ----
+// The skid at a stacker head (line board slot STACKER_1 / STACKER_2), or undefined when the head is empty.
+function stackerSkid(station) {
+    return opBoard?.skids?.find((s) => s.slot === `STACKER_${station}`);
+}
+function renderStacker() {
+    const card = $('#stackerCard');
+    const live = stackerLive;
+    // Show the panel once a station is actually configured on the edge OR a skid is parked on a head.
+    const anyConfigured = !!(live?.station1.configured || live?.station2.configured);
+    const anySkid = !!(stackerSkid(1) || stackerSkid(2));
+    if (!anyConfigured && !anySkid) {
+        card.hidden = true;
+        return;
+    }
+    card.hidden = false;
+    const cell = (station) => {
+        const skid = stackerSkid(station);
+        const st = station === 1 ? live?.station1 : live?.station2;
+        const count = st?.count;
+        const done = st?.complete === true;
+        const sub = skid
+            ? `Skid ${esc(skid.sheetSkidDisplayNum ?? skid.sheetSkidNum)}${skid.abJobNum != null ? ' · job ' + esc(skid.abJobNum) : ''}`
+            : 'no skid on this head';
+        return `<div class="dop-station${done ? ' done' : ''}">
+      <div class="sh">Station ${station}${done ? '<span class="done-badge">stack complete</span>' : ''}</div>
+      <div class="sc">${count == null ? '—' : count.toLocaleString()}<span>pcs</span></div>
+      <div class="ss${skid ? '' : ' dim'}">${sub}</div>
+    </div>`;
+    };
+    $('#tStations').innerHTML = cell(1) + cell(2);
+    const scale = live && live.scaleWeight != null ? ` · scale ${live.scaleWeight.toLocaleString()} lb${live.scaleSkidId != null ? ' (skid ' + live.scaleSkidId + ')' : ''}` : '';
+    $('#stackerSub').textContent = `both heads · live from the stacker PLC${live?.via ?? ''}${scale}`;
+}
+async function pollStacker(bases) {
+    const s = await fetchStacker(bases);
+    stackerLive = s.reachable ? s : null;
+    renderStacker();
 }
 // Fill the Pieces field from the stacker's live count for the skid in progress.
 function pullPieces() {

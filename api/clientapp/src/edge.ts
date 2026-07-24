@@ -157,3 +157,50 @@ export async function fetchCounters(bases: string[]): Promise<CountersResult> {
   }
   return { reachable: false, via: '', good: NO_COUNTER, reject: NO_COUNTER, stroke: NO_COUNTER, feed: NO_COUNTER };
 }
+
+/** One stacker station's live state: the running piece count on the head, and whether the PLC says
+ * the stack is complete. `count`/`complete` null = unknown (unconfigured or a bad read). */
+export interface StackerStation { configured: boolean; count: number | null; complete: boolean | null; }
+
+export interface StackerResult {
+  reachable: boolean;
+  via: string;
+  station1: StackerStation;
+  station2: StackerStation;
+  scaleWeight: number | null;   // the stacker scale's last skid weight
+  scaleSkidId: number | null;
+}
+
+const NO_STATION: StackerStation = { configured: false, count: null, complete: null };
+
+type StackerTag = { configured?: boolean; count?: number | null; complete?: boolean | null } | undefined;
+
+/**
+ * Read a line's two stacker stations (live piece count + stack-complete) and the stacker scale, in
+ * one call across the edge hosts (primary→fallback). The DAS console pairs each station's live count
+ * with the skid AT that head from the line board. null values mean "unknown" — never fabricated.
+ */
+export async function fetchStacker(bases: string[]): Promise<StackerResult> {
+  const station = (s?: { count?: StackerTag; done?: StackerTag }): StackerStation => ({
+    configured: !!(s?.count?.configured || s?.done?.configured),
+    count: s?.count?.count ?? null,
+    complete: s?.done?.complete ?? null,
+  });
+  for (let i = 0; i < bases.length; i++) {
+    try {
+      const r = await fetchWithTimeout(`${bases[i]}/stacker`, 2000);
+      if (!r.ok) continue;
+      const s = await r.json() as {
+        station1?: { count?: StackerTag; done?: StackerTag };
+        station2?: { count?: StackerTag; done?: StackerTag };
+        scale?: { weight?: StackerTag; skidId?: StackerTag };
+      };
+      return {
+        reachable: true, via: i > 0 ? ' (fallback)' : '',
+        station1: station(s.station1), station2: station(s.station2),
+        scaleWeight: s.scale?.weight?.count ?? null, scaleSkidId: s.scale?.skidId?.count ?? null,
+      };
+    } catch { /* unreachable/timeout → try the next host */ }
+  }
+  return { reachable: false, via: '', station1: NO_STATION, station2: NO_STATION, scaleWeight: null, scaleSkidId: null };
+}
