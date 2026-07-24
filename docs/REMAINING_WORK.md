@@ -95,7 +95,15 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   first). Each mirrors the legacy `w_da_sheet` UPDATE. The DAS console gained an **Operation panel** card
   (live shift/job/coil + the actions). New/end **coil run** landed in #284 (above); still TODO here: the
   end-coil recap screen.
-- [ ] **C** Live PLC counters (good/reject/stroke/feed-length) posted as coil deltas
+- [~] **C** Live PLC counters (good/reject/stroke/feed-length) posted as coil deltas — **live-display half done**
+  (#291): edge `GET /counters` exposes the four running PLC counters (legacy `goodpartcnt`/`rejectpartcnt`/
+  `strokecnt`/`feedlength`); the DAS console baselines them when a coil run opens and shows the delta as this
+  coil run's production, on the same edge primary→fallback path + baseline pattern as the stacker piece count.
+  Whole counts round; feed-length keeps decimals. Validated end-to-end against a local mock edge (deltas climb
+  live). **Config: `Edge:Opc:GoodCountTag`/`RejectCountTag`/`StrokeCountTag`/`FeedLengthTag` (or per-line `?good=`
+  etc.); needs the real INGEAR item ids wired + the edge on .170/.175 REDEPLOYED (current live build predates
+  `/counters` → 404).** PERSISTENCE deferred: the good/reject piece totals already persist via the skid save
+  (production_sheet_item); strokes/feed stay a live readout, faithful to legacy (they were display-only there).
 - [ ] **C** Coil barcode scan-to-load + actual-weight (`ABCO_COIL_NET_WT`) update
 - [x] **H** Live shift efficiency % + coil yield % / finish-% (console, 5s cadence) — done (#287):
   `GET /das/lines/{n}/live`. **Both formulas were recovered from the legacy client, not invented**

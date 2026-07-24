@@ -407,6 +407,13 @@ tr.run-open td { background:color-mix(in srgb, var(--accent) 10%, transparent); 
 .dop-coil.sel { border-color:var(--accent); background:var(--accent-soft); box-shadow:0 0 0 1px var(--accent) inset; }
 .dop-coil .n { font-family:var(--font-mono); font-size:19px; font-weight:650; }
 .dop-coil .m { font-size:12px; color:var(--ink-2); margin-top:2px; }
+/* Live coil-run counters (good/reject/strokes/feed) from the line PLC, big + glanceable. */
+.dop-counters { display:flex; gap:12px; flex-wrap:wrap; }
+.dop-counter { flex:1 1 110px; min-width:110px; text-align:center; background:var(--surface-2); border:1px solid var(--line); border-radius:12px; padding:14px 10px; }
+.dop-counter .cn { font-family:var(--font-mono); font-size:30px; font-weight:700; line-height:1; }
+.dop-counter .cn span { font-size:14px; color:var(--ink-3); margin-left:4px; font-weight:500; }
+.dop-counter .cl { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); margin-top:6px; }
+.dop-counter.bad .cn { color:var(--crit); }
 .dop-tabs { display:flex; gap:8px; flex-wrap:wrap; }
 .dop-tabs button { flex:1 1 130px; min-height:52px; border-radius:12px; background:var(--surface); border:1px solid var(--line); color:var(--ink); font-size:15px; font-weight:600; }
 .dop-tabs button.active { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }

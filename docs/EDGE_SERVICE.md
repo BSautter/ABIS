@@ -80,6 +80,13 @@ COM port. The web screens (or the API) consume readings over HTTP on the LAN.
     `null` (not configured, no value yet, or a bad/non-numeric read). Pass `?tag=` for a
     specific line's stacker; omit for the default `PieceCountTag`. The DAS console polls this
     to show the live count and auto-fill pieces-per-skid (it computes the per-skid delta).
+  - `GET /counters[?good=&reject=&stroke=&feed=]` → the line's four running production counters in
+    one read: `{ good, reject, stroke, feed }`, each `{ configured, tag, value, quality, at }`. The
+    whole counts (good/reject/strokes) round; **feed-length keeps its decimals** (inches). `value` is
+    `null` when unconfigured or on a bad/non-numeric read. Defaults come from the `*CountTag` /
+    `FeedLengthTag` settings; the query params override per line (the console's tag picker). The DAS
+    console baselines these at coil-run start and shows the delta as **this coil run's production**
+    (legacy `goodpartcnt` / `rejectpartcnt` / `strokecnt` / `feedlength`).
   - `GET /opc/browse?node=<id>` → browse the OPC address space one level for tag discovery
     (UA + Classic-DA + the mock's canned tree); `501` if the provider can't browse, `502`
     with the error if a live browse fails
@@ -102,6 +109,7 @@ COM port. The web screens (or the API) consume readings over HTTP on the LAN.
 | `Edge:Opc:UpdateRateMs` | default `500` | `ClassicDa` group update rate (unused for the synchronous device read; retained for compat) |
 | `Edge:Opc:RunStateTag` | a node/item id | the DEFAULT run-state tag when `/run-state` is called without `?tag=`. For multiple lines, pass `?tag=<item>` per line instead. |
 | `Edge:Opc:PieceCountTag` | a node/item id | the DEFAULT stacker piece-counter tag when `/piece-count` is called without `?tag=`. The stacker's running/cumulative count; the DAS console derives pieces-per-skid from it. For multiple lines, pass `?tag=<item>` per line instead. |
+| `Edge:Opc:GoodCountTag` / `RejectCountTag` / `StrokeCountTag` / `FeedLengthTag` | node/item ids | the DEFAULT counter tags for `/counters` (legacy `goodpartcnt`/`rejectpartcnt`/`strokecnt`/`feedlength`). Each optional — an unset one reports `configured:false`. Auto-added to the polled set. Per line, pass `?good=`/`?reject=`/`?stroke=`/`?feed=` instead. |
 | `Edge:Opc:RunStateMode` | `Equals` (default) / `NotEquals` / `GreaterThan` / **`Changed`** | how to judge it: a running boolean/word (`Equals`), an inverted idle bit (`NotEquals`), a numeric like strokes/min (`GreaterThan`), or a **cumulative counter that stops climbing** (`Changed` — e.g. a stroke count; **this is the plant's signal**). |
 | `Edge:Opc:RunStateThreshold` | number, default `0` | `GreaterThan` cut-off (e.g. `spm > 0`); or, for `Changed`, the **no-change window in seconds** (default 10) before declaring stopped. |
 | `Edge:Opc:RunningValues` | array, default `RUNNING,RUN,ON,START,STARTED,1,TRUE` | Equals/NotEquals value set (case-insensitive). For `NotEquals` list the *stopped/idle* values (e.g. `1,TRUE` for an idle bit) |

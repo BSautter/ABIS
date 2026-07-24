@@ -70,6 +70,16 @@ var pieceCountTag = opcCfg.GetValue<string?>("PieceCountTag", null);
 if (!string.IsNullOrWhiteSpace(pieceCountTag) && !opcTags.Contains(pieceCountTag))
     opcTags = opcTags.Append(pieceCountTag).ToArray();
 
+// Line production counters: good/reject pieces, press strokes, feed-length — the running PLC
+// counters the DAS console baselines per coil run to show this run's production. Poll any set.
+var countersCfg = new CountersConfig(
+    opcCfg.GetValue<string?>("GoodCountTag", null),
+    opcCfg.GetValue<string?>("RejectCountTag", null),
+    opcCfg.GetValue<string?>("StrokeCountTag", null),
+    opcCfg.GetValue<string?>("FeedLengthTag", null));
+foreach (var t in countersCfg.Tags)
+    if (!opcTags.Contains(t)) opcTags = opcTags.Append(t).ToArray();
+
 builder.Services.AddSingleton<ITagSource>(sp => opcProvider.ToLowerInvariant() switch
 {
     "opcua" => new OpcUaTagSource(
@@ -94,6 +104,7 @@ builder.Services.AddSingleton<ITagSource>(sp => opcProvider.ToLowerInvariant() s
 builder.Services.AddSingleton(new TagSet(opcTags));
 builder.Services.AddSingleton(new RunStateConfig(runStateTag, runningValues, runStateMode, runStateThreshold));
 builder.Services.AddSingleton(new PieceCountConfig(pieceCountTag));
+builder.Services.AddSingleton(countersCfg);
 builder.Services.AddSingleton<LatestTags>();
 builder.Services.AddHostedService<TagPump>();
 
@@ -169,6 +180,35 @@ app.MapGet("/piece-count", (LatestTags tags, PieceCountConfig cfg, string? tag) 
         quality = r?.Quality,
         count = PieceCount.Parse(r?.Value, r?.Quality),
         at = r?.At,
+    });
+});
+
+// The line's four running production counters in one read: good/reject pieces, press strokes, and
+// feed-length — the raw cumulative PLC values (legacy goodpartcnt/rejectpartcnt/strokecnt/feedlength).
+// The DAS console baselines these when a coil run opens and shows the delta as this run's production;
+// the edge stays stateless and just reports what the PLC currently holds. An unconfigured counter
+// reports value null (the console then hides that tile). ?good=/?reject=/?stroke=/?feed= override the
+// configured tag ids (for the console's tag picker), mirroring /run-state and /piece-count.
+app.MapGet("/counters", (LatestTags tags, CountersConfig cfg, string? good, string? reject, string? stroke, string? feed) =>
+{
+    object One(string? tagOverride, string? cfgTag, bool whole)
+    {
+        var t = string.IsNullOrWhiteSpace(tagOverride) ? cfgTag : tagOverride;
+        if (string.IsNullOrWhiteSpace(t))
+            return new { configured = false, tag = (string?)null, value = (double?)null, quality = (string?)null, at = (DateTimeOffset?)null };
+        var r = tags.Get(t);
+        // Whole counters (pieces/strokes) reuse the piece-count parse; feed-length keeps decimals.
+        double? val = whole
+            ? PieceCount.Parse(r?.Value, r?.Quality)
+            : FeedLength.Parse(r?.Value, r?.Quality);
+        return new { configured = true, tag = t, value = val, quality = r?.Quality, at = r?.At };
+    }
+    return Results.Ok(new
+    {
+        good = One(good, cfg.GoodTag, true),
+        reject = One(reject, cfg.RejectTag, true),
+        stroke = One(stroke, cfg.StrokeTag, true),
+        feed = One(feed, cfg.FeedTag, false),
     });
 });
 

@@ -112,3 +112,24 @@ export async function fetchPieceCount(bases, tag) {
     }
     return { reachable: false, via: '', configured: false, count: null };
 }
+const NO_COUNTER = { configured: false, value: null };
+/**
+ * Read the line's four running production counters (good/reject pieces, strokes, feed-length) in one
+ * call across the edge hosts (primary→fallback, same as run-state/piece-count). All are cumulative on
+ * the PLC; the DAS console captures a baseline at coil-run start and shows the delta as this run's
+ * production. A null value (unreachable or bad read) means "unknown" — never a fabricated count.
+ */
+export async function fetchCounters(bases) {
+    for (let i = 0; i < bases.length; i++) {
+        try {
+            const r = await fetchWithTimeout(`${bases[i]}/counters`, 2000);
+            if (!r.ok)
+                continue;
+            const s = await r.json();
+            const one = (c) => ({ configured: !!c?.configured, value: c?.value ?? null });
+            return { reachable: true, via: i > 0 ? ' (fallback)' : '', good: one(s.good), reject: one(s.reject), stroke: one(s.stroke), feed: one(s.feed) };
+        }
+        catch { /* unreachable/timeout → try the next host */ }
+    }
+    return { reachable: false, via: '', good: NO_COUNTER, reject: NO_COUNTER, stroke: NO_COUNTER, feed: NO_COUNTER };
+}

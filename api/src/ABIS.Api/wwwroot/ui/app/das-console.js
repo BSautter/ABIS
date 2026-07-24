@@ -14,7 +14,7 @@
 import { AbisClient, SheetSkidWrite, ScrapSkidWrite, DowntimeInstanceWrite } from './generated/abis-client.js';
 import { initAuth, authFetch } from './auth.js';
 import { statusChip, lineLabel, loadLineNames } from './status-labels.js';
-import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount, browseEdgeTags } from './edge.js';
+import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount, fetchCounters, browseEdgeTags } from './edge.js';
 const $ = (sel) => document.querySelector(sel);
 const client = () => new AbisClient('', { fetch: authFetch });
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -45,6 +45,8 @@ let dtTickTimer = null; // 1s banner-timer tick
 // last save. Baseline advances on every skid save; a reset/rollback (current < baseline) reads unknown.
 let pieceCurrent = null; // latest stacker counter read
 let pieceBaseline = null; // counter at the start of the skid in progress (null = not seeded)
+let counterCurrent = null;
+let counterBaseline = null;
 // The status a coil ends its run in (shift_coil.coil_end_status, on the COIL_STATUS domain). These
 // are the codes the plant actually uses, by frequency over ~108k real runs on the production ledger:
 // Done 83k, InProcess 8.6k, Rebanded 7.9k, New 6.4k, Rejected 1.6k, OnHold 54 — the rest are noise.
@@ -87,6 +89,10 @@ function scaffold() {
 
         <div class="card"><header><h2>Coil being run</h2><span class="sub" id="runCoilSub">tap a coil to select</span></header>
           <div class="body"><div class="dop-coils" id="tCoils"><span class="muted">Loading…</span></div></div>
+        </div>
+
+        <div class="card" id="counterCard" hidden><header><h2>Coil run counters</h2><span class="sub">live from the line PLC · since this coil loaded</span></header>
+          <div class="body"><div class="dop-counters" id="tCounters"></div></div>
         </div>
 
         <div class="card" id="opPanel"><header><h2>Operation panel</h2><span class="sub" id="opSub">what the line is running</span></header>
@@ -206,6 +212,8 @@ async function loadJob() {
         lineRunning = null;
         pieceCurrent = null;
         pieceBaseline = null; // fresh stacker baseline for the new job's first skid
+        counterCurrent = null;
+        resetCounterBaseline(); // counters re-baseline when a coil run opens
         startRunStatePoll(); // watch this job's line for PLC stops + read its stacker count
     }
     catch (e) {
@@ -660,8 +668,9 @@ function startRunStatePoll() {
         setPieceInd('—');
         return;
     }
-    // The same 3s tick drives run-state (auto-downtime) and the stacker piece count.
-    const tick = () => { void pollRunState(bases, runTag); void pollPieceCount(bases, pieceTag); };
+    // The same 3s tick drives run-state (auto-downtime), the stacker piece count, and the coil-run
+    // production counters (good/reject/strokes/feed).
+    const tick = () => { void pollRunState(bases, runTag); void pollPieceCount(bases, pieceTag); void pollCounters(bases); };
     runPollTimer = window.setInterval(tick, 3000);
     tick();
 }
@@ -722,6 +731,59 @@ async function pollPieceCount(bases, tag) {
         pieceBaseline = s.count; // first read of this skid = its zero point
     const n = pieceThisSkid();
     setPieceInd(n == null ? `—${s.via}` : `${n.toLocaleString()} pcs${s.via}`);
+}
+// ---- Coil-run production counters (edge /counters → good/reject/strokes/feed since coil load) ----
+const COUNTER_META = [
+    { key: 'good', label: 'Good', whole: true, unit: 'pcs' },
+    { key: 'reject', label: 'Reject', whole: true, unit: 'pcs' },
+    { key: 'stroke', label: 'Strokes', whole: true },
+    { key: 'feed', label: 'Feed', whole: false, unit: 'in' },
+];
+// This run's value for a counter = current − the baseline captured when the run opened. A rollback
+// (current < baseline, e.g. the PLC counter was reset) reads null so we never show a negative delta.
+function counterDelta(key) {
+    const cur = counterCurrent?.[key];
+    const base = counterBaseline?.[key];
+    if (cur == null || cur.value == null || base == null)
+        return null;
+    const d = cur.value - base;
+    return d >= 0 ? d : null;
+}
+// Reset the baseline so the counters read this coil run from zero — called when a run opens/changes.
+function resetCounterBaseline() { counterBaseline = null; }
+function renderCounters() {
+    const card = $('#counterCard');
+    // Only show the card once at least one counter is actually configured + reporting on the line.
+    const anyConfigured = counterCurrent != null && COUNTER_META.some((m) => counterCurrent[m.key].configured);
+    if (!anyConfigured) {
+        card.hidden = true;
+        return;
+    }
+    card.hidden = false;
+    $('#tCounters').innerHTML = COUNTER_META.filter((m) => counterCurrent[m.key].configured).map((m) => {
+        const d = counterDelta(m.key);
+        const shown = d == null ? '—' : (m.whole ? Math.round(d).toLocaleString() : d.toLocaleString(undefined, { maximumFractionDigits: 2 }));
+        return `<div class="dop-counter${m.key === 'reject' && d ? ' bad' : ''}"><div class="cn">${shown}${d != null && m.unit ? `<span>${m.unit}</span>` : ''}</div><div class="cl">${m.label}</div></div>`;
+    }).join('');
+}
+async function pollCounters(bases) {
+    const s = await fetchCounters(bases);
+    if (!s.reachable) {
+        counterCurrent = null;
+        renderCounters();
+        return;
+    }
+    counterCurrent = s;
+    // Seed the baseline on the first good read after a run opens: this coil run starts at zero.
+    if (counterBaseline == null) {
+        counterBaseline = {};
+        for (const m of COUNTER_META) {
+            const v = s[m.key].value;
+            if (v != null)
+                counterBaseline[m.key] = v;
+        }
+    }
+    renderCounters();
 }
 // Fill the Pieces field from the stacker's live count for the skid in progress.
 function pullPieces() {
@@ -1078,7 +1140,9 @@ async function pickerBrowse(bases, targetId, path) {
             setErr('Select the coil being run first.');
             return;
         }
-        // Loading opens the coil's run in the shift ledger AND puts it on the board.
+        // Loading opens the coil's run in the shift ledger AND puts it on the board. Re-baseline the PLC
+        // counters so they read this new coil run from zero.
+        resetCounterBaseline();
         void coilRunAction(`/api/das/lines/${lineNum}/coil-run/start`, { coilAbcNum: runCoil, abJobNum: job }, () => `Coil ${runCoil} loaded — run open`);
     });
     $('#btnQAdd').addEventListener('click', () => {
