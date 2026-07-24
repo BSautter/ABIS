@@ -6666,6 +6666,74 @@ public sealed class AbisRepository : IAbisRepository
         return new PmAction { PmActionId = id, PmId = pmId, ActionItems = body.ActionItems, ItemDetails = body.ItemDetails };
     }
 
+    /// <summary>Record a PM completion and advance its schedule.
+    /// <para>Legacy kept <c>nextduedate</c> hand-entered — there is no scheduling logic anywhere in
+    /// the live PL/SQL or the PowerBuilder scripts. Advancing it here is a deliberate ADDITION:
+    /// the next due date is computed from the PM's own interval (<c>daysbetween</c>, else
+    /// 365/<c>numoftimesperyear</c>) off the completion date, unless the caller supplies an explicit
+    /// date. A PM carrying no interval at all keeps its stored date — exactly the legacy behaviour.
+    /// The overdue counter resets, since the PM has just been done.</para></summary>
+    public async Task<PmCompleteResult?> CompletePmAsync(long pmId, PmCompleteWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var pm = await conn.QuerySingleOrDefaultAsync<PmDefinition>(new CommandDefinition(
+            $"SELECT {PmCols} FROM {PmFrom} WHERE p.pm_id = :id", new { id = pmId }, cancellationToken: ct));
+        if (pm is null) return null;
+
+        var completedDate = (body.CompletedDate ?? DateTime.Today).Date;
+        // Decide the new next-due date. Explicit wins; then the PM's own interval; else leave it.
+        var (nextDue, basis) =
+            body.NextDueDate is { } expl ? (expl.Date, "explicit")
+            : pm.DaysBetween is > 0 ? (completedDate.AddDays((double)pm.DaysBetween.Value), "daysBetween")
+            : pm.NumOfTimesPerYear is > 0 ? (completedDate.AddDays(Math.Round(365.0 / (double)pm.NumOfTimesPerYear.Value)), "timesPerYear")
+            : (pm.NextDueDate, "none");
+
+        // assignedtogroup / completedby / pm_status / completeddate are all NOT NULL on Oracle, and
+        // Oracle treats '' as NULL — so fall back to a genuinely non-empty group label.
+        var group = Coalesce(pm.AssignedToGroup, pm.GroupDepartmentName, "Unassigned");
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var completionId = await NextIdAsync(conn, tx, "pmcompletions", "pmcompletion_id", ct);
+        // Parameter order matches the placeholder order (Oracle binds positionally).
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO pmcompletions (pmcompletion_id, itemdevice_id, subsysequipment_id, sysequipment_id,
+                groupdepartment_id, pm_id, pm_status, completeddate, assignedtogroup, completedby,
+                completed_notes, recordeddate)
+            VALUES (:id, :item, :subsys, :sys, :dept, :pm, :status, :completed, :grp, :by, :notes, :recorded)
+            """,
+            new { id = completionId, item = pm.ItemDeviceId, subsys = pm.SubsysEquipmentId,
+                  sys = pm.SysEquipmentId, dept = pm.GroupDepartmentId, pm = pmId,
+                  status = pm.PmStatus ?? 1, completed = completedDate, grp = group,
+                  by = body.CompletedBy, notes = body.CompletedNotes, recorded = (DateTime?)DateTime.UtcNow },
+            transaction: tx, cancellationToken: ct));
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE pm SET pm_completed = :completed, completed_by = :by, nextduedate = :nextdue,
+                          numoverdue = 0, numoverdueresetdate = :reset, lastupdate = :now
+            WHERE pm_id = :id
+            """,
+            new { completed = completedDate, by = body.CompletedBy, nextdue = nextDue,
+                  reset = completedDate, now = (DateTime?)DateTime.UtcNow, id = pmId },
+            transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+
+        return new PmCompleteResult
+        {
+            PmCompletionId = completionId,
+            PmId = pmId,
+            CompletedDate = completedDate,
+            PreviousNextDueDate = pm.NextDueDate,
+            NextDueDate = nextDue,
+            AdvanceBasis = basis
+        };
+    }
+
+    // First non-blank value (Oracle stores '' as NULL, so blank must be treated as absent).
+    private static string Coalesce(params string?[] values) =>
+        values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? "";
+
     public async Task<bool> DeletePmActionAsync(long pmId, long pmActionId, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

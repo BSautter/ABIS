@@ -381,6 +381,7 @@ public interface IAbisRepository
     Task<string?> ValidatePmReferencesAsync(PmWrite body, CancellationToken ct);
     Task<PmAction> AddPmActionAsync(long pmId, PmActionWrite body, CancellationToken ct);
     Task<bool> DeletePmActionAsync(long pmId, long pmActionId, CancellationToken ct);
+    Task<PmCompleteResult?> CompletePmAsync(long pmId, PmCompleteWrite body, CancellationToken ct);
     Task<IReadOnlyList<SystemEquipment>> GetSystemEquipmentAsync(long? groupDepartmentId, CancellationToken ct);
     Task<IReadOnlyList<SubsystemEquipment>> GetSubsystemEquipmentAsync(long? sysEquipmentId, CancellationToken ct);
     Task<IReadOnlyList<ItemDevice>> GetItemDevicesAsync(long? subsysEquipmentId, CancellationToken ct);

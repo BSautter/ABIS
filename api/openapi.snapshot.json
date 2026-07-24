@@ -5911,6 +5911,64 @@
         }
       }
     },
+    "/api/pms/{pmId}/complete": {
+      "post": {
+        "tags": [
+          "Maintenance"
+        ],
+        "summary": "Record a PM completion: writes the pmcompletions history row, stamps pm_completed/completed_by, resets the overdue counter, and ADVANCES nextduedate from the PM's interval (daysBetween, else 365/numOfTimesPerYear) off the completion date. Pass nextDueDate to set it explicitly; a PM with no interval keeps its stored date. The response reports which basis was used.",
+        "operationId": "CompletePm",
+        "parameters": [
+          {
+            "name": "pmId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PmCompleteWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmCompleteResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/pms/{pmId}/actions/{pmActionId}": {
       "delete": {
         "tags": [
@@ -20301,6 +20359,62 @@
           },
           "itemDetails": {
             "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmCompleteResult": {
+        "type": "object",
+        "properties": {
+          "pmCompletionId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pmId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "completedDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "previousNextDueDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "nextDueDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "advanceBasis": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmCompleteWrite": {
+        "type": "object",
+        "properties": {
+          "completedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "completedDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "completedNotes": {
+            "type": "string",
+            "nullable": true
+          },
+          "nextDueDate": {
+            "type": "string",
+            "format": "date-time",
             "nullable": true
           }
         },

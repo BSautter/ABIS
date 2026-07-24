@@ -578,6 +578,18 @@ public sealed class PmWrite
     public string? Author { get; set; }
 }
 
+/// <summary>Record a PM completion. <c>CompletedBy</c> is required (the column is NOT NULL);
+/// <c>CompletedDate</c> defaults to today. Supply <c>NextDueDate</c> to override the computed
+/// next-due date instead of letting it advance from the PM's interval.</summary>
+public sealed class PmCompleteWrite
+{
+    public string? CompletedBy { get; set; }
+    public DateTime? CompletedDate { get; set; }
+    public string? CompletedNotes { get; set; }
+    /// <summary>Explicit next-due date. When null the schedule advances automatically.</summary>
+    public DateTime? NextDueDate { get; set; }
+}
+
 /// <summary>Add or replace a PM checklist item (table <c>pm_actions</c>).</summary>
 public sealed class PmActionWrite
 {

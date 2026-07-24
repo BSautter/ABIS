@@ -1595,6 +1595,17 @@ public static class ApiEndpoints
            .WithSummary("Add a checklist item to a PM. 404 if the PM is unknown.")
            .Produces<PmAction>(StatusCodes.Status201Created).Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
 
+        api.MapPost("/pms/{pmId:long}/complete", async (long pmId, PmCompleteWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                // completedby is NOT NULL on Oracle (and '' is NULL there), so demand a real value.
+                if (string.IsNullOrWhiteSpace(body.CompletedBy))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["completedBy"] = ["completedBy is required."] });
+                return await repo.CompletePmAsync(pmId, body, ct) is { } r ? Results.Ok(r) : Results.NotFound();
+            })
+           .WithName("CompletePm").WithTags("Maintenance")
+           .WithSummary("Record a PM completion: writes the pmcompletions history row, stamps pm_completed/completed_by, resets the overdue counter, and ADVANCES nextduedate from the PM's interval (daysBetween, else 365/numOfTimesPerYear) off the completion date. Pass nextDueDate to set it explicitly; a PM with no interval keeps its stored date. The response reports which basis was used.")
+           .Produces<PmCompleteResult>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
         api.MapDelete("/pms/{pmId:long}/actions/{pmActionId:long}", async (long pmId, long pmActionId, IAbisRepository repo, CancellationToken ct) =>
                 await repo.DeletePmActionAsync(pmId, pmActionId, ct)
                     ? Results.NoContent()

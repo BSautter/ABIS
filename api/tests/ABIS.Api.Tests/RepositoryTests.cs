@@ -2153,6 +2153,71 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task PmComplete_advances_schedule_from_daysBetween_and_records_history()
+    {
+        // 7001: monthly (daysBetween 30), currently 10 days overdue.
+        var before = (await _repo.GetPmAsync(7001, CancellationToken.None))!;
+        Assert.Equal("overdue", before.DueBucket);
+        var completedOn = DateTime.Today;
+
+        var r = await _repo.CompletePmAsync(7001,
+            new PmCompleteWrite { CompletedBy = "tech9", CompletedDate = completedOn, CompletedNotes = "Done" },
+            CancellationToken.None);
+
+        Assert.Equal("daysBetween", r!.AdvanceBasis);
+        Assert.Equal(completedOn.AddDays(30), r.NextDueDate);
+        Assert.Equal(before.NextDueDate, r.PreviousNextDueDate);
+
+        // The PM itself moved off the due board and the overdue counter reset.
+        var after = (await _repo.GetPmAsync(7001, CancellationToken.None))!;
+        Assert.Equal("scheduled", after.DueBucket);
+        Assert.Equal(30, after.DaysUntilDue);
+        Assert.Equal(0m, after.NumOverdue);
+        Assert.Equal("tech9", after.CompletedBy);
+
+        // History gained a row, newest first, snapshotting the equipment.
+        var history = await _repo.GetPmCompletionsAsync(7001, CancellationToken.None);
+        Assert.Equal(3, history.Count);
+        Assert.Equal(r.PmCompletionId, history[0].PmCompletionId);
+        Assert.Equal("tech9", history[0].CompletedBy);
+        Assert.Equal("Done", history[0].CompletedNotes);
+        Assert.Equal(500, history[0].ItemDeviceId);
+        Assert.Equal("Maintenance", history[0].AssignedToGroup);
+    }
+
+    [Fact]
+    public async Task PmComplete_falls_back_to_timesPerYear_then_honours_explicit_date()
+    {
+        // A PM with no daysBetween but 4x/year -> 365/4 = 91 days (rounded).
+        var quarterly = await _repo.CreatePmAsync(new PmWrite
+        {
+            PmNotice = "Quarterly check", NumOfTimesPerYear = 4, PmStatus = 1, NextDueDate = DateTime.Today
+        }, CancellationToken.None);
+        var r1 = await _repo.CompletePmAsync(quarterly.PmId,
+            new PmCompleteWrite { CompletedBy = "tech9" }, CancellationToken.None);
+        Assert.Equal("timesPerYear", r1!.AdvanceBasis);
+        Assert.Equal(DateTime.Today.AddDays(91), r1.NextDueDate);
+
+        // An explicit date always wins over the computed interval.
+        var r2 = await _repo.CompletePmAsync(quarterly.PmId,
+            new PmCompleteWrite { CompletedBy = "tech9", NextDueDate = DateTime.Today.AddDays(5) }, CancellationToken.None);
+        Assert.Equal("explicit", r2!.AdvanceBasis);
+        Assert.Equal(DateTime.Today.AddDays(5), r2.NextDueDate);
+
+        // No interval at all -> the stored date is left alone (legacy hand-entered behaviour).
+        var manual = await _repo.CreatePmAsync(new PmWrite
+        {
+            PmNotice = "Ad-hoc", PmStatus = 1, NextDueDate = DateTime.Today.AddDays(2)
+        }, CancellationToken.None);
+        var r3 = await _repo.CompletePmAsync(manual.PmId,
+            new PmCompleteWrite { CompletedBy = "tech9" }, CancellationToken.None);
+        Assert.Equal("none", r3!.AdvanceBasis);
+        Assert.Equal(DateTime.Today.AddDays(2), r3.NextDueDate);
+
+        Assert.Null(await _repo.CompletePmAsync(999999, new PmCompleteWrite { CompletedBy = "x" }, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Pm_create_update_and_guarded_delete()
     {
         var created = await _repo.CreatePmAsync(new PmWrite

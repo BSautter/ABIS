@@ -1106,6 +1106,21 @@ public sealed class PmCompletion
     public DateTime? RecordedDate { get; set; }
 }
 
+/// <summary>Outcome of recording a PM completion — reports exactly how the schedule moved so the
+/// caller can show it (and correct it) rather than guessing.</summary>
+public sealed class PmCompleteResult
+{
+    public long PmCompletionId { get; set; }
+    public long PmId { get; set; }
+    public DateTime CompletedDate { get; set; }
+    public DateTime? PreviousNextDueDate { get; set; }
+    public DateTime? NextDueDate { get; set; }
+    /// <summary>How <c>NextDueDate</c> was chosen: <c>explicit</c> (caller supplied it),
+    /// <c>daysBetween</c>, <c>timesPerYear</c>, or <c>none</c> (the PM carries no interval, so the
+    /// stored date was left alone — legacy's hand-entered behaviour).</summary>
+    public string? AdvanceBasis { get; set; }
+}
+
 // ---- Lookups (reference/master data for data-entry dropdowns & joins) ----
 
 /// <summary>A top-level equipment system (table <c>systemequipment</c>) — level 2 of the

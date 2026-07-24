@@ -121,8 +121,21 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 
 ### C6. Platform / admin / reports
 - [~] **C** Scheduler EXECUTION engine — DONE: `SchedulerHostedService` (off by default, `Scheduler:Enabled=false`) + `SchedulerService`/`CronSchedule` (5/6-field cron matcher) dispatch enabled+due jobs to an **allowlist** of in-process `IScheduledOperation` handlers (noop/heartbeat seeded); unknown/legacy `target_operation` is recorded "unsupported" and NEVER executed (no shell/legacy path → guardrail intact). `POST /admin/jobs/{id}/run` for manual/on-demand. Still TODO: cron auto-import off the DB host (the server-console DB-host cron card already reads the .230 crontab read-only — see [[abis-230-cron-inventory]]).
-- [ ] **M** Preventive-Maintenance (PM) scheduling subsystem
-- [ ] **M** Maintenance parts/spares inventory; equipment hierarchy cascade + More-Details; log record-nav + maintenance reports
+- [~] **M** Preventive-Maintenance (PM) scheduling subsystem — **API COMPLETE** (#273 read, #274 write, #275 completions):
+  models `pm` / `pm_actions` / `pmcompletions` / `pmshift` over the 4-level equipment hierarchy
+  (`groupdepartment → systemequipment → subsystemequipment → itemdevice`) + `titlecraft` rates.
+  `GET /pms` (paged, hierarchy names, derived `daysUntilDue`/`dueBucket`), `GET /pms/due` (due board),
+  `POST/PUT/DELETE /pms` (guarded delete: 409 when completions exist → retire via `pm_status = 0`),
+  `POST/DELETE /pms/{id}/actions` (checklist, pm-scoped), `POST /pms/{id}/complete`.
+  **Key finding:** legacy PM has NO scheduling engine — `nextduedate` is hand-entered (zero PM logic in
+  the live PL/SQL; the PB windows are DataWindow forms). Auto-advance on completion is a deliberate
+  ADDITION (user-approved): explicit date wins, else `daysBetween`, else `365/numOfTimesPerYear`; a PM
+  with no interval keeps its stored date. The response reports the basis used.
+  Oracle care: `pm`/`pm_actions`/`pmcompletions` added to `Database:MaxIdTables` (no sequence — legacy
+  minted ids via `wf_getnew_id`, else ORA-02289); INSERT params ordered to match placeholders (ODP.NET
+  binds positionally); `assignedtogroup` NOT NULL falls back to a non-empty label (Oracle `''` = NULL).
+  Still TODO: the Maintenance-page PM UI (due board + list/detail + checklist + Complete).
+- [ ] **M** Maintenance parts/spares inventory (`PARTS`/`PARTS_SUPPLIERS` — the maintenance spares tables, distinct from the product `part_num`); equipment hierarchy cascade + More-Details; log record-nav + maintenance reports
 - [~] **M** Uptime reports + downtime pivots — done (#252): `/reporting/uptime` (groupBy line|shift|day; worked-shift uptime = (shift length − dt_total s)/3600 + scheduled/downtime hrs + uptime %, faithful to `w_report_uptime`) and `/reporting/downtime-pivot` (groupBy cause|job|**part** (#268)|line|shift|day|month|year — the by-part pivot walks ab_job→order_item→part_num, labelled by enduser_part_num). Remaining tail: a dedicated dt-vs-production ratio (uptime % already carries downtime-as-%-of-scheduled).
 - [x] **M** Native Excel export — done (#252): dependency-free OOXML `.xlsx` writer (`clientapp/src/xlsx.ts`, STORED zip + CRC32 + inline strings; numbers stay numeric), "Export Excel" on every report next to Export CSV. openpyxl-validated.
 - [~] **C/H** Feature-gate the write tags still auth-only. Done for every tag that maps 1:1 to a nav-gated feature (safe — the user who can reach the page already holds it; kiosks/edge use the API key and bypass): **Jobs**→Production Control, **Shipments**/**Stacker**→Warehouse, **CoilOwnership**→Inventory(Coil), **TestResults**/**Recovery**→Quality Control, **ProdFolder**→Production Control, **Downtime**→Downtime report (added to `FeatureByTag`). Still **deferred:** Dies / Sketches / Sales / Accounting / Trucks / Carriers / DAS / ScanLog / OpcLog — their nav pages have NO feature gate, so there's no authoritative feature name to gate the API on without risking a lockout; needs live `security_application` verification.

@@ -7666,6 +7666,69 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Record a PM completion: writes the pmcompletions history row, stamps pm_completed/completed_by, resets the overdue counter, and ADVANCES nextduedate from the PM's interval (daysBetween, else 365/numOfTimesPerYear) off the completion date. Pass nextDueDate to set it explicitly; a PM with no interval keeps its stored date. The response reports which basis was used.
+     * @return OK
+     */
+    completePm(pmId, body) {
+        let url_ = this.baseUrl + "/api/pms/{pmId}/complete";
+        if (pmId === undefined || pmId === null)
+            throw new globalThis.Error("The parameter 'pmId' must be defined.");
+        url_ = url_.replace("{pmId}", encodeURIComponent("" + pmId));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCompletePm(_response);
+        });
+    }
+    processCompletePm(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = PmCompleteResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Remove a checklist item from a PM (scoped by PM, so an item from another PM can't be deleted here).
      * @return No Content
      */
@@ -23920,6 +23983,74 @@ export class PmActionWrite {
         data = typeof data === 'object' ? data : {};
         data["actionItems"] = this.actionItems;
         data["itemDetails"] = this.itemDetails;
+        return data;
+    }
+}
+export class PmCompleteResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.pmCompletionId = _data["pmCompletionId"];
+            this.pmId = _data["pmId"];
+            this.completedDate = _data["completedDate"] ? new Date(_data["completedDate"].toString()) : undefined;
+            this.previousNextDueDate = _data["previousNextDueDate"] ? new Date(_data["previousNextDueDate"].toString()) : undefined;
+            this.nextDueDate = _data["nextDueDate"] ? new Date(_data["nextDueDate"].toString()) : undefined;
+            this.advanceBasis = _data["advanceBasis"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new PmCompleteResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["pmCompletionId"] = this.pmCompletionId;
+        data["pmId"] = this.pmId;
+        data["completedDate"] = this.completedDate ? this.completedDate.toISOString() : undefined;
+        data["previousNextDueDate"] = this.previousNextDueDate ? this.previousNextDueDate.toISOString() : undefined;
+        data["nextDueDate"] = this.nextDueDate ? this.nextDueDate.toISOString() : undefined;
+        data["advanceBasis"] = this.advanceBasis;
+        return data;
+    }
+}
+export class PmCompleteWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.completedBy = _data["completedBy"];
+            this.completedDate = _data["completedDate"] ? new Date(_data["completedDate"].toString()) : undefined;
+            this.completedNotes = _data["completedNotes"];
+            this.nextDueDate = _data["nextDueDate"] ? new Date(_data["nextDueDate"].toString()) : undefined;
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new PmCompleteWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["completedBy"] = this.completedBy;
+        data["completedDate"] = this.completedDate ? this.completedDate.toISOString() : undefined;
+        data["completedNotes"] = this.completedNotes;
+        data["nextDueDate"] = this.nextDueDate ? this.nextDueDate.toISOString() : undefined;
         return data;
     }
 }
