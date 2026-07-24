@@ -1554,6 +1554,55 @@ public static class ApiEndpoints
            .WithSummary("A PM's completion history (pmcompletions), newest first.")
            .Produces<IReadOnlyList<PmCompletion>>();
 
+        api.MapPost("/pms", async (PmWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (ValidatePm(body) is { } problems) return Results.ValidationProblem(problems);
+                if (await repo.ValidatePmReferencesAsync(body, ct) is { } badRef)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["equipment"] = [badRef] });
+                var created = await repo.CreatePmAsync(body, ct);
+                return Results.Created($"/api/pms/{created.PmId}", created);
+            })
+           .WithName("CreatePm").WithTags("Maintenance")
+           .WithSummary("Create a preventive-maintenance definition. Equipment/craft ids are checked up front so a bad reference is a 400, not a FK 500.")
+           .Produces<PmDefinition>(StatusCodes.Status201Created).ProducesValidationProblem();
+
+        api.MapPut("/pms/{pmId:long}", async (long pmId, PmWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (ValidatePm(body) is { } problems) return Results.ValidationProblem(problems);
+                if (await repo.ValidatePmReferencesAsync(body, ct) is { } badRef)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["equipment"] = [badRef] });
+                return await repo.UpdatePmAsync(pmId, body, ct) is { } updated ? Results.Ok(updated) : Results.NotFound();
+            })
+           .WithName("UpdatePm").WithTags("Maintenance")
+           .WithSummary("Update a PM definition (full replace). Stamps lastupdate.")
+           .Produces<PmDefinition>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
+        api.MapDelete("/pms/{pmId:long}", async (long pmId, IAbisRepository repo, CancellationToken ct) =>
+                DeleteResultToHttp(await repo.DeletePmAsync(pmId, ct), "PM has completions"))
+           .WithName("DeletePm").WithTags("Maintenance")
+           .WithSummary("Delete a PM and its checklist. 409 when completions reference it (retire with pm_status = 0 instead); 404 if unknown; 204 on delete.")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
+
+        api.MapPost("/pms/{pmId:long}/actions", async (long pmId, PmActionWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (string.IsNullOrWhiteSpace(body.ActionItems))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["actionItems"] = ["actionItems is required."] });
+                if (!await repo.PmExistsAsync(pmId, ct)) return Results.NotFound();
+                var created = await repo.AddPmActionAsync(pmId, body, ct);
+                return Results.Created($"/api/pms/{pmId}/actions/{created.PmActionId}", created);
+            })
+           .WithName("AddPmAction").WithTags("Maintenance")
+           .WithSummary("Add a checklist item to a PM. 404 if the PM is unknown.")
+           .Produces<PmAction>(StatusCodes.Status201Created).Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
+        api.MapDelete("/pms/{pmId:long}/actions/{pmActionId:long}", async (long pmId, long pmActionId, IAbisRepository repo, CancellationToken ct) =>
+                await repo.DeletePmActionAsync(pmId, pmActionId, ct)
+                    ? Results.NoContent()
+                    : Results.NotFound(new { message = $"Checklist item {pmActionId} is not on PM {pmId}." }))
+           .WithName("DeletePmAction").WithTags("Maintenance")
+           .WithSummary("Remove a checklist item from a PM (scoped by PM, so an item from another PM can't be deleted here).")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
+
         // ---- Maintenance equipment-hierarchy lookups ----
         api.MapGet("/lookups/system-equipment", async (IAbisRepository repo, CancellationToken ct, long? groupDepartmentId = null) =>
                 Results.Ok(await repo.GetSystemEquipmentAsync(groupDepartmentId, ct)))
@@ -3866,6 +3915,24 @@ public static class ApiEndpoints
         Max(e, "reportedBy", body.ReportedBy, 64);
         Max(e, "assignedTo", body.AssignedTo, 128);
         Max(e, "completedBy", body.CompletedBy, 128);
+        return e.Count == 0 ? null : e;
+    }
+
+    private static Dictionary<string, string[]>? ValidatePm(PmWrite body)
+    {
+        var e = new Dictionary<string, string[]>();
+        Req(e, "pmNotice", body.PmNotice);
+        Max(e, "pmNotice", body.PmNotice, 1024);
+        Max(e, "pmshift", body.Pmshift, 32);
+        Max(e, "maintFreq", body.MaintFreq, 64);
+        Max(e, "assignedToGroup", body.AssignedToGroup, 128);
+        Max(e, "pmReference", body.PmReference, 128);
+        Max(e, "author", body.Author, 64);
+        // A negative interval would walk the schedule backwards on completion.
+        if (body.DaysBetween is < 0) e["daysBetween"] = ["daysBetween cannot be negative."];
+        if (body.NumOfTimesPerYear is < 0) e["numOfTimesPerYear"] = ["numOfTimesPerYear cannot be negative."];
+        if (body.MinsPerUnit is < 0) e["minsPerUnit"] = ["minsPerUnit cannot be negative."];
+        if (body.NumOfUnits is < 0) e["numOfUnits"] = ["numOfUnits cannot be negative."];
         return e.Count == 0 ? null : e;
     }
 

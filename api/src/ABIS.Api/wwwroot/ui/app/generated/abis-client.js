@@ -7204,6 +7204,61 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Create a preventive-maintenance definition. Equipment/craft ids are checked up front so a bad reference is a 400, not a FK 500.
+     * @return Created
+     */
+    createPm(body) {
+        let url_ = this.baseUrl + "/api/pms";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCreatePm(_response);
+        });
+    }
+    processCreatePm(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                let result201 = null;
+                let resultData201 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result201 = PmDefinition.fromJS(resultData201);
+                return result201;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * The PM due board: active PMs that are overdue or fall due within withinDays (default 7), most overdue first. A PM counts as inactive only when pm_status = 0; undated PMs never appear.
      * @param withinDays (optional)
      * @param groupDepartmentId (optional)
@@ -7325,6 +7380,121 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Update a PM definition (full replace). Stamps lastupdate.
+     * @return OK
+     */
+    updatePm(pmId, body) {
+        let url_ = this.baseUrl + "/api/pms/{pmId}";
+        if (pmId === undefined || pmId === null)
+            throw new globalThis.Error("The parameter 'pmId' must be defined.");
+        url_ = url_.replace("{pmId}", encodeURIComponent("" + pmId));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processUpdatePm(_response);
+        });
+    }
+    processUpdatePm(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = PmDefinition.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Delete a PM and its checklist. 409 when completions reference it (retire with pm_status = 0 instead); 404 if unknown; 204 on delete.
+     * @return No Content
+     */
+    deletePm(pmId) {
+        let url_ = this.baseUrl + "/api/pms/{pmId}";
+        if (pmId === undefined || pmId === null)
+            throw new globalThis.Error("The parameter 'pmId' must be defined.");
+        url_ = url_.replace("{pmId}", encodeURIComponent("" + pmId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeletePm(_response);
+        });
+    }
+    processDeletePm(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * A PM's checklist items (pm_actions), in order.
      * @return OK
      */
@@ -7379,6 +7549,69 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Add a checklist item to a PM. 404 if the PM is unknown.
+     * @return Created
+     */
+    addPmAction(pmId, body) {
+        let url_ = this.baseUrl + "/api/pms/{pmId}/actions";
+        if (pmId === undefined || pmId === null)
+            throw new globalThis.Error("The parameter 'pmId' must be defined.");
+        url_ = url_.replace("{pmId}", encodeURIComponent("" + pmId));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processAddPmAction(_response);
+        });
+    }
+    processAddPmAction(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                let result201 = null;
+                let resultData201 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result201 = PmAction.fromJS(resultData201);
+                return result201;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * A PM's completion history (pmcompletions), newest first.
      * @return OK
      */
@@ -7423,6 +7656,56 @@ export class AbisClient {
         else if (status === 401) {
             return response.text().then((_responseText) => {
                 return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Remove a checklist item from a PM (scoped by PM, so an item from another PM can't be deleted here).
+     * @return No Content
+     */
+    deletePmAction(pmId, pmActionId) {
+        let url_ = this.baseUrl + "/api/pms/{pmId}/actions/{pmActionId}";
+        if (pmId === undefined || pmId === null)
+            throw new globalThis.Error("The parameter 'pmId' must be defined.");
+        url_ = url_.replace("{pmId}", encodeURIComponent("" + pmId));
+        if (pmActionId === undefined || pmActionId === null)
+            throw new globalThis.Error("The parameter 'pmActionId' must be defined.");
+        url_ = url_.replace("{pmActionId}", encodeURIComponent("" + pmActionId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeletePmAction(_response);
+        });
+    }
+    processDeletePmAction(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -23612,6 +23895,34 @@ export class PmAction {
         return data;
     }
 }
+export class PmActionWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.actionItems = _data["actionItems"];
+            this.itemDetails = _data["itemDetails"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new PmActionWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["actionItems"] = this.actionItems;
+        data["itemDetails"] = this.itemDetails;
+        return data;
+    }
+}
 export class PmCompletion {
     constructor(data) {
         if (data) {
@@ -23787,6 +24098,68 @@ export class PmDefinitionPagedResult {
         data["pageSize"] = this.pageSize;
         data["totalCount"] = this.totalCount;
         data["totalPages"] = this.totalPages;
+        return data;
+    }
+}
+export class PmWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.pmshift = _data["pmshift"];
+            this.titleCraftId = _data["titleCraftId"];
+            this.maintFreq = _data["maintFreq"];
+            this.itemDeviceId = _data["itemDeviceId"];
+            this.subsysEquipmentId = _data["subsysEquipmentId"];
+            this.sysEquipmentId = _data["sysEquipmentId"];
+            this.groupDepartmentId = _data["groupDepartmentId"];
+            this.assignedToGroup = _data["assignedToGroup"];
+            this.pmStatus = _data["pmStatus"];
+            this.pmNotice = _data["pmNotice"];
+            this.minsPerUnit = _data["minsPerUnit"];
+            this.numOfUnits = _data["numOfUnits"];
+            this.numOfTimesPerYear = _data["numOfTimesPerYear"];
+            this.daysBetween = _data["daysBetween"];
+            this.nextDueDate = _data["nextDueDate"] ? new Date(_data["nextDueDate"].toString()) : undefined;
+            this.pmRepeat = _data["pmRepeat"];
+            this.pmReference = _data["pmReference"];
+            this.pmCost = _data["pmCost"];
+            this.author = _data["author"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new PmWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["pmshift"] = this.pmshift;
+        data["titleCraftId"] = this.titleCraftId;
+        data["maintFreq"] = this.maintFreq;
+        data["itemDeviceId"] = this.itemDeviceId;
+        data["subsysEquipmentId"] = this.subsysEquipmentId;
+        data["sysEquipmentId"] = this.sysEquipmentId;
+        data["groupDepartmentId"] = this.groupDepartmentId;
+        data["assignedToGroup"] = this.assignedToGroup;
+        data["pmStatus"] = this.pmStatus;
+        data["pmNotice"] = this.pmNotice;
+        data["minsPerUnit"] = this.minsPerUnit;
+        data["numOfUnits"] = this.numOfUnits;
+        data["numOfTimesPerYear"] = this.numOfTimesPerYear;
+        data["daysBetween"] = this.daysBetween;
+        data["nextDueDate"] = this.nextDueDate ? this.nextDueDate.toISOString() : undefined;
+        data["pmRepeat"] = this.pmRepeat;
+        data["pmReference"] = this.pmReference;
+        data["pmCost"] = this.pmCost;
+        data["author"] = this.author;
         return data;
     }
 }

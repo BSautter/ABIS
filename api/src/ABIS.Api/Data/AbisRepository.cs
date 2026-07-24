@@ -6536,6 +6536,146 @@ public sealed class AbisRepository : IAbisRepository
         return rows.AsList();
     }
 
+    // ---- PM writes ----
+
+    // The PM insert/update column list is shared so create and update can't drift apart.
+    private const string PmWriteSet =
+        "pmshift = :pmshift, titlecraft_id = :craft, maint_freq = :freq, itemdevice_id = :item, " +
+        "subsysequipment_id = :subsys, sysequipment_id = :sys, groupdepartment_id = :dept, " +
+        "assignedtogroup = :grp, pm_status = :status, pm_notice = :notice, mins_per_unit = :mins, " +
+        "num_of_units = :units, numoftimesperyear = :peryear, daysbetween = :between, " +
+        "nextduedate = :nextdue, pm_repeat = :repeat, pmreference = :reference, pm_cost = :cost, " +
+        "author = :author, lastupdate = :now";
+
+    // Property order here MUST match the assignment order in PmWriteSet (Oracle binds
+    // positionally); UpdatePmAsync then appends :id last, matching the trailing WHERE clause.
+    private static object PmWriteArgs(PmWrite b, DateTime now) => new
+    {
+        pmshift = b.Pmshift, craft = b.TitleCraftId, freq = b.MaintFreq, item = b.ItemDeviceId,
+        subsys = b.SubsysEquipmentId, sys = b.SysEquipmentId, dept = b.GroupDepartmentId,
+        grp = b.AssignedToGroup, status = b.PmStatus, notice = b.PmNotice, mins = b.MinsPerUnit,
+        units = b.NumOfUnits, peryear = b.NumOfTimesPerYear, between = b.DaysBetween,
+        nextdue = b.NextDueDate, repeat = b.PmRepeat, reference = b.PmReference, cost = b.PmCost,
+        author = b.Author, now
+    };
+
+    public async Task<PmDefinition> CreatePmAsync(PmWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        // pm has no Oracle sequence — the legacy window assigned the id via wf_getnew_id (MAX+1),
+        // so "pm" is listed in Database:MaxIdTables. pm_entered is NOT NULL, stamped server-side.
+        var id = await NextIdAsync(conn, tx, "pm", "pm_id", ct);
+        var now = DateTime.UtcNow;
+        // The parameter object's property order MUST match the placeholder order in the SQL —
+        // ODP.NET binds positionally (BindByName defaults to false), and SQLite binds by name, so
+        // a mismatch would pass CI and misbind only on Oracle. For the same reason each
+        // placeholder is a DISTINCT name (pm_entered and lastupdate both take `now`, bound twice).
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO pm (pm_id, pm_entered, hasimage, pmshift, titlecraft_id, maint_freq, itemdevice_id,
+                subsysequipment_id, sysequipment_id, groupdepartment_id, assignedtogroup, pm_status, pm_notice,
+                mins_per_unit, num_of_units, numoftimesperyear, daysbetween, nextduedate, pm_repeat,
+                pmreference, pm_cost, author, lastupdate)
+            VALUES (:id, :entered, 0, :pmshift, :craft, :freq, :item, :subsys, :sys, :dept, :grp, :status, :notice,
+                :mins, :units, :peryear, :between, :nextdue, :repeat, :reference, :cost, :author, :updated)
+            """,
+            new { id, entered = (DateTime?)now, pmshift = body.Pmshift, craft = body.TitleCraftId,
+                  freq = body.MaintFreq, item = body.ItemDeviceId, subsys = body.SubsysEquipmentId,
+                  sys = body.SysEquipmentId, dept = body.GroupDepartmentId, grp = body.AssignedToGroup,
+                  status = body.PmStatus, notice = body.PmNotice, mins = body.MinsPerUnit,
+                  units = body.NumOfUnits, peryear = body.NumOfTimesPerYear, between = body.DaysBetween,
+                  nextdue = body.NextDueDate, repeat = body.PmRepeat, reference = body.PmReference,
+                  cost = body.PmCost, author = body.Author, updated = (DateTime?)now },
+            transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+        return (await GetPmAsync(id, ct))!;
+    }
+
+    public async Task<PmDefinition?> UpdatePmAsync(long pmId, PmWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            $"UPDATE pm SET {PmWriteSet} WHERE pm_id = :id",
+            Merge(PmWriteArgs(body, DateTime.UtcNow), new { id = pmId }), cancellationToken: ct));
+        return n == 0 ? null : await GetPmAsync(pmId, ct);
+    }
+
+    /// <summary>Delete a PM and its checklist. Refused (InUse) when completions reference it —
+    /// the completion history is an audit trail we don't silently discard.</summary>
+    public async Task<DeleteResult> DeletePmAsync(long pmId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM pm WHERE pm_id = :id", new { id = pmId }, cancellationToken: ct)) > 0;
+        if (!exists) return new DeleteResult(DeleteOutcome.NotFound);
+        var completions = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM pmcompletions WHERE pm_id = :id", new { id = pmId }, cancellationToken: ct));
+        if (completions > 0)
+            return new DeleteResult(DeleteOutcome.InUse,
+                $"PM {pmId} has {completions} recorded completion(s); set pm_status = 0 to retire it instead.");
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM pm_actions WHERE pm_id = :id", new { id = pmId }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM pm WHERE pm_id = :id", new { id = pmId }, transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+        return new DeleteResult(DeleteOutcome.Deleted);
+    }
+
+    public async Task<bool> PmExistsAsync(long pmId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM pm WHERE pm_id = :id", new { id = pmId }, cancellationToken: ct)) > 0;
+    }
+
+    /// <summary>True when every non-null equipment/craft id on the write exists. Pre-checked at the
+    /// endpoint so a bad id is a 400, not an ORA-02291 FK 500.</summary>
+    public async Task<string?> ValidatePmReferencesAsync(PmWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        async Task<bool> Exists(string table, string col, long id) =>
+            await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+                $"SELECT COUNT(*) FROM {table} WHERE {col} = :id", new { id }, cancellationToken: ct)) > 0;
+
+        if (body.SysEquipmentId is { } sys && !await Exists("systemequipment", "sysequipment_id", sys))
+            return "sysEquipmentId must reference an existing equipment system.";
+        if (body.SubsysEquipmentId is { } sub && !await Exists("subsystemequipment", "subsysequipment_id", sub))
+            return "subsysEquipmentId must reference an existing equipment subsystem.";
+        if (body.ItemDeviceId is { } item && !await Exists("itemdevice", "itemdevice_id", item))
+            return "itemDeviceId must reference an existing item/device.";
+        if (body.TitleCraftId is { } craft && !await Exists("titlecraft", "titlecraft_id", craft))
+            return "titleCraftId must reference an existing craft.";
+        if (body.GroupDepartmentId is { } dept && !await Exists("groupdepartment", "groupdepartment_id", dept))
+            return "groupDepartmentId must reference an existing group/department.";
+        return null;
+    }
+
+    public async Task<PmAction> AddPmActionAsync(long pmId, PmActionWrite body, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var id = await NextIdAsync(conn, tx, "pm_actions", "pm_action_id", ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            "INSERT INTO pm_actions (pm_action_id, pm_id, action_items, item_details) VALUES (:id, :pm, :items, :details)",
+            new { id, pm = pmId, items = body.ActionItems, details = body.ItemDetails },
+            transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+        return new PmAction { PmActionId = id, PmId = pmId, ActionItems = body.ActionItems, ItemDetails = body.ItemDetails };
+    }
+
+    public async Task<bool> DeletePmActionAsync(long pmId, long pmActionId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        // Scoped by pm_id too, so an id from another PM can't be deleted through this route.
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM pm_actions WHERE pm_action_id = :id AND pm_id = :pm",
+            new { id = pmActionId, pm = pmId }, cancellationToken: ct));
+        return n > 0;
+    }
+
     // ---- Maintenance equipment-hierarchy lookups ----
 
     public async Task<IReadOnlyList<SystemEquipment>> GetSystemEquipmentAsync(long? groupDepartmentId, CancellationToken ct)

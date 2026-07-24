@@ -374,6 +374,13 @@ public interface IAbisRepository
     Task<IReadOnlyList<PmDefinition>> GetPmsDueAsync(int withinDays, long? groupDepartmentId, CancellationToken ct);
     Task<IReadOnlyList<PmAction>> GetPmActionsAsync(long pmId, CancellationToken ct);
     Task<IReadOnlyList<PmCompletion>> GetPmCompletionsAsync(long pmId, CancellationToken ct);
+    Task<PmDefinition> CreatePmAsync(PmWrite body, CancellationToken ct);
+    Task<PmDefinition?> UpdatePmAsync(long pmId, PmWrite body, CancellationToken ct);
+    Task<DeleteResult> DeletePmAsync(long pmId, CancellationToken ct);
+    Task<bool> PmExistsAsync(long pmId, CancellationToken ct);
+    Task<string?> ValidatePmReferencesAsync(PmWrite body, CancellationToken ct);
+    Task<PmAction> AddPmActionAsync(long pmId, PmActionWrite body, CancellationToken ct);
+    Task<bool> DeletePmActionAsync(long pmId, long pmActionId, CancellationToken ct);
     Task<IReadOnlyList<SystemEquipment>> GetSystemEquipmentAsync(long? groupDepartmentId, CancellationToken ct);
     Task<IReadOnlyList<SubsystemEquipment>> GetSubsystemEquipmentAsync(long? sysEquipmentId, CancellationToken ct);
     Task<IReadOnlyList<ItemDevice>> GetItemDevicesAsync(long? subsysEquipmentId, CancellationToken ct);

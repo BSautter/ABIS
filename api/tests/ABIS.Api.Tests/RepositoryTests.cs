@@ -2153,6 +2153,69 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task Pm_create_update_and_guarded_delete()
+    {
+        var created = await _repo.CreatePmAsync(new PmWrite
+        {
+            PmNotice = "Check gearbox oil", MaintFreq = "Quarterly", SysEquipmentId = 300, SubsysEquipmentId = 400,
+            ItemDeviceId = 500, TitleCraftId = 600, GroupDepartmentId = 10, AssignedToGroup = "Maintenance",
+            PmStatus = 1, DaysBetween = 90, NextDueDate = DateTime.Today.AddDays(20), Author = "tester"
+        }, CancellationToken.None);
+        Assert.True(created.PmId > 7004);                       // minted above the seeded ids
+        Assert.Equal("Blanking line BL110", created.SystemEquipment);   // read-back resolves the hierarchy
+        Assert.Equal("scheduled", created.DueBucket);           // 20 days out
+        Assert.Equal(20, created.DaysUntilDue);
+
+        var updated = await _repo.UpdatePmAsync(created.PmId,
+            new PmWrite { PmNotice = "Check gearbox oil + filter", MaintFreq = "Quarterly", DaysBetween = 90, PmStatus = 1 },
+            CancellationToken.None);
+        Assert.Equal("Check gearbox oil + filter", updated!.PmNotice);
+        Assert.Null(updated.SysEquipmentId);                    // full replace clears omitted fields
+        Assert.Null(await _repo.UpdatePmAsync(999999, new PmWrite { PmNotice = "x" }, CancellationToken.None));
+
+        // No completions yet -> deletable, and the checklist goes with it.
+        await _repo.AddPmActionAsync(created.PmId, new PmActionWrite { ActionItems = "Drain" }, CancellationToken.None);
+        Assert.Equal(DeleteOutcome.Deleted, (await _repo.DeletePmAsync(created.PmId, CancellationToken.None)).Outcome);
+        Assert.Empty(await _repo.GetPmActionsAsync(created.PmId, CancellationToken.None));
+        Assert.Equal(DeleteOutcome.NotFound, (await _repo.DeletePmAsync(created.PmId, CancellationToken.None)).Outcome);
+
+        // 7001 has seeded completions -> refused, so the audit trail survives.
+        var refused = await _repo.DeletePmAsync(7001, CancellationToken.None);
+        Assert.Equal(DeleteOutcome.InUse, refused.Outcome);
+        Assert.Contains("completion", refused.Reason!);
+        Assert.NotNull(await _repo.GetPmAsync(7001, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Pm_reference_validation_rejects_unknown_equipment()
+    {
+        Assert.Null(await _repo.ValidatePmReferencesAsync(
+            new PmWrite { SysEquipmentId = 300, ItemDeviceId = 500, TitleCraftId = 600, GroupDepartmentId = 10 },
+            CancellationToken.None));
+        Assert.Contains("sysEquipmentId", await _repo.ValidatePmReferencesAsync(
+            new PmWrite { SysEquipmentId = 999999 }, CancellationToken.None)!);
+        Assert.Contains("itemDeviceId", await _repo.ValidatePmReferencesAsync(
+            new PmWrite { ItemDeviceId = 999999 }, CancellationToken.None)!);
+        // Nulls are allowed — a PM need not target every level of the hierarchy.
+        Assert.Null(await _repo.ValidatePmReferencesAsync(new PmWrite(), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task PmAction_add_and_scoped_delete()
+    {
+        var added = await _repo.AddPmActionAsync(7002,
+            new PmActionWrite { ActionItems = "Check sprocket wear", ItemDetails = "Replace under 3mm" }, CancellationToken.None);
+        Assert.Contains(await _repo.GetPmActionsAsync(7002, CancellationToken.None), a => a.PmActionId == added.PmActionId);
+
+        // Deleting through the WRONG PM must not touch it (the route is pm-scoped).
+        Assert.False(await _repo.DeletePmActionAsync(7001, added.PmActionId, CancellationToken.None));
+        Assert.Contains(await _repo.GetPmActionsAsync(7002, CancellationToken.None), a => a.PmActionId == added.PmActionId);
+
+        Assert.True(await _repo.DeletePmActionAsync(7002, added.PmActionId, CancellationToken.None));
+        Assert.DoesNotContain(await _repo.GetPmActionsAsync(7002, CancellationToken.None), a => a.PmActionId == added.PmActionId);
+    }
+
+    [Fact]
     public async Task Pm_list_carries_equipment_names_and_derived_due_state()
     {
         var page = await _repo.GetPmsAsync(1, 50, null, null, null, null, CancellationToken.None);

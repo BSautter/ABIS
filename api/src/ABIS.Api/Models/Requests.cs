@@ -552,6 +552,39 @@ public sealed class MaintLogWrite
     public decimal? ProbCost { get; set; }
 }
 
+/// <summary>Create or fully replace a preventive-maintenance definition (table <c>pm</c>).
+/// The equipment hierarchy ids are validated to exist; <c>nextDueDate</c> is the stored,
+/// hand-entered schedule date the due board reads.</summary>
+public sealed class PmWrite
+{
+    public string? Pmshift { get; set; }
+    public long? TitleCraftId { get; set; }
+    public string? MaintFreq { get; set; }
+    public long? ItemDeviceId { get; set; }
+    public long? SubsysEquipmentId { get; set; }
+    public long? SysEquipmentId { get; set; }
+    public long? GroupDepartmentId { get; set; }
+    public string? AssignedToGroup { get; set; }
+    public int? PmStatus { get; set; }
+    public string? PmNotice { get; set; }
+    public decimal? MinsPerUnit { get; set; }
+    public decimal? NumOfUnits { get; set; }
+    public decimal? NumOfTimesPerYear { get; set; }
+    public decimal? DaysBetween { get; set; }
+    public DateTime? NextDueDate { get; set; }
+    public decimal? PmRepeat { get; set; }
+    public string? PmReference { get; set; }
+    public decimal? PmCost { get; set; }
+    public string? Author { get; set; }
+}
+
+/// <summary>Add or replace a PM checklist item (table <c>pm_actions</c>).</summary>
+public sealed class PmActionWrite
+{
+    public string? ActionItems { get; set; }
+    public string? ItemDetails { get; set; }
+}
+
 /// <summary>Create or fully replace a production shift (table <c>shift</c>).
 /// Only <c>shift_num</c> (PK, server-assigned) is NOT NULL.</summary>
 public sealed class ShiftWrite

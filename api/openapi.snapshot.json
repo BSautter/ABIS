@@ -5553,6 +5553,48 @@
             "description": "Unauthorized"
           }
         }
+      },
+      "post": {
+        "tags": [
+          "Maintenance"
+        ],
+        "summary": "Create a preventive-maintenance definition. Equipment/craft ids are checked up front so a bad reference is a 400, not a FK 500.",
+        "operationId": "CreatePm",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PmWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmDefinition"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
       }
     },
     "/api/pms/due": {
@@ -5647,6 +5689,94 @@
             "description": "Unauthorized"
           }
         }
+      },
+      "put": {
+        "tags": [
+          "Maintenance"
+        ],
+        "summary": "Update a PM definition (full replace). Stamps lastupdate.",
+        "operationId": "UpdatePm",
+        "parameters": [
+          {
+            "name": "pmId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PmWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmDefinition"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Maintenance"
+        ],
+        "summary": "Delete a PM and its checklist. 409 when completions reference it (retire with pm_status = 0 instead); 404 if unknown; 204 on delete.",
+        "operationId": "DeletePm",
+        "parameters": [
+          {
+            "name": "pmId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
       }
     },
     "/api/pms/{pmId}/actions": {
@@ -5677,6 +5807,62 @@
                   "items": {
                     "$ref": "#/components/schemas/PmAction"
                   }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Maintenance"
+        ],
+        "summary": "Add a checklist item to a PM. 404 if the PM is unknown.",
+        "operationId": "AddPmAction",
+        "parameters": [
+          {
+            "name": "pmId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PmActionWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmAction"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
                 }
               }
             }
@@ -5718,6 +5904,46 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/pms/{pmId}/actions/{pmActionId}": {
+      "delete": {
+        "tags": [
+          "Maintenance"
+        ],
+        "summary": "Remove a checklist item from a PM (scoped by PM, so an item from another PM can't be deleted here).",
+        "operationId": "DeletePmAction",
+        "parameters": [
+          {
+            "name": "pmId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "pmActionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
           },
           "401": {
             "description": "Unauthorized"
@@ -20066,6 +20292,20 @@
         },
         "additionalProperties": false
       },
+      "PmActionWrite": {
+        "type": "object",
+        "properties": {
+          "actionItems": {
+            "type": "string",
+            "nullable": true
+          },
+          "itemDetails": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "PmCompletion": {
         "type": "object",
         "properties": {
@@ -20310,6 +20550,101 @@
             "type": "integer",
             "format": "int32",
             "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmWrite": {
+        "type": "object",
+        "properties": {
+          "pmshift": {
+            "type": "string",
+            "nullable": true
+          },
+          "titleCraftId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "maintFreq": {
+            "type": "string",
+            "nullable": true
+          },
+          "itemDeviceId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "subsysEquipmentId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "sysEquipmentId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "groupDepartmentId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "assignedToGroup": {
+            "type": "string",
+            "nullable": true
+          },
+          "pmStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "pmNotice": {
+            "type": "string",
+            "nullable": true
+          },
+          "minsPerUnit": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "numOfUnits": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "numOfTimesPerYear": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "daysBetween": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "nextDueDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "pmRepeat": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "pmReference": {
+            "type": "string",
+            "nullable": true
+          },
+          "pmCost": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "author": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
