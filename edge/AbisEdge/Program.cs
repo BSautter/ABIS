@@ -80,6 +80,14 @@ var countersCfg = new CountersConfig(
 foreach (var t in countersCfg.Tags)
     if (!opcTags.Contains(t)) opcTags = opcTags.Append(t).ToArray();
 
+// Line health/status: the direct run bit, the active-fault lamp, and the no-auto lockout flag.
+var lineStatusCfg = new LineStatusConfig(
+    opcCfg.GetValue<string?>("AutoRunningTag", null),
+    opcCfg.GetValue<string?>("ActiveFaultTag", null),
+    opcCfg.GetValue<string?>("NoAutoTag", null));
+foreach (var t in lineStatusCfg.Tags)
+    if (!opcTags.Contains(t)) opcTags = opcTags.Append(t).ToArray();
+
 // Dual-station stacker: the two heads' live piece counters + stack-complete bits + the stacker scale.
 var stackerCfg = new StackerConfig(
     opcCfg.GetValue<string?>("StackerStation1CountTag", null),
@@ -116,6 +124,7 @@ builder.Services.AddSingleton(new TagSet(opcTags));
 builder.Services.AddSingleton(new RunStateConfig(runStateTag, runningValues, runStateMode, runStateThreshold));
 builder.Services.AddSingleton(new PieceCountConfig(pieceCountTag));
 builder.Services.AddSingleton(countersCfg);
+builder.Services.AddSingleton(lineStatusCfg);
 builder.Services.AddSingleton(stackerCfg);
 builder.Services.AddSingleton<LatestTags>();
 builder.Services.AddHostedService<TagPump>();
@@ -221,6 +230,27 @@ app.MapGet("/counters", (LatestTags tags, CountersConfig cfg, string? good, stri
         reject = One(reject, cfg.RejectTag, true),
         stroke = One(stroke, cfg.StrokeTag, true),
         feed = One(feed, cfg.FeedTag, false),
+    });
+});
+
+// A line's live health/status: the run bit (autorunning), the active-fault lamp, and the no-auto
+// lockout — the direct PLC bits behind the fault/health lamps and the auto-status controls. /run-state
+// stays the authoritative running signal (stroke counter climbing); this covers what it doesn't.
+// ?autorunning=/?fault=/?noauto= override the configured tags per line.
+app.MapGet("/line-status", (LatestTags tags, LineStatusConfig cfg, string? autorunning, string? fault, string? noauto) =>
+{
+    object One(string? o, string? c, Func<string?, string?, bool?> parse)
+    {
+        var t = string.IsNullOrWhiteSpace(o) ? c : o;
+        if (string.IsNullOrWhiteSpace(t)) return new { configured = false, tag = (string?)null, value = (bool?)null, raw = (string?)null, quality = (string?)null, at = (DateTimeOffset?)null };
+        var r = tags.Get(t);
+        return new { configured = true, tag = t, value = parse(r?.Value, r?.Quality), raw = r?.Value, quality = r?.Quality, at = r?.At };
+    }
+    return Results.Ok(new
+    {
+        running = One(autorunning, cfg.AutoRunningTag, StackDone.Parse),   // truthy bit = running
+        fault = One(fault, cfg.ActiveFaultTag, StackDone.Parse),           // truthy/non-zero = a fault is active (raw carries the code)
+        noauto = One(noauto, cfg.NoAutoTag, StackDone.Parse),              // truthy = the line is in manual / auto locked out
     });
 });
 
