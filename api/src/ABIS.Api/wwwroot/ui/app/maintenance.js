@@ -285,7 +285,7 @@ function pmForm(p) {
     return `
     <div class="frow">
       <div class="fld"><label>What (notice)</label><input id="xNotice" style="min-width:220px" value="${val(p?.pmNotice)}" /></div>
-      <div class="fld"><label>Frequency</label><input id="xFreq" style="width:110px" value="${val(p?.maintFreq)}" /></div>
+      <div class="fld"><label>Frequency</label><select id="xFreq" style="min-width:170px"></select></div>
       <div class="fld"><label>Shift</label><input id="xShift" list="shiftList" style="width:90px" value="${val(p?.pmshift)}" /></div>
       <div class="fld"><label>Status</label><select id="xStatus" style="width:110px">
         <option value="1"${p?.pmStatus !== 0 ? ' selected' : ''}>active</option>
@@ -375,6 +375,13 @@ async function fillEquipmentPickers(p) {
     const opt = (id, label, sel) => `<option value="${esc(id)}"${String(id) === String(sel ?? '') ? ' selected' : ''}>${esc(label)}</option>`;
     const blank = '<option value="">—</option>';
     try {
+        // maint_freq is an FK to the frequency catalog, so offer the codes rather than free text —
+        // a typed value would be rejected by the server (and would fail the FK on Oracle).
+        const freqs = await client().getMaintFrequencies();
+        $('#xFreq').innerHTML = blank + freqs.map((f) => {
+            const days = f.freqType === 'HMC' ? 'meter' : `${f.daysBetween ?? '?'}d`;
+            return opt(f.maintFreq, `${f.maintFreq} — ${days}`, p?.maintFreq);
+        }).join('');
         const [systems, crafts] = await Promise.all([client().getSystemEquipment(undefined), client().getTitleCrafts()]);
         $('#xSys').innerHTML = blank + systems.map((s) => opt(s.sysEquipmentId, s.systemEquipmentName, p?.sysEquipmentId)).join('');
         $('#xCraft').innerHTML = blank + crafts.map((c) => opt(c.titleCraftId, c.titleCraftName, p?.titleCraftId)).join('');

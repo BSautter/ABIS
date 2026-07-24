@@ -588,6 +588,10 @@ public sealed class PmCompleteWrite
     public string? CompletedNotes { get; set; }
     /// <summary>Explicit next-due date. When null the schedule advances automatically.</summary>
     public DateTime? NextDueDate { get; set; }
+    /// <summary>Hours worked. NULL = not recorded (distinct from 0 = free).</summary>
+    public decimal? LaborHours { get; set; }
+    /// <summary>Cost of this completion. NULL = not recorded.</summary>
+    public decimal? CompCost { get; set; }
 }
 
 /// <summary>Add or replace a PM checklist item (table <c>pm_actions</c>).</summary>

@@ -4971,6 +4971,33 @@
         }
       }
     },
+    "/api/lookups/maint-frequencies": {
+      "get": {
+        "tags": [
+          "Lookups"
+        ],
+        "summary": "Maintenance frequency codes (the catalog pm.maint_freq is a foreign key to), shortest interval first. freqType CAL = calendar (daysBetween drives the schedule) | HMC = hours/miles/cycles.",
+        "operationId": "GetMaintFrequencies",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MaintFrequency"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/lookups/alloys": {
       "get": {
         "tags": [
@@ -18283,6 +18310,35 @@
         },
         "additionalProperties": false
       },
+      "MaintFrequency": {
+        "type": "object",
+        "properties": {
+          "maintFreq": {
+            "type": "string",
+            "nullable": true
+          },
+          "freqType": {
+            "type": "string",
+            "nullable": true
+          },
+          "numPerYear": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "daysBetween": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "pmRange": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "MaintLog": {
         "type": "object",
         "properties": {
@@ -20416,6 +20472,16 @@
             "type": "string",
             "format": "date-time",
             "nullable": true
+          },
+          "laborHours": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "compCost": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -20475,6 +20541,16 @@
           "recordedDate": {
             "type": "string",
             "format": "date-time",
+            "nullable": true
+          },
+          "laborHours": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "compCost": {
+            "type": "number",
+            "format": "double",
             "nullable": true
           }
         },

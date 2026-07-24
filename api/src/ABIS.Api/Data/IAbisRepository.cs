@@ -387,6 +387,7 @@ public interface IAbisRepository
     Task<IReadOnlyList<ItemDevice>> GetItemDevicesAsync(long? subsysEquipmentId, CancellationToken ct);
     Task<IReadOnlyList<TitleCraft>> GetTitleCraftsAsync(CancellationToken ct);
     Task<IReadOnlyList<string>> GetPmShiftsAsync(CancellationToken ct);
+    Task<IReadOnlyList<MaintFrequency>> GetMaintFrequenciesAsync(CancellationToken ct);
     Task<IReadOnlyList<DowntimeCause>> GetDowntimeCausesAsync(CancellationToken ct);
     Task<IReadOnlyList<TransportationMethod>> GetTransportationMethodsAsync(CancellationToken ct);
     Task<IReadOnlyList<EquipmentType>> GetEquipmentTypesAsync(CancellationToken ct);

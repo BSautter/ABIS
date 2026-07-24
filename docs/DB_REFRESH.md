@@ -112,6 +112,48 @@ stay at their last sync (preserved, not wiped).
 
 ---
 
+## Part 3 — restore the ABIS admin login (REQUIRED after every refresh)
+
+**Every refresh wipes the ABIS admin login.** The import is `schemas=DBO` with
+`table_exists_action=replace`, and `SECURITY_USER` / `SECURITY_GROUP` / `SECURITY_APPLICATION` /
+`SECURITY_USER_GROUP` do **not** match the `'ABIS%'` exclude — so prod's copies replace them,
+deleting any admin that existed only on .230. The symptom is a sign-in failing with
+**"user not found"**, which looks like an AD/LDAP problem but is not one.
+
+On the ABIS app host (`codi-ABIS`):
+
+```bash
+sudo apt-get install -y jq          # once; the script needs jq + curl
+sudo ./tools/bootstrap-admin.sh cmattinson Codi Mattinson
+```
+
+Verify:
+
+```bash
+curl -s -H "X-Api-Key: $(grep -oP 'ApiKeys__Keys__0="?\K[^"]+' /etc/abis/abis.env)" \
+  http://127.0.0.1:8080/api/security/users | grep -o cmattinson
+```
+
+**You do not need to reset the password.** `abis_user_credential` *does* match `'ABIS%'`, so it
+survives the refresh, and it is keyed by `login_id` (not `user_id`) — recreating the
+`security_user` row with the same login re-attaches the existing credential. In AD/LDAP mode the
+password was never in ABIS to begin with: AD verifies it, while ABIS still needs the
+`security_user` row for identity + RBAC (see `docs/AD_LOGIN.md`), which is exactly the row that
+got wiped.
+
+To automate it, set these before running `refresh-nonprod.sh` and it will restore the admin itself:
+
+```bash
+export ABIS_ADMIN_LOGIN=cmattinson
+export BOOTSTRAP_ADMIN=/path/to/ABIS/tools/bootstrap-admin.sh
+export ABIS_BASE=http://192.168.3.110:8080   # the app host, not the DB host
+export ABIS_API_KEY=...                      # or let bootstrap-admin read /etc/abis/abis.env locally
+```
+
+If you would rather .230 keep its **own** user list across refreshes, add
+`exclude=TABLE:"LIKE 'SECURITY%'"` to the parfile in `refresh-nonprod.sh`. That removes the wipe
+entirely, at the cost of non-prod no longer mirroring prod's users for RBAC testing.
+
 ## Notes
 - The two `ORA-39083` FKs left disabled after a bulk refresh (`AB_JOB→SKETCH_JPG`, a Quest tool FK)
   re-validate once Part 2 loads `SKETCH_JPG`; re-enable if desired (`ALTER TABLE ab_job ENABLE

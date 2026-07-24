@@ -1104,6 +1104,11 @@ public sealed class PmCompletion
     public string? CompletedBy { get; set; }
     public string? CompletedNotes { get; set; }
     public DateTime? RecordedDate { get; set; }
+    /// <summary>Hours worked on this completion. NULL = not recorded (distinct from 0 = free).
+    /// Added by migration 008 to carry KeepTrak's history.</summary>
+    public decimal? LaborHours { get; set; }
+    /// <summary>Cost of this completion (migration 008). NULL = not recorded.</summary>
+    public decimal? CompCost { get; set; }
 }
 
 /// <summary>Outcome of recording a PM completion — reports exactly how the schedule moved so the
@@ -1149,6 +1154,18 @@ public sealed class ItemDevice
     public long? SubsysEquipmentId { get; set; }
     public long? SysEquipmentId { get; set; }
     public string? ItemDeviceName { get; set; }
+}
+
+/// <summary>A maintenance frequency code (table <c>maint_frequency</c>) — the catalog
+/// <c>pm.maint_freq</c> is a FOREIGN KEY to. <c>FreqType</c> is <c>CAL</c> (calendar — the
+/// schedule comes off <c>DaysBetween</c>) or <c>HMC</c> (hours/miles/cycles — meter-driven).</summary>
+public sealed class MaintFrequency
+{
+    public string? MaintFreq { get; set; }
+    public string? FreqType { get; set; }
+    public decimal? NumPerYear { get; set; }
+    public decimal? DaysBetween { get; set; }
+    public decimal? PmRange { get; set; }
 }
 
 /// <summary>A maintenance craft/trade and its hourly rate (table <c>titlecraft</c>) —

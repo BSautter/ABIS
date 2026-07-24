@@ -2161,7 +2161,8 @@ public sealed class RepositoryTests : IDisposable
         var completedOn = DateTime.Today;
 
         var r = await _repo.CompletePmAsync(7001,
-            new PmCompleteWrite { CompletedBy = "tech9", CompletedDate = completedOn, CompletedNotes = "Done" },
+            new PmCompleteWrite { CompletedBy = "tech9", CompletedDate = completedOn, CompletedNotes = "Done",
+                                  LaborHours = 2.25m, CompCost = 95.63m },
             CancellationToken.None);
 
         Assert.Equal("daysBetween", r!.AdvanceBasis);
@@ -2181,6 +2182,8 @@ public sealed class RepositoryTests : IDisposable
         Assert.Equal(r.PmCompletionId, history[0].PmCompletionId);
         Assert.Equal("tech9", history[0].CompletedBy);
         Assert.Equal("Done", history[0].CompletedNotes);
+        Assert.Equal(2.25m, history[0].LaborHours);     // migration 008 fields persist on write
+        Assert.Equal(95.63m, history[0].CompCost);
         Assert.Equal(500, history[0].ItemDeviceId);
         Assert.Equal("Maintenance", history[0].AssignedToGroup);
     }
@@ -2222,7 +2225,7 @@ public sealed class RepositoryTests : IDisposable
     {
         var created = await _repo.CreatePmAsync(new PmWrite
         {
-            PmNotice = "Check gearbox oil", MaintFreq = "Quarterly", SysEquipmentId = 300, SubsysEquipmentId = 400,
+            PmNotice = "Check gearbox oil", MaintFreq = "4XY", SysEquipmentId = 300, SubsysEquipmentId = 400,
             ItemDeviceId = 500, TitleCraftId = 600, GroupDepartmentId = 10, AssignedToGroup = "Maintenance",
             PmStatus = 1, DaysBetween = 90, NextDueDate = DateTime.Today.AddDays(20), Author = "tester"
         }, CancellationToken.None);
@@ -2232,7 +2235,7 @@ public sealed class RepositoryTests : IDisposable
         Assert.Equal(20, created.DaysUntilDue);
 
         var updated = await _repo.UpdatePmAsync(created.PmId,
-            new PmWrite { PmNotice = "Check gearbox oil + filter", MaintFreq = "Quarterly", DaysBetween = 90, PmStatus = 1 },
+            new PmWrite { PmNotice = "Check gearbox oil + filter", MaintFreq = "4XY", DaysBetween = 90, PmStatus = 1 },
             CancellationToken.None);
         Assert.Equal("Check gearbox oil + filter", updated!.PmNotice);
         Assert.Null(updated.SysEquipmentId);                    // full replace clears omitted fields
@@ -2263,6 +2266,30 @@ public sealed class RepositoryTests : IDisposable
             new PmWrite { ItemDeviceId = 999999 }, CancellationToken.None)!);
         // Nulls are allowed — a PM need not target every level of the hierarchy.
         Assert.Null(await _repo.ValidatePmReferencesAsync(new PmWrite(), CancellationToken.None));
+
+        // maint_freq is an FK to maint_frequency on Oracle, so free text must be rejected here
+        // rather than surfacing as ORA-02291 only against the real database.
+        Assert.Null(await _repo.ValidatePmReferencesAsync(
+            new PmWrite { MaintFreq = "4XY" }, CancellationToken.None));
+        Assert.Contains("maintFreq", await _repo.ValidatePmReferencesAsync(
+            new PmWrite { MaintFreq = "Quarterly" }, CancellationToken.None)!);
+        // Blank is fine — parked PMs carry no frequency.
+        Assert.Null(await _repo.ValidatePmReferencesAsync(
+            new PmWrite { MaintFreq = "  " }, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task MaintFrequency_lookup_orders_by_interval_and_flags_meter_types()
+    {
+        var freqs = await _repo.GetMaintFrequenciesAsync(CancellationToken.None);
+        Assert.Equal(7, freqs.Count);
+        // Shortest interval first; HMC (meter-driven) rows carry no calendar interval.
+        Assert.Equal("HRS", freqs[0].MaintFreq);
+        Assert.Equal("HMC", freqs[0].FreqType);
+        var yearly = Assert.Single(freqs, f => f.MaintFreq == "1XY");
+        Assert.Equal("CAL", yearly.FreqType);
+        Assert.Equal(365m, yearly.DaysBetween);
+        Assert.Equal(3650m, Assert.Single(freqs, f => f.MaintFreq == "YX10").DaysBetween);
     }
 
     [Fact]
@@ -2333,6 +2360,11 @@ public sealed class RepositoryTests : IDisposable
         Assert.Equal(2, done.Count);
         Assert.True(done[0].CompletedDate > done[1].CompletedDate);
         Assert.Equal("tech1", done[0].CompletedBy);
+        // Labour/cost (migration 008) round-trip; NULL stays NULL rather than collapsing to 0,
+        // because "not recorded" is a different fact from "free".
+        Assert.Equal(0.5m, done[0].LaborHours);
+        Assert.Equal(21.25m, done[0].CompCost);
+        Assert.Null(Assert.Single(await _repo.GetPmCompletionsAsync(7002, CancellationToken.None)).LaborHours);
         Assert.Empty(await _repo.GetPmCompletionsAsync(7003, CancellationToken.None));
     }
 

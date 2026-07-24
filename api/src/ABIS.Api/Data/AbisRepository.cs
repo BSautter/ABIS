@@ -6530,7 +6530,7 @@ public sealed class AbisRepository : IAbisRepository
                    subsysequipment_id AS SubsysEquipmentId, sysequipment_id AS SysEquipmentId,
                    groupdepartment_id AS GroupDepartmentId, pm_status AS PmStatus, completeddate AS CompletedDate,
                    assignedtogroup AS AssignedToGroup, completedby AS CompletedBy, completed_notes AS CompletedNotes,
-                   recordeddate AS RecordedDate
+                   recordeddate AS RecordedDate, labor_hours AS LaborHours, comp_cost AS CompCost
             FROM pmcompletions WHERE pm_id = :id ORDER BY completeddate DESC, pmcompletion_id DESC
             """, new { id = pmId }, cancellationToken: ct));
         return rows.AsList();
@@ -6650,7 +6650,26 @@ public sealed class AbisRepository : IAbisRepository
             return "titleCraftId must reference an existing craft.";
         if (body.GroupDepartmentId is { } dept && !await Exists("groupdepartment", "groupdepartment_id", dept))
             return "groupDepartmentId must reference an existing group/department.";
+        // maint_freq is a FOREIGN KEY to maint_frequency on Oracle, not free text — an unchecked
+        // value passes SQLite CI and then fails live with ORA-02291.
+        if (!string.IsNullOrWhiteSpace(body.MaintFreq))
+        {
+            var known = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+                "SELECT COUNT(*) FROM maint_frequency WHERE maint_freq = :f",
+                new { f = body.MaintFreq }, cancellationToken: ct)) > 0;
+            if (!known) return $"maintFreq '{body.MaintFreq}' is not a known frequency code (see /lookups/maint-frequencies).";
+        }
         return null;
+    }
+
+    public async Task<IReadOnlyList<MaintFrequency>> GetMaintFrequenciesAsync(CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<MaintFrequency>(new CommandDefinition(
+            "SELECT maint_freq AS MaintFreq, freq_type AS FreqType, numperyear AS NumPerYear, " +
+            "daysbetween AS DaysBetween, pmrange AS PmRange FROM maint_frequency ORDER BY daysbetween, maint_freq",
+            cancellationToken: ct));
+        return rows.AsList();
     }
 
     public async Task<PmAction> AddPmActionAsync(long pmId, PmActionWrite body, CancellationToken ct)
@@ -6699,13 +6718,15 @@ public sealed class AbisRepository : IAbisRepository
             """
             INSERT INTO pmcompletions (pmcompletion_id, itemdevice_id, subsysequipment_id, sysequipment_id,
                 groupdepartment_id, pm_id, pm_status, completeddate, assignedtogroup, completedby,
-                completed_notes, recordeddate)
-            VALUES (:id, :item, :subsys, :sys, :dept, :pm, :status, :completed, :grp, :by, :notes, :recorded)
+                completed_notes, recordeddate, labor_hours, comp_cost)
+            VALUES (:id, :item, :subsys, :sys, :dept, :pm, :status, :completed, :grp, :by, :notes, :recorded,
+                :labor, :cost)
             """,
             new { id = completionId, item = pm.ItemDeviceId, subsys = pm.SubsysEquipmentId,
                   sys = pm.SysEquipmentId, dept = pm.GroupDepartmentId, pm = pmId,
                   status = pm.PmStatus ?? 1, completed = completedDate, grp = group,
-                  by = body.CompletedBy, notes = body.CompletedNotes, recorded = (DateTime?)DateTime.UtcNow },
+                  by = body.CompletedBy, notes = body.CompletedNotes, recorded = (DateTime?)DateTime.UtcNow,
+                  labor = body.LaborHours, cost = body.CompCost },
             transaction: tx, cancellationToken: ct));
 
         await conn.ExecuteAsync(new CommandDefinition(

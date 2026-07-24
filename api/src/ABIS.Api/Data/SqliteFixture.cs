@@ -498,6 +498,12 @@ public static class SqliteFixture
             CREATE TABLE titlecraft (
                 titlecraft_id INTEGER PRIMARY KEY, groupdepartment_id INTEGER, titlecraft TEXT NOT NULL, hourlyrate REAL);
             CREATE TABLE pmshift (pmshift TEXT PRIMARY KEY);
+            -- Maintenance frequency catalog. pm.maint_freq is a FOREIGN KEY to this on Oracle, so
+            -- an unvalidated free-text value fails there (ORA-02291) while passing SQLite.
+            -- freq_type: CAL = calendar (daysbetween drives the schedule), HMC = hours/miles/cycles.
+            CREATE TABLE maint_frequency (
+                maint_freq TEXT PRIMARY KEY, freq_type TEXT NOT NULL, numperyear REAL,
+                daysbetween REAL, pmrange REAL, lowrepeat REAL, midrepeat REAL, highrepeat REAL);
 
             -- The PM definition + its stored schedule state. nextduedate is a STORED field in the
             -- legacy model (hand-entered); the due board reads it, and completing a PM advances it.
@@ -522,7 +528,10 @@ public static class SqliteFixture
                 pmcompletion_id INTEGER PRIMARY KEY, itemdevice_id INTEGER, subsysequipment_id INTEGER,
                 sysequipment_id INTEGER, groupdepartment_id INTEGER, pm_id INTEGER, pm_status INTEGER NOT NULL,
                 completeddate TEXT NOT NULL, assignedtogroup TEXT NOT NULL, completedby TEXT NOT NULL,
-                completed_notes TEXT, recordeddate TEXT);
+                completed_notes TEXT, recordeddate TEXT,
+                -- Added by migration 008 to carry KeepTrak's per-completion labour/cost history.
+                -- NULL means "not recorded", deliberately distinct from 0 ("free").
+                labor_hours REAL, comp_cost REAL);
 
             CREATE TABLE dt_cause (
                 id INTEGER PRIMARY KEY, cause_name TEXT, note TEXT);
@@ -1476,6 +1485,20 @@ public static class SqliteFixture
             });
         conn.Execute("INSERT INTO pmshift (pmshift) VALUES (:Pmshift)",
             new[] { new { Pmshift = "1st" }, new { Pmshift = "2nd" }, new { Pmshift = "3rd" }, new { Pmshift = "Any" } });
+        // A representative slice of the live catalog (codes + intervals are the real ones from .230).
+        conn.Execute(
+            "INSERT INTO maint_frequency (maint_freq, freq_type, numperyear, daysbetween, pmrange) VALUES (:MaintFreq, :FreqType, :NumPerYear, :DaysBetween, :PmRange)",
+            new[]
+            {
+                new { MaintFreq = "1XW",  FreqType = "CAL", NumPerYear = (decimal?)52m, DaysBetween = (decimal?)7m,    PmRange = (decimal?)2m },
+                new { MaintFreq = "1XM",  FreqType = "CAL", NumPerYear = (decimal?)12m, DaysBetween = (decimal?)30m,   PmRange = (decimal?)4m },
+                new { MaintFreq = "4XY",  FreqType = "CAL", NumPerYear = (decimal?)4m,  DaysBetween = (decimal?)91m,   PmRange = (decimal?)20m },
+                new { MaintFreq = "1XY",  FreqType = "CAL", NumPerYear = (decimal?)1m,  DaysBetween = (decimal?)365m,  PmRange = (decimal?)60m },
+                new { MaintFreq = "WX8",  FreqType = "CAL", NumPerYear = (decimal?)7m,  DaysBetween = (decimal?)56m,   PmRange = (decimal?)14m },
+                new { MaintFreq = "YX10", FreqType = "CAL", NumPerYear = (decimal?)0m,  DaysBetween = (decimal?)3650m, PmRange = (decimal?)390m },
+                // Meter-based: no calendar interval, scheduling comes off readings.
+                new { MaintFreq = "HRS",  FreqType = "HMC", NumPerYear = (decimal?)0m,  DaysBetween = (decimal?)0m,    PmRange = (decimal?)0m }
+            });
 
         conn.Execute("""
             INSERT INTO pm (pm_id, pmshift, titlecraft_id, maint_freq, itemdevice_id, subsysequipment_id,
@@ -1490,7 +1513,7 @@ public static class SqliteFixture
             new[]
             {
                 // 7001 OVERDUE (due 10 days ago), monthly, on the uncoiler mandrel bearing.
-                new { PmId = 7001L, Pmshift = "1st", TitleCraftId = (long?)600L, MaintFreq = "Monthly", ItemDeviceId = (long?)500L,
+                new { PmId = 7001L, Pmshift = "1st", TitleCraftId = (long?)600L, MaintFreq = "1XM", ItemDeviceId = (long?)500L,
                       SubsysEquipmentId = (long?)400L, SysEquipmentId = (long?)300L, GroupDepartmentId = (long?)10L,
                       AssignedToGroup = "Maintenance", PmStatus = (int?)1, PmNotice = "Grease mandrel bearing", MinsPerUnit = (decimal?)30m,
                       NumOfUnits = (decimal?)1m, NumOfTimesPerYear = (decimal?)12m, DaysBetween = (decimal?)30m,
@@ -1498,7 +1521,7 @@ public static class SqliteFixture
                       PmReference = "PM-BL110-001", PmCost = (decimal?)21.25m, Author = "tech1", PmEntered = ds(d), HasImage = 0,
                       LastUpdate = ds(today.AddDays(-40)), PmCompleted = ds(today.AddDays(-40)), CompletedBy = "tech1" },
                 // 7002 DUE SOON (3 days out), weekly, stacker chain.
-                new { PmId = 7002L, Pmshift = "2nd", TitleCraftId = (long?)600L, MaintFreq = "Weekly", ItemDeviceId = (long?)501L,
+                new { PmId = 7002L, Pmshift = "2nd", TitleCraftId = (long?)600L, MaintFreq = "1XW", ItemDeviceId = (long?)501L,
                       SubsysEquipmentId = (long?)401L, SysEquipmentId = (long?)300L, GroupDepartmentId = (long?)10L,
                       AssignedToGroup = "Maintenance", PmStatus = (int?)1, PmNotice = "Inspect + tension stacker chain", MinsPerUnit = (decimal?)15m,
                       NumOfUnits = (decimal?)2m, NumOfTimesPerYear = (decimal?)52m, DaysBetween = (decimal?)7m,
@@ -1506,7 +1529,7 @@ public static class SqliteFixture
                       PmReference = "PM-BL110-002", PmCost = (decimal?)21.25m, Author = "tech1", PmEntered = ds(d), HasImage = 0,
                       LastUpdate = ds(today.AddDays(-4)), PmCompleted = ds(today.AddDays(-4)), CompletedBy = "tech2" },
                 // 7003 FUTURE (90 days out), annual, compressor intake filter, electrical dept.
-                new { PmId = 7003L, Pmshift = "Any", TitleCraftId = (long?)601L, MaintFreq = "Annual", ItemDeviceId = (long?)502L,
+                new { PmId = 7003L, Pmshift = "Any", TitleCraftId = (long?)601L, MaintFreq = "1XY", ItemDeviceId = (long?)502L,
                       SubsysEquipmentId = (long?)402L, SysEquipmentId = (long?)301L, GroupDepartmentId = (long?)20L,
                       AssignedToGroup = "Electrical", PmStatus = (int?)1, PmNotice = "Replace compressor intake filter", MinsPerUnit = (decimal?)60m,
                       NumOfUnits = (decimal?)1m, NumOfTimesPerYear = (decimal?)1m, DaysBetween = (decimal?)365m,
@@ -1514,7 +1537,7 @@ public static class SqliteFixture
                       PmReference = "PM-AIR-001", PmCost = (decimal?)48.00m, Author = "tech3", PmEntered = ds(d), HasImage = 0,
                       LastUpdate = ds(today.AddDays(-275)), PmCompleted = ds(today.AddDays(-275)), CompletedBy = "tech3" },
                 // 7004 INACTIVE (status 0) — overdue by date, but must NOT appear on the due board.
-                new { PmId = 7004L, Pmshift = "1st", TitleCraftId = (long?)600L, MaintFreq = "Monthly", ItemDeviceId = (long?)500L,
+                new { PmId = 7004L, Pmshift = "1st", TitleCraftId = (long?)600L, MaintFreq = "1XM", ItemDeviceId = (long?)500L,
                       SubsysEquipmentId = (long?)400L, SysEquipmentId = (long?)300L, GroupDepartmentId = (long?)10L,
                       AssignedToGroup = "Maintenance", PmStatus = (int?)0, PmNotice = "Retired PM", MinsPerUnit = (decimal?)10m,
                       NumOfUnits = (decimal?)1m, NumOfTimesPerYear = (decimal?)12m, DaysBetween = (decimal?)30m,
@@ -1534,21 +1557,23 @@ public static class SqliteFixture
 
         conn.Execute("""
             INSERT INTO pmcompletions (pmcompletion_id, itemdevice_id, subsysequipment_id, sysequipment_id,
-                groupdepartment_id, pm_id, pm_status, completeddate, assignedtogroup, completedby, completed_notes, recordeddate)
+                groupdepartment_id, pm_id, pm_status, completeddate, assignedtogroup, completedby, completed_notes,
+                recordeddate, labor_hours, comp_cost)
             VALUES (:PmCompletionId, :ItemDeviceId, :SubsysEquipmentId, :SysEquipmentId, :GroupDepartmentId,
-                :PmId, :PmStatus, :CompletedDate, :AssignedToGroup, :CompletedBy, :CompletedNotes, :RecordedDate)
+                :PmId, :PmStatus, :CompletedDate, :AssignedToGroup, :CompletedBy, :CompletedNotes, :RecordedDate,
+                :LaborHours, :CompCost)
             """,
             new[]
             {
                 new { PmCompletionId = 7201L, ItemDeviceId = (long?)500L, SubsysEquipmentId = (long?)400L, SysEquipmentId = (long?)300L,
                       GroupDepartmentId = (long?)10L, PmId = (long?)7001L, PmStatus = 1, CompletedDate = ds(today.AddDays(-40)),
-                      AssignedToGroup = "Maintenance", CompletedBy = "tech1", CompletedNotes = "Greased, no play", RecordedDate = ds(today.AddDays(-40)) },
+                      AssignedToGroup = "Maintenance", CompletedBy = "tech1", CompletedNotes = "Greased, no play", RecordedDate = ds(today.AddDays(-40)), LaborHours = (decimal?)0.5m, CompCost = (decimal?)21.25m },
                 new { PmCompletionId = 7202L, ItemDeviceId = (long?)500L, SubsysEquipmentId = (long?)400L, SysEquipmentId = (long?)300L,
                       GroupDepartmentId = (long?)10L, PmId = (long?)7001L, PmStatus = 1, CompletedDate = ds(today.AddDays(-70)),
-                      AssignedToGroup = "Maintenance", CompletedBy = "tech2", CompletedNotes = "Replaced seal", RecordedDate = ds(today.AddDays(-70)) },
+                      AssignedToGroup = "Maintenance", CompletedBy = "tech2", CompletedNotes = "Replaced seal", RecordedDate = ds(today.AddDays(-70)), LaborHours = (decimal?)1.5m, CompCost = (decimal?)63.75m },
                 new { PmCompletionId = 7203L, ItemDeviceId = (long?)501L, SubsysEquipmentId = (long?)401L, SysEquipmentId = (long?)300L,
                       GroupDepartmentId = (long?)10L, PmId = (long?)7002L, PmStatus = 1, CompletedDate = ds(today.AddDays(-4)),
-                      AssignedToGroup = "Maintenance", CompletedBy = "tech2", CompletedNotes = "Tensioned", RecordedDate = ds(today.AddDays(-4)) }
+                      AssignedToGroup = "Maintenance", CompletedBy = "tech2", CompletedNotes = "Tensioned", RecordedDate = ds(today.AddDays(-4)), LaborHours = (decimal?)null, CompCost = (decimal?)null }
             });
 
         conn.Execute("""

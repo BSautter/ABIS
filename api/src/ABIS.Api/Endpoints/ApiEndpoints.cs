@@ -1645,6 +1645,12 @@ public static class ApiEndpoints
            .WithSummary("The PM shift codes a PM can be assigned to.")
            .Produces<IReadOnlyList<string>>();
 
+        api.MapGet("/lookups/maint-frequencies", async (IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetMaintFrequenciesAsync(ct)))
+           .WithName("GetMaintFrequencies").WithTags("Lookups")
+           .WithSummary("Maintenance frequency codes (the catalog pm.maint_freq is a foreign key to), shortest interval first. freqType CAL = calendar (daysBetween drives the schedule) | HMC = hours/miles/cycles.")
+           .Produces<IReadOnlyList<MaintFrequency>>();
+
         api.MapPost("/maint-logs", async (MaintLogWrite body, IAbisRepository repo, CancellationToken ct) =>
             {
                 if (Validate(body) is { } problems)

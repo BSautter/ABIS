@@ -6350,6 +6350,57 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Maintenance frequency codes (the catalog pm.maint_freq is a foreign key to), shortest interval first. freqType CAL = calendar (daysBetween drives the schedule) | HMC = hours/miles/cycles.
+     * @return OK
+     */
+    getMaintFrequencies() {
+        let url_ = this.baseUrl + "/api/lookups/maint-frequencies";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetMaintFrequencies(_response);
+        });
+    }
+    processGetMaintFrequencies(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(MaintFrequency.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * List distinct alloys (reference data for dropdowns).
      * @return OK
      */
@@ -22254,6 +22305,40 @@ export class LoginRequest {
         return data;
     }
 }
+export class MaintFrequency {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.maintFreq = _data["maintFreq"];
+            this.freqType = _data["freqType"];
+            this.numPerYear = _data["numPerYear"];
+            this.daysBetween = _data["daysBetween"];
+            this.pmRange = _data["pmRange"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new MaintFrequency();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["maintFreq"] = this.maintFreq;
+        data["freqType"] = this.freqType;
+        data["numPerYear"] = this.numPerYear;
+        data["daysBetween"] = this.daysBetween;
+        data["pmRange"] = this.pmRange;
+        return data;
+    }
+}
 export class MaintLog {
     constructor(data) {
         if (data) {
@@ -24037,6 +24122,8 @@ export class PmCompleteWrite {
             this.completedDate = _data["completedDate"] ? new Date(_data["completedDate"].toString()) : undefined;
             this.completedNotes = _data["completedNotes"];
             this.nextDueDate = _data["nextDueDate"] ? new Date(_data["nextDueDate"].toString()) : undefined;
+            this.laborHours = _data["laborHours"];
+            this.compCost = _data["compCost"];
         }
     }
     static fromJS(data) {
@@ -24051,6 +24138,8 @@ export class PmCompleteWrite {
         data["completedDate"] = this.completedDate ? this.completedDate.toISOString() : undefined;
         data["completedNotes"] = this.completedNotes;
         data["nextDueDate"] = this.nextDueDate ? this.nextDueDate.toISOString() : undefined;
+        data["laborHours"] = this.laborHours;
+        data["compCost"] = this.compCost;
         return data;
     }
 }
@@ -24077,6 +24166,8 @@ export class PmCompletion {
             this.completedBy = _data["completedBy"];
             this.completedNotes = _data["completedNotes"];
             this.recordedDate = _data["recordedDate"] ? new Date(_data["recordedDate"].toString()) : undefined;
+            this.laborHours = _data["laborHours"];
+            this.compCost = _data["compCost"];
         }
     }
     static fromJS(data) {
@@ -24099,6 +24190,8 @@ export class PmCompletion {
         data["completedBy"] = this.completedBy;
         data["completedNotes"] = this.completedNotes;
         data["recordedDate"] = this.recordedDate ? this.recordedDate.toISOString() : undefined;
+        data["laborHours"] = this.laborHours;
+        data["compCost"] = this.compCost;
         return data;
     }
 }

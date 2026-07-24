@@ -1011,7 +1011,7 @@ test('pm flow: due board, definition CRUD, checklist, completion advance (typed)
 
   // ---- create / read / update
   const created = await client.createPm(new PmWrite({
-    pmNotice: 'E2E gearbox oil', maintFreq: 'Quarterly', sysEquipmentId: 300, subsysEquipmentId: 400,
+    pmNotice: 'E2E gearbox oil', maintFreq: '4XY', sysEquipmentId: 300, subsysEquipmentId: 400,
     itemDeviceId: 500, titleCraftId: 600, groupDepartmentId: 10, assignedToGroup: 'Maintenance',
     pmStatus: 1, daysBetween: 30, nextDueDate: new Date(),
   }));
@@ -1020,7 +1020,7 @@ test('pm flow: due board, definition CRUD, checklist, completion advance (typed)
   const got = await client.getPm(created.pmId);
   assert.equal(got.pmNotice, 'E2E gearbox oil');
   const updated = await client.updatePm(created.pmId, new PmWrite({
-    pmNotice: 'E2E gearbox oil + filter', maintFreq: 'Quarterly', pmStatus: 1, daysBetween: 30,
+    pmNotice: 'E2E gearbox oil + filter', maintFreq: '4XY', pmStatus: 1, daysBetween: 30,
   }));
   assert.equal(updated.pmNotice, 'E2E gearbox oil + filter');
 
