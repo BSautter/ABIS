@@ -2754,3 +2754,28 @@ public sealed class LineBoardRow
 
     public IReadOnlyList<LineBoardSkid> Skids { get; set; } = [];
 }
+
+/// <summary>One job in a line's queue (legacy <c>LINE_PRIORITY</c>, composite PK line+job), with the
+/// job's own status/order. <see cref="Status"/> 1 = the job the line is running now, 2 = already run;
+/// the Operation Panel re-sequences these whenever the line is pointed at a different job.</summary>
+public sealed class LineQueueRow
+{
+    public long LineNum { get; set; }
+    public long AbJobNum { get; set; }
+    public int? PriorityNum { get; set; }
+    public int? CoilRequired { get; set; }
+    public string? Note { get; set; }
+    public int? Status { get; set; }
+    public int? JobStatus { get; set; }
+    public long? OrderAbcNum { get; set; }
+}
+
+/// <summary>Result of closing a line's shift (legacy <c>wf_end_shift</c>): which shift was closed,
+/// the downtime rolled into its <c>dt_total</c> (SECONDS, as legacy stores it), and the line's board
+/// after the close.</summary>
+public sealed class LineShiftEndResult
+{
+    public long ShiftNum { get; set; }
+    public long DtTotalSeconds { get; set; }
+    public LineBoardRow Board { get; set; } = new();
+}

@@ -362,6 +362,13 @@ tbody tr.click { cursor:pointer; } tbody tr.click:hover { background:var(--surfa
 .das-empty { grid-column:1/-1; text-align:center; color:var(--das-ink-3); padding:60px 0; font-size:14px; }
 .das .chip { border:1px solid var(--das-line); }
 
+/* Operation panel on the DAS console: what LINE_CURRENT_STATUS says the line is running. */
+.dop-op { display:flex; gap:10px; flex-wrap:wrap; }
+.dop-op .op-cell { display:flex; flex-direction:column; gap:2px; padding:9px 14px; border:1px solid var(--line); border-radius:10px; background:var(--surface-2); min-width:130px; }
+.dop-op .op-cell .k { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); }
+.dop-op .op-cell .v { font-family:var(--font-mono); font-size:16px; font-weight:600; }
+.dop-op .op-cell .v.dim { color:var(--ink-3); font-family:var(--font-sans); font-weight:400; font-size:14px; }
+
 /* ============================================================================
    DAS operator console — the line operator's data-acquisition kiosk (own surface,
    big touch targets). Themes light/dark via tokens; dark top bar like the board. (#4c)

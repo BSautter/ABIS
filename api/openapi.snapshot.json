@@ -3092,6 +3092,265 @@
         }
       }
     },
+    "/api/das/lines/{lineNum}/queue": {
+      "get": {
+        "tags": [
+          "DAS"
+        ],
+        "summary": "A line's job queue (line_priority): the running job first, then by priority.",
+        "operationId": "GetLineQueue",
+        "parameters": [
+          {
+            "name": "lineNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LineQueueRow"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/das/lines/{lineNum}/current-job": {
+      "post": {
+        "tags": [
+          "DAS"
+        ],
+        "summary": "Point a line at the job it is running (null clears it); re-sequences the line's LINE_PRIORITY queue.",
+        "operationId": "SetLineCurrentJob",
+        "parameters": [
+          {
+            "name": "lineNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LineCurrentJobWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LineBoardRow"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/das/lines/{lineNum}/current-coil": {
+      "post": {
+        "tags": [
+          "DAS"
+        ],
+        "summary": "Load the coil on the mandrel (null drops it); loading marks the coil as on-line and zeroes the process rate.",
+        "operationId": "SetLineCurrentCoil",
+        "parameters": [
+          {
+            "name": "lineNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LineCurrentCoilWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LineBoardRow"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/das/lines/{lineNum}/shift/start": {
+      "post": {
+        "tags": [
+          "DAS"
+        ],
+        "summary": "Bind an already-scheduled shift to the line's board (the DAS station starting its shift).",
+        "operationId": "StartLineShift",
+        "parameters": [
+          {
+            "name": "lineNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LineShiftStartWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LineBoardRow"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/das/lines/{lineNum}/shift/end": {
+      "post": {
+        "tags": [
+          "DAS"
+        ],
+        "summary": "Close the line's open shift: stamps end_time + the shift's downtime total (seconds) and clears the board's shift.",
+        "operationId": "EndLineShift",
+        "parameters": [
+          {
+            "name": "lineNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LineShiftEndResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/dies": {
       "get": {
         "tags": [
@@ -18353,6 +18612,28 @@
         },
         "additionalProperties": false
       },
+      "LineCurrentCoilWrite": {
+        "type": "object",
+        "properties": {
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LineCurrentJobWrite": {
+        "type": "object",
+        "properties": {
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "LineDieShape": {
         "type": "object",
         "properties": {
@@ -18525,6 +18806,77 @@
           },
           "message": {
             "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LineQueueRow": {
+        "type": "object",
+        "properties": {
+          "lineNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "priorityNum": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "coilRequired": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "jobStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "orderAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LineShiftEndResult": {
+        "type": "object",
+        "properties": {
+          "shiftNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "dtTotalSeconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "board": {
+            "$ref": "#/components/schemas/LineBoardRow"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LineShiftStartWrite": {
+        "type": "object",
+        "properties": {
+          "shiftNum": {
+            "type": "integer",
+            "format": "int64",
             "nullable": true
           }
         },

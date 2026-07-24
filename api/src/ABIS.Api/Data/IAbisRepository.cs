@@ -294,6 +294,18 @@ public interface IAbisRepository
 
     // ---- Live line board (LINE_CURRENT_STATUS) ---------------------------
     Task<IReadOnlyList<LineBoardRow>> GetLineBoardAsync(long? lineNum, CancellationToken ct);
+    Task<bool> LineExistsAsync(long lineNum, CancellationToken ct);
+    Task<IReadOnlyList<LineQueueRow>> GetLineQueueAsync(long lineNum, CancellationToken ct);
+    /// <summary>Point the line at the job it is running (null clears it) + re-sequence LINE_PRIORITY.</summary>
+    Task<LineBoardRow?> SetLineCurrentJobAsync(long lineNum, long? abJobNum, CancellationToken ct);
+    /// <summary>Load (or drop) the coil on the mandrel; loading also marks the coil as on-line.</summary>
+    Task<LineBoardRow?> SetLineCurrentCoilAsync(long lineNum, long? coilAbcNum, CancellationToken ct);
+    /// <summary>Bind an already-scheduled shift to the line's board.</summary>
+    Task<LineBoardRow?> StartLineShiftAsync(long lineNum, long shiftNum, CancellationToken ct);
+    /// <summary>Close the line's open shift: stamp end_time + the shift's downtime total, then clear
+    /// the board's shift. Returns the closed shift number and the seconds rolled up, or null when the
+    /// line has no open shift.</summary>
+    Task<(LineBoardRow Board, long ShiftNum, long DtTotalSeconds)?> EndLineShiftAsync(long lineNum, CancellationToken ct);
 
     // ---- Stacker line board / error log ---------------------------------
     Task<IReadOnlyList<StackerBoardRow>> GetStackerBoardAsync(long? lineNum, CancellationToken ct);

@@ -82,6 +82,24 @@ function scaffold() {
           <div class="body"><div class="dop-coils" id="tCoils"><span class="muted">Loading…</span></div></div>
         </div>
 
+        <div class="card" id="opPanel"><header><h2>Operation panel</h2><span class="sub" id="opSub">what the line is running</span></header>
+          <div class="body">
+            <div class="dop-op" id="opState"><span class="muted">Loading the line…</span></div>
+            <div class="frow" style="margin-top:12px;align-items:flex-end">
+              <div class="fld"><label>Shift #</label><input id="opShift" class="big" inputmode="numeric" style="width:120px" /></div>
+              <button class="btn sm" id="btnShiftStart" type="button">Start shift</button>
+              <button class="btn sm ghost" id="btnShiftEnd" type="button">End shift</button>
+            </div>
+            <div class="frow" style="margin-top:10px;align-items:center">
+              <button class="btn sm" id="btnRunJob" type="button">Run this job on the line</button>
+              <button class="btn sm" id="btnLoadCoil" type="button">Load selected coil</button>
+              <button class="btn sm ghost" id="btnDropCoil" type="button">Drop coil</button>
+              <span id="opOk" class="ok-note"></span>
+            </div>
+            <p class="dop-note">Writes the line's live board (shift / job / coil) — the same row the floor board reads.</p>
+          </div>
+        </div>
+
         <div class="dop-tabs">${tab('skids', 'Weigh skid')}${tab('scrap', 'Scrap')}${tab('downtime', 'Downtime')}</div>
 
         <div id="pane-skids" class="card">
@@ -156,7 +174,7 @@ async function loadJob() {
         runCoil = null;
         $('#jobHdr').innerHTML = `Job ${id} · ${esc(lineLabel(j.lineNum))} · ${statusChip('jobStatus', j.jobStatus)} · order ${esc(j.orderAbcNum ?? '')}/${esc(j.orderItemNum ?? '')}`;
         $('#workarea').classList.remove('disabled');
-        await Promise.all([loadCoils(), loadSkids(), loadScrap()]);
+        await Promise.all([loadCoils(), loadSkids(), loadScrap(), loadOpBoard()]);
         $('#tDt').innerHTML = '<tr><td colspan="4" class="muted">No downtime logged this session.</td></tr>';
         clearAutoDowntime();
         restoreOpenDowntime(id); // re-show a downtime left open on this station (survives close/logout/reopen)
@@ -167,6 +185,89 @@ async function loadJob() {
     }
     catch (e) {
         setErr(`Load job failed: ${e.message}`);
+    }
+    finally {
+        setBusy(false);
+    }
+}
+let opBoard = null;
+async function opFetch(path, init) {
+    const r = await authFetch(path, init);
+    if (!r.ok)
+        throw new Error(`${r.status} ${(await r.text()).slice(0, 200)}`);
+    return (await r.json());
+}
+function renderOpState() {
+    const b = opBoard;
+    if (!b) {
+        $('#opState').innerHTML = '<span class="muted">Board unavailable for this line.</span>';
+        return;
+    }
+    const cell = (k, v, dim = false) => `<div class="op-cell"><span class="k">${k}</span><span class="v${dim ? ' dim' : ''}">${v}</span></div>`;
+    $('#opState').innerHTML =
+        cell('Shift', b.shiftNum != null ? `${esc(b.shiftNum)}${b.shiftOperatorInitial ? ' · ' + esc(b.shiftOperatorInitial) : ''}` : 'not started', b.shiftNum == null) +
+            cell('Job', b.abJobNum != null ? `#${esc(b.abJobNum)}` : 'none', b.abJobNum == null) +
+            cell('Coil', b.coilAbcNum != null ? `#${esc(b.coilAbcNum)}${b.coilOrgNum ? ' · ' + esc(b.coilOrgNum) : ''}` : 'none', b.coilAbcNum == null);
+}
+async function loadOpBoard() {
+    if (lineNum == null) {
+        opBoard = null;
+        renderOpState();
+        return;
+    }
+    try {
+        opBoard = await opFetch(`/api/das/line-board/${lineNum}`);
+        setV('#opShift', opBoard?.shiftNum ?? '');
+    }
+    catch {
+        opBoard = null;
+    }
+    renderOpState();
+}
+// Every panel action follows the same shape: call, take the returned board as the new truth, report.
+async function opAction(path, body, okMsg) {
+    if (lineNum == null) {
+        setErr('Load a job first — the line comes from the job.');
+        return;
+    }
+    setErr('');
+    $('#opOk').textContent = '';
+    setBusy(true);
+    try {
+        opBoard = await opFetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
+        setV('#opShift', opBoard?.shiftNum ?? '');
+        renderOpState();
+        $('#opOk').textContent = okMsg;
+    }
+    catch (e) {
+        setErr(`Operation panel: ${e.message}`);
+    }
+    finally {
+        setBusy(false);
+    }
+}
+async function endShift() {
+    if (lineNum == null) {
+        setErr('Load a job first — the line comes from the job.');
+        return;
+    }
+    if (!confirm('End this line’s shift? The shift is stamped closed and its downtime total rolled up.'))
+        return;
+    setErr('');
+    $('#opOk').textContent = '';
+    setBusy(true);
+    try {
+        const r = await authFetch(`/api/das/lines/${lineNum}/shift/end`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        if (!r.ok)
+            throw new Error(`${r.status} ${(await r.text()).slice(0, 200)}`);
+        const res = await r.json();
+        opBoard = res.board;
+        setV('#opShift', '');
+        renderOpState();
+        $('#opOk').textContent = `Shift ${res.shiftNum} ended · ${Math.round(res.dtTotalSeconds / 60)} min downtime`;
+    }
+    catch (e) {
+        setErr(`End shift: ${e.message}`);
     }
     finally {
         setBusy(false);
@@ -767,6 +868,30 @@ async function pickerBrowse(bases, targetId, path) {
     $('#btnScrap').addEventListener('click', () => void saveScrap());
     $('#btnScrapTag').addEventListener('click', () => void printScrapTag());
     $('#btnDt').addEventListener('click', () => void saveDowntime());
+    $('#btnShiftStart').addEventListener('click', () => {
+        const s = v('#opShift');
+        if (!s) {
+            setErr('Enter the scheduled shift number to start.');
+            return;
+        }
+        void opAction(`/api/das/lines/${lineNum}/shift/start`, { shiftNum: Number(s) }, `Shift ${s} started`);
+    });
+    $('#btnShiftEnd').addEventListener('click', () => void endShift());
+    $('#btnRunJob').addEventListener('click', () => {
+        if (job == null) {
+            setErr('Load a job first.');
+            return;
+        }
+        void opAction(`/api/das/lines/${lineNum}/current-job`, { abJobNum: job }, `Line running job ${job}`);
+    });
+    $('#btnLoadCoil').addEventListener('click', () => {
+        if (runCoil == null) {
+            setErr('Select the coil being run first.');
+            return;
+        }
+        void opAction(`/api/das/lines/${lineNum}/current-coil`, { coilAbcNum: runCoil }, `Coil ${runCoil} loaded`);
+    });
+    $('#btnDropCoil').addEventListener('click', () => void opAction(`/api/das/lines/${lineNum}/current-coil`, { coilAbcNum: null }, 'Coil dropped'));
     showTab('skids');
     await loadCauses();
 })();

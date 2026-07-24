@@ -6332,6 +6332,155 @@ public sealed class AbisRepository : IAbisRepository
         return rows;
     }
 
+    /// <summary>A line's job queue (legacy <c>LINE_PRIORITY</c>), running job first then by priority.</summary>
+    public async Task<IReadOnlyList<LineQueueRow>> GetLineQueueAsync(long lineNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<LineQueueRow>(new CommandDefinition(
+            """
+            SELECT lp.line_num AS LineNum, lp.ab_job_num AS AbJobNum, lp.priority_num AS PriorityNum,
+                   lp.coil_required AS CoilRequired, lp.note AS Note, lp.status AS Status,
+                   j.job_status AS JobStatus, j.order_abc_num AS OrderAbcNum
+            FROM line_priority lp
+            LEFT JOIN ab_job j ON j.ab_job_num = lp.ab_job_num
+            WHERE lp.line_num = :line
+            ORDER BY CASE WHEN lp.status = 1 THEN 0 ELSE 1 END, lp.priority_num, lp.ab_job_num
+            """, new { line = lineNum }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    public async Task<bool> LineExistsAsync(long lineNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM line WHERE line_num = :line", new { line = lineNum }, cancellationToken: ct)) > 0;
+    }
+
+    // Legacy ships one LINE_CURRENT_STATUS row per line, pre-created by hand. The modern write path
+    // creates the row on first use instead (a deliberate addition): a line that has never run under
+    // ABIS otherwise could never be pointed at a job.
+    private static async Task EnsureLineBoardRowAsync(DbConnection conn, DbTransaction tx, long lineNum, CancellationToken ct)
+    {
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM line_current_status WHERE line_num = :line",
+            new { line = lineNum }, transaction: tx, cancellationToken: ct));
+        if (exists == 0)
+            await conn.ExecuteAsync(new CommandDefinition(
+                "INSERT INTO line_current_status (line_num) VALUES (:line)",
+                new { line = lineNum }, transaction: tx, cancellationToken: ct));
+    }
+
+    /// <summary>Point a line at the job it is running — the Operation Panel's job button
+    /// (legacy <c>wf_set_opc_abjob</c>). A null job clears it (the legacy "job &lt; 1000" branch).
+    /// Setting a job also re-sequences the line's queue: the job that WAS running drops to status 2
+    /// (ran) and the new one takes status 1 (running), in that order.</summary>
+    public async Task<LineBoardRow?> SetLineCurrentJobAsync(long lineNum, long? abJobNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        await EnsureLineBoardRowAsync(conn, tx, lineNum, ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE line_current_status SET ab_job_num = :job WHERE line_num = :line",
+            new { job = abJobNum, line = lineNum }, transaction: tx, cancellationToken: ct));
+        if (abJobNum is { } job)
+        {
+            await conn.ExecuteAsync(new CommandDefinition(
+                "UPDATE line_priority SET status = 2 WHERE line_num = :line AND status = 1",
+                new { line = lineNum }, transaction: tx, cancellationToken: ct));
+            await conn.ExecuteAsync(new CommandDefinition(
+                "UPDATE line_priority SET status = 1 WHERE ab_job_num = :job AND line_num = :line",
+                new { job, line = lineNum }, transaction: tx, cancellationToken: ct));
+        }
+        await tx.CommitAsync(ct);
+        return (await GetLineBoardAsync(lineNum, ct)).FirstOrDefault();
+    }
+
+    /// <summary>Load (or drop) the coil on the mandrel — the Operation Panel's coil button
+    /// (legacy <c>wf_set_opc_abcoil</c>). Loading zeroes the process rate and marks the coil as on a
+    /// line (<c>coil_status_from_line = 1</c>); dropping clears the coil AND its rate. Faithful to
+    /// legacy, dropping does NOT reset <c>coil_status_from_line</c> — the coil has been on a line.</summary>
+    public async Task<LineBoardRow?> SetLineCurrentCoilAsync(long lineNum, long? coilAbcNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        await EnsureLineBoardRowAsync(conn, tx, lineNum, ct);
+        if (coilAbcNum is { } coil)
+        {
+            await conn.ExecuteAsync(new CommandDefinition(
+                "UPDATE line_current_status SET coil_abc_num = :coil, coil_process_rate = 0 WHERE line_num = :line",
+                new { coil, line = lineNum }, transaction: tx, cancellationToken: ct));
+            await conn.ExecuteAsync(new CommandDefinition(
+                "UPDATE coil SET coil_status_from_line = 1 WHERE coil_abc_num = :coil",
+                new { coil }, transaction: tx, cancellationToken: ct));
+        }
+        else
+        {
+            await conn.ExecuteAsync(new CommandDefinition(
+                "UPDATE line_current_status SET coil_abc_num = NULL, coil_process_rate = NULL WHERE line_num = :line",
+                new { line = lineNum }, transaction: tx, cancellationToken: ct));
+        }
+        await tx.CommitAsync(ct);
+        return (await GetLineBoardAsync(lineNum, ct)).FirstOrDefault();
+    }
+
+    /// <summary>Bind an already-scheduled shift to the line's board (legacy <c>wf_new_shift</c>).
+    /// The shift itself is created by the scheduling screen; this is the DAS station saying
+    /// "this line is now running that shift".</summary>
+    public async Task<LineBoardRow?> StartLineShiftAsync(long lineNum, long shiftNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        await EnsureLineBoardRowAsync(conn, tx, lineNum, ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE line_current_status SET shift_num = :shift WHERE line_num = :line",
+            new { shift = shiftNum, line = lineNum }, transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+        return (await GetLineBoardAsync(lineNum, ct)).FirstOrDefault();
+    }
+
+    /// <summary>Close the line's open shift (legacy <c>wf_end_shift</c>): stamp the shift's
+    /// <c>end_time</c> and roll its downtime instances up into <c>dt_total</c> (SECONDS — legacy
+    /// multiplies the Oracle day-difference by 86400), then clear the board's shift. Returns null
+    /// when the line has no board row or no open shift. The instance durations are summed in C# so
+    /// the same code runs on Oracle DATE arithmetic and the SQLite fixture's text timestamps.</summary>
+    public async Task<(LineBoardRow Board, long ShiftNum, long DtTotalSeconds)?> EndLineShiftAsync(long lineNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var shiftNum = await conn.ExecuteScalarAsync<long?>(new CommandDefinition(
+            "SELECT shift_num FROM line_current_status WHERE line_num = :line",
+            new { line = lineNum }, cancellationToken: ct));
+        if (shiftNum is not { } shift)
+            return null;
+
+        var spans = await conn.QueryAsync<DowntimeSpan>(new CommandDefinition(
+            "SELECT starting_time AS StartingTime, ending_time AS EndingTime FROM dt_instance WHERE shift_num = :shift",
+            new { shift }, cancellationToken: ct));
+        var seconds = (long)spans
+            .Where(s => s.StartingTime is not null && s.EndingTime is not null)
+            .Sum(s => Math.Max(0d, (s.EndingTime!.Value - s.StartingTime!.Value).TotalSeconds));
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        // Plant-local, NOT UtcNow: the shift's start_time is written by the scheduling screen in
+        // plant time (as legacy's DateTime(today(), now()) did), and the uptime report subtracts
+        // the two — mixing the clocks would skew every shift length by the UTC offset.
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE shift SET end_time = :endTime, dt_total = :dt WHERE shift_num = :shift",
+            new { endTime = DateTime.Now, dt = seconds, shift }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE line_current_status SET shift_num = NULL WHERE line_num = :line",
+            new { line = lineNum }, transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+
+        var board = (await GetLineBoardAsync(lineNum, ct)).First();
+        return (board, shift, seconds);
+    }
+
+    private sealed class DowntimeSpan
+    {
+        public DateTime? StartingTime { get; set; }
+        public DateTime? EndingTime { get; set; }
+    }
+
     private sealed class LineBoardSkidFlat
     {
         public long LineNum { get; set; }

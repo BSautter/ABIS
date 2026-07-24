@@ -1314,6 +1314,80 @@ public static class ApiEndpoints
            .WithSummary("One line's live board row; 404 when the line has no line_current_status row.")
            .Produces<LineBoardRow>().Produces(StatusCodes.Status404NotFound);
 
+        api.MapGet("/das/lines/{lineNum:long}/queue", async (long lineNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.LineExistsAsync(lineNum, ct)
+                    ? Results.Ok(await repo.GetLineQueueAsync(lineNum, ct))
+                    : Results.NotFound())
+           .WithName("GetLineQueue").WithTags("DAS")
+           .WithSummary("A line's job queue (line_priority): the running job first, then by priority.")
+           .Produces<IReadOnlyList<LineQueueRow>>().Produces(StatusCodes.Status404NotFound);
+
+        // ---- DAS Operation Panel: the line's live-board writes (legacy w_da_sheet) ----
+        // These are what the DAS station does as it runs: point the line at a job, load or drop the
+        // coil on the mandrel, and open / close the line's shift. Each mirrors the legacy UPDATE
+        // exactly; nothing here transmits or fires anything downstream.
+        api.MapPost("/das/lines/{lineNum:long}/current-job", async (long lineNum, LineCurrentJobWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (!await repo.LineExistsAsync(lineNum, ct))
+                    return Results.NotFound();
+                // A job the plant does not have cannot be "what the line is running".
+                if (body.AbJobNum is { } job && await repo.GetJobAsync(job, ct) is null)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["abJobNum"] = [$"Job {job} does not exist."] });
+                return await repo.SetLineCurrentJobAsync(lineNum, body.AbJobNum, ct) is { } board
+                    ? Results.Ok(board) : Results.NotFound();
+            })
+           .WithName("SetLineCurrentJob").WithTags("DAS")
+           .WithSummary("Point a line at the job it is running (null clears it); re-sequences the line's LINE_PRIORITY queue.")
+           .Produces<LineBoardRow>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
+        api.MapPost("/das/lines/{lineNum:long}/current-coil", async (long lineNum, LineCurrentCoilWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (!await repo.LineExistsAsync(lineNum, ct))
+                    return Results.NotFound();
+                if (body.CoilAbcNum is { } coil && await repo.GetCoilAsync(coil, ct) is null)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["coilAbcNum"] = [$"Coil {coil} does not exist."] });
+                return await repo.SetLineCurrentCoilAsync(lineNum, body.CoilAbcNum, ct) is { } board
+                    ? Results.Ok(board) : Results.NotFound();
+            })
+           .WithName("SetLineCurrentCoil").WithTags("DAS")
+           .WithSummary("Load the coil on the mandrel (null drops it); loading marks the coil as on-line and zeroes the process rate.")
+           .Produces<LineBoardRow>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
+        api.MapPost("/das/lines/{lineNum:long}/shift/start", async (long lineNum, LineShiftStartWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (!await repo.LineExistsAsync(lineNum, ct))
+                    return Results.NotFound();
+                if (body.ShiftNum is not { } shiftNum)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["shiftNum"] = ["shiftNum is required."] });
+                if (await repo.GetShiftAsync(shiftNum, ct) is not { } shift)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["shiftNum"] = [$"Shift {shiftNum} does not exist."] });
+                // A shift belongs to one line; binding another line's shift would corrupt both boards.
+                if (shift.LineNum is { } shiftLine && shiftLine != lineNum)
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Shift belongs to another line",
+                        detail: $"Shift {shiftNum} is scheduled on line {shiftLine}, not line {lineNum}.");
+                return await repo.StartLineShiftAsync(lineNum, shiftNum, ct) is { } board
+                    ? Results.Ok(board) : Results.NotFound();
+            })
+           .WithName("StartLineShift").WithTags("DAS")
+           .WithSummary("Bind an already-scheduled shift to the line's board (the DAS station starting its shift).")
+           .Produces<LineBoardRow>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
+
+        api.MapPost("/das/lines/{lineNum:long}/shift/end", async (long lineNum, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (!await repo.LineExistsAsync(lineNum, ct))
+                    return Results.NotFound();
+                if (await repo.EndLineShiftAsync(lineNum, ct) is not { } closed)
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "No open shift",
+                        detail: $"Line {lineNum} has no open shift to end.");
+                return Results.Ok(new LineShiftEndResult
+                {
+                    ShiftNum = closed.ShiftNum, DtTotalSeconds = closed.DtTotalSeconds, Board = closed.Board,
+                });
+            })
+           .WithName("EndLineShift").WithTags("DAS")
+           .WithSummary("Close the line's open shift: stamps end_time + the shift's downtime total (seconds) and clears the board's shift.")
+           .Produces<LineShiftEndResult>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
+
         // ---- Stacker line board / error log (legacy stacker_110) ----
         api.MapGet("/stacker/board", async (IAbisRepository repo, CancellationToken ct, long? lineNum = null) =>
                 Results.Ok(await repo.GetStackerBoardAsync(lineNum, ct)))

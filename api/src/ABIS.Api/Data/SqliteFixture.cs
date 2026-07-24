@@ -145,7 +145,9 @@ public static class SqliteFixture
                 coil_org_num TEXT NOT NULL, coil_status INTEGER, coil_notes TEXT, coil_entry_date TEXT,
                 customer_id INTEGER, coil_from_cust_id INTEGER, date_received TEXT, icra TEXT,
                 lot_num TEXT NOT NULL, net_wt REAL NOT NULL, net_wt_balance REAL NOT NULL, pieces_per_case INTEGER,
-                consumed_coil_num TEXT, vo TEXT, customer_po TEXT, production_desc_code TEXT, lfeed REAL);
+                consumed_coil_num TEXT, vo TEXT, customer_po TEXT, production_desc_code TEXT, lfeed REAL,
+                -- Set to 1 by the DAS Operation Panel when the coil is loaded on a line.
+                coil_status_from_line INTEGER);
 
             -- Customer coils earmarked to an order (legacy ORDER_COIL, composite PK). The order-entry
             -- coil picker (w_order_entry_coil_list / w_cust_coil_list) writes this link.
@@ -496,6 +498,14 @@ public static class SqliteFixture
                 sheet_skid_location_15 INTEGER, sheet_skid_location_16 INTEGER, sheet_skid_location_17 INTEGER,
                 sheet_skid_location_18 INTEGER,
                 sheet_skid_stacker_1 INTEGER, sheet_skid_stacker_2 INTEGER);
+
+            -- The per-line job queue (legacy LINE_PRIORITY, composite PK). status 1 = the job the
+            -- line is running now, 2 = already run; the Operation Panel re-sequences it whenever the
+            -- line is pointed at a different job.
+            CREATE TABLE line_priority (
+                line_num INTEGER NOT NULL, ab_job_num INTEGER NOT NULL, priority_num INTEGER,
+                coil_required INTEGER, note TEXT, status INTEGER,
+                PRIMARY KEY (line_num, ab_job_num));
 
             CREATE TABLE groupdepartment (
                 groupdepartment_id INTEGER PRIMARY KEY, groupdepartment TEXT, depttype TEXT);
@@ -1475,6 +1485,18 @@ public static class SqliteFixture
                       ShiftNum = (long?)7701L, LineStatus = (int?)1, CoilProcessRate = (int?)42, Loc0 = (long?)3001L, Loc5 = (long?)3002L, Stacker1 = (long?)3099L },
                 new { LineNum = 120L, ScrapSkidNum = (long?)null, SheetSkidNum = (long?)null, CoilAbcNum = (long?)null, AbJobNum = (long?)null,
                       ShiftNum = (long?)null, LineStatus = (int?)0, CoilProcessRate = (int?)null, Loc0 = (long?)3003L, Loc5 = (long?)null, Stacker1 = (long?)null }
+            });
+
+        // Line 110's job queue: 1001 is the job the line is running (status 1), 1002 is queued
+        // (status 0) — pointing the line at 1002 must drop 1001 to "ran" (2) and promote 1002.
+        conn.Execute("""
+            INSERT INTO line_priority (line_num, ab_job_num, priority_num, coil_required, note, status)
+            VALUES (:LineNum, :AbJobNum, :PriorityNum, :CoilRequired, :Note, :Status)
+            """,
+            new[]
+            {
+                new { LineNum = 110L, AbJobNum = 1001L, PriorityNum = (int?)1, CoilRequired = (int?)1, Note = "running", Status = (int?)1 },
+                new { LineNum = 110L, AbJobNum = 1002L, PriorityNum = (int?)2, CoilRequired = (int?)1, Note = "next up", Status = (int?)0 }
             });
 
         conn.Execute("""

@@ -1084,3 +1084,28 @@ public sealed class SetPasswordRequest
     /// <summary>The initial/reset password to set for the target user.</summary>
     public string? Password { get; set; }
 }
+
+// ---- DAS Operation Panel (the line's live board writes, legacy w_da_sheet) ----
+
+/// <summary>Body for POST /api/das/lines/{lineNum}/current-job — the Operation Panel points a line
+/// at the job it is running (legacy <c>wf_set_opc_abjob</c>). A null <see cref="AbJobNum"/> clears
+/// the line's current job, exactly as the legacy "job &lt; 1000" branch does.</summary>
+public sealed class LineCurrentJobWrite
+{
+    public long? AbJobNum { get; set; }
+}
+
+/// <summary>Body for POST /api/das/lines/{lineNum}/current-coil — the Operation Panel loads (or
+/// drops) the coil on the mandrel (legacy <c>wf_set_opc_abcoil</c>). A null
+/// <see cref="CoilAbcNum"/> clears the current coil and its process rate.</summary>
+public sealed class LineCurrentCoilWrite
+{
+    public long? CoilAbcNum { get; set; }
+}
+
+/// <summary>Body for POST /api/das/lines/{lineNum}/shift/start — bind an already-scheduled shift to
+/// the line's board (legacy <c>wf_new_shift</c>: <c>UPDATE line_current_status SET shift_num</c>).</summary>
+public sealed class LineShiftStartWrite
+{
+    public long? ShiftNum { get; set; }
+}

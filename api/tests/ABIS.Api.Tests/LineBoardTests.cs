@@ -101,6 +101,123 @@ public sealed class LineBoardTests
     }
 
     [Fact]
+    public async Task Pointing_the_line_at_a_job_resequences_its_queue()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        // Seeded: 1001 running (status 1), 1002 queued (0). Point the line at 1002.
+        var resp = await c.PostAsJsonAsync("/api/das/lines/110/current-job", new { abJobNum = 1002 });
+        resp.EnsureSuccessStatusCode();
+        var board = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(1002, board.GetProperty("abJobNum").GetInt64());
+
+        var queue = await c.GetFromJsonAsync<JsonElement>("/api/das/lines/110/queue");
+        var byJob = queue.EnumerateArray().ToDictionary(r => r.GetProperty("abJobNum").GetInt64(), r => r.GetProperty("status").GetInt32());
+        Assert.Equal(1, byJob[1002]);   // now running
+        Assert.Equal(2, byJob[1001]);   // dropped to "ran"
+        // The running job sorts first whatever its priority number.
+        Assert.Equal(1002, queue.EnumerateArray().First().GetProperty("abJobNum").GetInt64());
+    }
+
+    [Fact]
+    public async Task Clearing_the_job_leaves_the_queue_alone()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        var resp = await c.PostAsJsonAsync("/api/das/lines/110/current-job", new { abJobNum = (long?)null });
+        resp.EnsureSuccessStatusCode();
+        var board = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, board.GetProperty("abJobNum").ValueKind);
+
+        // Legacy only nulls the board's job on the clear branch — the queue is untouched.
+        var queue = await c.GetFromJsonAsync<JsonElement>("/api/das/lines/110/queue");
+        var byJob = queue.EnumerateArray().ToDictionary(r => r.GetProperty("abJobNum").GetInt64(), r => r.GetProperty("status").GetInt32());
+        Assert.Equal(1, byJob[1001]);
+    }
+
+    [Fact]
+    public async Task Loading_a_coil_marks_it_on_line_and_dropping_clears_the_rate()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        var load = await c.PostAsJsonAsync("/api/das/lines/120/current-coil", new { coilAbcNum = 5003 });
+        load.EnsureSuccessStatusCode();
+        var board = await load.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(5003, board.GetProperty("coilAbcNum").GetInt64());
+        Assert.Equal(0, board.GetProperty("coilProcessRate").GetInt32());
+        // The coil carries the spec through the join, so the operator sees what is on the mandrel.
+        Assert.False(string.IsNullOrWhiteSpace(board.GetProperty("coilOrgNum").GetString()));
+
+        var drop = await c.PostAsJsonAsync("/api/das/lines/120/current-coil", new { coilAbcNum = (long?)null });
+        drop.EnsureSuccessStatusCode();
+        var after = await drop.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, after.GetProperty("coilAbcNum").ValueKind);
+        Assert.Equal(JsonValueKind.Null, after.GetProperty("coilProcessRate").ValueKind);
+    }
+
+    [Fact]
+    public async Task Unknown_job_or_coil_is_rejected_and_an_unknown_line_404s()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        var badJob = await c.PostAsJsonAsync("/api/das/lines/110/current-job", new { abJobNum = 999999 });
+        Assert.Equal(HttpStatusCode.BadRequest, badJob.StatusCode);
+
+        var badCoil = await c.PostAsJsonAsync("/api/das/lines/110/current-coil", new { coilAbcNum = 999999 });
+        Assert.Equal(HttpStatusCode.BadRequest, badCoil.StatusCode);
+
+        var badLine = await c.PostAsJsonAsync("/api/das/lines/999/current-job", new { abJobNum = 1001 });
+        Assert.Equal(HttpStatusCode.NotFound, badLine.StatusCode);
+    }
+
+    [Fact]
+    public async Task Ending_the_shift_stamps_its_downtime_total_and_clears_the_board()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        var end = await c.PostAsJsonAsync("/api/das/lines/110/shift/end", new { });
+        end.EnsureSuccessStatusCode();
+        var closed = await end.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(7701, closed.GetProperty("shiftNum").GetInt64());
+        // Shift 7701 carries two downtime instances — 20 min (9101) + 5 min (9103) = 1500 s
+        // (legacy stores dt_total in SECONDS: the Oracle day-difference times 86400).
+        Assert.Equal(1500, closed.GetProperty("dtTotalSeconds").GetInt64());
+        Assert.Equal(JsonValueKind.Null, closed.GetProperty("board").GetProperty("shiftNum").ValueKind);
+
+        var shift = await c.GetFromJsonAsync<JsonElement>("/api/shifts/7701");
+        Assert.Equal(1500, shift.GetProperty("dtTotal").GetDecimal());
+
+        // A second end has nothing to close.
+        var again = await c.PostAsJsonAsync("/api/das/lines/110/shift/end", new { });
+        Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
+    }
+
+    [Fact]
+    public async Task Starting_a_shift_binds_it_and_refuses_another_lines_shift()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        // Shift 7702 is scheduled on line 120 — binding it to 110 would corrupt both boards.
+        var wrongLine = await c.PostAsJsonAsync("/api/das/lines/110/shift/start", new { shiftNum = 7702 });
+        Assert.Equal(HttpStatusCode.Conflict, wrongLine.StatusCode);
+
+        var ok = await c.PostAsJsonAsync("/api/das/lines/120/shift/start", new { shiftNum = 7702 });
+        ok.EnsureSuccessStatusCode();
+        var board = await ok.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(7702, board.GetProperty("shiftNum").GetInt64());
+        Assert.Equal("RM", board.GetProperty("shiftOperatorInitial").GetString());
+
+        var unknown = await c.PostAsJsonAsync("/api/das/lines/120/shift/start", new { shiftNum = 999999 });
+        Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
+    }
+
+    [Fact]
     public async Task Board_filters_by_line_and_404s_for_a_line_with_no_board_row()
     {
         using var f = new Factory();

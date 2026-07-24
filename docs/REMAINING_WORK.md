@@ -61,8 +61,18 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   board now takes its Running/Idle light from the LINE (coil loaded on an open shift) instead of inferring it from
   the job list, and shows the open shift, the coil on the mandrel and the physical skid positions per line.
   **Read-only** — the Operation-Panel write path (next item) owns the mutations.
-- [ ] **C** Current-coil ↔ job/shift binding + `SHIFT_COIL` / `SHIFT_PROCESS_STATUS` ledger write (cross-shift carry)
-- [ ] **C** Operation Panel workflow (new/end coil, end shift, change job)
+- [~] **C** Current-coil ↔ job/shift binding + `SHIFT_COIL` / `SHIFT_PROCESS_STATUS` ledger write (cross-shift carry)
+  — the **binding** half is done (#282, see below: the board's coil/job/shift are writable); the `SHIFT_COIL`
+  **coil-run ledger** (begin/end weights + `process_wt` per run, cross-shift carry) is still TODO.
+- [~] **C** Operation Panel workflow (new/end coil, end shift, change job) — done (#282): `POST /das/lines/{n}/current-job`
+  (null clears; re-sequences `LINE_PRIORITY` — the running job drops to status 2, the new one takes 1, in legacy
+  order), `POST /das/lines/{n}/current-coil` (null drops; loading zeroes the process rate and sets
+  `coil.coil_status_from_line = 1`), `POST /das/lines/{n}/shift/start` (409 if the shift belongs to another line),
+  `POST /das/lines/{n}/shift/end` (stamps `end_time` + rolls `dt_instance` up into `dt_total` **in seconds**, then
+  clears the board's shift; 409 when nothing is open) + `GET /das/lines/{n}/queue` (`LINE_PRIORITY`, running job
+  first). Each mirrors the legacy `w_da_sheet` UPDATE. The DAS console gained an **Operation panel** card
+  (live shift/job/coil + the five actions). Still TODO here: new/end **coil run** rows (the ledger above) and the
+  end-coil recap.
 - [ ] **C** Live PLC counters (good/reject/stroke/feed-length) posted as coil deltas
 - [ ] **C** Coil barcode scan-to-load + actual-weight (`ABCO_COIL_NET_WT`) update
 - [ ] **H** Live shift efficiency % + coil yield % / finish-% (console, 5s cadence)
