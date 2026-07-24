@@ -26,6 +26,11 @@ public sealed record StackerConfig(
 public static class StackDone
 {
     private static readonly string[] TrueValues = ["1", "TRUE", "T", "ON", "YES", "COMPLETE", "DONE"];
+    // The live INGEAR DA server returns .NET-style "True"/"False" for BOOL items (confirmed on .170
+    // 2026-07-24: PLC5-BL110.autorunning read "False"). Without an explicit FALSY set those fall
+    // through to "unknown", so a STOPPED line would read as unknown instead of not-running — the
+    // fault/health lamps would show no state at all rather than the true one.
+    private static readonly string[] FalseValues = ["0", "FALSE", "F", "OFF", "NO"];
 
     public static bool? Parse(string? value, string? quality)
     {
@@ -34,8 +39,10 @@ public static class StackDone
         var v = value.Trim();
         if (v.Length == 0) return null;
         if (TrueValues.Contains(v, StringComparer.OrdinalIgnoreCase)) return true;
-        // A numeric other than the listed truthy "1" is false when it parses (e.g. 0); non-numeric,
-        // non-truthy text is unknown rather than a guessed false.
+        if (FalseValues.Contains(v, StringComparer.OrdinalIgnoreCase)) return false;
+        // A number that isn't one of the words above: non-zero is truthy (e.g. activefault carries
+        // its fault CODE — 68 means a fault is active). Non-numeric, non-keyword text stays unknown
+        // rather than a guessed value.
         return double.TryParse(v, NumberStyles.Any, CultureInfo.InvariantCulture, out var n) ? n != 0 : (bool?)null;
     }
 }

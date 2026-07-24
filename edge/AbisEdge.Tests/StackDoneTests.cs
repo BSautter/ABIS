@@ -17,6 +17,15 @@ public class StackDoneTests
     [InlineData("0", false)]
     [InlineData("2", true)]        // any non-zero number that parses is truthy
     [InlineData(" 0 ", false)]     // trimmed
+    // The LIVE INGEAR server returns .NET-style booleans (seen on .170: autorunning = "False").
+    // These must read as a definite false, NOT unknown — a stopped line showing "unknown" would
+    // leave the fault/health lamps blank instead of correct.
+    [InlineData("False", false)]
+    [InlineData("false", false)]
+    [InlineData("True", true)]
+    [InlineData("OFF", false)]
+    [InlineData("No", false)]
+    [InlineData("68", true)]       // activefault carries its fault CODE; non-zero = a fault is active
     public void Good_boolean_reads_parse(string value, bool expected)
         => Assert.Equal(expected, StackDone.Parse(value, "Good"));
 
