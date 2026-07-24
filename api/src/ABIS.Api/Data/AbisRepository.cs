@@ -6425,7 +6425,9 @@ public sealed class AbisRepository : IAbisRepository
 
     /// <summary>Bind an already-scheduled shift to the line's board (legacy <c>wf_new_shift</c>).
     /// The shift itself is created by the scheduling screen; this is the DAS station saying
-    /// "this line is now running that shift".</summary>
+    /// "this line is now running that shift". CROSS-SHIFT CARRY: a coil still on the mandrel opens a
+    /// fresh run on the new shift, beginning at the weight it has left — that is how a coil that
+    /// spans midnight is split across two shifts' production instead of being credited to one.</summary>
     public async Task<LineBoardRow?> StartLineShiftAsync(long lineNum, long shiftNum, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
@@ -6434,6 +6436,22 @@ public sealed class AbisRepository : IAbisRepository
         await conn.ExecuteAsync(new CommandDefinition(
             "UPDATE line_current_status SET shift_num = :shift WHERE line_num = :line",
             new { shift = shiftNum, line = lineNum }, transaction: tx, cancellationToken: ct));
+
+        var carried = await conn.QuerySingleOrDefaultAsync<CoilRunBoardState>(new CommandDefinition(
+            "SELECT shift_num AS ShiftNum, ab_job_num AS AbJobNum, coil_abc_num AS CoilAbcNum FROM line_current_status WHERE line_num = :line",
+            new { line = lineNum }, transaction: tx, cancellationToken: ct));
+        if (carried is { AbJobNum: { } carryJob, CoilAbcNum: { } carryCoil })
+        {
+            var already = await ReadRunAsync(conn, tx, shiftNum, carryJob, carryCoil, ct);
+            if (already is null)
+            {
+                var coil = await conn.QuerySingleOrDefaultAsync<CoilRunCoilState>(new CommandDefinition(
+                    "SELECT net_wt_balance AS NetWtBalance, coil_status AS CoilStatus FROM coil WHERE coil_abc_num = :coil",
+                    new { coil = carryCoil }, transaction: tx, cancellationToken: ct));
+                await OpenRunAsync(conn, tx, shiftNum, await NextCoilRunNumAsync(conn, tx, shiftNum, ct),
+                    carryJob, carryCoil, coil?.NetWtBalance, coil?.CoilStatus, DateTime.Now, ct);
+            }
+        }
         await tx.CommitAsync(ct);
         return (await GetLineBoardAsync(lineNum, ct)).FirstOrDefault();
     }
@@ -6459,13 +6477,44 @@ public sealed class AbisRepository : IAbisRepository
             .Where(s => s.StartingTime is not null && s.EndingTime is not null)
             .Sum(s => Math.Max(0d, (s.EndingTime!.Value - s.StartingTime!.Value).TotalSeconds));
 
+        var openRuns = (await conn.QueryAsync<OpenCoilRun>(new CommandDefinition(
+            """
+            SELECT sc.coil_run_num AS CoilRunNum, sc.coil_begin_wt AS CoilBeginWt, sc.coil_begin_status AS CoilBeginStatus,
+                   c.net_wt_balance AS NetWtBalance, c.coil_status AS CoilStatus
+            FROM shift_coil sc LEFT JOIN coil c ON c.coil_abc_num = sc.coil_abc_num
+            WHERE sc.shift_num = :shift AND sc.coil_end_time IS NULL
+            """, new { shift }, cancellationToken: ct))).AsList();
+
         await using var tx = await conn.BeginTransactionAsync(ct);
         // Plant-local, NOT UtcNow: the shift's start_time is written by the scheduling screen in
         // plant time (as legacy's DateTime(today(), now()) did), and the uptime report subtracts
         // the two — mixing the clocks would skew every shift length by the UTC offset.
+        var now = DateTime.Now;
+        // CROSS-SHIFT CARRY (legacy of_save_at_shift_end): a run still open when the shift ends is
+        // closed at the coil's current balance, so the weight it processed lands in THIS shift's
+        // production. The coil stays on the mandrel; the next shift opens its own run. Closed row by
+        // row rather than with a correlated UPDATE — a shift carries a handful of open runs at most,
+        // and this reads the same on both engines.
+        foreach (var open in openRuns)
+        {
+            var endWt = open.NetWtBalance ?? open.CoilBeginWt;
+            await conn.ExecuteAsync(new CommandDefinition(
+                """
+                UPDATE shift_coil
+                   SET coil_end_time = :etime, coil_end_wt = :ewt, coil_end_status = :estatus, process_wt = :pwt
+                 WHERE shift_num = :shift AND coil_run_num = :run
+                """,
+                new
+                {
+                    etime = now, ewt = endWt, estatus = open.CoilStatus ?? open.CoilBeginStatus,
+                    pwt = Math.Max(0m, (open.CoilBeginWt ?? 0m) - (endWt ?? 0m)),
+                    shift, run = open.CoilRunNum,
+                },
+                transaction: tx, cancellationToken: ct));
+        }
         await conn.ExecuteAsync(new CommandDefinition(
             "UPDATE shift SET end_time = :endTime, dt_total = :dt WHERE shift_num = :shift",
-            new { endTime = DateTime.Now, dt = seconds, shift }, transaction: tx, cancellationToken: ct));
+            new { endTime = now, dt = seconds, shift }, transaction: tx, cancellationToken: ct));
         await conn.ExecuteAsync(new CommandDefinition(
             "UPDATE line_current_status SET shift_num = NULL WHERE line_num = :line",
             new { line = lineNum }, transaction: tx, cancellationToken: ct));
@@ -6473,6 +6522,209 @@ public sealed class AbisRepository : IAbisRepository
 
         var board = (await GetLineBoardAsync(lineNum, ct)).First();
         return (board, shift, seconds);
+    }
+
+    // ---- Coil-run ledger (legacy SHIFT_COIL, written by u_coil.init / u_coil.save) ----
+    // A run is one coil's pass on one job within one shift. Its PK is (shift, run number), but the
+    // DAS addresses it by (shift, job, coil) — the same triple legacy's UPDATE keys on — so a coil
+    // that comes back to the same job in the same shift updates its run instead of opening a second.
+
+    private const string ShiftCoilRunColumns =
+        """
+        sc.shift_num AS ShiftNum, sc.coil_run_num AS CoilRunNum, sc.ab_job_num AS AbJobNum,
+        sc.coil_abc_num AS CoilAbcNum, sc.coil_begin_status AS CoilBeginStatus, sc.coil_end_status AS CoilEndStatus,
+        sc.coil_begin_wt AS CoilBeginWt, sc.coil_end_wt AS CoilEndWt, sc.coil_begin_time AS CoilBeginTime,
+        sc.coil_end_time AS CoilEndTime, sc.process_wt AS ProcessWt, sc.note AS Note, c.coil_org_num AS CoilOrgNum
+        """;
+
+    public async Task<IReadOnlyList<ShiftCoilRun>> GetShiftCoilRunsAsync(long shiftNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<ShiftCoilRun>(new CommandDefinition(
+            $"""
+            SELECT {ShiftCoilRunColumns}
+            FROM shift_coil sc LEFT JOIN coil c ON c.coil_abc_num = sc.coil_abc_num
+            WHERE sc.shift_num = :shift
+            ORDER BY sc.coil_run_num
+            """, new { shift = shiftNum }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    private static async Task<ShiftCoilRun?> ReadRunAsync(DbConnection conn, DbTransaction? tx, long shiftNum, long abJobNum, long coilAbcNum, CancellationToken ct) =>
+        await conn.QuerySingleOrDefaultAsync<ShiftCoilRun>(new CommandDefinition(
+            $"""
+            SELECT {ShiftCoilRunColumns}
+            FROM shift_coil sc LEFT JOIN coil c ON c.coil_abc_num = sc.coil_abc_num
+            WHERE sc.shift_num = :shift AND sc.ab_job_num = :job AND sc.coil_abc_num = :coil
+            """, new { shift = shiftNum, job = abJobNum, coil = coilAbcNum }, transaction: tx, cancellationToken: ct));
+
+    // Run numbers are per-shift and dense from 1 (legacy: NVL(MAX(coil_run_num),0) + 1 within the
+    // shift) — NOT a global sequence, so this never touches the id-generator path.
+    private static async Task<int> NextCoilRunNumAsync(DbConnection conn, DbTransaction tx, long shiftNum, CancellationToken ct) =>
+        (int)await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COALESCE(MAX(coil_run_num), 0) + 1 FROM shift_coil WHERE shift_num = :shift",
+            new { shift = shiftNum }, transaction: tx, cancellationToken: ct));
+
+    private static Task OpenRunAsync(DbConnection conn, DbTransaction tx, long shiftNum, int runNum, long abJobNum,
+        long coilAbcNum, decimal? beginWt, int? beginStatus, DateTime beginTime, CancellationToken ct) =>
+        conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO shift_coil (shift_num, coil_run_num, ab_job_num, coil_abc_num,
+                                    coil_begin_status, coil_begin_wt, coil_begin_time, note)
+            VALUES (:shift, :run, :job, :coil, :bstatus, :bwt, :btime, NULL)
+            """,
+            new { shift = shiftNum, run = runNum, job = abJobNum, coil = coilAbcNum,
+                  bstatus = beginStatus, bwt = beginWt, btime = beginTime },
+            transaction: tx, cancellationToken: ct));
+
+    /// <summary>Start running a coil on a line (legacy <c>u_coil.init</c>): opens the SHIFT_COIL row
+    /// for the line's open shift and puts the coil on the board. Idempotent — a run already recorded
+    /// for this (shift, job, coil) is returned as-is, exactly as legacy's "insert only when there is
+    /// no row" guard behaves.</summary>
+    public async Task<CoilRunResult?> StartCoilRunAsync(long lineNum, long coilAbcNum, long abJobNum, decimal? beginWeight, int? beginStatus, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var shiftNum = await conn.ExecuteScalarAsync<long?>(new CommandDefinition(
+            "SELECT shift_num FROM line_current_status WHERE line_num = :line",
+            new { line = lineNum }, cancellationToken: ct));
+        if (shiftNum is not { } shift)
+            return null;   // no open shift — the ledger has nowhere to hang the run
+
+        var coil = await conn.QuerySingleOrDefaultAsync<CoilRunCoilState>(new CommandDefinition(
+            "SELECT net_wt_balance AS NetWtBalance, coil_status AS CoilStatus FROM coil WHERE coil_abc_num = :coil",
+            new { coil = coilAbcNum }, cancellationToken: ct));
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var existing = await ReadRunAsync(conn, tx, shift, abJobNum, coilAbcNum, ct);
+        if (existing is null)
+        {
+            var runNum = await NextCoilRunNumAsync(conn, tx, shift, ct);
+            await OpenRunAsync(conn, tx, shift, runNum, abJobNum, coilAbcNum,
+                beginWeight ?? coil?.NetWtBalance, beginStatus ?? coil?.CoilStatus, DateTime.Now, ct);
+        }
+        // Loading a coil is also a board write (wf_set_opc_abcoil) — same statements, one transaction.
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE line_current_status SET coil_abc_num = :coil, coil_process_rate = 0 WHERE line_num = :line",
+            new { coil = coilAbcNum, line = lineNum }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE coil SET coil_status_from_line = 1 WHERE coil_abc_num = :coil",
+            new { coil = coilAbcNum }, transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+
+        return new CoilRunResult
+        {
+            Run = (await ReadRunAsync(conn, null, shift, abJobNum, coilAbcNum, ct))!,
+            Board = (await GetLineBoardAsync(lineNum, ct)).First(),
+            JobFinished = false,
+        };
+    }
+
+    /// <summary>Finish the coil the line is running (legacy <c>u_coil.save</c>): stamps the run's end
+    /// status/weight/time and <c>process_wt</c> (begin − end), rolls the weight through
+    /// <c>process_coil</c> (shift status + current weight) and the coil itself (status + balance, both
+    /// the plain and the from-line columns), then drops the coil off the board. When every
+    /// <c>process_coil</c> on the job is spent, the job is finished: <c>time_date_finished</c> is
+    /// stamped and its queue entry drops to status 0 — the legacy job-done cascade.</summary>
+    public async Task<CoilRunResult?> EndCoilRunAsync(long lineNum, long? coilAbcNum, long? abJobNum, decimal endWeight, int? endStatus, string? note, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var board = await conn.QuerySingleOrDefaultAsync<CoilRunBoardState>(new CommandDefinition(
+            "SELECT shift_num AS ShiftNum, ab_job_num AS AbJobNum, coil_abc_num AS CoilAbcNum FROM line_current_status WHERE line_num = :line",
+            new { line = lineNum }, cancellationToken: ct));
+        // Coil and job default to what the board says the line is running.
+        var coil = coilAbcNum ?? board?.CoilAbcNum;
+        var job = abJobNum ?? board?.AbJobNum;
+        if (board?.ShiftNum is not { } shift || coil is not { } coilNum || job is not { } jobNum)
+            return null;
+
+        var run = await ReadRunAsync(conn, null, shift, jobNum, coilNum, ct);
+        if (run is null)
+            return null;
+
+        // process_wt is the weight THIS run consumed. Legacy floors it at zero rather than record a
+        // negative pass (a re-weigh can read heavier than the begin weight).
+        var processWt = Math.Max(0m, (run.CoilBeginWt ?? 0m) - endWeight);
+        var now = DateTime.Now;
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE shift_coil
+               SET coil_end_status = :estatus, coil_end_wt = :ewt, coil_end_time = :etime,
+                   process_wt = :pwt, note = :note
+             WHERE shift_num = :shift AND ab_job_num = :job AND coil_abc_num = :coil
+            """,
+            new { estatus = endStatus, ewt = endWeight, etime = now, pwt = processWt, note,
+                  shift, job = jobNum, coil = coilNum },
+            transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE process_coil SET shift_process_status = :status, current_wt = :cwt
+             WHERE coil_abc_num = :coil AND ab_job_num = :job
+            """,
+            new { status = endStatus, cwt = endWeight, coil = coilNum, job = jobNum },
+            transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE coil
+               SET coil_status_from_line = :status, coil_status = COALESCE(:status2, coil_status),
+                   net_wt_balance_from_line = :bal, net_wt_balance = :bal2
+             WHERE coil_abc_num = :coil
+            """,
+            new { status = endStatus, status2 = endStatus, bal = endWeight, bal2 = endWeight, coil = coilNum },
+            transaction: tx, cancellationToken: ct));
+        // The coil is off the mandrel once its run is closed.
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE line_current_status SET coil_abc_num = NULL, coil_process_rate = NULL WHERE line_num = :line",
+            new { line = lineNum }, transaction: tx, cancellationToken: ct));
+
+        // Job done when no coil on it has weight left. A NULL current_wt means "never run", NOT
+        // "spent", so it keeps the job open — the legacy predicate, and the NULL trap it dodges.
+        var unspent = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            """
+            SELECT COUNT(*) FROM process_coil
+             WHERE ab_job_num = :job AND (current_wt IS NULL OR current_wt <> 0)
+            """, new { job = jobNum }, transaction: tx, cancellationToken: ct));
+        var finished = unspent == 0;
+        if (finished)
+        {
+            await conn.ExecuteAsync(new CommandDefinition(
+                "UPDATE ab_job SET time_date_finished = :fin WHERE ab_job_num = :job",
+                new { fin = now, job = jobNum }, transaction: tx, cancellationToken: ct));
+            await conn.ExecuteAsync(new CommandDefinition(
+                "UPDATE line_priority SET status = 0 WHERE ab_job_num = :job",
+                new { job = jobNum }, transaction: tx, cancellationToken: ct));
+        }
+        await tx.CommitAsync(ct);
+
+        return new CoilRunResult
+        {
+            Run = (await ReadRunAsync(conn, null, shift, jobNum, coilNum, ct))!,
+            Board = (await GetLineBoardAsync(lineNum, ct)).First(),
+            JobFinished = finished,
+        };
+    }
+
+    private sealed class CoilRunCoilState
+    {
+        public decimal? NetWtBalance { get; set; }
+        public int? CoilStatus { get; set; }
+    }
+
+    private sealed class OpenCoilRun
+    {
+        public int CoilRunNum { get; set; }
+        public decimal? CoilBeginWt { get; set; }
+        public int? CoilBeginStatus { get; set; }
+        public decimal? NetWtBalance { get; set; }
+        public int? CoilStatus { get; set; }
+    }
+
+    private sealed class CoilRunBoardState
+    {
+        public long? ShiftNum { get; set; }
+        public long? AbJobNum { get; set; }
+        public long? CoilAbcNum { get; set; }
     }
 
     private sealed class DowntimeSpan

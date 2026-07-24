@@ -61,18 +61,28 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   board now takes its Running/Idle light from the LINE (coil loaded on an open shift) instead of inferring it from
   the job list, and shows the open shift, the coil on the mandrel and the physical skid positions per line.
   **Read-only** — the Operation-Panel write path (next item) owns the mutations.
-- [~] **C** Current-coil ↔ job/shift binding + `SHIFT_COIL` / `SHIFT_PROCESS_STATUS` ledger write (cross-shift carry)
-  — the **binding** half is done (#282, see below: the board's coil/job/shift are writable); the `SHIFT_COIL`
-  **coil-run ledger** (begin/end weights + `process_wt` per run, cross-shift carry) is still TODO.
-- [~] **C** Operation Panel workflow (new/end coil, end shift, change job) — done (#282): `POST /das/lines/{n}/current-job`
+- [x] **C** Current-coil ↔ job/shift binding + `SHIFT_COIL` / `SHIFT_PROCESS_STATUS` ledger write (cross-shift carry)
+  — binding done (#283); the **coil-run ledger** done (#284): `POST /das/lines/{n}/coil-run/start` opens the
+  `shift_coil` run on the line's open shift (run number is per-shift `MAX+1`, begin weight/status default from the
+  coil) and puts the coil on the board — idempotent per (shift, job, coil), the legacy insert guard;
+  `POST /das/lines/{n}/coil-run/end` stamps end status/weight/time + `process_wt` (begin − end, floored at 0),
+  rolls the weight through `process_coil` (`shift_process_status` + `current_wt`) and the coil
+  (`coil_status`/`coil_status_from_line`, `net_wt_balance`/`_from_line`), drops the coil off the board, and
+  **finishes the job** (`ab_job.time_date_finished` + queue → status 0) when every `process_coil` on it is spent
+  (NULL `current_wt` = never run, so it keeps the job open — the legacy predicate).
+  `GET /das/shifts/{n}/coil-runs` is the shift's ledger. **Cross-shift carry** both ways: a run still open when the
+  shift ends is closed at the coil's current balance, and binding the next shift re-opens a fresh run for a coil
+  still on the mandrel — so a coil spanning midnight splits across both shifts' production instead of landing in one.
+  Console: Load/End coil-run buttons + the live ledger table.
+- [~] **C** Operation Panel workflow (new/end coil, end shift, change job) — done (#283): `POST /das/lines/{n}/current-job`
   (null clears; re-sequences `LINE_PRIORITY` — the running job drops to status 2, the new one takes 1, in legacy
   order), `POST /das/lines/{n}/current-coil` (null drops; loading zeroes the process rate and sets
   `coil.coil_status_from_line = 1`), `POST /das/lines/{n}/shift/start` (409 if the shift belongs to another line),
   `POST /das/lines/{n}/shift/end` (stamps `end_time` + rolls `dt_instance` up into `dt_total` **in seconds**, then
   clears the board's shift; 409 when nothing is open) + `GET /das/lines/{n}/queue` (`LINE_PRIORITY`, running job
   first). Each mirrors the legacy `w_da_sheet` UPDATE. The DAS console gained an **Operation panel** card
-  (live shift/job/coil + the five actions). Still TODO here: new/end **coil run** rows (the ledger above) and the
-  end-coil recap.
+  (live shift/job/coil + the actions). New/end **coil run** landed in #284 (above); still TODO here: the
+  end-coil recap screen.
 - [ ] **C** Live PLC counters (good/reject/stroke/feed-length) posted as coil deltas
 - [ ] **C** Coil barcode scan-to-load + actual-weight (`ABCO_COIL_NET_WT`) update
 - [ ] **H** Live shift efficiency % + coil yield % / finish-% (console, 5s cadence)

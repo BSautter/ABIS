@@ -1109,3 +1109,28 @@ public sealed class LineShiftStartWrite
 {
     public long? ShiftNum { get; set; }
 }
+
+/// <summary>Body for POST /api/das/lines/{lineNum}/coil-run/start — the line starts running a coil
+/// (legacy <c>u_coil.init</c>: the SHIFT_COIL row opened when a coil goes on the mandrel). The job
+/// defaults to the line's current job, the begin weight to the coil's remaining balance and the
+/// begin status to the coil's status, so the operator normally posts only the coil.</summary>
+public sealed class CoilRunStartWrite
+{
+    public long? CoilAbcNum { get; set; }
+    public long? AbJobNum { get; set; }
+    public decimal? BeginWeight { get; set; }
+    public int? BeginStatus { get; set; }
+}
+
+/// <summary>Body for POST /api/das/lines/{lineNum}/coil-run/end — the line finishes (or drops) the
+/// coil it is running (legacy <c>u_coil.save</c>). <see cref="EndWeight"/> is the weight left on the
+/// coil; the run's <c>process_wt</c> is begin − end. The coil and job default to the ones on the
+/// line's board.</summary>
+public sealed class CoilRunEndWrite
+{
+    public decimal? EndWeight { get; set; }
+    public int? EndStatus { get; set; }
+    public long? CoilAbcNum { get; set; }
+    public long? AbJobNum { get; set; }
+    public string? Note { get; set; }
+}

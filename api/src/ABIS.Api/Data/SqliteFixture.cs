@@ -146,8 +146,9 @@ public static class SqliteFixture
                 customer_id INTEGER, coil_from_cust_id INTEGER, date_received TEXT, icra TEXT,
                 lot_num TEXT NOT NULL, net_wt REAL NOT NULL, net_wt_balance REAL NOT NULL, pieces_per_case INTEGER,
                 consumed_coil_num TEXT, vo TEXT, customer_po TEXT, production_desc_code TEXT, lfeed REAL,
-                -- Set to 1 by the DAS Operation Panel when the coil is loaded on a line.
-                coil_status_from_line INTEGER);
+                -- Set by the DAS as the coil runs: 1 when it is loaded on a line, then the run's end
+                -- status; net_wt_balance_from_line mirrors the balance the line last reported.
+                coil_status_from_line INTEGER, net_wt_balance_from_line REAL);
 
             -- Customer coils earmarked to an order (legacy ORDER_COIL, composite PK). The order-entry
             -- coil picker (w_order_entry_coil_list / w_cust_coil_list) writes this link.
@@ -169,6 +170,9 @@ public static class SqliteFixture
             CREATE TABLE process_coil (
                 ab_job_num INTEGER, coil_abc_num INTEGER, process_coil_status INTEGER,
                 process_date TEXT, process_end_wt REAL, process_quantity REAL,
+                -- Written by the DAS as a coil run closes: the coil's status on the line and the
+                -- weight it has left. current_wt = 0 on every coil of a job = the job is finished.
+                shift_process_status INTEGER, current_wt REAL,
                 PRIMARY KEY (ab_job_num, coil_abc_num));
 
             CREATE TABLE customer_order (
@@ -1184,16 +1188,20 @@ public static class SqliteFixture
 
         conn.Execute(
             """
-            INSERT INTO shift_coil (shift_num, coil_run_num, coil_abc_num, ab_job_num, coil_begin_wt, coil_end_wt, process_wt, note)
-            VALUES (:ShiftNum, :CoilRunNum, :CoilAbcNum, :AbJobNum, :CoilBeginWt, :CoilEndWt, :ProcessWt, :Note)
+            INSERT INTO shift_coil (shift_num, coil_run_num, coil_abc_num, ab_job_num, coil_begin_wt, coil_end_wt,
+                                    coil_begin_time, coil_end_time, process_wt, note)
+            VALUES (:ShiftNum, :CoilRunNum, :CoilAbcNum, :AbJobNum, :CoilBeginWt, :CoilEndWt,
+                    :CoilBeginTime, :CoilEndTime, :ProcessWt, :Note)
             """,
             new[]
             {
-                // Shift 7701 (line 110, day d): two coils processed -> 5000 + 3000 = 8000 lbs.
-                new { ShiftNum = 7701L, CoilRunNum = 1, CoilAbcNum = (long?)5001L, AbJobNum = (long?)1001L, CoilBeginWt = (decimal?)12000m, CoilEndWt = (decimal?)7000m, ProcessWt = (decimal?)5000m, Note = "run 1" },
-                new { ShiftNum = 7701L, CoilRunNum = 2, CoilAbcNum = (long?)5002L, AbJobNum = (long?)1001L, CoilBeginWt = (decimal?)8000m, CoilEndWt = (decimal?)5000m, ProcessWt = (decimal?)3000m, Note = "run 2" },
+                // Shift 7701 (line 110, day d): two coils processed -> 5000 + 3000 = 8000 lbs. Both runs are
+                // CLOSED (coil_end_time stamped) — an open run is one the line is still processing, and the
+                // shift-end carry only reaches those.
+                new { ShiftNum = 7701L, CoilRunNum = 1, CoilAbcNum = (long?)5001L, AbJobNum = (long?)1001L, CoilBeginWt = (decimal?)12000m, CoilEndWt = (decimal?)7000m, CoilBeginTime = (DateTime?)d.AddHours(1), CoilEndTime = (DateTime?)d.AddHours(3), ProcessWt = (decimal?)5000m, Note = "run 1" },
+                new { ShiftNum = 7701L, CoilRunNum = 2, CoilAbcNum = (long?)5002L, AbJobNum = (long?)1001L, CoilBeginWt = (decimal?)8000m, CoilEndWt = (decimal?)5000m, CoilBeginTime = (DateTime?)d.AddHours(3), CoilEndTime = (DateTime?)d.AddHours(6), ProcessWt = (decimal?)3000m, Note = "run 2" },
                 // Shift 7702 (line 120, day d): one coil -> 4000 lbs.
-                new { ShiftNum = 7702L, CoilRunNum = 1, CoilAbcNum = (long?)5003L, AbJobNum = (long?)1003L, CoilBeginWt = (decimal?)10000m, CoilEndWt = (decimal?)6000m, ProcessWt = (decimal?)4000m, Note = "run 1" }
+                new { ShiftNum = 7702L, CoilRunNum = 1, CoilAbcNum = (long?)5003L, AbJobNum = (long?)1003L, CoilBeginWt = (decimal?)10000m, CoilEndWt = (decimal?)6000m, CoilBeginTime = (DateTime?)d.AddHours(9), CoilEndTime = (DateTime?)d.AddHours(13), ProcessWt = (decimal?)4000m, Note = "run 1" }
             });
 
         conn.Execute("""

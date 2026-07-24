@@ -218,6 +218,130 @@ public sealed class LineBoardTests
     }
 
     [Fact]
+    public async Task A_coil_run_opens_on_the_shift_and_closes_with_its_processed_weight()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        // Coil 5003 (balance 9000) onto line 110's open shift 7701, job 1001.
+        var start = await c.PostAsJsonAsync("/api/das/lines/110/coil-run/start", new { coilAbcNum = 5003, abJobNum = 1001 });
+        start.EnsureSuccessStatusCode();
+        var opened = await start.Content.ReadFromJsonAsync<JsonElement>();
+        var run = opened.GetProperty("run");
+        Assert.Equal(7701, run.GetProperty("shiftNum").GetInt64());
+        Assert.Equal(3, run.GetProperty("coilRunNum").GetInt32());          // runs 1 + 2 are seeded
+        Assert.Equal(9000m, run.GetProperty("coilBeginWt").GetDecimal());   // defaulted from the coil's balance
+        Assert.Equal(JsonValueKind.Null, run.GetProperty("coilEndTime").ValueKind);
+        // Starting a run also puts the coil on the board.
+        Assert.Equal(5003, opened.GetProperty("board").GetProperty("coilAbcNum").GetInt64());
+
+        // Run it down to 2500 lb left.
+        var end = await c.PostAsJsonAsync("/api/das/lines/110/coil-run/end", new { endWeight = 2500, endStatus = 2, note = "ran out" });
+        end.EnsureSuccessStatusCode();
+        var closed = await end.Content.ReadFromJsonAsync<JsonElement>();
+        var done = closed.GetProperty("run");
+        Assert.Equal(2500m, done.GetProperty("coilEndWt").GetDecimal());
+        Assert.Equal(6500m, done.GetProperty("processWt").GetDecimal());    // 9000 - 2500
+        Assert.NotEqual(JsonValueKind.Null, done.GetProperty("coilEndTime").ValueKind);
+        // The coil comes off the mandrel and carries the new balance.
+        Assert.Equal(JsonValueKind.Null, closed.GetProperty("board").GetProperty("coilAbcNum").ValueKind);
+        var coil = await c.GetFromJsonAsync<JsonElement>("/api/coils/5003");
+        Assert.Equal(2500m, coil.GetProperty("netWtBalance").GetDecimal());
+
+        var runs = await c.GetFromJsonAsync<JsonElement>("/api/das/shifts/7701/coil-runs");
+        Assert.Equal(3, runs.EnumerateArray().Count());
+    }
+
+    [Fact]
+    public async Task Starting_the_same_coil_run_twice_does_not_open_a_second_run()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        var first = await c.PostAsJsonAsync("/api/das/lines/110/coil-run/start", new { coilAbcNum = 5003, abJobNum = 1001 });
+        first.EnsureSuccessStatusCode();
+        var again = await c.PostAsJsonAsync("/api/das/lines/110/coil-run/start", new { coilAbcNum = 5003, abJobNum = 1001 });
+        again.EnsureSuccessStatusCode();
+        var run = (await again.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("run");
+        Assert.Equal(3, run.GetProperty("coilRunNum").GetInt32());
+
+        var runs = await c.GetFromJsonAsync<JsonElement>("/api/das/shifts/7701/coil-runs");
+        Assert.Equal(3, runs.EnumerateArray().Count());   // still 3, not 4
+    }
+
+    [Fact]
+    public async Task Spending_every_coil_on_a_job_finishes_it()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        // Job 1001 carries coils 5001 + 5002. Run each to zero.
+        foreach (var coil in new[] { 5001, 5002 })
+        {
+            (await c.PostAsJsonAsync("/api/das/lines/110/coil-run/start", new { coilAbcNum = coil, abJobNum = 1001 })).EnsureSuccessStatusCode();
+            var end = await c.PostAsJsonAsync("/api/das/lines/110/coil-run/end", new { endWeight = 0, endStatus = 2, coilAbcNum = coil, abJobNum = 1001 });
+            end.EnsureSuccessStatusCode();
+            var body = await end.Content.ReadFromJsonAsync<JsonElement>();
+            // Only the LAST coil finishes the job — until then one still has weight.
+            Assert.Equal(coil == 5002, body.GetProperty("jobFinished").GetBoolean());
+        }
+
+        var job = await c.GetFromJsonAsync<JsonElement>("/api/jobs/1001");
+        Assert.NotEqual(JsonValueKind.Null, job.GetProperty("timeDateFinished").ValueKind);
+        var queue = await c.GetFromJsonAsync<JsonElement>("/api/das/lines/110/queue");
+        Assert.Equal(0, queue.EnumerateArray().First(r => r.GetProperty("abJobNum").GetInt64() == 1001).GetProperty("status").GetInt32());
+    }
+
+    [Fact]
+    public async Task An_open_run_is_closed_at_shift_end_and_reopened_on_the_next_shift()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        // Coil 5003 (9000 lb) goes on, then the shift ends with the coil still on the mandrel.
+        (await c.PostAsJsonAsync("/api/das/lines/110/coil-run/start", new { coilAbcNum = 5003, abJobNum = 1001 })).EnsureSuccessStatusCode();
+        (await c.PostAsJsonAsync("/api/das/lines/110/shift/end", new { })).EnsureSuccessStatusCode();
+
+        var runs = await c.GetFromJsonAsync<JsonElement>("/api/das/shifts/7701/coil-runs");
+        var carried = runs.EnumerateArray().Single(r => r.GetProperty("coilRunNum").GetInt32() == 3);
+        Assert.NotEqual(JsonValueKind.Null, carried.GetProperty("coilEndTime").ValueKind);  // closed by the shift end
+        Assert.Equal(0m, carried.GetProperty("processWt").GetDecimal());                    // nothing run off it yet
+        // The seeded closed runs are left exactly as they were.
+        Assert.Equal(5000m, runs.EnumerateArray().Single(r => r.GetProperty("coilRunNum").GetInt32() == 1).GetProperty("processWt").GetDecimal());
+
+        // A new shift on the same line picks the coil back up with a fresh run at its current weight.
+        var newShift = await c.PostAsJsonAsync("/api/shifts", new { lineNum = 110, scheduleType = 2, startTime = "2026-01-03T00:00:00" });
+        newShift.EnsureSuccessStatusCode();
+        var shiftNum = (await newShift.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("shiftNum").GetInt64();
+        (await c.PostAsJsonAsync($"/api/das/lines/110/shift/start", new { shiftNum })).EnsureSuccessStatusCode();
+
+        var carriedRuns = await c.GetFromJsonAsync<JsonElement>($"/api/das/shifts/{shiftNum}/coil-runs");
+        var fresh = carriedRuns.EnumerateArray().Single();
+        Assert.Equal(5003, fresh.GetProperty("coilAbcNum").GetInt64());
+        Assert.Equal(1, fresh.GetProperty("coilRunNum").GetInt32());        // run numbers are per shift
+        Assert.Equal(9000m, fresh.GetProperty("coilBeginWt").GetDecimal()); // begins at what is left on the coil
+        Assert.Equal(JsonValueKind.Null, fresh.GetProperty("coilEndTime").ValueKind);
+    }
+
+    [Fact]
+    public async Task A_coil_run_needs_an_open_shift_and_an_end_needs_a_run()
+    {
+        using var f = new Factory();
+        var c = Client(f);
+
+        // Line 120 is between shifts — the ledger has nowhere to hang a run.
+        var noShift = await c.PostAsJsonAsync("/api/das/lines/120/coil-run/start", new { coilAbcNum = 5003, abJobNum = 1003 });
+        Assert.Equal(HttpStatusCode.Conflict, noShift.StatusCode);
+
+        // Line 110 has a shift but no run for coil 5003 yet.
+        var noRun = await c.PostAsJsonAsync("/api/das/lines/110/coil-run/end", new { endWeight = 100, coilAbcNum = 5003, abJobNum = 1001 });
+        Assert.Equal(HttpStatusCode.Conflict, noRun.StatusCode);
+
+        var noWeight = await c.PostAsJsonAsync("/api/das/lines/110/coil-run/end", new { endStatus = 2 });
+        Assert.Equal(HttpStatusCode.BadRequest, noWeight.StatusCode);
+    }
+
+    [Fact]
     public async Task Board_filters_by_line_and_404s_for_a_line_with_no_board_row()
     {
         using var f = new Factory();

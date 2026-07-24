@@ -1388,6 +1388,56 @@ public static class ApiEndpoints
            .WithSummary("Close the line's open shift: stamps end_time + the shift's downtime total (seconds) and clears the board's shift.")
            .Produces<LineShiftEndResult>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
 
+        // ---- DAS coil-run ledger (legacy SHIFT_COIL — the production ledger) ----
+        api.MapGet("/das/shifts/{shiftNum:long}/coil-runs", async (long shiftNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetShiftAsync(shiftNum, ct) is null
+                    ? Results.NotFound()
+                    : Results.Ok(await repo.GetShiftCoilRunsAsync(shiftNum, ct)))
+           .WithName("GetShiftCoilRuns").WithTags("DAS")
+           .WithSummary("The coil runs recorded in a shift (shift_coil), in run order — the shift's production ledger.")
+           .Produces<IReadOnlyList<ShiftCoilRun>>().Produces(StatusCodes.Status404NotFound);
+
+        api.MapPost("/das/lines/{lineNum:long}/coil-run/start", async (long lineNum, CoilRunStartWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (!await repo.LineExistsAsync(lineNum, ct))
+                    return Results.NotFound();
+                if (body.CoilAbcNum is not { } coil)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["coilAbcNum"] = ["coilAbcNum is required."] });
+                if (await repo.GetCoilAsync(coil, ct) is null)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["coilAbcNum"] = [$"Coil {coil} does not exist."] });
+                // The job defaults to whatever the line is running — the ledger row needs one either way.
+                var board = (await repo.GetLineBoardAsync(lineNum, ct)).FirstOrDefault();
+                var job = body.AbJobNum ?? board?.AbJobNum;
+                if (job is not { } abJobNum)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["abJobNum"] = ["abJobNum is required (the line has no current job)."] });
+                if (await repo.GetJobAsync(abJobNum, ct) is null)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["abJobNum"] = [$"Job {abJobNum} does not exist."] });
+                return await repo.StartCoilRunAsync(lineNum, coil, abJobNum, body.BeginWeight, body.BeginStatus, ct) is { } result
+                    ? Results.Ok(result)
+                    : Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "No open shift",
+                        detail: $"Line {lineNum} has no open shift — start the shift before running a coil.");
+            })
+           .WithName("StartCoilRun").WithTags("DAS")
+           .WithSummary("Start running a coil on a line: opens its shift_coil run and puts the coil on the board (idempotent per shift/job/coil).")
+           .Produces<CoilRunResult>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
+
+        api.MapPost("/das/lines/{lineNum:long}/coil-run/end", async (long lineNum, CoilRunEndWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (!await repo.LineExistsAsync(lineNum, ct))
+                    return Results.NotFound();
+                if (body.EndWeight is not { } endWeight)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["endWeight"] = ["endWeight is required (the weight left on the coil)."] });
+                if (endWeight < 0)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["endWeight"] = ["endWeight cannot be negative."] });
+                return await repo.EndCoilRunAsync(lineNum, body.CoilAbcNum, body.AbJobNum, endWeight, body.EndStatus, body.Note, ct) is { } result
+                    ? Results.Ok(result)
+                    : Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "No coil run to end",
+                        detail: $"Line {lineNum} has no recorded run for the coil/job on its board.");
+            })
+           .WithName("EndCoilRun").WithTags("DAS")
+           .WithSummary("Finish the coil the line is running: stamps the run's end weight/status + process_wt, rolls the weight through process_coil + the coil, and finishes the job when every coil on it is spent.")
+           .Produces<CoilRunResult>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
+
         // ---- Stacker line board / error log (legacy stacker_110) ----
         api.MapGet("/stacker/board", async (IAbisRepository repo, CancellationToken ct, long? lineNum = null) =>
                 Results.Ok(await repo.GetStackerBoardAsync(lineNum, ct)))

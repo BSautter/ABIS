@@ -368,6 +368,8 @@ tbody tr.click { cursor:pointer; } tbody tr.click:hover { background:var(--surfa
 .dop-op .op-cell .k { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); }
 .dop-op .op-cell .v { font-family:var(--font-mono); font-size:16px; font-weight:600; }
 .dop-op .op-cell .v.dim { color:var(--ink-3); font-family:var(--font-sans); font-weight:400; font-size:14px; }
+/* The run the line is still processing (no end time) stands out in the shift's ledger. */
+tr.run-open td { background:color-mix(in srgb, var(--accent) 10%, transparent); }
 
 /* ============================================================================
    DAS operator console — the line operator's data-acquisition kiosk (own surface,

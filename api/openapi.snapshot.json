@@ -3351,6 +3351,169 @@
         }
       }
     },
+    "/api/das/shifts/{shiftNum}/coil-runs": {
+      "get": {
+        "tags": [
+          "DAS"
+        ],
+        "summary": "The coil runs recorded in a shift (shift_coil), in run order — the shift's production ledger.",
+        "operationId": "GetShiftCoilRuns",
+        "parameters": [
+          {
+            "name": "shiftNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ShiftCoilRun"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/das/lines/{lineNum}/coil-run/start": {
+      "post": {
+        "tags": [
+          "DAS"
+        ],
+        "summary": "Start running a coil on a line: opens its shift_coil run and puts the coil on the board (idempotent per shift/job/coil).",
+        "operationId": "StartCoilRun",
+        "parameters": [
+          {
+            "name": "lineNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoilRunStartWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoilRunResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/das/lines/{lineNum}/coil-run/end": {
+      "post": {
+        "tags": [
+          "DAS"
+        ],
+        "summary": "Finish the coil the line is running: stamps the run's end weight/status + process_wt, rolls the weight through process_coil + the coil, and finishes the job when every coil on it is spent.",
+        "operationId": "EndCoilRun",
+        "parameters": [
+          {
+            "name": "lineNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoilRunEndWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoilRunResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/dies": {
       "get": {
         "tags": [
@@ -15463,6 +15626,77 @@
         },
         "additionalProperties": false
       },
+      "CoilRunEndWrite": {
+        "type": "object",
+        "properties": {
+          "endWeight": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "endStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CoilRunResult": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "$ref": "#/components/schemas/ShiftCoilRun"
+          },
+          "board": {
+            "$ref": "#/components/schemas/LineBoardRow"
+          },
+          "jobFinished": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CoilRunStartWrite": {
+        "type": "object",
+        "properties": {
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "beginWeight": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "beginStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "CoilWrite": {
         "type": "object",
         "properties": {
@@ -23878,6 +24112,71 @@
             "nullable": true
           },
           "note": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ShiftCoilRun": {
+        "type": "object",
+        "properties": {
+          "shiftNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "coilRunNum": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "coilBeginStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "coilEndStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "coilBeginWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "coilEndWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "coilBeginTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "coilEndTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "processWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilOrgNum": {
             "type": "string",
             "nullable": true
           }

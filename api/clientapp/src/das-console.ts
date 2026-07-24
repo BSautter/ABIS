@@ -100,9 +100,14 @@ function scaffold(): string {
               <button class="btn sm" id="btnRunJob" type="button">Run this job on the line</button>
               <button class="btn sm" id="btnLoadCoil" type="button">Load selected coil</button>
               <button class="btn sm ghost" id="btnDropCoil" type="button">Drop coil</button>
+            </div>
+            <div class="frow" style="margin-top:10px;align-items:flex-end">
+              <div class="fld"><label>Weight left on coil</label><input id="opEndWt" class="big" type="number" step="0.01" style="width:150px" /></div>
+              <button class="btn sm" id="btnEndCoil" type="button">End coil run</button>
               <span id="opOk" class="ok-note"></span>
             </div>
-            <p class="dop-note">Writes the line's live board (shift / job / coil) — the same row the floor board reads.</p>
+            <div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="min-width:520px"><thead><tr><th>Run</th><th>Coil</th><th>Job</th><th class="num">Begin</th><th class="num">End</th><th class="num">Processed</th><th>Ended</th></tr></thead><tbody id="tRuns"><tr><td colspan="7" class="muted">—</td></tr></tbody></table></div>
+            <p class="dop-note">Writes the line's live board (shift / job / coil) and the shift's coil-run ledger — the rows the production reports read. "Drop coil" takes a wrongly-loaded coil off the board without recording a run.</p>
           </div>
         </div>
 
@@ -221,6 +226,43 @@ async function loadOpBoard(): Promise<void> {
     setV('#opShift', opBoard?.shiftNum ?? '');
   } catch { opBoard = null; }
   renderOpState();
+  await loadCoilRuns();
+}
+
+// The shift's coil-run ledger (shift_coil) — what this shift has actually processed so far.
+async function loadCoilRuns(): Promise<void> {
+  const body = $('#tRuns');
+  if (opBoard?.shiftNum == null) { body.innerHTML = '<tr><td colspan="7" class="muted">No open shift.</td></tr>'; return; }
+  try {
+    const r = await authFetch(`/api/das/shifts/${opBoard.shiftNum}/coil-runs`);
+    if (!r.ok) throw new Error(String(r.status));
+    const runs = await r.json() as Array<{ coilRunNum: number; coilAbcNum: number; coilOrgNum?: string; abJobNum: number;
+      coilBeginWt?: number; coilEndWt?: number; processWt?: number; coilEndTime?: string }>;
+    body.innerHTML = runs.length ? runs.map((x) => `<tr${x.coilEndTime ? '' : ' class="run-open"'}>
+      <td class="mono">${esc(x.coilRunNum)}</td>
+      <td class="mono">#${esc(x.coilAbcNum)}${x.coilOrgNum ? ' · ' + esc(x.coilOrgNum) : ''}</td>
+      <td class="mono">${esc(x.abJobNum)}</td>
+      <td class="num">${esc(num(x.coilBeginWt))}</td><td class="num">${esc(num(x.coilEndWt))}</td>
+      <td class="num">${esc(num(x.processWt))}</td>
+      <td>${x.coilEndTime ? esc(new Date(x.coilEndTime).toLocaleString()) : 'running'}</td></tr>`).join('')
+      : '<tr><td colspan="7" class="muted">No coil runs on this shift yet.</td></tr>';
+  } catch { body.innerHTML = '<tr><td colspan="7" class="muted">Ledger unavailable.</td></tr>'; }
+}
+
+// Opening/closing a run returns { run, board, jobFinished } rather than a bare board.
+async function coilRunAction(path: string, body: unknown, okMsg: (r: { jobFinished: boolean }) => string): Promise<void> {
+  if (lineNum == null) { setErr('Load a job first — the line comes from the job.'); return; }
+  setErr(''); $('#opOk').textContent = '';
+  setBusy(true);
+  try {
+    const r = await authFetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 200)}`);
+    const res = await r.json() as { board: OpBoard; jobFinished: boolean };
+    opBoard = res.board; renderOpState();
+    $('#opOk').textContent = okMsg(res);
+    await Promise.all([loadCoilRuns(), loadCoils()]);
+  } catch (e) { setErr(`Coil run: ${(e as Error).message}`); }
+  finally { setBusy(false); }
 }
 
 // Every panel action follows the same shape: call, take the returned board as the new truth, report.
@@ -739,7 +781,14 @@ async function pickerBrowse(bases: string[], targetId: string, path: Crumb[]): P
   });
   $('#btnLoadCoil').addEventListener('click', () => {
     if (runCoil == null) { setErr('Select the coil being run first.'); return; }
-    void opAction(`/api/das/lines/${lineNum}/current-coil`, { coilAbcNum: runCoil }, `Coil ${runCoil} loaded`);
+    // Loading opens the coil's run in the shift ledger AND puts it on the board.
+    void coilRunAction(`/api/das/lines/${lineNum}/coil-run/start`, { coilAbcNum: runCoil, abJobNum: job }, () => `Coil ${runCoil} loaded — run open`);
+  });
+  $('#btnEndCoil').addEventListener('click', () => {
+    const wt = v('#opEndWt');
+    if (wt === '') { setErr('Enter the weight left on the coil (0 if it ran out).'); return; }
+    void coilRunAction(`/api/das/lines/${lineNum}/coil-run/end`, { endWeight: Number(wt), coilAbcNum: runCoil ?? undefined, abJobNum: job },
+      (r) => `Coil run ended${r.jobFinished ? ' — job finished' : ''}`);
   });
   $('#btnDropCoil').addEventListener('click', () => void opAction(`/api/das/lines/${lineNum}/current-coil`, { coilAbcNum: null }, 'Coil dropped'));
   showTab('skids');

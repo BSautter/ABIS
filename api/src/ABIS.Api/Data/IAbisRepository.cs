@@ -306,6 +306,15 @@ public interface IAbisRepository
     /// the board's shift. Returns the closed shift number and the seconds rolled up, or null when the
     /// line has no open shift.</summary>
     Task<(LineBoardRow Board, long ShiftNum, long DtTotalSeconds)?> EndLineShiftAsync(long lineNum, CancellationToken ct);
+    /// <summary>The coil runs recorded in a shift (SHIFT_COIL), in run order.</summary>
+    Task<IReadOnlyList<ShiftCoilRun>> GetShiftCoilRunsAsync(long shiftNum, CancellationToken ct);
+    /// <summary>Open a coil run on the line's shift + point the board at the coil. Null when the line
+    /// has no open shift; idempotent when a run for the same shift/job/coil is already open.</summary>
+    Task<CoilRunResult?> StartCoilRunAsync(long lineNum, long coilAbcNum, long abJobNum, decimal? beginWeight, int? beginStatus, CancellationToken ct);
+    /// <summary>Close the line's open coil run: end status/weight/time + process_wt, roll the weight
+    /// through process_coil and the coil, drop the coil off the board, and finish the job when every
+    /// coil on it is spent. Null when there is no open run to close.</summary>
+    Task<CoilRunResult?> EndCoilRunAsync(long lineNum, long? coilAbcNum, long? abJobNum, decimal endWeight, int? endStatus, string? note, CancellationToken ct);
 
     // ---- Stacker line board / error log ---------------------------------
     Task<IReadOnlyList<StackerBoardRow>> GetStackerBoardAsync(long? lineNum, CancellationToken ct);

@@ -2770,6 +2770,38 @@ public sealed class LineQueueRow
     public long? OrderAbcNum { get; set; }
 }
 
+/// <summary>One coil run within a shift (legacy <c>SHIFT_COIL</c>, PK shift + run number) — the
+/// production ledger the daily-production and uptime reports read. A run is OPEN while
+/// <see cref="CoilEndTime"/> is null; closing it stamps the end status/weight/time and
+/// <see cref="ProcessWt"/> (= begin weight − end weight), the weight this run actually processed.</summary>
+public sealed class ShiftCoilRun
+{
+    public long ShiftNum { get; set; }
+    public int CoilRunNum { get; set; }
+    public long AbJobNum { get; set; }
+    public long CoilAbcNum { get; set; }
+    public int? CoilBeginStatus { get; set; }
+    public int? CoilEndStatus { get; set; }
+    public decimal? CoilBeginWt { get; set; }
+    public decimal? CoilEndWt { get; set; }
+    public DateTime? CoilBeginTime { get; set; }
+    public DateTime? CoilEndTime { get; set; }
+    public decimal? ProcessWt { get; set; }
+    public string? Note { get; set; }
+    /// <summary>The coil's customer/original number, for display next to the run.</summary>
+    public string? CoilOrgNum { get; set; }
+}
+
+/// <summary>Result of opening or closing a coil run: the run row, the line's board after the write,
+/// and whether closing it finished the job (every <c>process_coil</c> on the job at zero weight —
+/// legacy stamps <c>ab_job.time_date_finished</c> and drops the queue entry to status 0).</summary>
+public sealed class CoilRunResult
+{
+    public ShiftCoilRun Run { get; set; } = new();
+    public LineBoardRow Board { get; set; } = new();
+    public bool JobFinished { get; set; }
+}
+
 /// <summary>Result of closing a line's shift (legacy <c>wf_end_shift</c>): which shift was closed,
 /// the downtime rolled into its <c>dt_total</c> (SECONDS, as legacy stores it), and the line's board
 /// after the close.</summary>
