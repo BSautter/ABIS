@@ -41,6 +41,9 @@ import {
   EvalScrapWrite,
   JobFolderNoteWrite,
   LineErrorWrite,
+  PmWrite,
+  PmActionWrite,
+  PmCompleteWrite,
 } from '../../src/ABIS.Api/wwwroot/ui/app/generated/abis-client.js';
 
 const base = process.env.ABIS_BASE ?? 'http://127.0.0.1:5225';
@@ -986,4 +989,91 @@ test('stacker flow: line board + error log (typed)', async () => {
     () => client.createLineError(new LineErrorWrite({ title: 'no type/user' })),
     (err) => err?.status === 400,
   );
+});
+
+test('pm flow: due board, definition CRUD, checklist, completion advance (typed)', async () => {
+  // ---- due board: seeded 7001 is overdue, 7002 due in 3 days, 7003 is 90 days out,
+  // 7004 is retired (pm_status 0) and must never appear however wide the window.
+  const due = await client.getPmsDue(7, undefined);
+  const overdue = due.find((p) => p.pmId === 7001);
+  assert.ok(overdue, 'seeded overdue PM 7001 should be on the 7-day board');
+  assert.equal(overdue.dueBucket, 'overdue');
+  assert.ok(overdue.daysUntilDue < 0);
+  assert.equal(overdue.systemEquipment, 'Blanking line BL110');   // hierarchy joined
+  assert.equal(overdue.itemDevice, 'Mandrel bearing');
+  assert.ok(due.some((p) => p.pmId === 7002 && p.dueBucket === 'due'));
+  assert.ok(!due.some((p) => p.pmId === 7003), '90-day PM is outside a 7-day window');
+  const wide = await client.getPmsDue(3650, undefined);
+  assert.ok(!wide.some((p) => p.pmId === 7004), 'retired PM must never reach the due board');
+  // Most-overdue-first ordering.
+  const days = due.map((p) => p.daysUntilDue);
+  assert.deepEqual(days, [...days].sort((a, b) => a - b));
+
+  // ---- create / read / update
+  const created = await client.createPm(new PmWrite({
+    pmNotice: 'E2E gearbox oil', maintFreq: 'Quarterly', sysEquipmentId: 300, subsysEquipmentId: 400,
+    itemDeviceId: 500, titleCraftId: 600, groupDepartmentId: 10, assignedToGroup: 'Maintenance',
+    pmStatus: 1, daysBetween: 30, nextDueDate: new Date(),
+  }));
+  assert.ok(created.pmId > 0);
+  assert.equal(created.subsystemEquipment, 'Uncoiler');
+  const got = await client.getPm(created.pmId);
+  assert.equal(got.pmNotice, 'E2E gearbox oil');
+  const updated = await client.updatePm(created.pmId, new PmWrite({
+    pmNotice: 'E2E gearbox oil + filter', maintFreq: 'Quarterly', pmStatus: 1, daysBetween: 30,
+  }));
+  assert.equal(updated.pmNotice, 'E2E gearbox oil + filter');
+
+  // A bad equipment reference is a 400 (pre-checked), not an FK 500.
+  await assert.rejects(
+    () => client.createPm(new PmWrite({ pmNotice: 'bad ref', sysEquipmentId: 999999 })),
+    (err) => err?.status === 400,
+  );
+  // pmNotice is required.
+  await assert.rejects(() => client.createPm(new PmWrite({})), (err) => err?.status === 400);
+
+  // ---- checklist: add, list, and the pm-scoped delete
+  const action = await client.addPmAction(created.pmId, new PmActionWrite({
+    actionItems: 'Drain oil', itemDetails: 'Catch pan under gearbox',
+  }));
+  assert.ok((await client.getPmActions(created.pmId)).some((a) => a.pmActionId === action.pmActionId));
+  // Deleting through a DIFFERENT pm must not remove it.
+  await assert.rejects(
+    () => client.deletePmAction(7001, action.pmActionId),
+    (err) => err?.status === 404,
+  );
+  await client.deletePmAction(created.pmId, action.pmActionId);
+  assert.equal((await client.getPmActions(created.pmId)).length, 0);
+
+  // ---- completion advances the schedule by daysBetween and records history
+  const before = await client.getPm(created.pmId);
+  const done = await client.completePm(created.pmId, new PmCompleteWrite({
+    completedBy: 'e2e', completedNotes: 'ran it',
+  }));
+  assert.equal(done.advanceBasis, 'daysBetween');
+  const expected = new Date(); expected.setDate(expected.getDate() + 30);
+  assert.equal(new Date(done.nextDueDate).toDateString(), expected.toDateString());
+  assert.notEqual(new Date(done.nextDueDate).toDateString(), new Date(before.nextDueDate).toDateString());
+  const history = await client.getPmCompletions(created.pmId);
+  assert.equal(history.length, 1);
+  assert.equal(history[0].completedBy, 'e2e');
+
+  // completedBy is required (the column is NOT NULL, and '' is NULL on Oracle).
+  await assert.rejects(
+    () => client.completePm(created.pmId, new PmCompleteWrite({})),
+    (err) => err?.status === 400,
+  );
+
+  // ---- guarded delete: refused now that a completion exists
+  await assert.rejects(() => client.deletePm(created.pmId), (err) => err?.status === 409);
+  // Retiring is the documented alternative, and it drops off the due board.
+  await client.updatePm(created.pmId, new PmWrite({ pmNotice: 'E2E retired', pmStatus: 0 }));
+  const after = await client.getPmsDue(3650, undefined);
+  assert.ok(!after.some((p) => p.pmId === created.pmId), 'retired PM leaves the due board');
+
+  // A PM with no completions IS deletable, and its checklist goes with it.
+  const spare = await client.createPm(new PmWrite({ pmNotice: 'E2E spare', pmStatus: 1 }));
+  await client.addPmAction(spare.pmId, new PmActionWrite({ actionItems: 'x' }));
+  await client.deletePm(spare.pmId);
+  await assert.rejects(() => client.getPm(spare.pmId), (err) => err?.status === 404);
 });

@@ -75,6 +75,11 @@ async function loadShipment(id: number): Promise<void> {
         <span><b>Customer</b>${esc(s.customerId)}</span><span><b>Carrier</b>${esc(s.carrierId)}</span>
         <span><b>Status</b>${statusChip('shipmentStatus', s.shipmentStatus)}</span><span><b>Sent</b>${esc(dt(s.dateSent))}</span>
       </div>
+      <div class="kv" style="margin-top:8px">
+        <span><b>EDI required</b>${yn(s.ediReq)}</span>
+        <span><b>856 sent</b>${ediState(s.ediTriggered, s.ediFileId856, s.shipmentEdi856Date)}</span>
+        <span><b>DESADV</b>${ediState(undefined, s.ediFileIdDesadv, s.shipmentDesadvDate)}</span>
+      </div>
       <div class="frow" style="margin:14px 0 4px;align-items:center">
         <button class="btn sm" id="btnClose" type="button">Mark shipped / Close BOL</button>
         <span id="closeOk" class="ok-note"></span>
@@ -140,6 +145,21 @@ async function loadPackingItems(id: number): Promise<void> {
       b.addEventListener('click', () => void removePackItem(String(b.dataset.type), Number(b.dataset.id))));
   } catch (e) { setErr(`Items failed: ${(e as Error).message}`); }
 }
+
+// Y/N flag as a chip ('' is NULL on Oracle, so blank means "not set", not "no").
+const yn = (v: string | undefined): string =>
+  v?.trim().toUpperCase() === 'Y' ? '<span class="chip ok">yes</span>'
+    : v?.trim().toUpperCase() === 'N' ? '<span class="chip mut">no</span>'
+      : '<span class="chip mut">—</span>';
+
+// EDI document state: generated (with its file id + date) vs not yet. Bookkeeping only —
+// generation is stored and NEVER transmitted (the VAN stays legacy-owned).
+const ediState = (triggered: string | undefined, fileId: number | undefined, when: Date | undefined): string => {
+  if (fileId == null && triggered?.trim().toUpperCase() !== 'Y') return '<span class="chip mut">not generated</span>';
+  const date = when == null ? '' : ` ${dt(when)}`;
+  const id = fileId == null ? '' : ` #${esc(fileId)}`;
+  return `<span class="chip ok">generated</span><span class="mono">${id}${esc(date)}</span>`;
+};
 
 // A pre→cur transition: show the arrow only when the value actually changed.
 const transition = (domain: string, pre: number | undefined, cur: number | undefined): string =>
