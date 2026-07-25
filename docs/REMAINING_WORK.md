@@ -259,7 +259,17 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 ## C. Buildable feature gaps (no blocker)
 
 ### C1. Commercial — order entry / parts / quoting / customers / accounting
-- [ ] **C** Quote pricing/cost model (CirclePro $/lb + job cost + ROS; SheetPro rectangular) — quotation emits yield-% only, "not a quote"
+- [~] **C** Quote pricing/cost model (CirclePro $/lb + job cost + ROS; SheetPro rectangular) — quotation emits
+  yield-% only, "not a quote". **DECODED, not yet ported — see `docs/QUOTE_PRICING.md`.** Key finding:
+  `w_circlepro.srw` is **transliterated BASIC** (`wf_line_240`, `wf_sub_2380` … are the original BASIC LINE
+  NUMBERS kept as function names), which is why it has 129 single-letter variables and GOTO-shaped control
+  flow. 112 of those carry the author's comments — the full map is in the spec. It computes total job cost
+  and price/lb under TWO spacing modes (input spacing vs spacing = metal gauge), against average and maximum
+  coil weights, with and without the scrap-handling charge — hence the four-variable output groups. Yield is
+  circle area over consumed strip area. `ZU$` switches the whole model between the coil and PLATE paths.
+  ⚠ **Gating task: real worked quotes (inputs + accepted outputs) from the plant.** Without goldens this is a
+  re-derivation of a pricing engine, not a port, and errors surface as wrong prices to customers rather than
+  as anything the UI would show. Also watch `Int(x + 0.5)` — round-half-up, NOT .NET banker's rounding.
 - [ ] **C** Quote editor (`PUT /sales/quotes` + tabbed spec/pricing/inventory/shipment body) + save/reload + print + email
 - [x] **H** Order edit-in-UI — done (#249): order-detail Edit toggle wires the existing `PUT /orders/{o}` + item PUT (editable header + per-line part/alloy/sheet/gauge/qty; full-replace-safe via spread)
 - [x] **H** Assign customer coils to an order — done (#253): `GET/POST /orders/{id}/coils` + `DELETE /orders/{id}/coils/{coil}` + `GET /orders/{id}/available-coils` (legacy `ORDER_COIL` / `w_order_entry_coil_list`). Re-adding to the same order is blocked; a coil already on another order needs `confirm=true` (the dup-org warning, `otherOrderAbcNum`). Order-entry detail gained an assigned-coils panel + available-coil picker.
