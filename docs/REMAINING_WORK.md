@@ -270,7 +270,39 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 
 ### C2. Logistics / shipping
 - [~] **C** Packing-list line items — ✅ `SHEET` (#217) + `SCRAP` (#219) + `REJECT_COIL` (#220) built (add/list/remove on the shipment, feeding the 856); only `WH_PACKING_ITEM` (9 live rows) deferred
-- [ ] **C** BOL / combi-form / packing-ticket printing (the `rpabco` document engine)
+- [~] **C** BOL / combi-form / packing-ticket printing (the `rpabco` document engine) — **BOL + packing
+  tickets DONE; combi form sized, not built.**
+  - **BOL totals** (#307): `f_get_bol_totals` ported — single- vs multi-stop detection, the per-BOL
+    sheet/scrap/reject rollups, and the "Shipping with BOL …" package note (multi-stop only; a stored
+    note in `shipment_reference_codes` wins over a recount so paperwork already in a driver's hand
+    can't be contradicted).
+  - **BOL document + printed form** (#308): `GET /shipments/{pl}/bol-document` + the upgraded printable
+    BOL — three named sections (Skids of Aluminum Sheets / Accumulated Scrap Return / Rejected Coil
+    Return), per-job PO/part blocks, shipment total, multi-stop note. Section weights are GROSS but a
+    job's subtotal is NET (legacy, pinned by test); job data comes from the skid's REFERENCE order, not
+    the job's own; >3 jobs prints totals-only with a stated reason (legacy's "print without details"
+    branch); an EMPTY shipment is refused with 409 rather than printing a blank form.
+  - **Per-skid packing ticket** (#309): `GET /documents/packing-ticket/{itemType}/{pl}/{refNum}` for
+    SHEET / SCRAP / REJECT_COIL. Shape dimensions resolve through `ShapeGeometry` instead of legacy's
+    eight-way outer join — which also fixes REINFORCEMENT and LIFTGATE, omitted from legacy's ticket
+    query and therefore printing no dimensions at all.
+  - [ ] **Combi form — SIZED 2026-07-25, own session.** 16 layout variants in `legacy/src/rpabco`
+    (alcan, alcoa, alcoa_pn, kaiser, novelis, novelis_cd, twb, twb_cd, sm, display, display_pn,
+    display_t, input, input_twb, input_detail, base) but only **7 distinct queries — and 8 of the 16
+    share one**. So this is the EDI-partner shape: one base document + per-customer layout overrides,
+    not sixteen documents. The top-level query is just the `shipment` header with NULL placeholder
+    columns; the detail comes from nested reports (`d_report_combi_sheet` / `_scrap` / `_rejcoil`).
+    Detail grain is the **production item**, not the skid: ticket, coil lot + org, pieces, net /
+    theoretical / tare / gross — **each in both lb and kg** (it is a packing list and weight
+    certificate combined, hence "combi").
+    ⚠ **Customer-specific rule found in the SQL:** `d_report_combi_sheet` hard-codes
+    `customer_id = 2802` — **TOYOTA TSUSHO AMERICA (TOYOTA TSUSHO - KY**, confirmed on live Oracle
+    2026-07-25) — to print `prod_item_theoretical_wt` in place of `prod_item_net_wt`. A real business
+    rule buried in a DataWindow; **do not port the combi form without carrying it**. Swept every combi
+    query for hard-coded ids: 2802 appears in **all four sheet-detail variants** (`d_report_combi_sheet`,
+    `_cd`, `_cd_twb`, `_pn`) and **nowhere else** — so it is one consistent rule, not a scatter of
+    special cases. Model it as a per-customer "invoice on theoretical weight" flag rather than an id
+    literal, and confirm with the plant whether any customer has since joined or left it.
 - [ ] **H** Sketch image storage (`sketch_view` LONG RAW) + display + job/part linkage + DAS/e-folder render
 - [~] **H** Die → shape mapping — done (#254): `GET/POST /line-die-shapes` + `DELETE /line-die-shapes/{shape}/{line}/{die}` over `LINE_DIE_4SHEET_TYPE` (composite PK), so scheduling can resolve the eligible line/die for a shape (filter by sheetType/lineNum/dieId; add guards line/die-exist + dup). Dies page gained a mapping panel. Still TODO: **die label/report print**.
 - [x] **M** Shipment header EDI-trigger fields — done (#259): the shipment read now carries `edi_req`/`edi_triggered`/`edi_file_id_856`/`edi_file_id_desadv` + the 856/desadv/des-856 dates, and `POST /shipments/{pl}/edi-trigger` (docType 856|desadv + optional file id) stamps them (bookkeeping only — never transmits). Surfacing on the shipping UI is a follow-up.
