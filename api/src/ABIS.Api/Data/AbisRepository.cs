@@ -4861,6 +4861,73 @@ public sealed class AbisRepository : IAbisRepository
         return head;
     }
 
+    /// <summary>
+    /// Resolve a barcode scanned on the handheld RF receiving gun — the port of
+    /// <c>coil_receiving_12.pl</c>'s <c>coil_exist_check</c> + <c>coil_detail</c>.
+    /// </summary>
+    /// <remarks>
+    /// The flow legacy implements, and why each part is the way it is:
+    /// <list type="number">
+    /// <item>Normalise the scan (<see cref="HandheldBarcode"/>) — drop a leading <c>S</c>, and map the
+    /// fixed <c>000000</c> label to the literal coil number "NO BARCODE".</item>
+    /// <item>Look for ABC numbers already minted for that customer coil in <c>inbound_coil_status</c>,
+    /// filtered on <c>coil_abc_num &gt; 0</c> — the column carries 0 for "received but not yet minted",
+    /// so the filter IS the minted/unminted test.</item>
+    /// <item>Attach the mill's advance notice from <c>inbound_coil</c>. Missing is not an error: legacy
+    /// shows "NONE" for every field and lets receiving continue, because a coil physically on the dock
+    /// has to be receivable whether or not its EDI arrived.</item>
+    /// </list>
+    /// <para><b>Already minted is a choice, not a block.</b> Legacy offers "Reprint Labels" AND "New
+    /// Coil ABC Num" on the same screen, so a customer coil can legitimately carry several ABC numbers.
+    /// The outcome says which case it is; it does not refuse.</para>
+    /// <para>Two improvements over the CGI, both safe: the coil number is passed as a BOUND PARAMETER
+    /// (legacy interpolates the scanned string straight into SQL — a scanner is an untrusted input
+    /// device), and ALL matching ABC numbers are returned rather than whichever the row loop happened
+    /// to leave in the variable last.</para>
+    /// </remarks>
+    public async Task<InboundCoilScan> ScanInboundCoilAsync(string? barcode, CancellationToken ct)
+    {
+        var scan = HandheldBarcode.Parse(barcode);
+        var result = new InboundCoilScan
+        {
+            RawBarcode = barcode,
+            CoilNumber = scan.CoilNumber,
+            HeaderStripped = scan.HeaderStripped,
+            NoBarcode = scan.NoBarcode,
+            Outcome = InboundScanOutcome.Unreadable,
+        };
+        if (!scan.Valid) return result;
+
+        await using var conn = await OpenAsync(ct);
+
+        result.MintedAbcNums = (await conn.QueryAsync<long>(new CommandDefinition(
+            """
+            SELECT ics.coil_abc_num
+              FROM inbound_coil_status ics
+             WHERE ics.coil_number = :num AND ics.coil_abc_num > 0
+             ORDER BY ics.coil_abc_num
+            """, new { num = scan.CoilNumber }, cancellationToken: ct))).ToList();
+
+        // FirstOrDefault, not SingleOrDefault: the same customer coil can appear on more than one
+        // inbound EDI file (a re-send, or a coil re-notified on a later BOL), and SingleOrDefault would
+        // THROW on exactly the coils most likely to need a human at the dock. Newest file wins.
+        result.Detail = await conn.QueryFirstOrDefaultAsync<InboundCoilDetail>(new CommandDefinition(
+            """
+            SELECT ic.edi_file_id AS EdiFileId, ic.bol AS Bol, ic.item_num AS ItemNum,
+                   ic.coil_number AS CoilNumber, ic.part_num AS PartNum,
+                   ic.net_weight AS NetWeight, ic.gross_weight AS GrossWeight,
+                   ic.alloy AS Alloy, ic.temper AS Temper,
+                   ic.coil_gauge AS CoilGauge, ic.coil_width AS CoilWidth,
+                   ic.lot AS Lot, ic.pack_id AS PackId
+              FROM inbound_coil ic
+             WHERE ic.coil_number = :num
+             ORDER BY ic.edi_file_id DESC
+            """, new { num = scan.CoilNumber }, cancellationToken: ct));
+
+        result.Outcome = result.MintedAbcNums.Count > 0 ? InboundScanOutcome.AlreadyMinted : InboundScanOutcome.Mint;
+        return result;
+    }
+
     /// <summary>The legacy BOL form has exactly three per-job note blocks and refuses to print details past
     /// that. The cap is the printed layout, not a business rule, so it lives with the document code.</summary>
     private const int MaxPrintableBolJobs = 3;

@@ -3137,3 +3137,57 @@ public sealed class SkidPackingTicket
     public string? LotNum { get; set; }
     public string? AuthorizationCode { get; set; }
 }
+
+/// <summary>What the mill said it shipped for one inbound coil (legacy <c>INBOUND_COIL</c>), shown on
+/// the handheld after a scan so the operator can check the coil against the advance notice.</summary>
+public sealed class InboundCoilDetail
+{
+    public long? EdiFileId { get; set; }
+    public string? Bol { get; set; }
+    public int? ItemNum { get; set; }
+    public string? CoilNumber { get; set; }
+    public string? PartNum { get; set; }
+    public decimal? NetWeight { get; set; }
+    public decimal? GrossWeight { get; set; }
+    public string? Alloy { get; set; }
+    public string? Temper { get; set; }
+    public decimal? CoilGauge { get; set; }
+    public decimal? CoilWidth { get; set; }
+    public string? Lot { get; set; }
+    public string? PackId { get; set; }
+}
+
+/// <summary>What the handheld should do next with a scanned coil.</summary>
+[System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter))]
+public enum InboundScanOutcome
+{
+    /// <summary>Nothing to look up — an empty scan.</summary>
+    Unreadable,
+    /// <summary>No ABC number minted for this coil yet: mint one and print its label.</summary>
+    Mint,
+    /// <summary>Already minted. The operator chooses: reprint the existing label, or mint ANOTHER
+    /// ABC for the same customer coil (legacy offers both, so this is not a block).</summary>
+    AlreadyMinted,
+}
+
+/// <summary>The handheld receiving scan result — the port of <c>coil_receiving_12.pl</c>'s
+/// <c>coil_exist_check</c> + <c>coil_detail</c>.</summary>
+public sealed class InboundCoilScan
+{
+    /// <summary>The scanner's literal output, for the audit trail.</summary>
+    public string? RawBarcode { get; set; }
+    /// <summary>The customer coil number after the leading-<c>S</c> strip and the "no barcode"
+    /// substitution.</summary>
+    public string CoilNumber { get; set; } = "";
+    public bool HeaderStripped { get; set; }
+    /// <summary>The operator scanned the fixed "no barcode" label.</summary>
+    public bool NoBarcode { get; set; }
+    public InboundScanOutcome Outcome { get; set; }
+    /// <summary>Every ABC number already minted for this customer coil, newest last. Legacy shows the
+    /// last one it fetched; the whole list is returned here because a coil CAN legitimately carry more
+    /// than one (the operator is allowed to mint again), and hiding that loses real information.</summary>
+    public List<long> MintedAbcNums { get; set; } = new();
+    /// <summary>The mill's advance notice, when there is one. Null = the coil isn't on any inbound
+    /// file; legacy still lets the operator continue, showing "NONE" for every field.</summary>
+    public InboundCoilDetail? Detail { get; set; }
+}

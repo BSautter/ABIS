@@ -1,8 +1,13 @@
 namespace Abis.Api.Data;
 
-/// <summary>Normalising a scanned coil barcode, ported from the legacy DAS scan window
-/// (<c>w_scan_coil_id.srw</c>). Kept pure + separate from the DB lookup so the label rules are
-/// unit-testable with no database and live in exactly one place.
+/// <summary>Normalising a coil barcode scanned <b>at the DAS console</b>, ported from the legacy scan
+/// window (<c>w_scan_coil_id.srw</c>). Kept pure + separate from the DB lookup so the label rules are
+/// unit-testable with no database.
+/// <para><b>Scope note:</b> this is the DAS rule only. The handheld RF receiving gun reads a different
+/// label with a different rule and resolves to the CUSTOMER's coil number rather than our numeric
+/// <c>coil_abc_num</c> — see <see cref="HandheldBarcode"/>. An earlier version of this comment claimed
+/// one implementation would serve every future scanning surface; reading the live handheld CGI
+/// (<c>coil_receiving_12.pl</c>) showed that was wrong, and sharing it would break both.</para>
 /// <para>The plant's labels carry a vendor header before the ABC coil number: legacy searches for
 /// <c>"2S"</c> and keeps everything AFTER it (<c>POS(ls_id,"2S")</c> → <c>Mid(ls_id, pos+2)</c>).
 /// The value is upper-cased and trimmed first, then must be numeric to be usable — a scanner that

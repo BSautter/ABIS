@@ -168,7 +168,21 @@ public static class SqliteFixture
             -- Inbound coil detail off a receiving BOL (legacy inbound_coil) — the Constellium 870 takes the F-level
             -- part number from the latest inbound BOL. Empty in the fixture (F-level part falls back to order_item).
             CREATE TABLE inbound_coil (
-                coil_number TEXT, part_num TEXT, edi_file_id INTEGER);
+                -- The mill's advance notice of a coil (from its inbound EDI). The handheld receiving
+                -- gun shows these details after a scan so the operator can eyeball the coil against
+                -- what the mill said it shipped.
+                edi_file_id INTEGER, bol TEXT, item_num INTEGER,
+                coil_number TEXT, part_num TEXT,
+                net_weight REAL, gross_weight REAL, alloy TEXT, temper TEXT,
+                coil_gauge REAL, coil_width REAL, lot TEXT, pack_id TEXT);
+
+            -- Per-inbound-coil receiving state: which customer coil number maps to which minted ABC
+            -- number (0/NULL = not yet minted), plus the damage flags and the scanned QR payload.
+            CREATE TABLE inbound_coil_status (
+                edi_file_id INTEGER, bol TEXT, item_num INTEGER,
+                damaged_code INTEGER, damaged_fault INTEGER, status INTEGER,
+                coil_number TEXT, coil_abc_num INTEGER, barcode_string TEXT,
+                PRIMARY KEY (edi_file_id, bol, item_num));
 
             CREATE TABLE process_coil (
                 ab_job_num INTEGER, coil_abc_num INTEGER, process_coil_status INTEGER,

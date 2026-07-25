@@ -987,6 +987,12 @@ public static class ApiEndpoints
            .WithSummary("A shipment's status-change audit trail (legacy SHIPMENT_TRACK) — before/after shipment + vehicle status (and customer/ship-to) with who/when, newest first.")
            .Produces<IReadOnlyList<ShipmentTrackRow>>();
 
+        api.MapGet("/receiving/scan", async (string? barcode, IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.ScanInboundCoilAsync(barcode, ct)))
+           .WithName("ScanInboundCoil").WithTags("Receiving")
+           .WithSummary("Resolve a barcode scanned on the handheld RF receiving gun (legacy coil_receiving_12.pl): strips the leading 'S' header, maps the fixed 000000 label to coil number 'NO BARCODE', returns any ABC numbers already minted for that customer coil plus the mill's advance notice. Outcome is Mint (none yet), AlreadyMinted (reprint OR mint another — legacy offers both) or Unreadable. Read-only: minting is a separate action.")
+           .Produces<InboundCoilScan>();
+
         api.MapGet("/documents/packing-ticket/{itemType}/{packingList:long}/{refNum:long}",
             async (string itemType, long packingList, long refNum, IAbisRepository repo, CancellationToken ct) =>
                 await repo.GetSkidPackingTicketAsync(itemType, packingList, refNum, ct) is { } t

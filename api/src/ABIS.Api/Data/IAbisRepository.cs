@@ -266,6 +266,11 @@ public interface IAbisRepository
     /// <c>u_default_billoflading</c>). Null when the packing list has no shipment row.</summary>
     Task<BolDocument?> GetBolDocumentAsync(long packingList, CancellationToken ct);
 
+    /// <summary>Resolve a barcode scanned on the handheld RF receiving gun (legacy
+    /// <c>coil_receiving_12.pl</c>): normalise it, find any ABC numbers already minted for that
+    /// customer coil, and attach the mill's advance notice.</summary>
+    Task<InboundCoilScan> ScanInboundCoilAsync(string? barcode, CancellationToken ct);
+
     /// <summary>The packing ticket for ONE unit on a packing list (legacy
     /// <c>d_packaging_ticket_{sheet,scrap,rejcoil}_4skid</c>). <paramref name="itemType"/> is SHEET,
     /// SCRAP or REJECT_COIL. Null when the type is unknown or that unit isn't on the list.</summary>

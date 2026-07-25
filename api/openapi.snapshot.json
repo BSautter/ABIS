@@ -9681,6 +9681,39 @@
         }
       }
     },
+    "/api/receiving/scan": {
+      "get": {
+        "tags": [
+          "Receiving"
+        ],
+        "summary": "Resolve a barcode scanned on the handheld RF receiving gun (legacy coil_receiving_12.pl): strips the leading 'S' header, maps the fixed 000000 label to coil number 'NO BARCODE', returns any ABC numbers already minted for that customer coil plus the mill's advance notice. Outcome is Mint (none yet), AlreadyMinted (reprint OR mint another — legacy offers both) or Unreadable. Read-only: minting is a separate action.",
+        "operationId": "ScanInboundCoil",
+        "parameters": [
+          {
+            "name": "barcode",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboundCoilScan"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/receiving-bols": {
       "get": {
         "tags": [
@@ -19436,6 +19469,112 @@
           }
         },
         "additionalProperties": { }
+      },
+      "InboundCoilDetail": {
+        "type": "object",
+        "properties": {
+          "ediFileId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "bol": {
+            "type": "string",
+            "nullable": true
+          },
+          "itemNum": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "coilNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "partNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "netWeight": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "grossWeight": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "alloy": {
+            "type": "string",
+            "nullable": true
+          },
+          "temper": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilGauge": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "coilWidth": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "lot": {
+            "type": "string",
+            "nullable": true
+          },
+          "packId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "InboundCoilScan": {
+        "type": "object",
+        "properties": {
+          "rawBarcode": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "headerStripped": {
+            "type": "boolean"
+          },
+          "noBarcode": {
+            "type": "boolean"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/InboundScanOutcome"
+          },
+          "mintedAbcNums": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "nullable": true
+          },
+          "detail": {
+            "$ref": "#/components/schemas/InboundCoilDetail"
+          }
+        },
+        "additionalProperties": false
+      },
+      "InboundScanOutcome": {
+        "enum": [
+          "Unreadable",
+          "Mint",
+          "AlreadyMinted"
+        ],
+        "type": "string"
       },
       "Invoice": {
         "type": "object",
