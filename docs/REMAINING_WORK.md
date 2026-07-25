@@ -17,9 +17,11 @@ percentage suggests.
 | Milestone | Definition |
 |-----------|------------|
 | **0.5.0** | **EDI engine — generation + 997** complete, **never transmits** (§A). ✅ **CLOSED at v0.5.5 (2026-07-22)**; two items deferred data-blocked (863 gen, inbound-856 ingest — see §A). |
-| **0.6 – 0.8** | Buildable feature-gap batches (§C: commercial → coils/receiving → quality) + the **live-DAS workflow spine** (§B), in increments. ← *current: starting with C2 packing-list line items* |
+| **0.6.x** | Buildable feature-gap batches (§C: commercial → coils/receiving → quality → reporting → maintenance). ✅ **CLOSED at v0.6.16 (2026-07-24)** — §C is cleared; what remained was the DAS spine, blocked items, and small tails. |
+| **0.7.0** | **The live-DAS workflow core** (§B) — ✅ **CUT 2026-07-24**. A line can be scheduled, staffed, run, corrected and closed out entirely in ABIS: line board, Operation Panel, coil-run ledger w/ cross-shift carry, LINE_PRIORITY queue, change-job mid-coil + reverse, live efficiency/yield on the recovered legacy formulas, end-coil recap, stale-shift monitor, PLC counters + dual-station stacker. **Read AND write paths validated on live Oracle**; the edge serves 5 typed endpoints from both OPC boxes. |
+| **0.8.x** | The rest of §B (stacker physical board, scan-to-load, shift-lifecycle automation, auto-status controls) + the remaining §C tails. |
 | **0.9.x** | Feature-complete parity + a hardening / verification pass |
-| **1.0.0** | Cutover-ready: everything built, so the deferred **EDI transmit** + **data-source cutover** become an operational go-live decision, not a code gap |
+| **1.0.0** | Cutover-ready. **NOTE (user, 2026-07-24): 1.0.0 is the STARTING POINT for alpha/beta testing** — the point where new ABIS can replace old ABIS and users first exercise it. It is not "finished"; it is "ready to begin being tested". **There is therefore NO user-feedback loop before 1.0** — correctness up to that point must come from legacy-source fidelity, live-data validation on .230 / the plant PLCs, and automated tests. |
 
 ## Suggested next 5 (highest value, buildable now)
 1. ~~**Packing-list line items** (C2)~~ — ✅ **DONE** (#217 sheet, #219 scrap + generalized API, #220 reject-coil; warehouse deferred). Shipments now carry line items and feed the 856.
