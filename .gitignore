@@ -7,6 +7,10 @@
 # Release tarballs (build-release.sh output)
 dist/
 
+# Locally published deploy artifacts (e.g. the self-contained edge drop for the OPC boxes).
+# Hundreds of MB of build output — never committed; rebuild with `dotnet publish` instead.
+artifacts/
+
 # Local dev SQLite fixtures (the API seeds these at runtime)
 *.db
 *.db-shm
