@@ -5031,32 +5031,10 @@ public sealed class AbisRepository : IAbisRepository
 
         if (coilAbc is null)
         {
-            // Inherit identity from the customer's real coil, if there is one.
-            var real = await conn.QueryFirstOrDefaultAsync<(DateTime? CashDate, long? CustomerId)>(new CommandDefinition(
-                """
-                SELECT cash_date AS CashDate, customer_id AS CustomerId
-                  FROM coil
-                 WHERE coil_org_num = :org AND (coil_status IS NULL OR coil_status <> 20)
-                 ORDER BY coil_abc_num DESC
-                """, new { org = coilOrg }, transaction: tx, cancellationToken: ct));
-
-            if (real.CustomerId is null && real.CashDate is null)
-            {
-                // No regular coil to inherit from. If the customer needs a cert label or a cash date,
-                // a shell coil would leave the certificate unbacked — legacy refuses, and so do we.
-                var reqs = await conn.QueryFirstOrDefaultAsync<(string? CertLabel, string? CashDateReq)>(new CommandDefinition(
-                    """
-                    SELECT c.coil_cert_label_req AS CertLabel, c.cash_date_required AS CashDateReq
-                      FROM customer c
-                      JOIN customer_order co ON co.orig_customer_id = c.customer_id
-                     WHERE co.order_abc_num = :ord
-                    """, new { ord = orderAbcNum }, transaction: tx, cancellationToken: ct));
-                if (string.Equals(reqs.CertLabel?.Trim(), "Y", StringComparison.OrdinalIgnoreCase)
-                 || string.Equals(reqs.CashDateReq?.Trim(), "Y", StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException(
-                        $"No regular coil exists for customer coil number '{coilOrg}', and this customer requires a certificate label or a cash date — " +
-                        "a warehouse coil minted without one would leave the certificate unbacked.");
-            }
+            // Inherit identity from the customer's newest CASHED coil (legacy wf_get_coil_info).
+            var real = await WarehouseCoilIdentityAsync(conn, tx, coilOrg, ct);
+            if (!real.Found)
+                await GuardWarehouseShellAllowedAsync(conn, tx, orderAbcNum, coilOrg, ct);
 
             coilAbc = await NextIdAsync(conn, tx, "coil", "coil_abc_num", ct);
             await conn.ExecuteAsync(new CommandDefinition(
@@ -5271,12 +5249,12 @@ public sealed class AbisRepository : IAbisRepository
             new { org = coilOrg, lot }, transaction: tx, cancellationToken: ct));
         if (targetCoil is null)
         {
-            var real = await conn.QueryFirstOrDefaultAsync<(DateTime? CashDate, long? CustomerId)>(new CommandDefinition(
-                """
-                SELECT cash_date AS CashDate, customer_id AS CustomerId FROM coil
-                 WHERE coil_org_num = :org AND (coil_status IS NULL OR coil_status <> 20)
-                 ORDER BY coil_abc_num DESC
-                """, new { org = coilOrg }, transaction: tx, cancellationToken: ct));
+            // Legacy runs the identity lookup AND the cert/cash-date refusal for actions 1, 2 AND 4 -
+            // modify was minting a shell with neither, so a cert-required customer could get an
+            // unbacked certificate simply by EDITING a skid onto a new coil/lot.
+            var real = await WarehouseCoilIdentityAsync(conn, tx, coilOrg, ct);
+            if (!real.Found && current.RefOrder is long guardOrder)
+                await GuardWarehouseShellAllowedAsync(conn, tx, guardOrder, coilOrg, ct);
             targetCoil = await NextIdAsync(conn, tx, "coil", "coil_abc_num", ct);
             await conn.ExecuteAsync(new CommandDefinition(
                 """
@@ -5355,6 +5333,59 @@ public sealed class AbisRepository : IAbisRepository
 
         await tx.CommitAsync(ct);
         return result;
+    }
+
+
+    /// <summary>
+    /// The identity a status-20 warehouse shell inherits - legacy <c>wf_get_coil_info</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>The <c>cash_date IS NOT NULL</c> predicate is load-bearing and was missing.</b> Legacy
+    /// reads <c>max(coil_abc_num) WHERE coil_org_num = ? AND cash_date IS NOT NULL AND coil_status &lt;&gt; 20</c>.
+    /// Without it, a customer coil that exists twice - an older cashed coil and a newer uncashed one -
+    /// resolves to the NEWER row and the shell inherits a NULL cash date, where legacy would have found
+    /// the dated coil.</para>
+    /// <para>It also carries the refusal. Legacy's guard fires on "no row found"; a lookup without the
+    /// predicate returns a row with a customer id and a null cash date, which is NOT "no row", so a
+    /// cert-required customer would slip past and get a certificate with nothing dated behind it.
+    /// <c>Found</c> is therefore the exact analogue of legacy's sqlcode 100.</para>
+    /// </remarks>
+    private static async Task<WarehouseCoilIdentity> WarehouseCoilIdentityAsync(
+        DbConnection conn, DbTransaction tx, string coilOrgNum, CancellationToken ct)
+    {
+        var row = await conn.QueryFirstOrDefaultAsync<(long? AbcNum, DateTime? CashDate, long? CustomerId)>(
+            new CommandDefinition(
+                """
+                SELECT coil_abc_num AS AbcNum, cash_date AS CashDate, customer_id AS CustomerId
+                  FROM coil
+                 WHERE coil_org_num = :org
+                   AND cash_date IS NOT NULL
+                   AND (coil_status IS NULL OR coil_status <> 20)
+                 ORDER BY coil_abc_num DESC
+                """, new { org = coilOrgNum }, transaction: tx, cancellationToken: ct));
+        return new WarehouseCoilIdentity(row.AbcNum is not null, row.CashDate, row.CustomerId);
+    }
+
+    private readonly record struct WarehouseCoilIdentity(bool Found, DateTime? CashDate, long? CustomerId);
+
+    /// <summary>Legacy refuses to mint a shell with no dated coil behind it when the customer requires a
+    /// certificate label or a cash date (<c>w_wh_business</c> - applied to actions 1, 2 AND 4). Throws
+    /// when that applies; returns quietly otherwise.</summary>
+    private static async Task GuardWarehouseShellAllowedAsync(
+        DbConnection conn, DbTransaction tx, long orderAbcNum, string coilOrgNum, CancellationToken ct)
+    {
+        var reqs = await conn.QueryFirstOrDefaultAsync<(string? CertLabel, string? CashDateReq)>(new CommandDefinition(
+            """
+            SELECT c.coil_cert_label_req AS CertLabel, c.cash_date_required AS CashDateReq
+              FROM customer c
+              JOIN customer_order co ON co.orig_customer_id = c.customer_id
+             WHERE co.order_abc_num = :ord
+            """, new { ord = orderAbcNum }, transaction: tx, cancellationToken: ct));
+        if (string.Equals(reqs.CertLabel?.Trim(), "Y", StringComparison.OrdinalIgnoreCase)
+         || string.Equals(reqs.CashDateReq?.Trim(), "Y", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"No coil with a cash date exists for customer coil number '{coilOrgNum}', and this customer requires a " +
+                "certificate label or a cash date - a warehouse coil minted without one would leave the certificate unbacked.");
     }
 
     /// <summary>The legacy BOL form has exactly three per-job note blocks and refuses to print details past

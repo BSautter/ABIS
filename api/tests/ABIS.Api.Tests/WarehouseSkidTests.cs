@@ -414,6 +414,63 @@ public sealed class WarehouseSkidTests : IDisposable
         Assert.False((await _repo.ModifyWarehouseSkidAsync(999999, Body(), CancellationToken.None)).Found);
     }
 
+    // ---- cash-date identity (bug sweep, 2026-07-25) ----------------------------------------------
+
+    [Fact]
+    public async Task Inherits_from_the_newest_CASHED_coil_not_merely_the_newest()
+    {
+        // Legacy: max(coil_abc_num) WHERE coil_org_num = ? AND cash_date IS NOT NULL AND status <> 20.
+        // Dropping the cash_date predicate resolves the NEWER uncashed coil and mints a shell with a
+        // null cash date, where legacy would have found the older dated one.
+        Seed();   // seeds coil 6900: CUST-WH-1, cash_date 2026-03-01, status 2
+        Exec("""
+            INSERT INTO coil (coil_abc_num, coil_org_num, lot_num, net_wt, net_wt_balance, coil_status, customer_id, cash_date)
+                 VALUES (6950, 'CUST-WH-1', 'LOT-LATER', 9000, 9000, 1, 8100, NULL);
+            """);
+
+        var r = await _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None);
+
+        var cash = Scalar<string>($"SELECT cash_date FROM coil WHERE coil_abc_num = {r.CoilAbcNum}");
+        Assert.False(string.IsNullOrEmpty(cash));            // NOT the newer, uncashed coil
+        Assert.Contains("2026-03-01", cash);                 // the older CASHED one
+    }
+
+    [Fact]
+    public async Task A_customer_coil_with_no_cash_date_at_all_still_triggers_the_refusal()
+    {
+        // The old guard asked "customer id AND cash date are both null". An uncashed coil supplies a
+        // customer id, so that proxy never fired and a cert-required customer slipped through with a
+        // certificate that had nothing dated behind it. The test is the guard now keying on "no row".
+        Seed(certLabelReq: "Y", withRealCoil: false);
+        Exec("""
+            INSERT INTO coil (coil_abc_num, coil_org_num, lot_num, net_wt, net_wt_balance, coil_status, customer_id, cash_date)
+                 VALUES (6960, 'CUST-WH-1', 'LOT-UNCASHED', 9000, 9000, 1, 8100, NULL);
+            """);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None));
+
+        Assert.Contains("cash date", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, Scalar<long>("SELECT COUNT(*) FROM coil WHERE coil_org_num = 'CUST-WH-1' AND coil_status = 20"));
+    }
+
+    [Fact]
+    public async Task Modify_applies_the_same_refusal_when_it_would_mint_a_shell()
+    {
+        // Legacy runs the guard for actions 1, 2 AND 4. Modify was minting with no check at all, so a
+        // cert-required customer could get an unbacked certificate just by EDITING a skid onto a new lot.
+        Seed(certLabelReq: "Y");                         // has a cashed coil, so the create succeeds
+        var made = await _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None);
+
+        // Now move it onto a coil number that has NO cashed coil behind it.
+        var b = Body(); b.CoilOrgNum = "CUST-NO-CASH"; b.LotNum = "LOT-X";
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _repo.ModifyWarehouseSkidAsync(made.SheetSkidNum, b, CancellationToken.None));
+
+        Assert.Contains("certificate", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, Scalar<long>("SELECT COUNT(*) FROM coil WHERE coil_org_num = 'CUST-NO-CASH'"));
+    }
+
     public void Dispose()
     {
         try { SqliteConnection.ClearAllPools(); } catch { /* best effort */ }
