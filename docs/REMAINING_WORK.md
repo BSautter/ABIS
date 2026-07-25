@@ -232,9 +232,26 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   in the decode map so historical rows still resolve, and a skid recorded at a removed station is **surfaced as
   a warning rather than dropped**, so real inventory can't disappear off the board. ⚠ **These columns are unpopulated on the live DB** (only a stacker head had a
   value), so the path renders empty in practice and says so explicitly rather than showing a silent blank row —
-  they are written by the stacker automation. Still TODO: the 11 **shape displays**, and driving positions from
-  the live OPC conveyor cells (`StackOnConveyor1..3`, `StackEntering/LeavingWrapper1/2`, …) which are readable
-  via the edge's `/tags` once added to the polled set — a **config change, no new edge binary**.
+  they are written by the stacker automation.
+  **LIVE CELLS DONE** (this PR): edge `GET /conveyor[?line=]` reads the conveyor's physical position
+  sensors, keyed by the SAME location code, so the board no longer depends on those empty columns. The
+  cell→location mapping is **recovered from the legacy stacker window**, where each tag's rising edge set
+  `location_code` literally (`ue_on_conv1` → 3, `ue_entering_wp1` → 9, …) — ported, not invented; the table
+  is in `docs/EDGE_SERVICE.md#conveyor-cells`. Config is a **map** (`Edge:Opc:ConveyorCells` + per-line
+  `ConveyorCellsByLine`, since each line has its own `stacker110`/`stacker84` branch); a location may carry
+  several tags (station 1 has one per head) and is occupied if ANY is truthy. **Occupancy only, deliberately**
+  — the cells say a stack IS there, not WHICH skid; identity is overlaid from the DB where it exists, and we
+  do NOT re-run legacy's tracking state machine because it owns those columns and a second copy would be a
+  competing writer (same single-owner rule as shift close / EDI transmit). Board shows live cells distinctly
+  from recorded DB positions, an unreadable cell as **unknown rather than clear**, and names the actual source
+  in the subtitle — feed health is checked BEFORE contents, so recorded rows can never make a dead feed read
+  as "live" (caught in browser verification). Two locations have no cell by design: 0 is the head's own done
+  bit (`/stacker`), and **13, the overhead crane, is not a sensor** — legacy inferred it from cell 12's
+  FALLING edge, which needs state the edge deliberately doesn't keep. *(That handler also settles the open
+  question from #302: the crane is **wrapper 1's** output, so it correctly stays on the 14-station board.)*
+  ⚠ **Needs the edge on .170/.175 REDEPLOYED** — `/conveyor` postdates the deployed build → 404 (the board
+  then says "edge line feed unreachable" and falls back to DB-only, which is correct but empty).
+  Still TODO: the 11 **shape displays**.
 - [ ] **M** Supervisor/role PIN gating (exit / override / drop-coil / maintenance)
 - [ ] **M** Serial scale zero command + scrap-scale/gauge separation
 - [ ] **M** Live job sheet / e-folder (sketch image, shape-specific tolerances, coil totals, partial-skid usage)

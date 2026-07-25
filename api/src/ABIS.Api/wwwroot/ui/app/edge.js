@@ -196,3 +196,36 @@ export async function fetchStacker(bases) {
     }
     return { reachable: false, via: '', station1: NO_STATION, station2: NO_STATION, scaleWeight: null, scaleSkidId: null };
 }
+/**
+ * Read a line's conveyor position sensors (edge `/conveyor`) across the hosts, primary→fallback.
+ *
+ * These are the physical cells along the stacker→wrapper path, keyed by the same location code as
+ * `LINE_CURRENT_STATUS.SHEET_SKID_LOCATION_n`. They are the ONLY live source of where a stack is:
+ * those DB columns are the legacy stacker station's own bookkeeping and sit empty on the live
+ * database, so without the cells the conveyor board renders blank.
+ *
+ * Occupancy only — the cells say a stack is *there*, not *which skid it is*. Identity needs the
+ * tracking state machine that owns those DB columns, and running a second copy of it would make the
+ * modern stack a competing writer, so the board pairs live occupancy with skid identity only where
+ * the DB happens to carry it.
+ */
+export async function fetchConveyor(bases, line) {
+    const qs = line != null ? `?line=${encodeURIComponent(String(line))}` : '';
+    for (let i = 0; i < bases.length; i++) {
+        try {
+            const r = await fetchWithTimeout(`${bases[i]}/conveyor${qs}`, 2000);
+            if (!r.ok)
+                continue; // a 404 here = an edge build older than /conveyor; try the next host
+            const s = await r.json();
+            const cells = new Map();
+            for (const c of s.cells ?? []) {
+                if (typeof c.location !== 'number')
+                    continue;
+                cells.set(c.location, { location: c.location, occupied: c.occupied ?? null, tags: c.tags ?? [] });
+            }
+            return { reachable: true, via: i > 0 ? ' (fallback)' : '', configured: !!s.configured, cells };
+        }
+        catch { /* unreachable/timeout → try the next host */ }
+    }
+    return { reachable: false, via: '', configured: false, cells: new Map() };
+}

@@ -429,6 +429,16 @@ tr.run-open td { background:color-mix(in srgb, var(--accent) 10%, transparent); 
 .stack-cell.full { border-color:color-mix(in srgb, var(--accent) 55%, transparent);
   background:color-mix(in srgb, var(--accent) 10%, var(--surface-2)); }
 .stack-cell.full .sl { color:var(--ink); }
+/* A station the PLC's own cell sensor says is made RIGHT NOW — the live half of the board. Marked
+   distinctly from a station filled only from the DB position columns, because the two carry
+   different confidence: the cell is the belt as it is, the DB row is what was last recorded. */
+.stack-cell.live { border-color:var(--ok); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--ok) 35%, transparent); }
+.stack-cell .sv .live-tag { display:inline; font-size:10px; font-weight:650; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--ok); }
+/* A configured cell that can't be read. Deliberately NOT styled as clear: an unreadable sensor must
+   never make an occupied station look empty. */
+.stack-cell.unk { border-style:dashed; border-color:color-mix(in srgb, var(--warn) 60%, var(--line)); }
+.stack-cell .sv .unk-tag { display:inline; font-weight:650; color:var(--warn); }
 /* A skid recorded at a station that no longer exists (wrapper 2 was removed) — surfaced rather than
    dropped, so real inventory can't disappear off the board. */
 .stack-stray { margin-top:6px; font-size:12px; color:var(--crit); }

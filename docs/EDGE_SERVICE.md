@@ -100,6 +100,14 @@ COM port. The web screens (or the API) consume readings over HTTP on the LAN.
     (`LINE_CURRENT_STATUS.SHEET_SKID_STACKER_1/2`, resolved by the API line board). Defaults from the
     `Stacker*` settings; per-line via the query params (legacy `stacker<n>.station1/2_stack_counter` /
     `Sta1/2StackComplete` / `ScaleSkidWt` / `ScaleSkidId`).
+  - `GET /conveyor[?line=<line_num>]` → the stacker→wrapper conveyor's **physical cell sensors**,
+    keyed by the DAS **location code** (the same 0..18 legend as
+    `LINE_CURRENT_STATUS.SHEET_SKID_LOCATION_n`): `{ configured, line, cells:[{ location, tags[],
+    occupied, raw[], quality[], at }] }`. `occupied` is `true`/`false`/`null` (unknown — an
+    unreadable sensor is never reported as clear). A location may map to SEVERAL tags and is occupied
+    if **any** reads truthy: station 1 has one cell per stacker head, and either means the same thing.
+    Mapped by `ConveyorCells` (+ per-line `ConveyorCellsByLine`); an unknown `?line=` falls back to
+    the default map. See [Conveyor cells](#conveyor-cells).
   - `GET /opc/browse?node=<id>` → browse the OPC address space one level for tag discovery
     (UA + Classic-DA + the mock's canned tree); `501` if the provider can't browse, `502`
     with the error if a live browse fails
@@ -125,6 +133,8 @@ COM port. The web screens (or the API) consume readings over HTTP on the LAN.
 | `Edge:Opc:GoodCountTag` / `RejectCountTag` / `StrokeCountTag` / `FeedLengthTag` | node/item ids | the DEFAULT counter tags for `/counters` (legacy `goodpartcnt`/`rejectpartcnt`/`strokecnt`/`feedlength`). Each optional — an unset one reports `configured:false`. Auto-added to the polled set. Per line, pass `?good=`/`?reject=`/`?stroke=`/`?feed=` instead. |
 | `Edge:Opc:StackerStation1CountTag` / `Station2CountTag` / `Station1DoneTag` / `Station2DoneTag` / `StackerScaleWeightTag` / `StackerScaleSkidIdTag` | node/item ids | the DEFAULT stacker tags for `/stacker` (legacy `stacker<n>.station1/2_stack_counter` / `Sta1/2StackComplete` / `ScaleSkidWt` / `ScaleSkidId`). Each optional. Auto-added to the polled set. Per line, pass `?s1count=`/`?s2count=`/`?s1done=`/`?s2done=`/`?scalewt=`/`?scaleid=` instead. |
 | `Edge:Opc:AutoRunningTag` / `ActiveFaultTag` / `NoAutoTag` | node/item ids | the DEFAULT tags for `/line-status` (legacy `autorunning`/`activefault`/`noauto`). Each optional. Auto-added to the polled set. Per line, pass `?autorunning=`/`?fault=`/`?noauto=` instead. |
+| `Edge:Opc:ConveyorCells` | map of `location code` → tag id(s) | the conveyor position sensors for `/conveyor`, keyed by the DAS location code `0..18`. A value may list several tags (comma/space separated) — the location is occupied if any is truthy. Auto-added to the polled set. A key that isn't a location code, or has no tag, is **skipped with a startup warning** rather than failing the service. |
+| `Edge:Opc:ConveyorCellsByLine` | map of `line_num` → the same cell map | per-line overrides for `/conveyor?line=n` — each line has its own stacker branch (`stacker110` vs `stacker84`), so unlike the single-tag settings these cannot be one flat map. An unconfigured line falls back to `ConveyorCells`. |
 | `Edge:Opc:RunStateMode` | `Equals` (default) / `NotEquals` / `GreaterThan` / **`Changed`** | how to judge it: a running boolean/word (`Equals`), an inverted idle bit (`NotEquals`), a numeric like strokes/min (`GreaterThan`), or a **cumulative counter that stops climbing** (`Changed` — e.g. a stroke count; **this is the plant's signal**). |
 | `Edge:Opc:RunStateThreshold` | number, default `0` | `GreaterThan` cut-off (e.g. `spm > 0`); or, for `Changed`, the **no-change window in seconds** (default 10) before declaring stopped. |
 | `Edge:Opc:RunningValues` | array, default `RUNNING,RUN,ON,START,STARTED,1,TRUE` | Equals/NotEquals value set (case-insensitive). For `NotEquals` list the *stopped/idle* values (e.g. `1,TRUE` for an idle bit) |
@@ -318,9 +328,50 @@ edge *write* path would set them; the edge is read-only today).
 
 **Per stacker (`stacker<n>.<tag>`):** `station1_stack_counter` / `station2_stack_counter` (the piece
 counters), `ScaleSkidWt` / `ScaleSkidId` (the stacker scale), and the conveyor/wrapper station-tracking
-bits (`StackOnConveyor1..3`, `StackEntering/LeavingWrapper1/2`, `Sta1/2StackComplete`, …) that would
-feed the **stacker physical board** (§B). **`Device110`** carries device-level `spm` / `spm2`
-(strokes-per-minute), `strokecnt1..3`, and `cntreset1/2`.
+bits that feed the **stacker physical board** (§B) — mapped in [Conveyor cells](#conveyor-cells)
+below. **`Device110`** carries device-level `spm` / `spm2` (strokes-per-minute), `strokecnt1..3`, and
+`cntreset1/2`.
+
+### Conveyor cells {#conveyor-cells}
+
+The cell tags map **1:1 onto the DAS location codes**, so a `/conveyor` reading drops straight onto
+the board with no second translation table. Recovered from the legacy stacker window
+(`legacy/src/stacker_110/w_da_sheet_110_stacker.srw`), where each tag's **rising edge** advanced the
+tracked stack to exactly one location code — the `ue_*` handlers set `location_code` literally.
+
+| Loc | Cell tag (`stacker<n>.…`) | Loc | Cell tag |
+|----:|---------------------------|----:|----------|
+| 0 | *(the head's own `Sta1/2StackComplete` — served by `/stacker`)* | 7 | `StackOnConveyor3` |
+| 1 | `StackLeavingSta1LiftTblConveyor`, `StackLeavingSta2LiftTblConveyor` | 8 | `StackAtCenterOfConveyor3` |
+| 2 | `StackEnteringConveyor1` | 9 | `StackEnteringWrapper1` |
+| 3 | `StackOnConveyor1` | 10 | `StackLeavingWrapper1` |
+| 4 | `StackLeavingConveyor1` | 11 | `StackOnWrapper1UnloadConveyor` |
+| 5 | `StackOnConveyor2` | 12 | `StackAtCenterOfWrapper1UnloadConveyor` |
+| 6 | `StackLeavingConveyor2` | 13 | *(overhead crane — **no sensor**, see below)* |
+
+**Two locations deliberately have no cell.** Location 0 is the stacker head's own done bit, already
+served by `/stacker`. Location **13 (overhead crane) is not a sensor at all** — legacy inferred it
+from the **falling** edge of cell 12 (`ue_stack_unloaded_from_wp1_unload_conv`: the stack leaving the
+wrapper-1 unload conveyor means the crane took it). Detecting an edge needs remembered state, and the
+edge service is deliberately stateless, so the crane reports "no live cell" rather than a guess.
+*(That handler is also why the crane is **wrapper 1's** output, not wrapper 2's — it stays on the
+board even though wrapper 2 is gone.)*
+
+**Locations 14–18 are the wrapper-2 run** (`StackOnWrapper2LoadConveyor`, `StackEntering/
+LeavingWrapper2`, `StackOnWrapper2UnloadConveyor`, `StackAtEndOfWrapper2UnloadConveyor`).
+**Wrapper 2 was removed from the plant (2026-07-25)** — the belt now runs stacker → wrapper 1 →
+overhead crane → output — so they are **not wired** in the example config and the board shows 14
+stations, not legacy's 19. The codes stay in the decode map so historical rows still resolve.
+
+Other stacker bits discovered live but not mapped to a location: `StackRemovedFromSta1/2`,
+`LineRunoutComplete`, `LastScrapRemoved`.
+
+> **Occupancy only, by design.** The cells say a stack **is** at a station, not **which skid** it is.
+> Identity lives in the `SHEET_SKID_LOCATION_*` columns, which only the legacy stacker station writes
+> — so the board overlays DB identity where it exists and shows a bare "stack" where only the cell is
+> made. ABIS does **not** re-derive identity by tracking the cells itself: legacy did that with a queue
+> state machine that owns those columns, and a second copy would make the modern stack a competing
+> writer (the same single-owner rule as shift close and EDI transmit).
 
 **How the DAS console addresses a line** — pass the line's tags as query params (the picker fills
 these): `/run-state?tag=PLC5-BL110.strokecnt`, `/piece-count?tag=stacker110.station1_stack_counter`,

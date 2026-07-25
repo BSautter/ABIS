@@ -99,6 +99,15 @@ var stackerCfg = new StackerConfig(
 foreach (var t in stackerCfg.Tags)
     if (!opcTags.Contains(t)) opcTags = opcTags.Append(t).ToArray();
 
+// Conveyor cells: the physical position sensors along the stacker→wrapper path, mapped by the same
+// location code the DAS board uses. These are the ONLY live source for where a stack actually is —
+// the LINE_CURRENT_STATUS.SHEET_SKID_LOCATION_* columns are written by the legacy stacker station and
+// sit empty on the live DB, so without these the floor board's conveyor path renders blank.
+var (conveyorCfg, conveyorSkipped) = ConveyorConfig.FromSection(
+    opcCfg.GetSection("ConveyorCells"), opcCfg.GetSection("ConveyorCellsByLine"));
+foreach (var t in conveyorCfg.Tags)
+    if (!opcTags.Contains(t)) opcTags = opcTags.Append(t).ToArray();
+
 builder.Services.AddSingleton<ITagSource>(sp => opcProvider.ToLowerInvariant() switch
 {
     "opcua" => new OpcUaTagSource(
@@ -126,6 +135,7 @@ builder.Services.AddSingleton(new PieceCountConfig(pieceCountTag));
 builder.Services.AddSingleton(countersCfg);
 builder.Services.AddSingleton(lineStatusCfg);
 builder.Services.AddSingleton(stackerCfg);
+builder.Services.AddSingleton(conveyorCfg);
 builder.Services.AddSingleton<LatestTags>();
 builder.Services.AddHostedService<TagPump>();
 
@@ -288,6 +298,30 @@ app.MapGet("/stacker", (LatestTags tags, StackerConfig cfg,
     });
 });
 
+// The conveyor's physical cell sensors, by DAS location code — "is a stack at station N right now".
+// This is the live picture of the stacker→wrapper path: the LINE_CURRENT_STATUS.SHEET_SKID_LOCATION_*
+// columns are the legacy stacker station's own bookkeeping and are empty on the live DB, so the cells
+// are the only source that reflects the belt as it is. Read-only and stateless: the edge reports which
+// cells are made, NOT which SKID is where — identity needs the tracking state machine that owns those
+// DB columns, and running a second copy of it would make the modern stack a competing writer.
+app.MapGet("/conveyor", (LatestTags tags, ConveyorConfig cfg, int? line) =>
+{
+    var cells = cfg.For(line).OrderBy(c => c.Key).Select(c =>
+    {
+        var readings = c.Value.Select(t => tags.Get(t)).ToArray();
+        return new
+        {
+            location = c.Key,
+            tags = c.Value,
+            occupied = ConveyorCell.Occupied(readings.Select(r => (r?.Value, r?.Quality))),
+            raw = readings.Select(r => r?.Value).ToArray(),
+            quality = readings.Select(r => r?.Quality).ToArray(),
+            at = readings.Select(r => r?.At).Max(),   // freshest of the tags folded into this cell
+        };
+    }).ToArray();
+    return Results.Ok(new { configured = cells.Length > 0, line, cells });
+});
+
 // Discovery: browse the OPC server's address space one level at a time to find item ids without
 // hand-mapping them — so a tag picker (e.g. the DAS console choosing a line's piece-count tag) can
 // point-and-click instead of someone RDP-ing to the box to run --probe --browse. Pass ?node=<id> to
@@ -300,6 +334,12 @@ app.MapGet("/opc/browse", async (string? node, ITagSource tags, CancellationToke
     try { return Results.Ok(await browser.BrowseAsync(node, ct)); }
     catch (Exception ex) { return Results.Json(new { status = "browse-failed", error = ex.Message }, statusCode: 502); }
 });
+
+// A mistyped conveyor-cell key is skipped, not fatal (the scale and run-state must keep serving) —
+// but say so loudly at startup, or a station silently missing from the board looks like a dead sensor.
+if (conveyorSkipped.Count > 0)
+    app.Logger.LogWarning("Ignored {Count} Edge:Opc:ConveyorCells entr(ies): {Skipped}.",
+        conveyorSkipped.Count, string.Join("; ", conveyorSkipped));
 
 app.Run();
 

@@ -17,4 +17,11 @@
     <ProjectReference Include="..\AbisEdge\AbisEdge.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The real plant tag map, copied so PlantConfigTests can PARSE it in CI. It is hand-edited on
+         the OPC boxes and a malformed edit (a duplicate key, a stray comma) only surfaces as a service
+         that won't start — on the plant floor, not here. Parsing it in CI catches that at review time. -->
+    <None Include="..\appsettings.Plant.example.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

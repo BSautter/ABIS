@@ -252,3 +252,46 @@ export async function fetchStacker(bases: string[]): Promise<StackerResult> {
   }
   return { reachable: false, via: '', station1: NO_STATION, station2: NO_STATION, scaleWeight: null, scaleSkidId: null };
 }
+
+/** One conveyor station's live sensor state. `occupied` null = unknown (no readable cell), which the
+ * board must render as unknown and NEVER as clear — an unreadable sensor making an occupied station
+ * look empty is exactly the failure that would send a fork truck to the wrong place. */
+export interface ConveyorCell { location: number; occupied: boolean | null; tags: string[]; }
+
+export interface ConveyorResult {
+  reachable: boolean;
+  via: string;
+  configured: boolean;                     // the edge has cells mapped for this line
+  cells: Map<number, ConveyorCell>;        // by DAS location code (0..18)
+}
+
+/**
+ * Read a line's conveyor position sensors (edge `/conveyor`) across the hosts, primary→fallback.
+ *
+ * These are the physical cells along the stacker→wrapper path, keyed by the same location code as
+ * `LINE_CURRENT_STATUS.SHEET_SKID_LOCATION_n`. They are the ONLY live source of where a stack is:
+ * those DB columns are the legacy stacker station's own bookkeeping and sit empty on the live
+ * database, so without the cells the conveyor board renders blank.
+ *
+ * Occupancy only — the cells say a stack is *there*, not *which skid it is*. Identity needs the
+ * tracking state machine that owns those DB columns, and running a second copy of it would make the
+ * modern stack a competing writer, so the board pairs live occupancy with skid identity only where
+ * the DB happens to carry it.
+ */
+export async function fetchConveyor(bases: string[], line?: number | null): Promise<ConveyorResult> {
+  const qs = line != null ? `?line=${encodeURIComponent(String(line))}` : '';
+  for (let i = 0; i < bases.length; i++) {
+    try {
+      const r = await fetchWithTimeout(`${bases[i]}/conveyor${qs}`, 2000);
+      if (!r.ok) continue;   // a 404 here = an edge build older than /conveyor; try the next host
+      const s = await r.json() as { configured?: boolean; cells?: { location?: number; occupied?: boolean | null; tags?: string[] }[] };
+      const cells = new Map<number, ConveyorCell>();
+      for (const c of s.cells ?? []) {
+        if (typeof c.location !== 'number') continue;
+        cells.set(c.location, { location: c.location, occupied: c.occupied ?? null, tags: c.tags ?? [] });
+      }
+      return { reachable: true, via: i > 0 ? ' (fallback)' : '', configured: !!s.configured, cells };
+    } catch { /* unreachable/timeout → try the next host */ }
+  }
+  return { reachable: false, via: '', configured: false, cells: new Map() };
+}
