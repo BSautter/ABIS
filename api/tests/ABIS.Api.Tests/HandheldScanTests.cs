@@ -254,3 +254,182 @@ public sealed class InboundCoilScanTests : IDisposable
         try { if (File.Exists(_dbPath)) File.Delete(_dbPath); } catch { /* best effort */ }
     }
 }
+
+/// <summary>The ZPL coil label — a physical tag that rides a coil, so the exact bytes are pinned.</summary>
+public sealed class ZplLabelTests
+{
+    [Fact]
+    public void Coil_label_matches_the_legacy_payload_byte_for_byte()
+    {
+        Assert.Equal(
+            "^XA^MNA^MMK^PW384^LL0203^LS0"
+          + "^BY3,3,50^FT365,78^BCI,,N,N"
+          + "^FD123456^FS"
+          + @"^FT375,150^A0I,25,33^FH\^FDCoil ABC #: 123456^FS"
+          + "^FO69,20^GB138,0,5^FS"
+          + @"^FT376,25^A0I,20,26^FH\^FDINSPECTED BY:^FS"
+          + "^PQ1,0,1,Y^XZ",
+            Abis.Api.Documents.ZplLabels.CoilAbcLabel(123456));
+    }
+
+    [Fact]
+    public void Keeps_the_inverted_orientation_codes()
+    {
+        // The "I" in ^BCI / ^A0I is 180-degree orientation: this stock comes off the roll upside down
+        // relative to the head. Dropping it prints every label the wrong way up, which only shows on paper.
+        var zpl = Abis.Api.Documents.ZplLabels.CoilAbcLabel(1);
+        Assert.Contains("^BCI", zpl);
+        Assert.Contains("^A0I,25,33", zpl);
+        Assert.Contains("^A0I,20,26", zpl);
+    }
+
+    [Fact]
+    public void Prints_two_copies_per_mint()
+    {
+        // ^PQ1 asks the printer for ONE, so the caller sends the payload twice — legacy's
+        // `for ($count = 2; $count >= 1; $count--)`.
+        Assert.Equal(2, Abis.Api.Documents.ZplLabels.CoilAbcLabelCopies);
+        Assert.Contains("^PQ1,0,1,Y", Abis.Api.Documents.ZplLabels.CoilAbcLabel(1));
+    }
+
+    [Fact]
+    public void Is_a_complete_label_block()
+    {
+        var zpl = Abis.Api.Documents.ZplLabels.CoilAbcLabel(987);
+        Assert.StartsWith("^XA", zpl);
+        Assert.EndsWith("^XZ", zpl);
+        Assert.Contains("^FD987^FS", zpl);   // the barcode payload is the bare number
+    }
+}
+
+/// <summary>Minting an ABC for a scanned coil — the write half of the handheld loop.</summary>
+public sealed class InboundCoilMintTests : IDisposable
+{
+    private readonly string _dbPath;
+    private readonly AbisRepository _repo;
+    private readonly string _cs;
+
+    public InboundCoilMintTests()
+    {
+        _dbPath = Path.Combine(Path.GetTempPath(), $"abis_mint_{Guid.NewGuid():N}.db");
+        _cs = $"Data Source={_dbPath}";
+        SqliteFixture.EnsureCreatedAndSeeded(_cs);
+        _repo = new AbisRepository(new DbConnectionFactory(new DatabaseOptions
+        {
+            Provider = "Sqlite", ConnectionString = _cs, Seed = true,
+        }));
+    }
+
+    private void Exec(string sql)
+    {
+        using var c = new SqliteConnection(_cs);
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.ExecuteNonQuery();
+    }
+
+    private T Scalar<T>(string sql)
+    {
+        using var c = new SqliteConnection(_cs);
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = sql;
+        var v = cmd.ExecuteScalar();
+        return v is null or DBNull ? default! : (T)Convert.ChangeType(v, typeof(T));
+    }
+
+    [Fact]
+    public async Task Mints_a_number_and_stamps_it_on_the_receiving_row()
+    {
+        Exec("""
+            INSERT INTO inbound_coil_status (edi_file_id, bol, item_num, coil_number, coil_abc_num)
+                 VALUES (900, 'BOL-M1', 1, 'C-3001', 0);
+            """);
+
+        var r = await _repo.MintInboundCoilAsync("C-3001", CancellationToken.None);
+
+        Assert.True(r.Minted);
+        Assert.True(r.CoilAbcNum > 0);
+        Assert.Equal(1, r.RowsUpdated);
+        Assert.Null(r.ReplacedAbcNum);
+        Assert.Equal(r.CoilAbcNum, Scalar<long>("SELECT coil_abc_num FROM inbound_coil_status WHERE coil_number = 'C-3001'"));
+    }
+
+    [Fact]
+    public async Task Minting_again_overwrites_and_reports_what_it_replaced()
+    {
+        // Legacy's UPDATE matches on COIL_NUMBER alone, so a second mint overwrites the first and
+        // orphans the label already printed for it. Preserved — but reported, not silent.
+        Exec("""
+            INSERT INTO inbound_coil_status (edi_file_id, bol, item_num, coil_number, coil_abc_num)
+                 VALUES (901, 'BOL-M2', 1, 'C-3002', 77001);
+            """);
+
+        var r = await _repo.MintInboundCoilAsync("C-3002", CancellationToken.None);
+
+        Assert.True(r.Minted);
+        Assert.Equal(77001, r.ReplacedAbcNum);
+        Assert.NotEqual(77001, r.CoilAbcNum);
+        Assert.Equal(r.CoilAbcNum, Scalar<long>("SELECT coil_abc_num FROM inbound_coil_status WHERE coil_number = 'C-3002'"));
+    }
+
+    [Fact]
+    public async Task Stamps_every_row_for_that_coil_number()
+    {
+        // Faithful to legacy's unscoped WHERE. Narrowing it would change which rows the plant's
+        // downstream reconciliation finds.
+        Exec("""
+            INSERT INTO inbound_coil_status (edi_file_id, bol, item_num, coil_number, coil_abc_num)
+                 VALUES (902, 'BOL-M3', 1, 'C-3003', 0), (902, 'BOL-M3', 2, 'C-3003', 0);
+            """);
+
+        var r = await _repo.MintInboundCoilAsync("C-3003", CancellationToken.None);
+
+        Assert.Equal(2, r.RowsUpdated);
+        Assert.Equal(2, Scalar<long>($"SELECT COUNT(*) FROM inbound_coil_status WHERE coil_number = 'C-3003' AND coil_abc_num = {r.CoilAbcNum}"));
+    }
+
+    [Fact]
+    public async Task An_unknown_coil_mints_nothing_and_burns_no_sequence_value()
+    {
+        var before = Scalar<long>("SELECT COALESCE(MAX(coil_abc_num), 0) FROM coil");
+
+        var r = await _repo.MintInboundCoilAsync("C-NOT-RECEIVED", CancellationToken.None);
+
+        Assert.False(r.Minted);
+        Assert.Equal(0, r.CoilAbcNum);
+        Assert.Contains("not on any inbound receiving list", r.Reason);
+        Assert.Equal(before, Scalar<long>("SELECT COALESCE(MAX(coil_abc_num), 0) FROM coil"));
+    }
+
+    public void Dispose()
+    {
+        try { SqliteConnection.ClearAllPools(); } catch { /* best effort */ }
+        try { if (File.Exists(_dbPath)) File.Delete(_dbPath); } catch { /* best effort */ }
+    }
+}
+
+/// <summary>The default label printer must refuse, so an unwired deployment mints nothing.</summary>
+public sealed class NoOpLabelPrinterTests
+{
+    private static Abis.Api.Documents.NoOpCoilLabelPrinter Printer() =>
+        new(Microsoft.Extensions.Logging.Abstractions.NullLogger<Abis.Api.Documents.NoOpCoilLabelPrinter>.Instance);
+
+    [Fact]
+    public async Task Reports_unreachable_so_nothing_is_minted()
+    {
+        // This is the safety property, not a limitation: minting checks reachability first, so an
+        // unconfigured deployment cannot burn ABC numbers for labels nobody printed.
+        Assert.False(await Printer().IsReachableAsync("192.168.10.8", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Does_not_print_and_says_why()
+    {
+        var r = await Printer().PrintAsync("192.168.10.8", "^XA^XZ", 2, CancellationToken.None);
+        Assert.False(r.Printed);
+        Assert.Null(r.Printer);
+        Assert.Contains("No label printer", r.Reason);
+    }
+}

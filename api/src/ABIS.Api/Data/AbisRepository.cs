@@ -4928,6 +4928,53 @@ public sealed class AbisRepository : IAbisRepository
         return result;
     }
 
+    /// <summary>
+    /// Mint an ABC number for a scanned inbound coil — legacy's <c>COIL_ABC_NUM_SEQ.NEXTVAL</c> followed
+    /// by <c>UPDATE INBOUND_COIL_STATUS SET COIL_ABC_NUM = … WHERE COIL_NUMBER = …</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Call only after the printer is confirmed reachable.</b> The endpoint enforces that; see
+    /// <c>ICoilLabelPrinter</c>. Legacy checks the printer before it touches the database precisely so a
+    /// number is never drawn for a label that can't be printed.</para>
+    /// <para><b>The update is unscoped, faithfully.</b> Legacy matches on <c>COIL_NUMBER</c> alone, so
+    /// every <c>inbound_coil_status</c> row for that customer coil takes the new number — and a coil
+    /// that already had one has it OVERWRITTEN, orphaning the label already printed against it. That is
+    /// preserved rather than quietly narrowed to one row, because narrowing it would change which rows
+    /// the plant's downstream reconciliation finds. What is NOT preserved is the silence: the previous
+    /// number comes back as <c>ReplacedAbcNum</c> so the operator can be told a label was superseded.</para>
+    /// <para>Returns <c>Minted = false</c> with a reason when the coil isn't in
+    /// <c>inbound_coil_status</c> at all — there is nothing to stamp, and minting an id that lands
+    /// nowhere would burn a sequence value for no record.</para>
+    /// </remarks>
+    public async Task<InboundCoilMintResult> MintInboundCoilAsync(string coilNumber, CancellationToken ct)
+    {
+        var result = new InboundCoilMintResult { CoilNumber = coilNumber };
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        var existing = (await conn.QueryAsync<long?>(new CommandDefinition(
+            "SELECT coil_abc_num FROM inbound_coil_status WHERE coil_number = :num",
+            new { num = coilNumber }, transaction: tx, cancellationToken: ct))).ToList();
+
+        if (existing.Count == 0)
+        {
+            result.Reason = $"Coil {coilNumber} is not on any inbound receiving list, so there is nothing to mint against.";
+            await tx.RollbackAsync(ct);
+            return result;
+        }
+        result.ReplacedAbcNum = existing.FirstOrDefault(a => a is > 0);
+
+        var abc = await NextIdAsync(conn, tx, "coil", "coil_abc_num", ct);
+        result.RowsUpdated = await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE inbound_coil_status SET coil_abc_num = :abc WHERE coil_number = :num",
+            new { abc, num = coilNumber }, transaction: tx, cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
+        result.CoilAbcNum = abc;
+        result.Minted = true;
+        return result;
+    }
+
     /// <summary>The legacy BOL form has exactly three per-job note blocks and refuses to print details past
     /// that. The cap is the printed layout, not a business rule, so it lives with the document code.</summary>
     private const int MaxPrintableBolJobs = 3;

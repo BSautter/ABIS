@@ -320,9 +320,33 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [~] **M/L** Import-from-BOL / show-archived-BOL browsers; multi-condition coil search (search term over org/lot/mid/notes + temper filter DONE on GET /coils + coil-inventory UI); manual new-coil + live-scale weigh-in — remaining: BOL browsers, gauge/width ranges, live-scale
 
 ### C4. Handheld scanner (RF coil-receiving)
-- [ ] **C** `INBOUND_COIL_STATUS` model + barcode→ABC lookup + mint-decision (already-minted→reprint vs unminted→mint)
-- [ ] **C** Native Zebra ZPL/CPCL over TCP :6101 + printer routing by device IP + connectivity check/offline page
-- [ ] **H** Single-scan ABC mint (per-scan `SEQ.NEXTVAL`; today mint is desktop batch over `receiving_bol_coil`)
+- [x] **C** `INBOUND_COIL_STATUS` model + barcode→ABC lookup + mint-decision — done (#311), ported from the
+  plant's LIVE handheld CGI (`coil_receiving_12.pl`, the active version per the vendored README).
+  `GET /receiving/scan?barcode=` normalises the scan, reports ABC numbers already minted for that
+  customer coil, and attaches the mill's advance notice. **The two scanning surfaces do NOT share a
+  barcode rule**: the DAS console (`CoilBarcode`, #300) strips through `"2S"` and needs digits because it
+  resolves our numeric `coil_abc_num`; the handheld drops ONE leading `S` and resolves
+  `INBOUND_COIL.COIL_NUMBER`, the CUSTOMER's number, which may contain letters. Each label run through
+  the other's rule resolves to nothing — #300's claim that one implementation would serve every scanning
+  surface was wrong and is corrected in code, with a test pinning the divergence. Also ported: the
+  `000000` → `"NO BARCODE"` sentinel, and already-minted being a CHOICE (legacy offers reprint AND mint-
+  again on the same screen), not a block. Fixes over the CGI: bound parameter (a scanner is untrusted
+  input), all matching ABCs returned, and `FirstOrDefault` for the advance notice since a coil can appear
+  on several inbound EDI files.
+- [~] **C** Native Zebra ZPL/CPCL over TCP :6101 + printer routing by device IP + connectivity check —
+  **label + seam done, transport not wired.** `ZplLabels.CoilAbcLabel` is the legacy payload byte-for-byte
+  (inverted `^BCI`/`^A0I` orientation, `^PW384`/`^LL0203` stock size, sent TWICE per mint), pinned by test.
+  `ICoilLabelPrinter` is the transport seam; the default `NoOpCoilLabelPrinter` does not print and reports
+  itself **unreachable** — which is the safety property, because minting checks reachability FIRST.
+  Still TODO: a real socket transport to `:6101` + the device-IP → printer map
+  (`192.168.10.8/9/10` → `192.168.10.12/13/14`) + an offline page. **Needs hardware to validate.**
+- [x] **H** Single-scan ABC mint — done (#312): `POST /receiving/scan/mint` draws the next
+  `coil_abc_num` and stamps `inbound_coil_status`. **The printer is checked BEFORE anything is minted**
+  (legacy pings first): unreachable → 503 and nothing minted, because an ABC number with no printed label
+  leaves a coil untagged on the dock with nothing to reconcile it against. Unknown coil → 409, and no
+  sequence value burned. Legacy's UPDATE is unscoped (`WHERE COIL_NUMBER = …`) so minting again
+  OVERWRITES and orphans the earlier label — preserved faithfully, but `replacedAbcNum` reports it
+  instead of it being silent.
 - [ ] **H** Lookup by scanned customer coil (`coil_org_num`); QR capture → `BARCODE_STRING` upsert
 - [ ] **M** S-header strip+validate; coil-defect email notification
 - *(Done: scan→verify→label handheld page + HTML coil label.)*

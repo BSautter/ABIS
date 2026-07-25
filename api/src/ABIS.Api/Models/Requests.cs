@@ -1192,3 +1192,13 @@ public sealed class PlcFaultCodeWrite
     public string? Description { get; set; }
     public string? Notes { get; set; }
 }
+
+/// <summary>Mint request from a handheld receiving gun.</summary>
+public sealed class InboundCoilMintRequest
+{
+    /// <summary>The scanner's literal output (the leading "S" header is stripped server-side).</summary>
+    public string? Barcode { get; set; }
+    /// <summary>The scanner's address, used to route the label to the printer beside it. Legacy maps
+    /// the CGI's remote_addr to a fixed printer per station.</summary>
+    public string? DeviceAddress { get; set; }
+}

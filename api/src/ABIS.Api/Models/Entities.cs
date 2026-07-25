@@ -3191,3 +3191,27 @@ public sealed class InboundCoilScan
     /// file; legacy still lets the operator continue, showing "NONE" for every field.</summary>
     public InboundCoilDetail? Detail { get; set; }
 }
+
+/// <summary>Result of minting an ABC number for a scanned inbound coil (legacy handheld
+/// <c>print_label</c> path).</summary>
+public sealed class InboundCoilMintResult
+{
+    public string CoilNumber { get; set; } = "";
+    /// <summary>The minted number, or 0 when nothing was minted.</summary>
+    public long CoilAbcNum { get; set; }
+    /// <summary>False when the printer wasn't reachable, so nothing was minted OR printed. Legacy's
+    /// ordering: no label, no number — an ABC drawn with no tag printed is a coil on the dock with
+    /// nothing to reconcile it against.</summary>
+    public bool Minted { get; set; }
+    public bool LabelPrinted { get; set; }
+    public int LabelCopies { get; set; }
+    /// <summary>Why nothing happened, when <see cref="Minted"/> is false.</summary>
+    public string? Reason { get; set; }
+    /// <summary>The ABC number this scan REPLACED, when the coil already had one. Legacy's update is
+    /// unscoped (<c>WHERE COIL_NUMBER = …</c>), so minting again overwrites the previous number and
+    /// orphans the label already printed for it. Surfaced so the operator can see that happened
+    /// instead of it being silent.</summary>
+    public long? ReplacedAbcNum { get; set; }
+    /// <summary>Rows of <c>inbound_coil_status</c> the mint updated.</summary>
+    public int RowsUpdated { get; set; }
+}

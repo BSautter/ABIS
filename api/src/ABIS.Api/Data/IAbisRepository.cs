@@ -271,6 +271,11 @@ public interface IAbisRepository
     /// customer coil, and attach the mill's advance notice.</summary>
     Task<InboundCoilScan> ScanInboundCoilAsync(string? barcode, CancellationToken ct);
 
+    /// <summary>Mint an ABC number for a scanned inbound coil and stamp it on
+    /// <c>inbound_coil_status</c> (legacy handheld). Call ONLY after the label printer has been
+    /// confirmed reachable — see <c>ICoilLabelPrinter</c> for why the order matters.</summary>
+    Task<InboundCoilMintResult> MintInboundCoilAsync(string coilNumber, CancellationToken ct);
+
     /// <summary>The packing ticket for ONE unit on a packing list (legacy
     /// <c>d_packaging_ticket_{sheet,scrap,rejcoil}_4skid</c>). <paramref name="itemType"/> is SHEET,
     /// SCRAP or REJECT_COIL. Null when the type is unknown or that unit isn't on the list.</summary>

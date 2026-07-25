@@ -34,6 +34,13 @@ builder.Services.AddSingleton(dbOptions);
 builder.Services.AddSingleton<IDbConnectionFactory, DbConnectionFactory>();
 builder.Services.AddScoped<IAbisRepository, AbisRepository>();
 
+// Shop-floor label printer for the handheld receiving guns. The default does NOT print and reports
+// itself unreachable — and because minting checks reachability FIRST (legacy pings the printer before
+// drawing COIL_ABC_NUM_SEQ.NEXTVAL), an unwired deployment mints nothing rather than burning ABC
+// numbers for labels that were never printed. Wiring a real Zebra transport is a deliberate act, the
+// same seam discipline as the EDI no-transmit transport.
+builder.Services.AddSingleton<Abis.Api.Documents.ICoilLabelPrinter, Abis.Api.Documents.NoOpCoilLabelPrinter>();
+
 // Secondary, read-only WinSPC (SQL Server) quality database. Inert unless WinSpc:Enabled=true
 // with a connection string — CI and un-wired deployments get a disabled connector.
 var winSpcOptions = builder.Configuration.GetSection(Abis.Api.Data.WinSpc.WinSpcOptions.SectionName)

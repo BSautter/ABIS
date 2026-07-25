@@ -993,6 +993,40 @@ public static class ApiEndpoints
            .WithSummary("Resolve a barcode scanned on the handheld RF receiving gun (legacy coil_receiving_12.pl): strips the leading 'S' header, maps the fixed 000000 label to coil number 'NO BARCODE', returns any ABC numbers already minted for that customer coil plus the mill's advance notice. Outcome is Mint (none yet), AlreadyMinted (reprint OR mint another — legacy offers both) or Unreadable. Read-only: minting is a separate action.")
            .Produces<InboundCoilScan>();
 
+        api.MapPost("/receiving/scan/mint", async (InboundCoilMintRequest body, IAbisRepository repo,
+                                                   Abis.Api.Documents.ICoilLabelPrinter printer, CancellationToken ct) =>
+            {
+                var scan = HandheldBarcode.Parse(body.Barcode);
+                if (!scan.Valid) return Results.Problem(title: "Unreadable scan",
+                    detail: "The scan was empty, so there is no coil to mint.", statusCode: StatusCodes.Status400BadRequest);
+
+                // PRINTER FIRST — legacy pings before it draws from the sequence, so an ABC number is
+                // never minted for a label that cannot be printed. A coil on the dock with a number but
+                // no tag has nothing to reconcile it against.
+                if (!await printer.IsReachableAsync(body.DeviceAddress, ct))
+                    return Results.Problem(title: "Label printer unreachable",
+                        detail: "The label printer for this device is not reachable, so nothing was minted. Legacy refuses for the same reason: an ABC number with no printed label leaves a coil untagged.",
+                        statusCode: StatusCodes.Status503ServiceUnavailable);
+
+                var result = await repo.MintInboundCoilAsync(scan.CoilNumber, ct);
+                if (!result.Minted)
+                    return Results.Problem(title: "Nothing to mint", detail: result.Reason, statusCode: StatusCodes.Status409Conflict);
+
+                var print = await printer.PrintAsync(body.DeviceAddress,
+                    Abis.Api.Documents.ZplLabels.CoilAbcLabel(result.CoilAbcNum),
+                    Abis.Api.Documents.ZplLabels.CoilAbcLabelCopies, ct);
+                result.LabelPrinted = print.Printed;
+                result.LabelCopies = print.Printed ? Abis.Api.Documents.ZplLabels.CoilAbcLabelCopies : 0;
+                if (!print.Printed) result.Reason = print.Reason;
+                return Results.Ok(result);
+            })
+           .WithName("MintInboundCoil").WithTags("Receiving")
+           .WithSummary("Mint an ABC number for a scanned inbound coil and print its label (legacy handheld). The printer is checked BEFORE anything is minted — 503 and no mint when it is unreachable, because an ABC number with no printed label leaves a coil untagged on the dock. 409 when the coil is not on any inbound receiving list. `replacedAbcNum` reports a previous number this overwrote (legacy's update is unscoped), so a superseded label isn't silent.")
+           .Produces<InboundCoilMintResult>()
+           .ProducesProblem(StatusCodes.Status400BadRequest)
+           .ProducesProblem(StatusCodes.Status409Conflict)
+           .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+
         api.MapGet("/documents/packing-ticket/{itemType}/{packingList:long}/{refNum:long}",
             async (string itemType, long packingList, long refNum, IAbisRepository repo, CancellationToken ct) =>
                 await repo.GetSkidPackingTicketAsync(itemType, packingList, refNum, ct) is { } t

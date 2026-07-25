@@ -9714,6 +9714,70 @@
         }
       }
     },
+    "/api/receiving/scan/mint": {
+      "post": {
+        "tags": [
+          "Receiving"
+        ],
+        "summary": "Mint an ABC number for a scanned inbound coil and print its label (legacy handheld). The printer is checked BEFORE anything is minted — 503 and no mint when it is unreachable, because an ABC number with no printed label leaves a coil untagged on the dock. 409 when the coil is not on any inbound receiving list. `replacedAbcNum` reports a previous number this overwrote (legacy's update is unscoped), so a superseded label isn't silent.",
+        "operationId": "MintInboundCoil",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboundCoilMintRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboundCoilMintResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/receiving-bols": {
       "get": {
         "tags": [
@@ -19530,6 +19594,57 @@
           "packId": {
             "type": "string",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "InboundCoilMintRequest": {
+        "type": "object",
+        "properties": {
+          "barcode": {
+            "type": "string",
+            "nullable": true
+          },
+          "deviceAddress": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "InboundCoilMintResult": {
+        "type": "object",
+        "properties": {
+          "coilNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "minted": {
+            "type": "boolean"
+          },
+          "labelPrinted": {
+            "type": "boolean"
+          },
+          "labelCopies": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "replacedAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "rowsUpdated": {
+            "type": "integer",
+            "format": "int32"
           }
         },
         "additionalProperties": false
