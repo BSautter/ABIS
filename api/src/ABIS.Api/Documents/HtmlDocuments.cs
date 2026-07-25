@@ -519,6 +519,70 @@ public static class HtmlDocuments
         return joined.Length == 0 ? "—" : joined;
     }
 
+    /// <summary>
+    /// The packing ticket that rides ONE skid (or rejected coil) — legacy
+    /// <c>rpabco/d_packaging_ticket_{sheet,scrap,rejcoil}_4skid</c>. One layout, three variants: the rows
+    /// a variant has no data for are simply absent, which is what legacy's separate DataWindows amount to.
+    /// A big ticket number and a barcode up top, because this is read and scanned on a dock.
+    /// </summary>
+    public static string SkidPackingTicketDoc(SkidPackingTicket t)
+    {
+        string Row(string label, string? value) =>
+            string.IsNullOrWhiteSpace(value) || value == "—" ? "" : $"<tr><th>{Esc(label)}</th><td>{value}</td></tr>";
+
+        var kind = t.ItemType switch
+        {
+            "SHEET" => "SHEET SKID PACKING TICKET",
+            "SCRAP" => "SCRAP SKID PACKING TICKET",
+            "REJECT_COIL" => "REJECTED COIL PACKING TICKET",
+            _ => "PACKING TICKET",
+        };
+
+        // Dimensions come back per shape (rectangle has length/width, circle a diameter, and so on), so
+        // the ticket prints whatever that shape actually has rather than a fixed pair of columns.
+        var dims = t.Shape?.Dimensions is { Count: > 0 } ds
+            ? string.Join(" · ", ds.Where(d => d.Value is not null).Select(d => $"{Esc(d.Name)} {Num(d.Value)}"))
+            : null;
+
+        var body = $"""
+            <div class="tag">
+              <div class="tagHead"><span class="brand">ALUMINUM BLANKING CO.</span><span class="kind">{kind}</span></div>
+              <div class="big">{Esc(t.SkidDisplayNum) ?? t.RefNum.ToString()}</div>
+              {Barcode(t.RefNum.ToString())}
+              <table class="kv">
+                {Row("Ticket #", Opt(t.PackagingTicket))}
+                {Row("Packing list", t.PackingList.ToString())}
+                {Row("BOL #", Opt(t.BillOfLading))}
+                {Row("Ship date", Dt(t.ShipDate))}
+                {Row("Customer", Esc(t.CustomerName))}
+                {Row("Ship to", Esc(t.ShipToName))}
+                {Row("Job #", Opt(t.AbJobNum) is var j && j != "—" ? j : Esc(t.ScrapJobNum))}
+                {Row("Part #", Esc(t.PartNum))}
+                {Row("Shape", Esc(t.SheetType))}
+                {Row("Dimensions", dims)}
+                {Row("Alloy", Esc(t.Alloy))}
+                {Row("Temper", Esc(t.Temper))}
+                {Row("Gauge", Num(t.Gauge))}
+                {Row("Width", Num(t.Width))}
+                {Row("Coil org #", Esc(t.CoilOrgNum))}
+                {Row("Lot #", Esc(t.LotNum))}
+                {Row("Net wt", Wt(t.NetWeight))}
+                {Row("Tare wt", t.TareWeight > 0 ? Wt(t.TareWeight) : null)}
+                {Row("Gross wt", Wt(t.GrossWeight))}
+                {Row("Pieces", Opt(t.Pieces))}
+                {Row("Cust PO #", Esc(t.OrigCustomerPo) ?? Esc(t.ScrapCustomerPo))}
+                {Row("End-user PO #", Esc(t.EnduserPo))}
+                {Row("Govt contract", Esc(t.GovtContractNum))}
+                {Row("Trailer", Esc(t.TrailerName))}
+                {Row("Authorization", Esc(t.AuthorizationCode))}
+                {Row("Customer package #", Esc(t.CustomerPackageNum))}
+                {Row("Notes", Esc(t.Notes))}
+              </table>
+            </div>
+            """;
+        return Doc($"Packing Ticket {t.RefNum}", body);
+    }
+
     private static string Wt(decimal? v) => v is null ? "—" : $"{v.Value:0.#} lb";
 
     /// <summary>Weight the way the bill of lading prints it: comma-grouped whole pounds, "lbs" plural —

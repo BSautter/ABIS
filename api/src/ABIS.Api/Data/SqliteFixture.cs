@@ -305,7 +305,10 @@ public static class SqliteFixture
                 scrap_skid_num INTEGER PRIMARY KEY, scrap_ab_job_num TEXT, scrap_alloy2 TEXT, scrap_temper TEXT,
                 scrap_type INTEGER, scrap_net_wt REAL NOT NULL, scrap_tare_wt REAL NOT NULL, scrap_location TEXT,
                 scrap_notes TEXT, skid_scrap_status INTEGER, scrap_date TEXT,
-                scrap_skid_display_num TEXT, scrap_cust_po TEXT, customer_id INTEGER);
+                scrap_skid_display_num TEXT, scrap_cust_po TEXT, customer_id INTEGER,
+                -- The trailer a scrap skid is loaded on, printed on its packing ticket (added to
+                -- legacy in 2020 at the plant's request).
+                trailer_name TEXT);
 
             -- Finished production items rolled onto a job (legacy production_sheet_item): the
             -- invoice's "processed weight" bucket = SUM(prod_item_net_wt). Decimals are REAL.
@@ -404,11 +407,18 @@ public static class SqliteFixture
                 PRIMARY KEY (routing_sequence, customer_id, part_num_id, line_num, die_id, sheet_type,
                              spm_standard, spm_planned, number_of_people, edge_trim_y_n, stacker_y_n));
 
+            -- A customer-facing package number for a finished skid. Only customers with
+            -- customer.use_package_num = 'Y' get one printed on the packing ticket.
+            CREATE TABLE sheet_skid_package (
+                sheet_skid_num INTEGER PRIMARY KEY, package_num TEXT);
+
             CREATE TABLE shipment (
                 packing_list INTEGER PRIMARY KEY, bill_of_lading INTEGER, carrier_id INTEGER,
                 customer_id INTEGER, des_sh_cust_id INTEGER, vehicle_id TEXT, vehicle_status INTEGER,
                 shipment_status INTEGER, shipment_scheduled_date_time TEXT, date_sent TEXT,
                 shipment_actualed_date_time TEXT, shipment_notes TEXT,
+                -- Printed on a rejected-coil packing ticket (legacy spelling, sic).
+                shipment_athorization_code TEXT,
                 -- Free-text reference codes on the stop. On a MULTI-STOP bill of lading legacy stamps the
                 -- "Shipping with BOL …" package note in here, and reuses it verbatim on later reads so
                 -- paperwork already handed to a driver can't be contradicted by a recount (f_get_bol_totals).

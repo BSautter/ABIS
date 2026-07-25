@@ -3076,3 +3076,64 @@ public sealed class BolDocument
     /// (<see cref="BolTotals"/>). Null when the shipment carries no bill of lading.</summary>
     public BolTotals? BolTotals { get; set; }
 }
+
+/// <summary>
+/// The packing ticket that rides ONE skid (or rejected coil) — the port of legacy
+/// <c>rpabco/d_packaging_ticket_{sheet,scrap,rejcoil}_4skid</c>. Distinct from the packing LIST, which
+/// covers a whole shipment: this is the paper stapled to a single unit so the receiving dock can
+/// identify it on its own.
+/// <para>One model serves all three variants; the fields a variant doesn't have stay null. What each
+/// carries follows legacy: SHEET gets the order's alloy/temper/gauge, part and shape dimensions;
+/// SCRAP gets its own alloy/temper, customer PO, notes and trailer; REJECT_COIL gets the coil's
+/// identity and the shipment authorization code.</para>
+/// </summary>
+public sealed class SkidPackingTicket
+{
+    /// <summary>SHEET, SCRAP or REJECT_COIL.</summary>
+    public string ItemType { get; set; } = "";
+    public long PackingList { get; set; }
+    public long? BillOfLading { get; set; }
+    /// <summary>The skid number, or for REJECT_COIL the coil's ABC number.</summary>
+    public long RefNum { get; set; }
+    /// <summary>The packaging-ticket sequence value printed on the ticket.</summary>
+    public long? PackagingTicket { get; set; }
+    public string? SkidDisplayNum { get; set; }
+    public DateTime? ShipDate { get; set; }
+    public string? CustomerName { get; set; }
+    public string? ShipToName { get; set; }
+
+    public decimal NetWeight { get; set; }
+    public decimal TareWeight { get; set; }
+    public decimal GrossWeight { get; set; }
+    public int? Pieces { get; set; }
+
+    public string? Alloy { get; set; }
+    public string? Temper { get; set; }
+    public decimal? Gauge { get; set; }
+    public decimal? Width { get; set; }
+
+    // --- SHEET ---
+    public long? AbJobNum { get; set; }
+    public string? PartNum { get; set; }
+    public string? SheetType { get; set; }
+    public string? GovtContractNum { get; set; }
+    public string? OrigCustomerPo { get; set; }
+    public string? EnduserPo { get; set; }
+    /// <summary>The blank's dimensions, resolved for whatever shape the order line is. Null when the
+    /// line isn't a dimensioned shape.</summary>
+    public OrderItemShape? Shape { get; set; }
+    /// <summary>Printed only for customers with <c>customer.use_package_num = 'Y'</c>; null otherwise,
+    /// so the ticket carries no empty "Customer Package #:" line for everyone else.</summary>
+    public string? CustomerPackageNum { get; set; }
+
+    // --- SCRAP ---
+    public string? ScrapJobNum { get; set; }
+    public string? ScrapCustomerPo { get; set; }
+    public string? Notes { get; set; }
+    public string? TrailerName { get; set; }
+
+    // --- REJECT_COIL ---
+    public string? CoilOrgNum { get; set; }
+    public string? LotNum { get; set; }
+    public string? AuthorizationCode { get; set; }
+}

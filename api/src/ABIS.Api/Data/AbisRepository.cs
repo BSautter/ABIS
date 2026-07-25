@@ -4865,6 +4865,162 @@ public sealed class AbisRepository : IAbisRepository
     /// that. The cap is the printed layout, not a business rule, so it lives with the document code.</summary>
     private const int MaxPrintableBolJobs = 3;
 
+    /// <summary>
+    /// The packing ticket for ONE unit on a packing list — the port of legacy
+    /// <c>d_packaging_ticket_{sheet,scrap,rejcoil}_4skid</c>. Distinct from the packing LIST (a whole
+    /// shipment): this is the paper stapled to a single skid so a receiving dock can identify it alone.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Addressing.</b> Keyed by (packing list, type, ref) — the skid number, or the coil's ABC
+    /// number for a rejected coil. Legacy keys the reject-coil ticket by its <i>packaging ticket
+    /// sequence</i> instead; that is an addressing choice rather than business logic, and matching the
+    /// scheme the rest of this API already uses for packing items (see <c>PackingItemCfg</c> and the
+    /// item DELETE route) beats mirroring a legacy inconsistency.</para>
+    /// <para><b>Shape dimensions.</b> Legacy outer-joins all EIGHT shape tables at once because a
+    /// DataWindow can't pick a table at run time; only one ever matches. Here the line's
+    /// <c>sheet_type</c> resolves the one table via <see cref="ShapeGeometry"/> and
+    /// <see cref="GetOrderItemShapeAsync"/>. Same result from one targeted read — and it also covers
+    /// REINFORCEMENT and LIFTGATE, which legacy's ticket query omits, so those parts' tickets printed
+    /// with no dimensions at all.</para>
+    /// <para><b>Reference order.</b> As on the BOL, the sheet ticket's order data comes from the skid's
+    /// <c>ref_order_abc_num</c> / <c>ref_order_abc_item</c>, not the job's own order.</para>
+    /// <para><b>Package number</b> is printed only for customers with <c>use_package_num = 'Y'</c>, so
+    /// everyone else's ticket carries no empty line where one would be.</para>
+    /// </remarks>
+    public async Task<SkidPackingTicket?> GetSkidPackingTicketAsync(string itemType, long packingList, long refNum, CancellationToken ct)
+    {
+        var type = (itemType ?? "").Trim().ToUpperInvariant();
+        await using var conn = await OpenAsync(ct);
+
+        // Shipment-level fields every variant prints.
+        var head = await conn.QuerySingleOrDefaultAsync<(long? BillOfLading, DateTime? ShipDate, string? CustomerName,
+                                                         string? ShipToName, string? AuthorizationCode)>(new CommandDefinition(
+            """
+            SELECT s.bill_of_lading AS BillOfLading,
+                   COALESCE(s.shipment_actualed_date_time, s.date_sent, s.shipment_scheduled_date_time) AS ShipDate,
+                   cust.customer_full_name AS CustomerName, dcust.customer_full_name AS ShipToName,
+                   s.shipment_athorization_code AS AuthorizationCode
+              FROM shipment s
+              LEFT JOIN customer cust ON cust.customer_id = s.customer_id
+              LEFT JOIN customer dcust ON dcust.customer_id = s.des_sh_cust_id
+             WHERE s.packing_list = :pl
+            """, new { pl = packingList }, cancellationToken: ct));
+        if (head.BillOfLading is null && head.ShipDate is null && head.CustomerName is null
+            && await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+                "SELECT COUNT(*) FROM shipment WHERE packing_list = :pl", new { pl = packingList }, cancellationToken: ct)) == 0)
+            return null;
+
+        SkidPackingTicket? t = type switch
+        {
+            "SHEET" => await SheetTicketAsync(conn, packingList, refNum, ct),
+            "SCRAP" => await ScrapTicketAsync(conn, packingList, refNum, ct),
+            "REJECT_COIL" => await RejectCoilTicketAsync(conn, packingList, refNum, ct),
+            _ => null,
+        };
+        if (t is null) return null;
+
+        t.ItemType = type;
+        t.PackingList = packingList;
+        t.RefNum = refNum;
+        t.BillOfLading = head.BillOfLading;
+        t.ShipDate = head.ShipDate;
+        t.CustomerName = head.CustomerName;
+        t.ShipToName = head.ShipToName;
+        // Legacy prints the shipment authorization code on the REJECTED-COIL ticket only — it authorises
+        // sending customer material back, which sheet and scrap tickets don't need.
+        if (type == "REJECT_COIL") t.AuthorizationCode = head.AuthorizationCode;
+        t.GrossWeight = t.NetWeight + t.TareWeight;
+        return t;
+    }
+
+    private async Task<SkidPackingTicket?> SheetTicketAsync(DbConnection conn, long packingList, long skidNum, CancellationToken ct)
+    {
+        var r = await conn.QuerySingleOrDefaultAsync<(long? AbJobNum, string? SkidDisplayNum, decimal NetWt, decimal TareWt,
+                                                      int? Pieces, string? Alloy, string? Temper, decimal? Gauge,
+                                                      string? PartNum, string? SheetType, string? GovtContractNum,
+                                                      string? OrigCustomerPo, string? EnduserPo, long? PackagingTicket,
+                                                      long? RefOrder, long? RefItem, string? UsePackageNum)>(new CommandDefinition(
+            """
+            SELECT ss.ab_job_num AS AbJobNum, ss.sheet_skid_display_num AS SkidDisplayNum,
+                   COALESCE(ss.sheet_net_wt, 0) AS NetWt, COALESCE(ss.sheet_tare_wt, 0) AS TareWt,
+                   ss.skid_pieces AS Pieces,
+                   oi.alloy2 AS Alloy, oi.temper AS Temper, oi.gauge AS Gauge,
+                   oi.enduser_part_num AS PartNum, oi.sheet_type AS SheetType, oi.govt_contract_num AS GovtContractNum,
+                   co.orig_customer_po AS OrigCustomerPo, co.enduser_po AS EnduserPo,
+                   spi.sheet_packaging_ticket AS PackagingTicket,
+                   ss.ref_order_abc_num AS RefOrder, ss.ref_order_abc_item AS RefItem,
+                   cu.use_package_num AS UsePackageNum
+              FROM sheet_packing_item spi
+              JOIN sheet_skid ss ON ss.sheet_skid_num = spi.sheet_skid_num
+              LEFT JOIN order_item oi ON oi.order_abc_num = ss.ref_order_abc_num
+                                     AND oi.order_item_num = ss.ref_order_abc_item
+              LEFT JOIN customer_order co ON co.order_abc_num = ss.ref_order_abc_num
+              LEFT JOIN customer cu ON cu.customer_id = co.orig_customer_id
+             WHERE spi.packing_list = :pl AND spi.sheet_skid_num = :ref
+            """, new { pl = packingList, @ref = skidNum }, cancellationToken: ct));
+        if (r.SkidDisplayNum is null && r.PackagingTicket is null && r.AbJobNum is null && r.NetWt == 0 && r.TareWt == 0)
+        {
+            // Distinguish "not on this list" from "on it but blank" with a direct existence check.
+            var exists = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+                "SELECT COUNT(*) FROM sheet_packing_item WHERE packing_list = :pl AND sheet_skid_num = :ref",
+                new { pl = packingList, @ref = skidNum }, cancellationToken: ct));
+            if (exists == 0) return null;
+        }
+
+        var t = new SkidPackingTicket
+        {
+            AbJobNum = r.AbJobNum, SkidDisplayNum = r.SkidDisplayNum,
+            NetWeight = r.NetWt, TareWeight = r.TareWt, Pieces = r.Pieces,
+            Alloy = r.Alloy, Temper = r.Temper, Gauge = r.Gauge,
+            PartNum = r.PartNum, SheetType = r.SheetType, GovtContractNum = r.GovtContractNum,
+            OrigCustomerPo = r.OrigCustomerPo, EnduserPo = r.EnduserPo,
+            PackagingTicket = r.PackagingTicket,
+        };
+
+        // One targeted shape read instead of legacy's eight-way outer join (see the method remarks).
+        if (r.RefOrder is long ord && r.RefItem is long item)
+            t.Shape = await GetOrderItemShapeAsync(ord, item, ct);
+
+        // Only customers who use package numbers get the line at all.
+        if (string.Equals(r.UsePackageNum?.Trim(), "Y", StringComparison.OrdinalIgnoreCase))
+            t.CustomerPackageNum = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
+                "SELECT package_num FROM sheet_skid_package WHERE sheet_skid_num = :ref",
+                new { @ref = skidNum }, cancellationToken: ct));
+        return t;
+    }
+
+    private static async Task<SkidPackingTicket?> ScrapTicketAsync(DbConnection conn, long packingList, long skidNum, CancellationToken ct)
+    {
+        var r = await conn.QuerySingleOrDefaultAsync<SkidPackingTicket>(new CommandDefinition(
+            """
+            SELECT sk.scrap_skid_display_num AS SkidDisplayNum, sk.scrap_ab_job_num AS ScrapJobNum,
+                   sk.scrap_alloy2 AS Alloy, sk.scrap_temper AS Temper,
+                   COALESCE(sk.scrap_net_wt, 0) AS NetWeight, COALESCE(sk.scrap_tare_wt, 0) AS TareWeight,
+                   sk.scrap_cust_po AS ScrapCustomerPo, sk.scrap_notes AS Notes, sk.trailer_name AS TrailerName,
+                   spi.scrap_packaging_ticket AS PackagingTicket
+              FROM scrap_packing_item spi
+              JOIN scrap_skid sk ON sk.scrap_skid_num = spi.scrap_skid_num
+             WHERE spi.packing_list = :pl AND spi.scrap_skid_num = :ref
+            """, new { pl = packingList, @ref = skidNum }, cancellationToken: ct));
+        return r;
+    }
+
+    private static async Task<SkidPackingTicket?> RejectCoilTicketAsync(DbConnection conn, long packingList, long coilAbcNum, CancellationToken ct)
+    {
+        var r = await conn.QuerySingleOrDefaultAsync<SkidPackingTicket>(new CommandDefinition(
+            """
+            SELECT c.coil_org_num AS CoilOrgNum, c.lot_num AS LotNum,
+                   c.coil_alloy2 AS Alloy, c.coil_temper AS Temper,
+                   c.coil_gauge AS Gauge, c.coil_width AS Width,
+                   COALESCE(c.net_wt_balance, 0) AS NetWeight, c.coil_notes AS Notes,
+                   rpi.rej_coil_packaging_ticket AS PackagingTicket
+              FROM reject_coil_packing_item rpi
+              JOIN coil c ON c.coil_abc_num = rpi.coil_abc_num
+             WHERE rpi.packing_list = :pl AND rpi.coil_abc_num = :ref
+            """, new { pl = packingList, @ref = coilAbcNum }, cancellationToken: ct));
+        return r;
+    }
+
     /// <summary>Add a skid to a packing list. <paramref name="itemType"/> is SHEET or SCRAP. Guards (typed status,
     /// no throw): valid type, shipment exists, the referenced skid exists, and it isn't already on this list. The
     /// item id is the per-list <c>MAX(id)+1</c> (composite PK, no global sequence); the packaging ticket follows the

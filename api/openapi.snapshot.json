@@ -4463,6 +4463,54 @@
         }
       }
     },
+    "/api/documents/packing-ticket/{itemType}/{packingList}/{refNum}": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Printable packing ticket for ONE unit on a packing list (legacy rpabco/d_packaging_ticket_{sheet,scrap,rejcoil}_4skid) — the paper stapled to a single skid. itemType is SHEET, SCRAP or REJECT_COIL; refNum is the skid number, or the coil's ABC number for a rejected coil. Sheet tickets carry the blank's shape dimensions.",
+        "operationId": "SkidPackingTicketDocument",
+        "parameters": [
+          {
+            "name": "itemType",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "packingList",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "refNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/documents/sheet-skid/{sheetSkidNum}": {
       "get": {
         "tags": [

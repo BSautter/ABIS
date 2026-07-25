@@ -987,6 +987,15 @@ public static class ApiEndpoints
            .WithSummary("A shipment's status-change audit trail (legacy SHIPMENT_TRACK) — before/after shipment + vehicle status (and customer/ship-to) with who/when, newest first.")
            .Produces<IReadOnlyList<ShipmentTrackRow>>();
 
+        api.MapGet("/documents/packing-ticket/{itemType}/{packingList:long}/{refNum:long}",
+            async (string itemType, long packingList, long refNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetSkidPackingTicketAsync(itemType, packingList, refNum, ct) is { } t
+                    ? Results.Content(HtmlDocuments.SkidPackingTicketDoc(t), "text/html; charset=utf-8")
+                    : Results.NotFound())
+           .WithName("SkidPackingTicketDocument").WithTags("Documents")
+           .WithSummary("Printable packing ticket for ONE unit on a packing list (legacy rpabco/d_packaging_ticket_{sheet,scrap,rejcoil}_4skid) — the paper stapled to a single skid. itemType is SHEET, SCRAP or REJECT_COIL; refNum is the skid number, or the coil's ABC number for a rejected coil. Sheet tickets carry the blank's shape dimensions.")
+           .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
+
         api.MapGet("/shipments/{packingList:long}/bol-document", async (long packingList, IAbisRepository repo, CancellationToken ct) =>
                 await repo.GetBolDocumentAsync(packingList, ct) is { } doc ? Results.Ok(doc) : Results.NotFound())
            .WithName("GetBolDocument").WithTags("Shipments")
