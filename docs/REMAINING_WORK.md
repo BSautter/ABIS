@@ -322,7 +322,18 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [~] **L** **Shipment status-change history — done (#264)**: `GET /shipments/{pl}/history` reads `SHIPMENT_TRACK` (before/after shipment+vehicle status + customer/ship-to + who/when, newest first); **UI done (#271)**: a newest-first status-history table on the Shipment detail card (pre→cur transitions). **carrier DUNS/street/zip/country fields — done (#261)**: added `carrier_street`/`carrier_zip`/`carrier_country`/`carrier_duns_number` to the carrier read+write + Carriers form inputs.
 
 ### C3. Coils / receiving
-- [ ] **C** Warehouse skid CRUD + status-20 warehouse-coil mint (+ process_coil/sheet_skid rows, weight recon, package-num)
+- [~] **C** Warehouse skid CRUD + status-20 warehouse-coil mint — **create path done (#317)**, ported from
+  the legacy warehouse module (`w_wh_business` action 1). `POST /warehouse/skids` runs the whole chain in one
+  transaction: resolve the reference order from the job → **resolve-or-mint the status-20 warehouse coil**
+  keyed on (customer coil number, lot) → `sheet_skid` + `production_sheet_item` + `sheet_skid_detail` →
+  package number. **The warehouse coil is an empty SHELL** — minted at `net_wt`/`net_wt_balance` 0 with
+  `process_quantity` 0; anything summing coil weight must keep excluding status 20 (`OnHandCoilPredicate`
+  does, and a test pins it) or the floor appears to hold warehoused metal it doesn't. Identity (cash date,
+  customer) is INHERITED from the customer's real coil; when there is none **and** the customer requires a
+  cert label or cash date, the mint is REFUSED (409) rather than back a certificate with nothing.
+  Weight/piece mismatch is a **warning, not a gate** — legacy asks "save it anyway?", so blocking would stop
+  real corrections. Fixture gained `coil.cash_date`. Still TODO: skid **modify/delete** (`wf_coil_used_by_others`
+  guards a coil shared by other items), the item-level editor, and the warehouse UI page.
 - [x] **H** Coil-ownership transfer mint semantics — done (#224): mints a NEW `coil_abc_num` (status 2, from-cust set) + original → status 13; cert carries the new id
 - [x] **H** Bulk "Change status → Ready for transfer" (status 12) — done (#240 `POST /coils/ready-for-transfer` with eligibility guards; #241 picker `readyOnly` filter + coil-ownership mark-ready UI)
 - [~] **H** Scrap-skid + sheet-skid guarded DELETE done (#243). **Return-scrap done** (#XXX): POST /scrap-skids/{n}/return faithfully ports the live F_CONVERT_BACK_TO_SHEET proc — copies the scrapped mirror rows (scraped_sheet_skid/production_sheet_item/process_partial_skid/detail) back to the live tables, deletes the mirrors + scrap_skid(+detail) + credits back the linked return_scrap_item rows. Still TODO: sheet-skid modify + weight/piece reconciliation.

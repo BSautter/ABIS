@@ -3215,3 +3215,20 @@ public sealed class InboundCoilMintResult
     /// <summary>Rows of <c>inbound_coil_status</c> the mint updated.</summary>
     public int RowsUpdated { get; set; }
 }
+
+/// <summary>Result of creating a warehoused skid.</summary>
+public sealed class WarehouseSkidResult
+{
+    public long SheetSkidNum { get; set; }
+    public long ProdItemNum { get; set; }
+    /// <summary>The status-20 warehouse coil the skid was booked against.</summary>
+    public long CoilAbcNum { get; set; }
+    /// <summary>The warehouse coil was minted by this call (false = an existing one was reused).</summary>
+    public bool CoilMinted { get; set; }
+    public long? RefOrderAbcNum { get; set; }
+    public long? RefOrderAbcItem { get; set; }
+    public string? PackageNum { get; set; }
+    /// <summary>Weight/piece reconciliation notes. Legacy ASKS "save it anyway?" and defaults to No,
+    /// so a mismatch is a warning the operator may accept — never a refusal. Empty = it added up.</summary>
+    public List<string> Warnings { get; set; } = new();
+}

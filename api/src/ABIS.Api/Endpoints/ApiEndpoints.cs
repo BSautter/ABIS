@@ -987,6 +987,27 @@ public static class ApiEndpoints
            .WithSummary("A shipment's status-change audit trail (legacy SHIPMENT_TRACK) — before/after shipment + vehicle status (and customer/ship-to) with who/when, newest first.")
            .Produces<IReadOnlyList<ShipmentTrackRow>>();
 
+        api.MapPost("/warehouse/skids", async (WarehouseSkidWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (Validate(body) is { } problems) return Results.ValidationProblem(problems);
+                try
+                {
+                    var created = await repo.CreateWarehouseSkidAsync(body, ct);
+                    return Results.Created($"/api/sheet-skids/{created.SheetSkidNum}", created);
+                }
+                // Refusals here are business rules (unknown job, or a customer whose cert/cash-date
+                // requirements forbid an unbacked shell coil), not server faults.
+                catch (InvalidOperationException ex)
+                {
+                    return Results.Problem(title: "Cannot create warehouse skid", detail: ex.Message,
+                        statusCode: StatusCodes.Status409Conflict);
+                }
+            })
+           .WithName("CreateWarehouseSkid").WithTags("Warehouse")
+           .WithSummary("Create a warehoused skid (legacy warehouse module w_wh_business): resolves or MINTS the status-20 warehouse coil for the customer's (coil number, lot) — an empty shell with zero weight — then writes the sheet_skid, its production item and the link, and reads back the package number. Weight/piece mismatches come back as `warnings`, not refusals, matching legacy's \"save it anyway?\" prompt. 409 when the job has no order, or when the customer requires a cert label / cash date and no regular coil exists to back one.")
+           .Produces<WarehouseSkidResult>(StatusCodes.Status201Created)
+           .ProducesValidationProblem().ProducesProblem(StatusCodes.Status409Conflict);
+
         api.MapGet("/receiving/scan", async (string? barcode, IAbisRepository repo, CancellationToken ct) =>
                 Results.Ok(await repo.ScanInboundCoilAsync(barcode, ct)))
            .WithName("ScanInboundCoil").WithTags("Receiving")
@@ -4031,6 +4052,21 @@ public static class ApiEndpoints
     }
 
     /// <summary>Returns a ProblemDetails error dictionary, or null when valid.</summary>
+    private static Dictionary<string, string[]>? Validate(WarehouseSkidWrite body)
+    {
+        var e = new Dictionary<string, string[]>();
+        if (body.AbJobNum <= 0) e["abJobNum"] = ["abJobNum is required."];
+        // Together these identify the warehouse coil, so neither is optional.
+        Req(e, "coilOrgNum", body.CoilOrgNum);
+        Req(e, "lotNum", body.LotNum);
+        Max(e, "coilOrgNum", body.CoilOrgNum?.Trim(), 32);        // coil.coil_org_num VARCHAR2(32)
+        Max(e, "lotNum", body.LotNum?.Trim(), 40);                // coil.lot_num VARCHAR2(40)
+        Max(e, "skidTicketIfWhed", body.SkidTicketIfWhed, 32);
+        if (body.SheetNetWt < 0) e["sheetNetWt"] = ["sheetNetWt cannot be negative."];
+        if (body.SheetTareWt < 0) e["sheetTareWt"] = ["sheetTareWt cannot be negative."];
+        return e.Count == 0 ? null : e;
+    }
+
     private static Dictionary<string, string[]>? Validate(InvoiceWrite body)
     {
         var e = new Dictionary<string, string[]>();

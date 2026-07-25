@@ -1202,3 +1202,35 @@ public sealed class InboundCoilMintRequest
     /// the CGI's remote_addr to a fixed printer per station.</summary>
     public string? DeviceAddress { get; set; }
 }
+
+/// <summary>Create a warehoused skid (legacy warehouse module, <c>w_wh_business</c> action 1 "new skid").
+/// The customer's coil number + lot identify the WAREHOUSE COIL to book it against; that coil is
+/// resolved or minted server-side.</summary>
+public sealed class WarehouseSkidWrite
+{
+    /// <summary>The job the warehoused material is booked to. Supplies the reference order.</summary>
+    public long AbJobNum { get; set; }
+    /// <summary>The CUSTOMER's coil number — with the lot, this identifies the warehouse coil.</summary>
+    public string CoilOrgNum { get; set; } = "";
+    public string LotNum { get; set; } = "";
+
+    public decimal SheetNetWt { get; set; }
+    public decimal SheetTareWt { get; set; }
+    public int? SkidPieces { get; set; }
+    public decimal? SheetTheoreticalWt { get; set; }
+    public int? SkidSheetStatus { get; set; }
+    public DateTime? SkidDate { get; set; }
+
+    /// <summary>Warehouse provenance (legacy <c>skid_*_if_whed</c>): where it came from, its ticket,
+    /// and its type.</summary>
+    public long? SkidFromIfWhed { get; set; }
+    public string? SkidTicketIfWhed { get; set; }
+    public int? SkidTypeIfWhed { get; set; }
+
+    /// <summary>The production item booked onto the skid — its pieces and weight.</summary>
+    public int? ProdItemPieces { get; set; }
+    public decimal? ProdItemNetWt { get; set; }
+    public decimal? ProdItemTheoreticalWt { get; set; }
+    public int? ProdItemStatus { get; set; }
+    public string? ProdItemPlacement { get; set; }
+}

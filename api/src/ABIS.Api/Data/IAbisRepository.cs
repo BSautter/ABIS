@@ -271,6 +271,11 @@ public interface IAbisRepository
     /// customer coil, and attach the mill's advance notice.</summary>
     Task<InboundCoilScan> ScanInboundCoilAsync(string? barcode, CancellationToken ct);
 
+    /// <summary>Create a warehoused skid, resolving or minting its status-20 warehouse coil (legacy
+    /// warehouse module <c>w_wh_business</c>). Throws <see cref="InvalidOperationException"/> when the
+    /// job is unknown or the customer's cert/cash-date rules forbid minting a shell coil.</summary>
+    Task<WarehouseSkidResult> CreateWarehouseSkidAsync(WarehouseSkidWrite body, CancellationToken ct);
+
     /// <summary>Mint an ABC number for a scanned inbound coil and stamp it on
     /// <c>inbound_coil_status</c> (legacy handheld). Call ONLY after the label printer has been
     /// confirmed reachable — see <c>ICoilLabelPrinter</c> for why the order matters.</summary>

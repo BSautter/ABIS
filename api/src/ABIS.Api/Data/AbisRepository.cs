@@ -4975,6 +4975,157 @@ public sealed class AbisRepository : IAbisRepository
         return result;
     }
 
+    /// <summary>
+    /// Create a warehoused skid — the port of the legacy warehouse module's "new skid" save
+    /// (<c>w_wh_business</c>, action 1). One transaction covering the whole chain:
+    /// <list type="number">
+    /// <item>resolve the reference order from the job;</item>
+    /// <item><b>resolve or mint the status-20 warehouse coil</b> keyed on (customer coil number, lot);</item>
+    /// <item>insert the <c>sheet_skid</c>, its <c>production_sheet_item</c>, and the
+    /// <c>sheet_skid_detail</c> that links them;</item>
+    /// <item>allocate the customer package number.</item>
+    /// </list>
+    /// </summary>
+    /// <remarks>
+    /// <para><b>A warehouse coil is an empty shell.</b> It is minted with <c>net_wt</c> and
+    /// <c>net_wt_balance</c> of ZERO and status 20 — it exists to hang warehoused skids off, not to
+    /// represent metal we hold. Its <c>process_coil</c> row likewise carries <c>process_quantity = 0</c>.
+    /// Anything that sums coil weight must keep excluding status 20 (as <c>OnHandCoilPredicate</c> does)
+    /// or the floor will appear to hold thousands of pounds of nothing.</para>
+    /// <para><b>Identity is inherited from the customer's REAL coil where one exists</b> — cash date and
+    /// customer id are copied from a regular coil with the same <c>coil_org_num</c>. If there is no such
+    /// coil AND the customer requires a cert label or a cash date, legacy REFUSES rather than mint a
+    /// shell it cannot back, because the certificate would have nothing behind it. That refusal is
+    /// preserved.</para>
+    /// <para><b>Weight reconciliation is advisory, not a gate.</b> Legacy asks "Skid pieces do not add
+    /// up right, save it anyway?" defaulting to No — so a mismatch is a warning an operator may knowingly
+    /// accept. Returned as <c>Warnings</c>; the save still happens. Turning it into a hard error would
+    /// block real corrections the floor is entitled to make.</para>
+    /// </remarks>
+    public async Task<WarehouseSkidResult> CreateWarehouseSkidAsync(WarehouseSkidWrite body, CancellationToken ct)
+    {
+        var coilOrg = (body.CoilOrgNum ?? "").Trim();
+        var lot = (body.LotNum ?? "").Trim();
+        if (coilOrg.Length == 0 || lot.Length == 0)
+            throw new InvalidOperationException("A warehouse skid needs the customer's coil number and lot — together they identify the warehouse coil.");
+
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        // The reference order comes from the job. Legacy stops here ("Can not find order number from
+        // job number!!") rather than writing a skid with no order behind it.
+        var job = await conn.QuerySingleOrDefaultAsync<(long? OrderAbcNum, long? OrderItemNum)>(new CommandDefinition(
+            "SELECT order_abc_num AS OrderAbcNum, order_item_num AS OrderItemNum FROM ab_job WHERE ab_job_num = :job",
+            new { job = body.AbJobNum }, transaction: tx, cancellationToken: ct));
+        if (job.OrderAbcNum is not long orderAbcNum)
+            throw new InvalidOperationException($"Job {body.AbJobNum} has no order behind it, so a warehoused skid cannot be booked to it.");
+
+        var result = new WarehouseSkidResult { RefOrderAbcNum = orderAbcNum, RefOrderAbcItem = job.OrderItemNum };
+
+        // Resolve the warehouse coil for this (customer coil number, lot).
+        var coilAbc = await conn.ExecuteScalarAsync<long?>(new CommandDefinition(
+            """
+            SELECT MIN(coil_abc_num) FROM coil
+             WHERE coil_org_num = :org AND lot_num = :lot AND coil_status = 20
+            """, new { org = coilOrg, lot }, transaction: tx, cancellationToken: ct));
+
+        if (coilAbc is null)
+        {
+            // Inherit identity from the customer's real coil, if there is one.
+            var real = await conn.QueryFirstOrDefaultAsync<(DateTime? CashDate, long? CustomerId)>(new CommandDefinition(
+                """
+                SELECT cash_date AS CashDate, customer_id AS CustomerId
+                  FROM coil
+                 WHERE coil_org_num = :org AND (coil_status IS NULL OR coil_status <> 20)
+                 ORDER BY coil_abc_num DESC
+                """, new { org = coilOrg }, transaction: tx, cancellationToken: ct));
+
+            if (real.CustomerId is null && real.CashDate is null)
+            {
+                // No regular coil to inherit from. If the customer needs a cert label or a cash date,
+                // a shell coil would leave the certificate unbacked — legacy refuses, and so do we.
+                var reqs = await conn.QueryFirstOrDefaultAsync<(string? CertLabel, string? CashDateReq)>(new CommandDefinition(
+                    """
+                    SELECT c.coil_cert_label_req AS CertLabel, c.cash_date_required AS CashDateReq
+                      FROM customer c
+                      JOIN customer_order co ON co.orig_customer_id = c.customer_id
+                     WHERE co.order_abc_num = :ord
+                    """, new { ord = orderAbcNum }, transaction: tx, cancellationToken: ct));
+                if (string.Equals(reqs.CertLabel?.Trim(), "Y", StringComparison.OrdinalIgnoreCase)
+                 || string.Equals(reqs.CashDateReq?.Trim(), "Y", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException(
+                        $"No regular coil exists for customer coil number '{coilOrg}', and this customer requires a certificate label or a cash date — " +
+                        "a warehouse coil minted without one would leave the certificate unbacked.");
+            }
+
+            coilAbc = await NextIdAsync(conn, tx, "coil", "coil_abc_num", ct);
+            await conn.ExecuteAsync(new CommandDefinition(
+                """
+                INSERT INTO coil (coil_abc_num, coil_org_num, lot_num, coil_status, net_wt, net_wt_balance, cash_date, customer_id)
+                VALUES (:abc, :org, :lot, 20, 0, 0, :cash, :cust)
+                """, new { abc = coilAbc, org = coilOrg, lot, cash = real.CashDate, cust = real.CustomerId },
+                transaction: tx, cancellationToken: ct));
+            await conn.ExecuteAsync(new CommandDefinition(
+                "INSERT INTO process_coil (coil_abc_num, ab_job_num, process_quantity) VALUES (:abc, :job, 0)",
+                new { abc = coilAbc, job = body.AbJobNum }, transaction: tx, cancellationToken: ct));
+            result.CoilMinted = true;
+        }
+        result.CoilAbcNum = coilAbc.Value;
+
+        var skidNum = await NextIdAsync(conn, tx, "sheet_skid", "sheet_skid_num", ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO sheet_skid (sheet_skid_num, ab_job_num, sheet_net_wt, sheet_tare_wt, skid_date, skid_pieces,
+                                    skid_sheet_status, sheet_theoretical_wt, skid_from_if_whed, skid_ticket_if_whed,
+                                    skid_type_if_whed, ref_order_abc_num, ref_order_abc_item)
+            VALUES (:skid, :job, :net, :tare, :dt, :pcs, :status, :theo, :from, :ticket, :type, :ord, :item)
+            """,
+            new
+            {
+                skid = skidNum, job = body.AbJobNum, net = body.SheetNetWt, tare = body.SheetTareWt,
+                dt = body.SkidDate ?? DateTime.Now, pcs = body.SkidPieces, status = body.SkidSheetStatus,
+                theo = body.SheetTheoreticalWt, from = body.SkidFromIfWhed, ticket = body.SkidTicketIfWhed,
+                type = body.SkidTypeIfWhed, ord = orderAbcNum, item = job.OrderItemNum,
+            }, transaction: tx, cancellationToken: ct));
+
+        var prodItem = await NextIdAsync(conn, tx, "production_sheet_item", "prod_item_num", ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO production_sheet_item (prod_item_num, coil_abc_num, ab_job_num, prod_item_status,
+                                               prod_item_net_wt, prod_item_date, prod_item_pieces,
+                                               prod_item_theoretical_wt, prod_item_placement)
+            VALUES (:item, :abc, :job, :status, :net, :dt, :pcs, :theo, :place)
+            """,
+            new
+            {
+                item = prodItem, abc = coilAbc, job = body.AbJobNum, status = body.ProdItemStatus,
+                net = body.ProdItemNetWt ?? body.SheetNetWt, dt = body.SkidDate ?? DateTime.Now,
+                pcs = body.ProdItemPieces ?? body.SkidPieces, theo = body.ProdItemTheoreticalWt,
+                place = body.ProdItemPlacement,
+            }, transaction: tx, cancellationToken: ct));
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            "INSERT INTO sheet_skid_detail (sheet_skid_num, prod_item_num) VALUES (:skid, :item)",
+            new { skid = skidNum, item = prodItem }, transaction: tx, cancellationToken: ct));
+
+        // Weight/piece reconciliation — advisory. The skid total should equal the sum of its items;
+        // this is the first item, so it should equal it outright.
+        var itemPcs = body.ProdItemPieces ?? body.SkidPieces;
+        if (body.SkidPieces is int sp && itemPcs is int ip && sp != ip)
+            result.Warnings.Add($"Skid pieces ({sp}) do not add up to its item pieces ({ip}).");
+        var itemNet = body.ProdItemNetWt ?? body.SheetNetWt;
+        if (body.SheetNetWt != itemNet)
+            result.Warnings.Add($"Skid net weight ({body.SheetNetWt}) does not add up to its item net weight ({itemNet}).");
+
+        await tx.CommitAsync(ct);
+        result.SheetSkidNum = skidNum;
+        result.ProdItemNum = prodItem;
+        result.PackageNum = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
+            "SELECT package_num FROM sheet_skid_package WHERE sheet_skid_num = :skid",
+            new { skid = skidNum }, cancellationToken: ct));
+        return result;
+    }
+
     /// <summary>The legacy BOL form has exactly three per-job note blocks and refuses to print details past
     /// that. The cap is the printed layout, not a business rule, so it lives with the document code.</summary>
     private const int MaxPrintableBolJobs = 3;

@@ -15217,6 +15217,60 @@
         }
       }
     },
+    "/api/warehouse/skids": {
+      "post": {
+        "tags": [
+          "Warehouse"
+        ],
+        "summary": "Create a warehoused skid (legacy warehouse module w_wh_business): resolves or MINTS the status-20 warehouse coil for the customer's (coil number, lot) — an empty shell with zero weight — then writes the sheet_skid, its production item and the link, and reads back the package number. Weight/piece mismatches come back as `warnings`, not refusals, matching legacy's \"save it anyway?\" prompt. 409 when the job has no order, or when the customer requires a cert label / cash date and no regular coil exists to back one.",
+        "operationId": "CreateWarehouseSkid",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarehouseSkidWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WarehouseSkidResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/sheet-skids/{sheetSkidNum}/warehouse": {
       "patch": {
         "tags": [
@@ -27164,6 +27218,132 @@
           "uptimePct": {
             "type": "number",
             "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "WarehouseSkidResult": {
+        "type": "object",
+        "properties": {
+          "sheetSkidNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "prodItemNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "coilMinted": {
+            "type": "boolean"
+          },
+          "refOrderAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "refOrderAbcItem": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "packageNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "WarehouseSkidWrite": {
+        "type": "object",
+        "properties": {
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "coilOrgNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "lotNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "sheetNetWt": {
+            "type": "number",
+            "format": "double"
+          },
+          "sheetTareWt": {
+            "type": "number",
+            "format": "double"
+          },
+          "skidPieces": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "sheetTheoreticalWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "skidSheetStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "skidDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "skidFromIfWhed": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "skidTicketIfWhed": {
+            "type": "string",
+            "nullable": true
+          },
+          "skidTypeIfWhed": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "prodItemPieces": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "prodItemNetWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "prodItemTheoreticalWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "prodItemStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "prodItemPlacement": {
+            "type": "string",
             "nullable": true
           }
         },

@@ -146,6 +146,10 @@ public static class SqliteFixture
                 customer_id INTEGER, coil_from_cust_id INTEGER, date_received TEXT, icra TEXT,
                 lot_num TEXT NOT NULL, net_wt REAL NOT NULL, net_wt_balance REAL NOT NULL, pieces_per_case INTEGER,
                 consumed_coil_num TEXT, vo TEXT, customer_po TEXT, production_desc_code TEXT, lfeed REAL,
+                -- The customer's cash/settlement date for the metal. A warehouse (status-20) coil
+                -- inherits it from the customer's real coil, and a customer that REQUIRES one cannot
+                -- have a warehouse shell minted without a real coil to take it from.
+                cash_date TEXT,
                 -- Set by the DAS as the coil runs: 1 when it is loaded on a line, then the run's end
                 -- status; net_wt_balance_from_line mirrors the balance the line last reported.
                 coil_status_from_line INTEGER, net_wt_balance_from_line REAL,
