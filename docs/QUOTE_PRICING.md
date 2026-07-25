@@ -31,7 +31,7 @@ into PowerBuilder. That explains everything else about the file:
 - **Control flow is GOTO-derived.** A `wf_line_NNN` function is a jump target, not a cohesive unit.
   Reading one in isolation will mislead.
 - **Numbered four-variable groups** (`RL, RM, RN, RO`) are the BASIC habit of computing four parallel
-  scenarios in lockstep rather than looping.
+  scenarios in lockstep rather than looping. See §2.1 — the four are **1, 2, 3 and 4 circles wide**.
 
 > **Consequence for the port:** do not "clean this up" while translating. A tidy rewrite of a
 > transliterated BASIC program is where the arithmetic silently changes. Port the formulas verbatim,
@@ -53,6 +53,42 @@ optionally with a **scrap handling charge** — which is why the outputs come in
 | `YL, YM, YN, YO` | Price/lb **with scrap handling charge** — metal-th., average coils |
 | `YP, YQ, YR, YS` | Price/lb **with scrap handling charge** — input spacing, max coils |
 | `WD, WA, WB, WC` / `WE, WF, WG, WH` | Final yield on average / maximum coils |
+
+### 2.1 The four scenarios are nesting widths — 1, 2, 3 or 4 circles across
+
+Every four-variable group is the same job costed at four different **nestings**: how many circles sit
+across the coil width. The program labels them itself:
+
+```powerbuilder
+bp$ = "1 WIDE"   bm$ = "2 WIDE"   bn$ = "3 WIDE"   bo$ = "4 WIDE"
+```
+
+Extra rows are **staggered, not stacked in a grid** — `0.8660254` is √3/2, the row offset for
+hexagonal close packing, so each added row costs only √3/2 × (diameter + spacing) of extra width
+rather than a full diameter:
+
+```powerbuilder
+bf = cd + 2 * a                                    ' 1 wide
+bg = 1 * (cd + a) * 0.8660254 + cd + 2 * a         ' 2 wide
+bh = 2 * (cd + a) * 0.8660254 + cd + 2 * a         ' 3 wide
+bi = 3 * (cd + a) * 0.8660254 + cd + 2 * a         ' 4 wide
+```
+
+Yield follows, dividing by the circles produced per pitch:
+
+```powerbuilder
+bl = 100 * (cd/2)^2 * pi / ( bf * (cd + a) )        ' 1 wide
+bm = 100 * (cd/2)^2 * pi / ( bg * (cd + a) / 2 )    ' 2 wide
+bn = 100 * (cd/2)^2 * pi / ( bh * (cd + a) / 3 )    ' 3 wide
+bo = 100 * (cd/2)^2 * pi / ( bi * (cd + a) / 4 )    ' 4 wide
+```
+
+So the estimator is shown four complete costings side by side and picks a nesting. Wider nesting
+generally yields better but needs a wider coil and a die that can run it — which is why the program
+presents all four instead of just returning the best.
+
+**Within a group the letter order is `D, A, B, C`** (`YD, YA, YB, YC`), i.e. the 1-wide case is the
+`D`-suffixed variable, not the `A` one. Easy to mis-map; check against `bp$`/`bm$`/`bn$`/`bo$`.
 
 ### The two spacing modes, verbatim
 
@@ -178,8 +214,11 @@ Undocumented in the original (meaning must be recovered from use): `JP`, `KA`, `
 
 - **Worked examples.** A few real quotes with their inputs and accepted outputs would turn this from
   a re-derivation into a verifiable port. Nothing else de-risks it as cheaply.
-- **Is SheetPro (rectangular blanks) still used?** `d_report_sheetpro.srd` exists; the roadmap lists
-  it beside CirclePro. Its model is separate.
-- **Which of the four scenarios does sales actually quote from?** The program computes metal-thickness
-  and input spacing, against average and maximum coils. If only one combination is ever used, the
-  port is materially smaller.
+- **SheetPro (rectangular blanks) is still used** — confirmed by the plant 2026-07-25. Its model is
+  separate from CirclePro and still needs decoding the same way.
+- **How is the nesting chosen?** The program costs 1-, 2-, 3- and 4-wide and shows all four. Does
+  sales always take the best yield, or is the choice constrained by die availability, line width or
+  customer preference? If a human always picks, the port must present all four; if it is always the
+  best yield, it can return one and show the rest as detail.
+- **Are both spacing modes actually used?** Metal-thickness spacing (gap = gauge) and operator "input
+  spacing" are both computed. If quotes only ever go out on one, that halves the surface to verify.

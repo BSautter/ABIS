@@ -265,7 +265,9 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   NUMBERS kept as function names), which is why it has 129 single-letter variables and GOTO-shaped control
   flow. 112 of those carry the author's comments — the full map is in the spec. It computes total job cost
   and price/lb under TWO spacing modes (input spacing vs spacing = metal gauge), against average and maximum
-  coil weights, with and without the scrap-handling charge — hence the four-variable output groups. Yield is
+  coil weights, with and without the scrap-handling charge. **The four-variable output groups are four
+  NESTINGS — 1, 2, 3 or 4 circles across the coil width** (the program labels them "1 WIDE"…"4 WIDE"),
+  staggered by √3/2 for hex packing, so the estimator sees four complete costings and picks one. Yield is
   circle area over consumed strip area. `ZU$` switches the whole model between the coil and PLATE paths.
   ⚠ **Gating task: real worked quotes (inputs + accepted outputs) from the plant.** Without goldens this is a
   re-derivation of a pricing engine, not a port, and errors surface as wrong prices to customers rather than
