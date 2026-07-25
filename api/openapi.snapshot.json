@@ -15272,6 +15272,72 @@
       }
     },
     "/api/warehouse/skids/{sheetSkidNum}": {
+      "put": {
+        "tags": [
+          "Warehouse"
+        ],
+        "summary": "Modify a warehoused skid (legacy warehouse module action 4): weights, pieces, date, status and warehouse provenance. Changing the customer coil number or lot RE-POINTS the skid at a different status-20 shell — minting one if needed — and collects the PREVIOUS shell when the move leaves nothing on it. Weight mismatches come back as `warnings`, not refusals.",
+        "operationId": "ModifyWarehouseSkid",
+        "parameters": [
+          {
+            "name": "sheetSkidNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarehouseSkidWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WarehouseSkidModifyResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
       "delete": {
         "tags": [
           "Warehouse"
@@ -27285,6 +27351,41 @@
           },
           "coilKeptReason": {
             "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "WarehouseSkidModifyResult": {
+        "type": "object",
+        "properties": {
+          "found": {
+            "type": "boolean"
+          },
+          "sheetSkidNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "coilChanged": {
+            "type": "boolean"
+          },
+          "coilMinted": {
+            "type": "boolean"
+          },
+          "previousCoilRemoved": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "nullable": true
           }
         },

@@ -281,6 +281,11 @@ public interface IAbisRepository
     /// Returns <c>Deleted = false</c> when the skid does not exist.</summary>
     Task<WarehouseSkidDeleteResult> DeleteWarehouseSkidAsync(long sheetSkidNum, CancellationToken ct);
 
+    /// <summary>Modify a warehoused skid (legacy warehouse module action 4). Changing the customer coil
+    /// number or lot re-points it at a different warehouse shell, minting one if needed and collecting
+    /// the previous shell when the move leaves nothing on it.</summary>
+    Task<WarehouseSkidModifyResult> ModifyWarehouseSkidAsync(long sheetSkidNum, WarehouseSkidWrite body, CancellationToken ct);
+
     /// <summary>Mint an ABC number for a scanned inbound coil and stamp it on
     /// <c>inbound_coil_status</c> (legacy handheld). Call ONLY after the label printer has been
     /// confirmed reachable — see <c>ICoilLabelPrinter</c> for why the order matters.</summary>

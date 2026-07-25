@@ -5206,6 +5206,157 @@ public sealed class AbisRepository : IAbisRepository
         return result;
     }
 
+    /// <summary>
+    /// Modify a warehoused skid — legacy warehouse module action 4. Updates the skid's weights, pieces,
+    /// date, status and warehouse provenance, and re-points it at a different warehouse shell when the
+    /// customer coil number or lot changes.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>⚠ This deliberately does NOT reproduce a legacy bug.</b> Legacy's modify branch reads:</para>
+    /// <code>
+    /// IF lb_newcoil THEN                                            ' a NEW shell was just minted
+    ///   IF wf_coil_used_by_others(wf_orig_item_coil_id(ll_item), ll_item) = 0 THEN   ' tests the ORIGINAL
+    ///     DELETE FROM process_coil WHERE coil_abc_num = :ll_icoil   ' ...deletes the NEW one
+    ///     DELETE FROM coil         WHERE coil_abc_num = :ll_icoil   ' ...deletes the NEW one
+    /// </code>
+    /// <para>The guard asks whether the ORIGINAL coil is now orphaned, but the deletes target
+    /// <c>ll_icoil</c> — the shell just minted for the new (coil, lot). So moving a skid to a new
+    /// warehouse coil destroys the coil it was just re-pointed to, leaving
+    /// <c>production_sheet_item.coil_abc_num</c> dangling, and leaves the genuinely orphaned original
+    /// behind. The evident intent — collect the ORIGINAL once nothing is left on it — is what is
+    /// implemented here.</para>
+    /// <para>This is not the usual "preserve the quirk" call. Wording on a printed form is one thing;
+    /// deliberately writing a delete that removes the row the caller now depends on is data corruption,
+    /// so the intent wins and the divergence is recorded rather than silent.</para>
+    /// <para>As in the delete path, only a status-20 shell is ever collected — a real coil is never
+    /// removed by a warehouse edit.</para>
+    /// </remarks>
+    public async Task<WarehouseSkidModifyResult> ModifyWarehouseSkidAsync(long sheetSkidNum, WarehouseSkidWrite body, CancellationToken ct)
+    {
+        var coilOrg = (body.CoilOrgNum ?? "").Trim();
+        var lot = (body.LotNum ?? "").Trim();
+        if (coilOrg.Length == 0 || lot.Length == 0)
+            throw new InvalidOperationException("A warehouse skid needs the customer's coil number and lot — together they identify the warehouse coil.");
+
+        var result = new WarehouseSkidModifyResult { SheetSkidNum = sheetSkidNum };
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        var current = await conn.QuerySingleOrDefaultAsync<(long? AbJobNum, long? RefOrder, long? RefItem)>(new CommandDefinition(
+            """
+            SELECT ab_job_num AS AbJobNum, ref_order_abc_num AS RefOrder, ref_order_abc_item AS RefItem
+              FROM sheet_skid WHERE sheet_skid_num = :skid
+            """, new { skid = sheetSkidNum }, transaction: tx, cancellationToken: ct));
+        if (current.AbJobNum is null && current.RefOrder is null)
+        {
+            var exists = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+                "SELECT COUNT(*) FROM sheet_skid WHERE sheet_skid_num = :skid",
+                new { skid = sheetSkidNum }, transaction: tx, cancellationToken: ct));
+            if (exists == 0) { await tx.RollbackAsync(ct); return result; }
+        }
+        result.Found = true;
+
+        // The coil the skid hangs off today, before any change.
+        var originalCoil = await conn.ExecuteScalarAsync<long?>(new CommandDefinition(
+            """
+            SELECT MIN(psi.coil_abc_num)
+              FROM sheet_skid_detail ssd
+              JOIN production_sheet_item psi ON psi.prod_item_num = ssd.prod_item_num
+             WHERE ssd.sheet_skid_num = :skid
+            """, new { skid = sheetSkidNum }, transaction: tx, cancellationToken: ct));
+
+        // Resolve the shell for the (possibly new) coil number + lot.
+        var targetCoil = await conn.ExecuteScalarAsync<long?>(new CommandDefinition(
+            "SELECT MIN(coil_abc_num) FROM coil WHERE coil_org_num = :org AND lot_num = :lot AND coil_status = 20",
+            new { org = coilOrg, lot }, transaction: tx, cancellationToken: ct));
+        if (targetCoil is null)
+        {
+            var real = await conn.QueryFirstOrDefaultAsync<(DateTime? CashDate, long? CustomerId)>(new CommandDefinition(
+                """
+                SELECT cash_date AS CashDate, customer_id AS CustomerId FROM coil
+                 WHERE coil_org_num = :org AND (coil_status IS NULL OR coil_status <> 20)
+                 ORDER BY coil_abc_num DESC
+                """, new { org = coilOrg }, transaction: tx, cancellationToken: ct));
+            targetCoil = await NextIdAsync(conn, tx, "coil", "coil_abc_num", ct);
+            await conn.ExecuteAsync(new CommandDefinition(
+                """
+                INSERT INTO coil (coil_abc_num, coil_org_num, lot_num, coil_status, net_wt, net_wt_balance, cash_date, customer_id)
+                VALUES (:abc, :org, :lot, 20, 0, 0, :cash, :cust)
+                """, new { abc = targetCoil, org = coilOrg, lot, cash = real.CashDate, cust = real.CustomerId },
+                transaction: tx, cancellationToken: ct));
+            await conn.ExecuteAsync(new CommandDefinition(
+                "INSERT INTO process_coil (coil_abc_num, ab_job_num, process_quantity) VALUES (:abc, :job, 0)",
+                new { abc = targetCoil, job = current.AbJobNum ?? body.AbJobNum }, transaction: tx, cancellationToken: ct));
+            result.CoilMinted = true;
+        }
+        result.CoilAbcNum = targetCoil.Value;
+        result.CoilChanged = originalCoil is long oc && oc != targetCoil.Value;
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE sheet_skid
+               SET sheet_net_wt = :net, sheet_tare_wt = :tare, skid_date = :dt, skid_pieces = :pcs,
+                   skid_sheet_status = :status, skid_type_if_whed = :type, sheet_theoretical_wt = :theo,
+                   skid_from_if_whed = :from, skid_ticket_if_whed = :ticket
+             WHERE sheet_skid_num = :skid
+            """,
+            new
+            {
+                net = body.SheetNetWt, tare = body.SheetTareWt, dt = body.SkidDate ?? DateTime.Now,
+                pcs = body.SkidPieces, status = body.SkidSheetStatus, type = body.SkidTypeIfWhed,
+                theo = body.SheetTheoreticalWt, from = body.SkidFromIfWhed, ticket = body.SkidTicketIfWhed,
+                skid = sheetSkidNum,
+            }, transaction: tx, cancellationToken: ct));
+
+        if (result.CoilChanged)
+        {
+            // Re-point every item on this skid at the new shell...
+            await conn.ExecuteAsync(new CommandDefinition(
+                """
+                UPDATE production_sheet_item SET coil_abc_num = :abc
+                 WHERE prod_item_num IN (SELECT prod_item_num FROM sheet_skid_detail WHERE sheet_skid_num = :skid)
+                """, new { abc = targetCoil, skid = sheetSkidNum }, transaction: tx, cancellationToken: ct));
+
+            // ...then collect the ORIGINAL if the move left nothing on it. (Legacy deletes the NEW one
+            // here — see the remarks; that is the bug this does not reproduce.)
+            if (originalCoil is long prev)
+            {
+                var stillUsed = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+                    "SELECT COUNT(*) FROM production_sheet_item WHERE coil_abc_num = :abc",
+                    new { abc = prev }, transaction: tx, cancellationToken: ct));
+                var status = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(
+                    "SELECT coil_status FROM coil WHERE coil_abc_num = :abc",
+                    new { abc = prev }, transaction: tx, cancellationToken: ct));
+                if (stillUsed == 0 && status == 20)
+                {
+                    await conn.ExecuteAsync(new CommandDefinition(
+                        "DELETE FROM process_coil WHERE coil_abc_num = :abc", new { abc = prev },
+                        transaction: tx, cancellationToken: ct));
+                    await conn.ExecuteAsync(new CommandDefinition(
+                        "DELETE FROM coil WHERE coil_abc_num = :abc", new { abc = prev },
+                        transaction: tx, cancellationToken: ct));
+                    result.PreviousCoilRemoved = prev;
+                }
+            }
+        }
+
+        // Same advisory reconciliation as the create path — a mismatch is reported, never a refusal.
+        var skidItems = await conn.QuerySingleOrDefaultAsync<(int? Pieces, decimal? Net)>(new CommandDefinition(
+            """
+            SELECT SUM(psi.prod_item_pieces) AS Pieces, SUM(psi.prod_item_net_wt) AS Net
+              FROM sheet_skid_detail ssd
+              JOIN production_sheet_item psi ON psi.prod_item_num = ssd.prod_item_num
+             WHERE ssd.sheet_skid_num = :skid
+            """, new { skid = sheetSkidNum }, transaction: tx, cancellationToken: ct));
+        if (body.SkidPieces is int sp && skidItems.Pieces is int ip && sp != ip)
+            result.Warnings.Add($"Skid pieces ({sp}) do not add up to its items' pieces ({ip}).");
+        if (skidItems.Net is decimal net && body.SheetNetWt != net)
+            result.Warnings.Add($"Skid net weight ({body.SheetNetWt}) does not add up to its items' net weight ({net}).");
+
+        await tx.CommitAsync(ct);
+        return result;
+    }
+
     /// <summary>The legacy BOL form has exactly three per-job note blocks and refuses to print details past
     /// that. The cap is the printed layout, not a business rule, so it lives with the document code.</summary>
     private const int MaxPrintableBolJobs = 3;

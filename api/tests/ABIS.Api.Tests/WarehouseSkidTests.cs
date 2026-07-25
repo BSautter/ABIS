@@ -312,6 +312,108 @@ public sealed class WarehouseSkidTests : IDisposable
         Assert.Equal(before, Scalar<long>("SELECT COUNT(*) FROM sheet_skid"));
     }
 
+    // ---- modify (legacy action 4) ---------------------------------------------------------------
+
+    [Fact]
+    public async Task Modify_updates_the_skid_in_place()
+    {
+        Seed();
+        var made = await _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None);
+
+        var b = Body();
+        b.SheetNetWt = 1500; b.SheetTareWt = 60; b.SkidPieces = 180; b.SkidTicketIfWhed = "WH-TICKET-2";
+        var r = await _repo.ModifyWarehouseSkidAsync(made.SheetSkidNum, b, CancellationToken.None);
+
+        Assert.True(r.Found);
+        Assert.False(r.CoilChanged);
+        Assert.Equal(made.CoilAbcNum, r.CoilAbcNum);
+        Assert.Equal(1500d, Scalar<double>($"SELECT sheet_net_wt FROM sheet_skid WHERE sheet_skid_num = {made.SheetSkidNum}"));
+        Assert.Equal("WH-TICKET-2", Scalar<string>($"SELECT skid_ticket_if_whed FROM sheet_skid WHERE sheet_skid_num = {made.SheetSkidNum}"));
+    }
+
+    [Fact]
+    public async Task Changing_the_lot_repoints_the_skid_and_collects_the_ORIGINAL_shell()
+    {
+        // The legacy bug this does NOT reproduce: its modify branch tests whether the ORIGINAL coil is
+        // orphaned but deletes the NEWLY MINTED one, which would leave the skid pointing at a coil that
+        // no longer exists and strand the original. The original is what must go.
+        Seed();
+        var made = await _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None);
+        var original = made.CoilAbcNum;
+
+        var b = Body(); b.LotNum = "LOT-MOVED";
+        var r = await _repo.ModifyWarehouseSkidAsync(made.SheetSkidNum, b, CancellationToken.None);
+
+        Assert.True(r.CoilChanged);
+        Assert.True(r.CoilMinted);
+        Assert.NotEqual(original, r.CoilAbcNum);
+        Assert.Equal(original, r.PreviousCoilRemoved);
+
+        // The NEW shell survives and the item points at it — the whole point.
+        Assert.Equal(1, Scalar<long>($"SELECT COUNT(*) FROM coil WHERE coil_abc_num = {r.CoilAbcNum}"));
+        Assert.Equal(r.CoilAbcNum, Scalar<long>($"SELECT coil_abc_num FROM production_sheet_item WHERE prod_item_num = {made.ProdItemNum}"));
+        // The ORIGINAL, now empty, is gone.
+        Assert.Equal(0, Scalar<long>($"SELECT COUNT(*) FROM coil WHERE coil_abc_num = {original}"));
+        Assert.Equal(0, Scalar<long>($"SELECT COUNT(*) FROM process_coil WHERE coil_abc_num = {original}"));
+    }
+
+    [Fact]
+    public async Task Moving_one_of_two_skids_keeps_the_shared_original_shell()
+    {
+        Seed();
+        var first = await _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None);
+        var second = await _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None);   // same shell
+        var shared = first.CoilAbcNum;
+
+        var b = Body(); b.LotNum = "LOT-MOVED";
+        var r = await _repo.ModifyWarehouseSkidAsync(first.SheetSkidNum, b, CancellationToken.None);
+
+        Assert.True(r.CoilChanged);
+        Assert.Null(r.PreviousCoilRemoved);
+        Assert.Equal(1, Scalar<long>($"SELECT COUNT(*) FROM coil WHERE coil_abc_num = {shared}"));
+        Assert.Equal(shared, Scalar<long>($"SELECT coil_abc_num FROM production_sheet_item WHERE prod_item_num = {second.ProdItemNum}"));
+    }
+
+    [Fact]
+    public async Task Moving_onto_an_existing_shell_reuses_it_rather_than_minting()
+    {
+        Seed();
+        var a = await _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None);
+        var otherBody = Body(); otherBody.LotNum = "LOT-B";
+        var b2 = await _repo.CreateWarehouseSkidAsync(otherBody, CancellationToken.None);
+
+        // Move skid A onto B's (coil, lot).
+        var mv = Body(); mv.LotNum = "LOT-B";
+        var r = await _repo.ModifyWarehouseSkidAsync(a.SheetSkidNum, mv, CancellationToken.None);
+
+        Assert.True(r.CoilChanged);
+        Assert.False(r.CoilMinted);
+        Assert.Equal(b2.CoilAbcNum, r.CoilAbcNum);
+        Assert.Equal(a.CoilAbcNum, r.PreviousCoilRemoved);   // A's old shell is now empty
+    }
+
+    [Fact]
+    public async Task Modify_never_collects_a_real_coil()
+    {
+        Seed();
+        var made = await _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None);
+        Exec($"UPDATE production_sheet_item SET coil_abc_num = 6900 WHERE prod_item_num = {made.ProdItemNum};");
+
+        var b = Body(); b.LotNum = "LOT-MOVED";
+        var r = await _repo.ModifyWarehouseSkidAsync(made.SheetSkidNum, b, CancellationToken.None);
+
+        Assert.True(r.CoilChanged);
+        Assert.Null(r.PreviousCoilRemoved);
+        Assert.Equal(1, Scalar<long>("SELECT COUNT(*) FROM coil WHERE coil_abc_num = 6900"));
+    }
+
+    [Fact]
+    public async Task Modifying_an_unknown_skid_reports_not_found()
+    {
+        Seed();
+        Assert.False((await _repo.ModifyWarehouseSkidAsync(999999, Body(), CancellationToken.None)).Found);
+    }
+
     public void Dispose()
     {
         try { SqliteConnection.ClearAllPools(); } catch { /* best effort */ }

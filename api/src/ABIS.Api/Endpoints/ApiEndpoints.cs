@@ -1008,6 +1008,27 @@ public static class ApiEndpoints
            .Produces<WarehouseSkidResult>(StatusCodes.Status201Created)
            .ProducesValidationProblem().ProducesProblem(StatusCodes.Status409Conflict);
 
+        api.MapPut("/warehouse/skids/{sheetSkidNum:long}", async (long sheetSkidNum, WarehouseSkidWrite body,
+                                                                  IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (Validate(body) is { } problems) return Results.ValidationProblem(problems);
+                try
+                {
+                    var r = await repo.ModifyWarehouseSkidAsync(sheetSkidNum, body, ct);
+                    return r.Found ? Results.Ok(r) : Results.NotFound();
+                }
+                catch (InvalidOperationException ex)
+                {
+                    return Results.Problem(title: "Cannot modify warehouse skid", detail: ex.Message,
+                        statusCode: StatusCodes.Status409Conflict);
+                }
+            })
+           .WithName("ModifyWarehouseSkid").WithTags("Warehouse")
+           .WithSummary("Modify a warehoused skid (legacy warehouse module action 4): weights, pieces, date, status and warehouse provenance. Changing the customer coil number or lot RE-POINTS the skid at a different status-20 shell — minting one if needed — and collects the PREVIOUS shell when the move leaves nothing on it. Weight mismatches come back as `warnings`, not refusals.")
+           .Produces<WarehouseSkidModifyResult>()
+           .Produces(StatusCodes.Status404NotFound)
+           .ProducesValidationProblem().ProducesProblem(StatusCodes.Status409Conflict);
+
         api.MapDelete("/warehouse/skids/{sheetSkidNum:long}", async (long sheetSkidNum, IAbisRepository repo, CancellationToken ct) =>
             {
                 var r = await repo.DeleteWarehouseSkidAsync(sheetSkidNum, ct);

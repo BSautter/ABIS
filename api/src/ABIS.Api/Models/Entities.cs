@@ -3247,3 +3247,19 @@ public sealed class WarehouseSkidDeleteResult
     /// <summary>Why the coil was kept (other items still reference it, or it isn't a warehouse shell).</summary>
     public string? CoilKeptReason { get; set; }
 }
+
+/// <summary>Result of modifying a warehoused skid.</summary>
+public sealed class WarehouseSkidModifyResult
+{
+    public bool Found { get; set; }
+    public long SheetSkidNum { get; set; }
+    /// <summary>The warehouse coil the skid hangs off after the change.</summary>
+    public long CoilAbcNum { get; set; }
+    /// <summary>The (coil number, lot) changed, so the skid was re-pointed at a different shell.</summary>
+    public bool CoilChanged { get; set; }
+    /// <summary>A new shell was minted for the new (coil number, lot).</summary>
+    public bool CoilMinted { get; set; }
+    /// <summary>The previous shell, collected because the move left nothing on it.</summary>
+    public long? PreviousCoilRemoved { get; set; }
+    public List<string> Warnings { get; set; } = new();
+}

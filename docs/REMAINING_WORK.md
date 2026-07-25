@@ -342,7 +342,16 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   survived. **UI wired (#319):** the Warehouse page gained a "Warehouse in a skid" form (job + customer coil #
   + lot, weights, ticket) and a Delete action on the selected skid; both surface the server's own reason
   rather than a bare status, and a weight warning is shown as "saved, but note…" so it can't read as a
-  failure. Still TODO: skid **modify** (legacy action 4) + the item-level editor.
+  failure.
+  **MODIFY done (#320):** `PUT /warehouse/skids/{n}` updates weights/pieces/date/status/provenance, and
+  changing the customer coil number or lot **re-points the skid at a different shell** (minting one if
+  needed) and collects the PREVIOUS shell when the move empties it.
+  ⚠ **This deliberately does NOT reproduce a legacy bug.** Legacy's modify branch tests whether the
+  ORIGINAL coil is orphaned (`wf_coil_used_by_others(wf_orig_item_coil_id(item), item)`) but then deletes
+  **`ll_icoil` — the shell it just minted** — leaving `production_sheet_item.coil_abc_num` dangling and
+  stranding the real orphan. The evident intent (collect the ORIGINAL) is implemented instead: reproducing
+  a delete that removes the row the caller now depends on is data corruption, not a quirk worth keeping.
+  Still TODO: the item-level editor (add/remove individual production items on an existing skid).
 - [x] **H** Coil-ownership transfer mint semantics — done (#224): mints a NEW `coil_abc_num` (status 2, from-cust set) + original → status 13; cert carries the new id
 - [x] **H** Bulk "Change status → Ready for transfer" (status 12) — done (#240 `POST /coils/ready-for-transfer` with eligibility guards; #241 picker `readyOnly` filter + coil-ownership mark-ready UI)
 - [~] **H** Scrap-skid + sheet-skid guarded DELETE done (#243). **Return-scrap done** (#XXX): POST /scrap-skids/{n}/return faithfully ports the live F_CONVERT_BACK_TO_SHEET proc — copies the scrapped mirror rows (scraped_sheet_skid/production_sheet_item/process_partial_skid/detail) back to the live tables, deletes the mirrors + scrap_skid(+detail) + credits back the linked return_scrap_item rows. Still TODO: sheet-skid modify + weight/piece reconciliation.
