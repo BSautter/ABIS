@@ -276,6 +276,11 @@ public interface IAbisRepository
     /// job is unknown or the customer's cert/cash-date rules forbid minting a shell coil.</summary>
     Task<WarehouseSkidResult> CreateWarehouseSkidAsync(WarehouseSkidWrite body, CancellationToken ct);
 
+    /// <summary>Delete a warehoused skid, its production items and their links, then garbage-collect the
+    /// status-20 warehouse coil if nothing else references it (legacy warehouse module action 5).
+    /// Returns <c>Deleted = false</c> when the skid does not exist.</summary>
+    Task<WarehouseSkidDeleteResult> DeleteWarehouseSkidAsync(long sheetSkidNum, CancellationToken ct);
+
     /// <summary>Mint an ABC number for a scanned inbound coil and stamp it on
     /// <c>inbound_coil_status</c> (legacy handheld). Call ONLY after the label printer has been
     /// confirmed reachable — see <c>ICoilLabelPrinter</c> for why the order matters.</summary>

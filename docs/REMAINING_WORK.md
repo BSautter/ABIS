@@ -332,8 +332,14 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   customer) is INHERITED from the customer's real coil; when there is none **and** the customer requires a
   cert label or cash date, the mint is REFUSED (409) rather than back a certificate with nothing.
   Weight/piece mismatch is a **warning, not a gate** — legacy asks "save it anyway?", so blocking would stop
-  real corrections. Fixture gained `coil.cash_date`. Still TODO: skid **modify/delete** (`wf_coil_used_by_others`
-  guards a coil shared by other items), the item-level editor, and the warehouse UI page.
+  real corrections. Fixture gained `coil.cash_date`.
+  **DELETE done (#318):** `DELETE /warehouse/skids/{n}` removes the links, items and skid, then
+  **garbage-collects the status-20 shell** when nothing else references it (legacy `wf_coil_used_by_others`)
+  — the shell exists only while something hangs off it, or warehousing leaves orphan coils forever.
+  **Guard ADDED over legacy: only a status-20 coil is ever collected.** In this module the coil is always
+  the shell so legacy never checked, but a path that deletes from `coil` is not somewhere to trust
+  "can't happen" — a real coil would take everything hanging off it. `coilKeptReason` says why a coil
+  survived. Still TODO: skid **modify** (legacy action 4) + the item-level editor, and the warehouse UI page.
 - [x] **H** Coil-ownership transfer mint semantics — done (#224): mints a NEW `coil_abc_num` (status 2, from-cust set) + original → status 13; cert carries the new id
 - [x] **H** Bulk "Change status → Ready for transfer" (status 12) — done (#240 `POST /coils/ready-for-transfer` with eligibility guards; #241 picker `readyOnly` filter + coil-ownership mark-ready UI)
 - [~] **H** Scrap-skid + sheet-skid guarded DELETE done (#243). **Return-scrap done** (#XXX): POST /scrap-skids/{n}/return faithfully ports the live F_CONVERT_BACK_TO_SHEET proc — copies the scrapped mirror rows (scraped_sheet_skid/production_sheet_item/process_partial_skid/detail) back to the live tables, deletes the mirrors + scrap_skid(+detail) + credits back the linked return_scrap_item rows. Still TODO: sheet-skid modify + weight/piece reconciliation.

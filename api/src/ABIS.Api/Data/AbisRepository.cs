@@ -5126,6 +5126,86 @@ public sealed class AbisRepository : IAbisRepository
         return result;
     }
 
+    /// <summary>
+    /// Delete a warehoused skid and garbage-collect its warehouse coil — the port of the legacy
+    /// warehouse module's delete (<c>w_wh_business</c> action 5): remove the <c>sheet_skid_detail</c>
+    /// links, the <c>production_sheet_item</c> rows, the <c>sheet_skid</c>, and then — only if nothing
+    /// else references the coil — its <c>process_coil</c> row and the coil itself.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>The shell exists only while something hangs off it.</b> Legacy checks
+    /// <c>wf_coil_used_by_others</c> and drops the coil when the count reaches zero, so warehousing does
+    /// not leave orphan status-20 coils behind. That is reproduced.</para>
+    /// <para><b>Added guard: only a status-20 coil is ever collected.</b> In this module the coil is
+    /// always the warehouse shell, so legacy had no need to check — but a delete path that can remove a
+    /// row from <c>coil</c> is not somewhere to rely on "can't happen". A real coil that happened to be
+    /// referenced would be destroyed along with everything hanging off it, so the status is verified
+    /// before the delete and the reason is reported when it is kept.</para>
+    /// </remarks>
+    public async Task<WarehouseSkidDeleteResult> DeleteWarehouseSkidAsync(long sheetSkidNum, CancellationToken ct)
+    {
+        var result = new WarehouseSkidDeleteResult { SheetSkidNum = sheetSkidNum };
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        var exists = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT COUNT(*) FROM sheet_skid WHERE sheet_skid_num = :skid",
+            new { skid = sheetSkidNum }, transaction: tx, cancellationToken: ct));
+        if (exists == 0) { await tx.RollbackAsync(ct); return result; }
+
+        // The production items on this skid, and the coil they hang off (captured before the deletes).
+        var items = (await conn.QueryAsync<(long ProdItemNum, long? CoilAbcNum)>(new CommandDefinition(
+            """
+            SELECT psi.prod_item_num AS ProdItemNum, psi.coil_abc_num AS CoilAbcNum
+              FROM sheet_skid_detail ssd
+              JOIN production_sheet_item psi ON psi.prod_item_num = ssd.prod_item_num
+             WHERE ssd.sheet_skid_num = :skid
+            """, new { skid = sheetSkidNum }, transaction: tx, cancellationToken: ct))).ToList();
+        var coil = items.Select(i => i.CoilAbcNum).FirstOrDefault(c => c is not null);
+        result.CoilAbcNum = coil;
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM sheet_skid_detail WHERE sheet_skid_num = :skid",
+            new { skid = sheetSkidNum }, transaction: tx, cancellationToken: ct));
+        foreach (var it in items)
+            result.ItemsRemoved += await conn.ExecuteAsync(new CommandDefinition(
+                "DELETE FROM production_sheet_item WHERE prod_item_num = :item",
+                new { item = it.ProdItemNum }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM sheet_skid WHERE sheet_skid_num = :skid",
+            new { skid = sheetSkidNum }, transaction: tx, cancellationToken: ct));
+
+        if (coil is long coilNum)
+        {
+            var stillUsed = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+                "SELECT COUNT(*) FROM production_sheet_item WHERE coil_abc_num = :abc",
+                new { abc = coilNum }, transaction: tx, cancellationToken: ct));
+            var status = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(
+                "SELECT coil_status FROM coil WHERE coil_abc_num = :abc",
+                new { abc = coilNum }, transaction: tx, cancellationToken: ct));
+
+            if (stillUsed > 0)
+                result.CoilKeptReason = $"{stillUsed} other production item(s) still reference coil {coilNum}.";
+            else if (status != 20)
+                // Never destroy a real coil on a warehouse delete — see the remarks.
+                result.CoilKeptReason = $"Coil {coilNum} is not a status-20 warehouse shell (status {status?.ToString() ?? "null"}), so it was left alone.";
+            else
+            {
+                await conn.ExecuteAsync(new CommandDefinition(
+                    "DELETE FROM process_coil WHERE coil_abc_num = :abc",
+                    new { abc = coilNum }, transaction: tx, cancellationToken: ct));
+                await conn.ExecuteAsync(new CommandDefinition(
+                    "DELETE FROM coil WHERE coil_abc_num = :abc",
+                    new { abc = coilNum }, transaction: tx, cancellationToken: ct));
+                result.CoilRemoved = true;
+            }
+        }
+
+        await tx.CommitAsync(ct);
+        result.Deleted = true;
+        return result;
+    }
+
     /// <summary>The legacy BOL form has exactly three per-job note blocks and refuses to print details past
     /// that. The cap is the printed layout, not a business rule, so it lives with the document code.</summary>
     private const int MaxPrintableBolJobs = 3;

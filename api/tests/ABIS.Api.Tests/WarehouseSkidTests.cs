@@ -245,6 +245,73 @@ public sealed class WarehouseSkidTests : IDisposable
         Assert.Equal(0, onHand);
     }
 
+    // ---- delete (legacy action 5) ------------------------------------------------------------
+
+    [Fact]
+    public async Task Deleting_the_last_skid_collects_the_warehouse_shell()
+    {
+        // The shell exists only while something hangs off it — otherwise warehousing leaves orphan
+        // status-20 coils behind forever.
+        Seed();
+        var made = await _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None);
+
+        var del = await _repo.DeleteWarehouseSkidAsync(made.SheetSkidNum, CancellationToken.None);
+
+        Assert.True(del.Deleted);
+        Assert.True(del.CoilRemoved);
+        Assert.Equal(1, del.ItemsRemoved);
+        Assert.Equal(0, Scalar<long>($"SELECT COUNT(*) FROM sheet_skid WHERE sheet_skid_num = {made.SheetSkidNum}"));
+        Assert.Equal(0, Scalar<long>($"SELECT COUNT(*) FROM production_sheet_item WHERE prod_item_num = {made.ProdItemNum}"));
+        Assert.Equal(0, Scalar<long>($"SELECT COUNT(*) FROM sheet_skid_detail WHERE sheet_skid_num = {made.SheetSkidNum}"));
+        Assert.Equal(0, Scalar<long>($"SELECT COUNT(*) FROM coil WHERE coil_abc_num = {made.CoilAbcNum}"));
+        Assert.Equal(0, Scalar<long>($"SELECT COUNT(*) FROM process_coil WHERE coil_abc_num = {made.CoilAbcNum}"));
+    }
+
+    [Fact]
+    public async Task A_shell_still_carrying_another_skid_is_kept()
+    {
+        Seed();
+        var first = await _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None);
+        var second = await _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None);   // same coil + lot
+
+        var del = await _repo.DeleteWarehouseSkidAsync(first.SheetSkidNum, CancellationToken.None);
+
+        Assert.True(del.Deleted);
+        Assert.False(del.CoilRemoved);
+        Assert.Contains("still reference", del.CoilKeptReason);
+        Assert.Equal(1, Scalar<long>($"SELECT COUNT(*) FROM coil WHERE coil_abc_num = {first.CoilAbcNum}"));
+        Assert.Equal(1, Scalar<long>($"SELECT COUNT(*) FROM sheet_skid WHERE sheet_skid_num = {second.SheetSkidNum}"));
+    }
+
+    [Fact]
+    public async Task A_real_coil_is_never_destroyed_by_a_warehouse_delete()
+    {
+        // Guard added over legacy. In this module the coil is always the shell, so legacy never
+        // checked — but a delete path that can remove a row from `coil` is not somewhere to trust
+        // "can't happen". Point the item at a REAL coil and the delete must leave it standing.
+        Seed();
+        var made = await _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None);
+        Exec($"UPDATE production_sheet_item SET coil_abc_num = 6900 WHERE prod_item_num = {made.ProdItemNum};");
+
+        var del = await _repo.DeleteWarehouseSkidAsync(made.SheetSkidNum, CancellationToken.None);
+
+        Assert.True(del.Deleted);
+        Assert.False(del.CoilRemoved);
+        Assert.Contains("not a status-20", del.CoilKeptReason);
+        Assert.Equal(1, Scalar<long>("SELECT COUNT(*) FROM coil WHERE coil_abc_num = 6900"));
+    }
+
+    [Fact]
+    public async Task Deleting_an_unknown_skid_reports_not_found_and_changes_nothing()
+    {
+        Seed();
+        var before = Scalar<long>("SELECT COUNT(*) FROM sheet_skid");
+        var del = await _repo.DeleteWarehouseSkidAsync(999999, CancellationToken.None);
+
+        Assert.False(del.Deleted);
+        Assert.Equal(before, Scalar<long>("SELECT COUNT(*) FROM sheet_skid"));
+    }
+
     public void Dispose()
     {
         try { SqliteConnection.ClearAllPools(); } catch { /* best effort */ }

@@ -1008,6 +1008,15 @@ public static class ApiEndpoints
            .Produces<WarehouseSkidResult>(StatusCodes.Status201Created)
            .ProducesValidationProblem().ProducesProblem(StatusCodes.Status409Conflict);
 
+        api.MapDelete("/warehouse/skids/{sheetSkidNum:long}", async (long sheetSkidNum, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var r = await repo.DeleteWarehouseSkidAsync(sheetSkidNum, ct);
+                return r.Deleted ? Results.Ok(r) : Results.NotFound();
+            })
+           .WithName("DeleteWarehouseSkid").WithTags("Warehouse")
+           .WithSummary("Delete a warehoused skid: its sheet_skid_detail links, its production items and the skid, then GARBAGE-COLLECT the status-20 warehouse coil when nothing else references it (legacy warehouse module action 5) — the shell exists only while something hangs off it. `coilKeptReason` says why the coil survived. A coil that is NOT a status-20 shell is never collected, so a real coil can't be destroyed by a warehouse delete.")
+           .Produces<WarehouseSkidDeleteResult>().Produces(StatusCodes.Status404NotFound);
+
         api.MapGet("/receiving/scan", async (string? barcode, IAbisRepository repo, CancellationToken ct) =>
                 Results.Ok(await repo.ScanInboundCoilAsync(barcode, ct)))
            .WithName("ScanInboundCoil").WithTags("Receiving")

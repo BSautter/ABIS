@@ -3232,3 +3232,18 @@ public sealed class WarehouseSkidResult
     /// so a mismatch is a warning the operator may accept — never a refusal. Empty = it added up.</summary>
     public List<string> Warnings { get; set; } = new();
 }
+
+/// <summary>Result of deleting a warehoused skid.</summary>
+public sealed class WarehouseSkidDeleteResult
+{
+    public bool Deleted { get; set; }
+    public long SheetSkidNum { get; set; }
+    public int ItemsRemoved { get; set; }
+    /// <summary>The warehouse coil the skid hung off.</summary>
+    public long? CoilAbcNum { get; set; }
+    /// <summary>The shell coil was garbage-collected because nothing else was on it. Legacy does the
+    /// same: the warehouse coil exists only while something hangs off it.</summary>
+    public bool CoilRemoved { get; set; }
+    /// <summary>Why the coil was kept (other items still reference it, or it isn't a warehouse shell).</summary>
+    public string? CoilKeptReason { get; set; }
+}

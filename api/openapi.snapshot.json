@@ -15271,6 +15271,44 @@
         }
       }
     },
+    "/api/warehouse/skids/{sheetSkidNum}": {
+      "delete": {
+        "tags": [
+          "Warehouse"
+        ],
+        "summary": "Delete a warehoused skid: its sheet_skid_detail links, its production items and the skid, then GARBAGE-COLLECT the status-20 warehouse coil when nothing else references it (legacy warehouse module action 5) — the shell exists only while something hangs off it. `coilKeptReason` says why the coil survived. A coil that is NOT a status-20 shell is never collected, so a real coil can't be destroyed by a warehouse delete.",
+        "operationId": "DeleteWarehouseSkid",
+        "parameters": [
+          {
+            "name": "sheetSkidNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WarehouseSkidDeleteResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/sheet-skids/{sheetSkidNum}/warehouse": {
       "patch": {
         "tags": [
@@ -27218,6 +27256,35 @@
           "uptimePct": {
             "type": "number",
             "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "WarehouseSkidDeleteResult": {
+        "type": "object",
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "sheetSkidNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "itemsRemoved": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "coilRemoved": {
+            "type": "boolean"
+          },
+          "coilKeptReason": {
+            "type": "string",
             "nullable": true
           }
         },
