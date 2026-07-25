@@ -47,11 +47,29 @@ public sealed record ConveyorConfig(
     public static readonly ConveyorConfig Empty =
         new(new Dictionary<int, string[]>(), new Dictionary<int, IReadOnlyDictionary<int, string[]>>());
 
-    /// <summary>The cell map for a line: its own if configured, else the default map. An UNKNOWN line
-    /// falls back to the default rather than answering empty, matching how the other endpoints treat an
-    /// unrecognised <c>?tag=</c> — one line's board wired up is better than none.</summary>
-    public IReadOnlyDictionary<int, string[]> For(int? line) =>
-        line is int n && ByLine.TryGetValue(n, out var m) ? m : Cells;
+    /// <summary>
+    /// The cell map for a line. Its own if configured; otherwise it depends on whether this is a
+    /// multi-line deployment:
+    /// <list type="bullet">
+    /// <item><b>Per-line maps exist and this line isn't one of them → EMPTY.</b> Not the default map.
+    /// Cells are physical sensors on ONE belt, so serving another line's cells here would paint that
+    /// line's stacks onto this line's board — a wrong answer that looks authoritative. "No cells mapped"
+    /// is the truthful one. (Caught live 2026-07-25: BL84's whole <c>stacker84</c> OPC branch is stripped
+    /// while the stacker is out of service, so it has no map — and the fallback would have shown BL110's
+    /// belt under BL84.)</item>
+    /// <item><b>No per-line maps at all → the default map.</b> A single-stacker deployment configures
+    /// only <c>ConveyorCells</c>, and there is no other line for it to be confused with.</item>
+    /// </list>
+    /// A call with no <c>?line=</c> always gets the default map.
+    /// </summary>
+    public IReadOnlyDictionary<int, string[]> For(int? line)
+    {
+        if (line is not int n) return Cells;
+        if (ByLine.TryGetValue(n, out var m)) return m;
+        return ByLine.Count == 0 ? Cells : EmptyMap;
+    }
+
+    private static readonly IReadOnlyDictionary<int, string[]> EmptyMap = new Dictionary<int, string[]>();
 
     /// <summary>Every configured cell tag across every line (for the poller to include), de-duplicated —
     /// one physical tag mapped to two locations must still only be polled once.</summary>

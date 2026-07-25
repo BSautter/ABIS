@@ -97,11 +97,34 @@ public class ConveyorConfigTests
     }
 
     [Fact]
-    public void No_line_or_an_unconfigured_one_falls_back_to_the_default_map()
+    public void A_call_with_no_line_gets_the_default_map()
     {
         var (d, b) = TwoLines();
         var (cfg, _) = ConveyorConfig.FromSection(d, b);
         Assert.Equal(["stacker110.StackOnConveyor1"], cfg.For(null)[3]);
+    }
+
+    [Fact]
+    public void An_unmapped_line_gets_NO_cells_never_another_lines()
+    {
+        // The bug this prevents, caught live 2026-07-25: BL84's stacker84 OPC branch is stripped while
+        // the stacker is out of service, so it has no map. Falling back to the default would have painted
+        // BL110's belt onto BL84's board row — a wrong answer that looks authoritative. Empty is truthful.
+        var (d, b) = TwoLines();
+        var (cfg, _) = ConveyorConfig.FromSection(d, b);
+        Assert.Empty(cfg.For(99));
+    }
+
+    [Fact]
+    public void With_no_per_line_maps_at_all_the_default_serves_any_line()
+    {
+        // A single-stacker site configures only ConveyorCells; there is no other line to confuse it with.
+        var only = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Edge:Opc:ConveyorCells:3"] = "stacker110.StackOnConveyor1",
+        }).Build();
+        var (cfg, _) = ConveyorConfig.FromSection(only.GetSection("Edge:Opc:ConveyorCells"));
+        Assert.Equal(["stacker110.StackOnConveyor1"], cfg.For(6)[3]);
         Assert.Equal(["stacker110.StackOnConveyor1"], cfg.For(99)[3]);
     }
 

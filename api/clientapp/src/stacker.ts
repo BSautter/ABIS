@@ -121,8 +121,27 @@ async function loadPath(): Promise<void> {
   const anyCells = [...live.values()].some((c) => c.configured);
   const edgeUp = [...live.values()].some((c) => c.reachable);
 
+  // Only draw a conveyor for a line that HAS one. Most lines don't: the plant confirmed (2026-07-25)
+  // that BL110 is the only line with a working stacker, BL84 is the only other line with one installed
+  // and it has been down for years, and the rest have none at all. Rendering fourteen empty stations
+  // under every line implies a belt that isn't there — and an operator scanning the board for a stack
+  // can't tell "this conveyor is clear" from "this line has no conveyor". A line qualifies if the edge
+  // maps cells for it, or if the database has a skid recorded somewhere on the path (a stacker that
+  // exists but isn't wired to this edge, or historical rows).
+  const hasConveyor = (l: PathLine) =>
+    (live.get(l.lineNum)?.configured ?? false) || (l.skids ?? []).some(onPath);
+  const shown = lines.filter(hasConveyor);
+  const omitted = lines.length - shown.length;
+
+  if (!shown.length) {
+    box.innerHTML = `<span class="muted">No line here has a stacker conveyor${
+      edgeUp ? '' : ' (and the edge line feed is unreachable, so live cells can\'t be read)'}.</span>`;
+    $('#pathSub').textContent = 'nothing to show — no conveyor is mapped or recorded on these lines';
+    return;
+  }
+
   const onShownPath = new Set(STACK_PATH.map((p) => p.slot));
-  box.innerHTML = lines.map((l) => {
+  box.innerHTML = shown.map((l) => {
     const bySlot = new Map((l.skids ?? []).filter(onPath).map((s) => [s.slot, s]));
     const cellsFor = live.get(l.lineNum);
     const cells = STACK_PATH.map(({ slot, label }) => {
@@ -160,11 +179,15 @@ async function loadPath(): Promise<void> {
   // Order matters: the feed's health is checked BEFORE the contents. Recorded DB positions alone must
   // never let this claim to be live — an operator reading "live from the PLC" off a board whose feed
   // is down would trust a stale picture of where the stacks are.
-  $('#pathSub').textContent =
+  // Say plainly when lines were left out, so a missing line reads as "no conveyor there" rather than
+  // as the board having quietly failed to load one.
+  const note = omitted > 0 ? ` · ${omitted} line${omitted === 1 ? '' : 's'} without a stacker conveyor not shown` : '';
+  $('#pathSub').textContent = (
     !edgeUp ? 'edge line feed unreachable — showing recorded positions only (which the stacker automation writes)'
-    : !anyCells ? 'no conveyor cells mapped on the edge — showing recorded positions only (see Edge:Opc:ConveyorCells)'
+    : !anyCells ? 'no conveyor cells mapped on the edge — showing recorded positions only (see Edge:Opc:ConveyorCellsByLine)'
     : anyLive || anyStack ? 'where each finished stack is between the stacker and the end of the wrapper line — live from the PLC cell sensors'
-    : 'belt clear — no stack on any conveyor station right now';
+    : 'belt clear — no stack on any conveyor station right now'
+  ) + note;
 }
 
 async function loadBoard(): Promise<void> {

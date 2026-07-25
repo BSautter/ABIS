@@ -25,6 +25,13 @@ public class PlantConfigTests
         return new ConfigurationBuilder().AddJsonFile(path, optional: false).Build();
     }
 
+    private static (ConveyorConfig Config, IReadOnlyList<string> Skipped) LoadConveyor()
+    {
+        var cfg = LoadPlantConfig();
+        return ConveyorConfig.FromSection(
+            cfg.GetSection("Edge:Opc:ConveyorCells"), cfg.GetSection("Edge:Opc:ConveyorCellsByLine"));
+    }
+
     [Fact]
     public void Parses_the_way_the_service_loads_it()
     {
@@ -43,15 +50,26 @@ public class PlantConfigTests
     [Fact]
     public void Conveyor_cells_cover_the_stations_that_still_exist()
     {
-        var cfg = LoadPlantConfig();
-        var (conveyor, skipped) = ConveyorConfig.FromSection(
-            cfg.GetSection("Edge:Opc:ConveyorCells"), cfg.GetSection("Edge:Opc:ConveyorCellsByLine"));
+        var (conveyor, skipped) = LoadConveyor();
 
         Assert.Empty(skipped);
         // 1..12 — every station with a real sensor. 0 is the stacker head's done bit (/stacker) and 13
         // (overhead crane) has no sensor at all; 14-18 are wrapper 2, removed from the plant.
-        Assert.Equal(Enumerable.Range(1, 12), conveyor.Cells.Keys.OrderBy(k => k));
-        Assert.Equal(Enumerable.Range(1, 12), conveyor.For(7).Keys.OrderBy(k => k));
+        Assert.Equal(Enumerable.Range(1, 12), conveyor.For(6).Keys.OrderBy(k => k));
+    }
+
+    [Fact]
+    public void BL84_has_no_cells_and_does_not_inherit_BL110s()
+    {
+        // Verified live 2026-07-25: the whole `stacker84` OPC branch is stripped to 5 Display_0N items
+        // while the stacker is out of service — no Stack* cells exist, and even its counter tags read
+        // quality=Bad. An earlier draft mapped stacker84.Stack* by pattern from stacker110; none exist.
+        // Critically, BL84 must come back EMPTY rather than inheriting BL110's cells, or its board row
+        // would show another line's belt.
+        var (conveyor, _) = LoadConveyor();
+
+        Assert.Empty(conveyor.For(7));
+        Assert.DoesNotContain(conveyor.Tags, t => t.StartsWith("stacker84.", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -59,40 +77,32 @@ public class PlantConfigTests
     {
         // Wrapper 2 was removed from the plant (2026-07-25): the belt runs stacker -> wrapper 1 ->
         // overhead crane -> output. Cells for 14-18 would poll tags for track that no longer exists.
-        var cfg = LoadPlantConfig();
-        var (conveyor, _) = ConveyorConfig.FromSection(
-            cfg.GetSection("Edge:Opc:ConveyorCells"), cfg.GetSection("Edge:Opc:ConveyorCellsByLine"));
+        var (conveyor, _) = LoadConveyor();
 
-        Assert.DoesNotContain(conveyor.Cells.Keys, k => k >= 14);
+        Assert.DoesNotContain(conveyor.For(6).Keys, k => k >= 14);
         Assert.DoesNotContain(conveyor.Tags, t => t.Contains("Wrapper2", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
-    public void Both_stacker_lines_are_wired_to_their_own_branch()
+    public void Every_cell_points_at_the_lines_own_stacker_branch()
     {
-        var cfg = LoadPlantConfig();
-        var (conveyor, _) = ConveyorConfig.FromSection(
-            cfg.GetSection("Edge:Opc:ConveyorCells"), cfg.GetSection("Edge:Opc:ConveyorCellsByLine"));
-
-        // BL110 (the default map) and BL84 (line_num 7). BL78 has no stacker, so no cells.
-        Assert.All(conveyor.Cells.Values.SelectMany(t => t), t => Assert.StartsWith("stacker110.", t));
-        Assert.All(conveyor.For(7).Values.SelectMany(t => t), t => Assert.StartsWith("stacker84.", t));
+        var (conveyor, _) = LoadConveyor();
+        Assert.All(conveyor.For(6).Values.SelectMany(t => t), t => Assert.StartsWith("stacker110.", t));
     }
 
     [Fact]
     public void Every_conveyor_tag_lands_in_the_polled_set()
     {
         // The endpoint reads LatestTags, so a cell that isn't polled reads unknown forever. Program.cs
-        // auto-adds them; this asserts the union the poller would be given actually covers both lines.
+        // auto-adds them; this asserts the union the poller would be given actually covers the map.
         var cfg = LoadPlantConfig();
-        var (conveyor, _) = ConveyorConfig.FromSection(
-            cfg.GetSection("Edge:Opc:ConveyorCells"), cfg.GetSection("Edge:Opc:ConveyorCellsByLine"));
+        var (conveyor, _) = LoadConveyor();
 
         var listed = cfg.GetSection("Edge:Opc:Tags").Get<string[]>() ?? [];
         var polled = listed.Concat(conveyor.Tags).Distinct(StringComparer.OrdinalIgnoreCase).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         Assert.All(conveyor.Tags, t => Assert.Contains(t, polled));
-        // 13 tags per line (12 stations, station 1 carrying one per stacker head) x BL110 and BL84.
-        Assert.Equal(26, conveyor.Tags.Count());
+        // 13 tags for BL110: 12 stations, station 1 carrying one cell per stacker head.
+        Assert.Equal(13, conveyor.Tags.Count());
     }
 }

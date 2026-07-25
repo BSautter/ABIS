@@ -133,8 +133,8 @@ COM port. The web screens (or the API) consume readings over HTTP on the LAN.
 | `Edge:Opc:GoodCountTag` / `RejectCountTag` / `StrokeCountTag` / `FeedLengthTag` | node/item ids | the DEFAULT counter tags for `/counters` (legacy `goodpartcnt`/`rejectpartcnt`/`strokecnt`/`feedlength`). Each optional — an unset one reports `configured:false`. Auto-added to the polled set. Per line, pass `?good=`/`?reject=`/`?stroke=`/`?feed=` instead. |
 | `Edge:Opc:StackerStation1CountTag` / `Station2CountTag` / `Station1DoneTag` / `Station2DoneTag` / `StackerScaleWeightTag` / `StackerScaleSkidIdTag` | node/item ids | the DEFAULT stacker tags for `/stacker` (legacy `stacker<n>.station1/2_stack_counter` / `Sta1/2StackComplete` / `ScaleSkidWt` / `ScaleSkidId`). Each optional. Auto-added to the polled set. Per line, pass `?s1count=`/`?s2count=`/`?s1done=`/`?s2done=`/`?scalewt=`/`?scaleid=` instead. |
 | `Edge:Opc:AutoRunningTag` / `ActiveFaultTag` / `NoAutoTag` | node/item ids | the DEFAULT tags for `/line-status` (legacy `autorunning`/`activefault`/`noauto`). Each optional. Auto-added to the polled set. Per line, pass `?autorunning=`/`?fault=`/`?noauto=` instead. |
-| `Edge:Opc:ConveyorCells` | map of `location code` → tag id(s) | the conveyor position sensors for `/conveyor`, keyed by the DAS location code `0..18`. A value may list several tags (comma/space separated) — the location is occupied if any is truthy. Auto-added to the polled set. A key that isn't a location code, or has no tag, is **skipped with a startup warning** rather than failing the service. |
-| `Edge:Opc:ConveyorCellsByLine` | map of `line_num` → the same cell map | per-line overrides for `/conveyor?line=n` — each line has its own stacker branch (`stacker110` vs `stacker84`), so unlike the single-tag settings these cannot be one flat map. An unconfigured line falls back to `ConveyorCells`. |
+| `Edge:Opc:ConveyorCellsByLine` | map of `line_num` → (map of `location code` → tag id(s)) | **the authoritative conveyor-cell map.** Cells are physical sensors on one line's belt, and each line has its own stacker branch (`stacker110` vs `stacker84`), so they are per line — not one flat map. A location's value may list several tags (comma/space separated); it is occupied if any is truthy. Auto-added to the polled set. A key that isn't a line number or a location code `0..18`, or has no tag, is **skipped with a startup warning** rather than failing the service. |
+| `Edge:Opc:ConveyorCells` | map of `location code` → tag id(s) | a flat fallback for a **single-stacker site**. It answers `/conveyor` with no `?line=`, and — only when `ConveyorCellsByLine` is empty — any line. **Once any per-line map exists, an unmapped line answers with NO cells rather than this map**: serving one line's sensors under another line's number would paint that line's stacks onto the wrong board, which is worse than showing nothing. The plant config therefore sets `ConveyorCellsByLine` only. |
 | `Edge:Opc:RunStateMode` | `Equals` (default) / `NotEquals` / `GreaterThan` / **`Changed`** | how to judge it: a running boolean/word (`Equals`), an inverted idle bit (`NotEquals`), a numeric like strokes/min (`GreaterThan`), or a **cumulative counter that stops climbing** (`Changed` — e.g. a stroke count; **this is the plant's signal**). |
 | `Edge:Opc:RunStateThreshold` | number, default `0` | `GreaterThan` cut-off (e.g. `spm > 0`); or, for `Changed`, the **no-change window in seconds** (default 10) before declaring stopped. |
 | `Edge:Opc:RunningValues` | array, default `RUNNING,RUN,ON,START,STARTED,1,TRUE` | Equals/NotEquals value set (case-insensitive). For `NotEquals` list the *stopped/idle* values (e.g. `1,TRUE` for an idle bit) |
@@ -365,6 +365,21 @@ stations, not legacy's 19. The codes stay in the decode map so historical rows s
 
 Other stacker bits discovered live but not mapped to a location: `StackRemovedFromSta1/2`,
 `LineRunoutComplete`, `LastScrapRemoved`.
+
+**BL84 has no cell map, on purpose.** Verified live 2026-07-25 via `/opc/browse`: the whole `stacker84`
+branch is stripped to five `Display_0N` items — **no `Stack*` cells exist at all**, and even
+`station1_stack_counter` / `Sta1StackComplete` / `ScaleSkidWt` read `quality=Bad`. That matches the BL84
+stacker having been down for **years**, with no near-term return (confirmed by the plant 2026-07-25) —
+**BL110 is the only line with a working stacker.** An earlier draft of the plant config mapped `stacker84.Stack*`
+cells **by pattern** from `stacker110`; none of them exist, and all twelve read Bad. **When the BL84
+stacker returns to service, browse `stacker84` first and add only the item ids the server actually
+offers** — do not assume it mirrors `stacker110`.
+
+**Live readings, 2026-07-25** (both hosts, real INGEAR): BL110's twelve cells all `quality=Good`, eleven
+clear and **location 12 (centre of the wrapper-1 unload conveyor) occupied** — a real stack on the belt,
+which is also the station the crane lifts from. `activefault` read `68` with `noauto=True` and
+`autorunning=False`. Note the cells return `"False"`, so the .NET-style boolean parse (#296) is what
+keeps a clear belt reading *clear* instead of *unknown*.
 
 > **Occupancy only, by design.** The cells say a stack **is** at a station, not **which skid** it is.
 > Identity lives in the `SHEET_SKID_LOCATION_*` columns, which only the legacy stacker station writes
