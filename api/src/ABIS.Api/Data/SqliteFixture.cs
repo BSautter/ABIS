@@ -409,6 +409,10 @@ public static class SqliteFixture
                 customer_id INTEGER, des_sh_cust_id INTEGER, vehicle_id TEXT, vehicle_status INTEGER,
                 shipment_status INTEGER, shipment_scheduled_date_time TEXT, date_sent TEXT,
                 shipment_actualed_date_time TEXT, shipment_notes TEXT,
+                -- Free-text reference codes on the stop. On a MULTI-STOP bill of lading legacy stamps the
+                -- "Shipping with BOL …" package note in here, and reuses it verbatim on later reads so
+                -- paperwork already handed to a driver can't be contradicted by a recount (f_get_bol_totals).
+                shipment_reference_codes TEXT,
                 -- EDI trigger state (legacy shipment.EDI_*): whether the shipment needs EDI (edi_req),
                 -- whether a doc was generated (edi_triggered), the generated 856/desadv file ids + dates.
                 edi_req TEXT, edi_triggered TEXT, edi_file_id_856 INTEGER, edi_file_id_desadv INTEGER,

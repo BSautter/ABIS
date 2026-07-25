@@ -257,6 +257,10 @@ public interface IAbisRepository
     Task<Shipment?> PatchShipmentAsync(long packingList, ShipmentStatusPatch patch, CancellationToken ct);
     Task<Shipment?> CloseShipmentAsync(long packingList, CancellationToken ct);
     Task<IReadOnlyList<PackingLineItem>> GetPackingItemsAsync(long packingList, CancellationToken ct);
+
+    /// <summary>What the shipment's whole bill of lading carries, across every stop (legacy
+    /// <c>f_get_bol_totals</c>). Null when the packing list is unknown or carries no bill of lading.</summary>
+    Task<BolTotals?> GetBolTotalsAsync(long packingList, CancellationToken ct);
     Task<PackingItemResult> AddPackingItemAsync(long packingList, string itemType, long refNum, CancellationToken ct);
     Task<bool> DeletePackingItemAsync(long packingList, string itemType, long itemId, CancellationToken ct);
     Task<PagedResult<ReceivingBol>> GetReceivingBolsAsync(int page, int pageSize, long? customerId, int? status, string? orderBy, CancellationToken ct);

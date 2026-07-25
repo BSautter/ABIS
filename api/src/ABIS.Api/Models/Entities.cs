@@ -2974,3 +2974,38 @@ public sealed class LineShiftEndResult
     public long DtTotalSeconds { get; set; }
     public LineBoardRow Board { get; set; } = new();
 }
+
+/// <summary>One line-item class rolled up across a bill of lading (legacy <c>f_get_bol_totals</c>):
+/// how many, their total gross weight, and the identifiers that make it up. Legacy built the
+/// identifier list too but then commented it out of the printed string; it is kept here because a
+/// structured response is not limited to one line of text, and reconciling a truck needs the list.</summary>
+public sealed class BolTotalsGroup
+{
+    public int Count { get; set; }
+    public decimal GrossWeight { get; set; }
+    /// <summary>Skid display numbers (sheet/scrap) or customer coil numbers (reject coils), in query order.</summary>
+    public List<string> Items { get; set; } = new();
+}
+
+/// <summary>What a bill of lading carries, across every stop on it — the port of legacy
+/// <c>rpabco/f_get_bol_totals.srf</c>. Drives the BOL document and the multi-stop package note.</summary>
+public sealed class BolTotals
+{
+    public long PackingList { get; set; }
+    public long BillOfLading { get; set; }
+    /// <summary>Distinct packing lists (stops) on this bill of lading.</summary>
+    public int StopCount { get; set; }
+    /// <summary>Two or more stops — legacy's return code 1/2 vs 0.</summary>
+    public bool MultiStop { get; set; }
+    public BolTotalsGroup Sheet { get; set; } = new();
+    public BolTotalsGroup Scrap { get; set; } = new();
+    public BolTotalsGroup RejectCoil { get; set; } = new();
+    /// <summary>The "Shipping with BOL …" note. <b>Multi-stop only</b>, faithful to legacy: a single-stop
+    /// BOL returns early with the note untouched, because the note exists to tell one stop what ELSE is on
+    /// the truck — on a single-stop load that is just the BOL itself. Null when single-stop.</summary>
+    public string? PackageText { get; set; }
+    /// <summary>The note came from <c>shipment.shipment_reference_codes</c> (already stamped for this stop)
+    /// rather than being recomputed — legacy return code 2. The stored value wins so paperwork already
+    /// handed out cannot disagree with a later recount.</summary>
+    public bool PackageTextStored { get; set; }
+}

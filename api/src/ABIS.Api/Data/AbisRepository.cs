@@ -4631,6 +4631,112 @@ public sealed class AbisRepository : IAbisRepository
         return sheet.Concat(scrap).Concat(reject).ToList();
     }
 
+    /// <summary>
+    /// What the shipment's whole BILL OF LADING carries — a port of legacy <c>rpabco/f_get_bol_totals.srf</c>.
+    ///
+    /// <para>Note the scope change against <see cref="GetPackingItemsAsync"/>: that reads ONE packing list
+    /// (one stop), this rolls up every stop on the bill of lading. A multi-stop BOL is one truck making
+    /// several drops, and each drop's paperwork has to describe the whole load.</para>
+    /// </summary>
+    /// <remarks>
+    /// Faithful to legacy in three ways worth stating, because each is a decision and not an accident:
+    /// <list type="number">
+    /// <item>The rollups join through <c>shipment</c> on <c>bill_of_lading</c>, so they span the stops —
+    /// exactly the three <c>d_*_4bol</c> DataWindows.</item>
+    /// <item>The package note is built for MULTI-STOP BOLs only; a single-stop BOL returns early in legacy
+    /// with the note untouched. The rollups, however, are computed either way — the printed BOL needs them
+    /// regardless, and they cost the same three reads.</item>
+    /// <item>A note already stamped into <c>shipment_reference_codes</c> for THIS stop wins over a fresh
+    /// count, so paperwork already in a driver's hand can't be contradicted by a later recount.</item>
+    /// </list>
+    /// Weight is gross (net + tare) for skids; reject coils carry <c>net_wt_balance</c> and have no skid
+    /// tare to add. Ordering is by the same keys the legacy DataWindows retrieved on, so the identifier
+    /// lists come back in the order the plant is used to reading them.
+    /// </remarks>
+    public async Task<BolTotals?> GetBolTotalsAsync(long packingList, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+
+        // The stop's own header: which BOL it belongs to, and any reference codes already stamped on it.
+        // An unknown packing list and a shipment with no bill of lading both come back with a null
+        // BillOfLading (no row → default tuple), and both mean the same thing here: nothing to total.
+        var head = await conn.QuerySingleOrDefaultAsync<(long? BillOfLading, string? ReferenceCodes)>(new CommandDefinition(
+            """
+            SELECT s.bill_of_lading AS BillOfLading, s.shipment_reference_codes AS ReferenceCodes
+              FROM shipment s
+             WHERE s.packing_list = :pl
+            """, new { pl = packingList }, cancellationToken: ct));
+        if (head.BillOfLading is not long bol) return null;
+
+        // How many stops share this bill of lading — legacy's `count(distinct packing_list)`, the sole
+        // test for single- vs multi-stop.
+        var stops = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+            """
+            SELECT COUNT(DISTINCT s.packing_list) FROM shipment s WHERE s.bill_of_lading = :bol
+            """, new { bol }, cancellationToken: ct));
+
+        async Task<BolTotalsGroup> Roll(string sql)
+        {
+            var rows = (await conn.QueryAsync<(string? Label, decimal? Weight)>(
+                new CommandDefinition(sql, new { bol }, cancellationToken: ct))).ToList();
+            return new BolTotalsGroup
+            {
+                Count = rows.Count,
+                GrossWeight = rows.Sum(r => r.Weight ?? 0m),
+                Items = rows.Select(r => r.Label ?? "").ToList(),
+            };
+        }
+
+        // d_sheet_skids_4bol / d_scrap_skids_4bol / d_rej_coils_4bol, verbatim in shape.
+        var sheet = await Roll(
+            """
+            SELECT ss.sheet_skid_display_num AS Label,
+                   COALESCE(ss.sheet_net_wt, 0) + COALESCE(ss.sheet_tare_wt, 0) AS Weight
+              FROM sheet_skid ss
+              JOIN sheet_packing_item spi ON spi.sheet_skid_num = ss.sheet_skid_num
+              JOIN shipment s ON s.packing_list = spi.packing_list
+             WHERE s.bill_of_lading = :bol
+             ORDER BY ss.sheet_skid_num
+            """);
+        var scrap = await Roll(
+            """
+            SELECT sk.scrap_skid_display_num AS Label,
+                   COALESCE(sk.scrap_net_wt, 0) + COALESCE(sk.scrap_tare_wt, 0) AS Weight
+              FROM scrap_skid sk
+              JOIN scrap_packing_item spi ON spi.scrap_skid_num = sk.scrap_skid_num
+              JOIN shipment s ON s.packing_list = spi.packing_list
+             WHERE s.bill_of_lading = :bol
+             ORDER BY sk.scrap_skid_num
+            """);
+        // Reject coils are identified to the customer by THEIR number (coil_org_num), not our abc num.
+        var reject = await Roll(
+            """
+            SELECT c.coil_org_num AS Label, COALESCE(c.net_wt_balance, 0) AS Weight
+              FROM reject_coil_packing_item rpi
+              JOIN shipment s ON s.packing_list = rpi.packing_list
+              JOIN coil c ON c.coil_abc_num = rpi.coil_abc_num
+             WHERE s.bill_of_lading = :bol
+             ORDER BY rpi.coil_abc_num
+            """);
+
+        var multiStop = stops >= 2;
+        var stored = multiStop && BolPackage.IsStored(head.ReferenceCodes);
+        return new BolTotals
+        {
+            PackingList = packingList,
+            BillOfLading = bol,
+            StopCount = stops,
+            MultiStop = multiStop,
+            Sheet = sheet,
+            Scrap = scrap,
+            RejectCoil = reject,
+            PackageText = !multiStop ? null
+                : stored ? head.ReferenceCodes
+                : BolPackage.Build(bol, sheet, scrap, reject),
+            PackageTextStored = stored,
+        };
+    }
+
     /// <summary>Add a skid to a packing list. <paramref name="itemType"/> is SHEET or SCRAP. Guards (typed status,
     /// no throw): valid type, shipment exists, the referenced skid exists, and it isn't already on this list. The
     /// item id is the per-list <c>MAX(id)+1</c> (composite PK, no global sequence); the packaging ticket follows the
