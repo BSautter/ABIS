@@ -492,6 +492,14 @@ public static class SqliteFixture
             -- The plant's shift CALENDAR (legacy SHIFT_SCHEDULE, ~18.7k rows live): which lines run
             -- which shift type on which date, with a cancelled flag. LINE_SCHEDULE is the standing
             -- start/end pattern per (line, type) used when a calendar row carries no times.
+            -- The plant's own PLC fault-code dictionary (ABIS-owned). Deliberately seeded EMPTY: the
+            -- meaning of a line's activefault code lives in its PLC program, not in ABIS, so the plant
+            -- records them here and the fault lamp shows the raw code until they do.
+            CREATE TABLE abis_plc_fault_code (
+                line_num INTEGER NOT NULL DEFAULT 0, fault_code INTEGER NOT NULL,
+                description TEXT NOT NULL, notes TEXT, updated_utc TEXT, updated_by TEXT,
+                PRIMARY KEY (line_num, fault_code));
+
             CREATE TABLE line_schedule (
                 line_num INTEGER NOT NULL, schedule_type INTEGER NOT NULL, supervisor_id INTEGER,
                 standard_starting_time TEXT, standard_ending_time TEXT,

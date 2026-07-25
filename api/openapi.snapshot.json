@@ -5896,6 +5896,145 @@
         }
       }
     },
+    "/api/lookups/plc-fault-codes": {
+      "get": {
+        "tags": [
+          "Lookups"
+        ],
+        "summary": "What each PLC fault code means, for a line (plus the line-0 wildcards that apply to every line). Empty until the plant records its codes.",
+        "operationId": "GetPlcFaultCodes",
+        "parameters": [
+          {
+            "name": "lineNum",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PlcFaultCode"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/lookups/plc-fault-codes/{lineNum}/{faultCode}": {
+      "put": {
+        "tags": [
+          "Lookups"
+        ],
+        "summary": "Record what a PLC fault code means (line 0 = applies to every line).",
+        "operationId": "UpsertPlcFaultCode",
+        "parameters": [
+          {
+            "name": "lineNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "faultCode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlcFaultCodeWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlcFaultCode"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Lookups"
+        ],
+        "summary": "Remove a PLC fault-code entry.",
+        "operationId": "DeletePlcFaultCode",
+        "parameters": [
+          {
+            "name": "lineNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "faultCode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/lookups/system-equipment": {
       "get": {
         "tags": [
@@ -22171,6 +22310,51 @@
           "piecesPerSkid": {
             "type": "integer",
             "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlcFaultCode": {
+        "type": "object",
+        "properties": {
+          "lineNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "faultCode": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "updatedUtc": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedBy": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PlcFaultCodeWrite": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
             "nullable": true
           }
         },

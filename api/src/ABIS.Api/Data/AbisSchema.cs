@@ -114,6 +114,23 @@ public static class AbisSchema
         "ALTER TABLE abis_truck_appointment ADD (driver_phone VARCHAR2(30))",
         "CREATE INDEX ix_abis_truck_appt_start ON abis_truck_appointment (scheduled_start)",
         "CREATE INDEX ix_abis_truck_appt_status ON abis_truck_appointment (truck_status)",
+        // PLC fault-code dictionary. The line's `activefault` OPC item reports a numeric CODE (a live
+        // read on BL110 was 68) whose meaning lives in the PLC program (RSLogix) — there is NO mapping
+        // anywhere in the ABIS schema, and legacy never decoded it either (it only tested > 0). So this
+        // table is deliberately shipped EMPTY: ABIS provides somewhere for the plant to record what its
+        // own codes mean, and the fault lamp shows the raw code until they do. We do not invent labels.
+        // Keyed by (line, code) because the codes come from each line's own PLC program; line_num 0 is
+        // the wildcard for a code that means the same on every line.
+        """
+        CREATE TABLE abis_plc_fault_code (
+          line_num     NUMBER(5)      DEFAULT 0 NOT NULL,
+          fault_code   NUMBER(10)     NOT NULL,
+          description  VARCHAR2(200)  NOT NULL,
+          notes        VARCHAR2(1000),
+          updated_utc  DATE,
+          updated_by   VARCHAR2(64),
+          CONSTRAINT pk_abis_plc_fault_code PRIMARY KEY (line_num, fault_code))
+        """,
         // Sales quotes (legacy w_sales_main / w_new_quote / w_edit_quote). NOT abis_-prefixed because
         // these keep the authoritative legacy column names (d_sales_quote_modify), but the legacy schema
         // RETIRED these tables — they exist in no current database — so ABIS re-provisions and owns them.

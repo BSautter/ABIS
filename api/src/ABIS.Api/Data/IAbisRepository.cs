@@ -298,6 +298,10 @@ public interface IAbisRepository
     Task<bool> CoilIsOnJobAsync(long coilAbcNum, long abJobNum, CancellationToken ct);
     /// <summary>Resolve a scanned coil barcode against the coils assigned to a job (DAS scan-to-load).</summary>
     Task<CoilScanResult> ResolveScannedCoilAsync(string? barcode, long abJobNum, CancellationToken ct);
+    /// <summary>The plant-maintained PLC fault-code dictionary (a line's codes + the line-0 wildcards).</summary>
+    Task<IReadOnlyList<PlcFaultCode>> GetPlcFaultCodesAsync(long? lineNum, CancellationToken ct);
+    Task<PlcFaultCode> UpsertPlcFaultCodeAsync(long lineNum, long faultCode, string description, string? notes, string? updatedBy, CancellationToken ct);
+    Task<bool> DeletePlcFaultCodeAsync(long lineNum, long faultCode, CancellationToken ct);
     /// <summary>Create the shift rows for a date from the plant's SHIFT_SCHEDULE calendar (idempotent —
     /// a (line, schedule_type, day) that already has a shift is skipped).</summary>
     Task<IReadOnlyList<Shift>> CreateScheduledShiftsAsync(DateTime onDate, CancellationToken ct);

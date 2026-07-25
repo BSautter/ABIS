@@ -6521,6 +6521,51 @@ public sealed class AbisRepository : IAbisRepository
         public DateTime? StandardEndingTime { get; set; }
     }
 
+    // ---- PLC fault-code dictionary (plant-maintained; ABIS ships it empty) ----
+
+    /// <summary>The fault-code dictionary, optionally for one line. A line's own codes plus the
+    /// wildcard (line 0) entries, since a code can mean the same across every PLC program.</summary>
+    public async Task<IReadOnlyList<PlcFaultCode>> GetPlcFaultCodesAsync(long? lineNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<PlcFaultCode>(new CommandDefinition(
+            """
+            SELECT line_num AS LineNum, fault_code AS FaultCode, description AS Description,
+                   notes AS Notes, updated_utc AS UpdatedUtc, updated_by AS UpdatedBy
+            FROM abis_plc_fault_code
+            WHERE (:line IS NULL OR line_num = :line OR line_num = 0)
+            ORDER BY line_num, fault_code
+            """, new { line = lineNum }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    /// <summary>Record (or correct) what a fault code means. Keyed by (line, code); line 0 = every line.</summary>
+    public async Task<PlcFaultCode> UpsertPlcFaultCodeAsync(long lineNum, long faultCode, string description, string? notes, string? updatedBy, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var args = new { line = lineNum, code = faultCode, desc = description, notes, by = updatedBy, ts = DateTime.UtcNow };
+        var updated = await conn.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE abis_plc_fault_code SET description = :desc, notes = :notes, updated_by = :by, updated_utc = :ts
+            WHERE line_num = :line AND fault_code = :code
+            """, args, cancellationToken: ct));
+        if (updated == 0)
+            await conn.ExecuteAsync(new CommandDefinition(
+                """
+                INSERT INTO abis_plc_fault_code (line_num, fault_code, description, notes, updated_by, updated_utc)
+                VALUES (:line, :code, :desc, :notes, :by, :ts)
+                """, args, cancellationToken: ct));
+        return (await GetPlcFaultCodesAsync(lineNum, ct)).First(f => f.LineNum == lineNum && f.FaultCode == faultCode);
+    }
+
+    public async Task<bool> DeletePlcFaultCodeAsync(long lineNum, long faultCode, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM abis_plc_fault_code WHERE line_num = :line AND fault_code = :code",
+            new { line = lineNum, code = faultCode }, cancellationToken: ct)) > 0;
+    }
+
     /// <summary>Legacy's guard on a hand-keyed actual weight (<c>w_scan_coil_id</c> cb_confirm):
     /// only stored when 100 &lt; weight &lt; 99999. A scale misread or a slipped digit must not become
     /// the coil's recorded weight, so the bounds are enforced server-side rather than in the UI alone.</summary>

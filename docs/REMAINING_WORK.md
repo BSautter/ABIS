@@ -186,6 +186,13 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   earlier comment in #283 called status 2 "ran"; corrected). Console: a Line-queue table with
   move-up / remove / queue-a-job.
 - [~] **H** Line auto-status controls + `noauto` write (lockout); fault/health lamps (DB / OPC `_ErrorCode` / PLC `activefault`)
+  — **fault-code decode DONE** (#303): the `activefault` item reports a numeric CODE (live BL110 = 68) whose
+  meaning lives in that line's **PLC program** — there is NO mapping in the ABIS schema, no fault table, and
+  legacy never decoded it either (it only tested `> 0`). So rather than invent labels, ABIS now provides the
+  dictionary and the plant fills it in: `abis_plc_fault_code` (line + code → description, **line 0 = a wildcard
+  applying to every line**) + `GET/PUT/DELETE /lookups/plc-fault-codes`. **Ships EMPTY**; the lamp reads
+  "code 68 — meaning not recorded" until an entry exists, then "Feed jam at leveller (code 68)". Verified
+  against the live plant fault.
   — **lamps DONE** (#299): a DB / OPC / PLC / AUTO lamp strip on the DAS console, ported from legacy
   `u_fault_status_button` semantics — **all four are "healthy = lit"** (`uo_sql` = db alive, `uo_opc`/`uo_plc` =
   error code 0, `uo_noauto` = `set_select(NOT noauto)` so AUTO is lit in auto and dark on the lockout).

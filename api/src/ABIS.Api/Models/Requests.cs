@@ -1183,3 +1183,12 @@ public sealed class CoilActualWeightWrite
 {
     public decimal? Weight { get; set; }
 }
+
+/// <summary>Body for PUT /api/lookups/plc-fault-codes/{lineNum}/{faultCode} — record what one of a
+/// line's PLC fault codes means. ABIS ships this dictionary EMPTY: the meaning of a code lives in the
+/// line's PLC program, so the plant fills it in and the fault lamp shows the raw code until then.</summary>
+public sealed class PlcFaultCodeWrite
+{
+    public string? Description { get; set; }
+    public string? Notes { get; set; }
+}

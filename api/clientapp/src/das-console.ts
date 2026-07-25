@@ -69,6 +69,9 @@ let stackerLive: StackerResult | null = null;
 // lit while the line is in AUTO and goes dark on the manual/lockout flag.
 let lineStatusLive: LineStatusResult | null = null;
 let dbAlive: boolean | null = null;
+// What this line's PLC fault codes mean. ABIS ships this dictionary EMPTY — a code's meaning lives in
+// the line's PLC program — so the lamp shows the raw code until the plant records it.
+let faultCodes = new Map<number, string>();
 
 // The status a coil ends its run in (shift_coil.coil_end_status, on the COIL_STATUS domain). These
 // are the codes the plant actually uses, by frequency over ~108k real runs on the production ledger:
@@ -237,7 +240,7 @@ async function loadJob(): Promise<void> {
     job = id; lineNum = j.lineNum ?? null; runCoil = null;
     $('#jobHdr').innerHTML = `Job ${id} · ${esc(lineLabel(j.lineNum))} · ${statusChip('jobStatus', j.jobStatus)} · order ${esc(j.orderAbcNum ?? '')}/${esc(j.orderItemNum ?? '')}`;
     $('#workarea').classList.remove('disabled');
-    await Promise.all([loadCoils(), loadSkids(), loadScrap(), loadOpBoard()]);
+    await Promise.all([loadCoils(), loadSkids(), loadScrap(), loadOpBoard(), loadFaultCodes()]);
     $('#tDt').innerHTML = '<tr><td colspan="4" class="muted">No downtime logged this session.</td></tr>';
     clearAutoDowntime();
     restoreOpenDowntime(id);   // re-show a downtime left open on this station (survives close/logout/reopen)
@@ -830,11 +833,29 @@ function renderLamps(): void {
   const opc = lampHtml('OPC', opcOk, !s?.reachable ? 'OPC/edge unreachable' : `OPC link quality: ${s?.quality ?? 'unknown'}`);
   // PLC — activefault: 0 = healthy, non-zero = a fault is active and the raw value IS the code.
   const plcOk = s?.fault == null ? null : !s.fault;
-  const plc = lampHtml('PLC', plcOk, s?.fault ? `PLC fault active (code ${s.faultRaw ?? '?'})` : s?.fault === false ? 'No active PLC fault' : 'PLC fault state unknown');
+  // Decode the code when the plant has recorded it; otherwise show the raw number rather than a guess.
+  const code = Number(s?.faultRaw);
+  const meaning = Number.isFinite(code) ? faultCodes.get(code) : undefined;
+  const faultText = s?.fault
+    ? `PLC fault active: ${meaning ? `${meaning} (code ${s.faultRaw})` : `code ${s.faultRaw ?? '?'} — meaning not recorded`}`
+    : s?.fault === false ? 'No active PLC fault' : 'PLC fault state unknown';
+  const plc = lampHtml('PLC', plcOk, faultText);
   // AUTO — lit while the line is in auto; dark on the no-auto lockout (legacy: set_select(NOT noauto)).
   const autoOk = s?.noauto == null ? null : !s.noauto;
   const auto = lampHtml('AUTO', autoOk, s?.noauto ? 'Line is in MANUAL / auto locked out (noauto)' : s?.noauto === false ? 'Line is in auto' : 'Auto state unknown');
   $('#tLamps').innerHTML = db + opc + plc + auto;
+}
+
+// The line's fault-code dictionary, fetched once per job load (it changes rarely, unlike the bits).
+async function loadFaultCodes(): Promise<void> {
+  faultCodes = new Map();
+  if (lineNum == null) return;
+  try {
+    const r = await authFetch(`/api/lookups/plc-fault-codes?lineNum=${lineNum}`);
+    if (!r.ok) return;
+    for (const f of (await r.json()) as { faultCode: number; description: string }[])
+      faultCodes.set(f.faultCode, f.description);
+  } catch { /* non-fatal — the lamp just shows the raw code */ }
 }
 
 async function pollLamps(bases: string[]): Promise<void> {

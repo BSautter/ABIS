@@ -1436,6 +1436,33 @@ public static class ApiEndpoints
            .WithSummary("The coil runs recorded in a shift (shift_coil), in run order — the shift's production ledger.")
            .Produces<IReadOnlyList<ShiftCoilRun>>().Produces(StatusCodes.Status404NotFound);
 
+        // The plant's PLC fault-code dictionary. ABIS ships it EMPTY on purpose: a line's activefault
+        // code is defined by that line's PLC program, there is no mapping in the ABIS schema, and
+        // legacy never decoded it either — so the plant records its own meanings here rather than the
+        // app inventing labels. The fault lamp shows the raw code until an entry exists.
+        api.MapGet("/lookups/plc-fault-codes", async (IAbisRepository repo, CancellationToken ct, long? lineNum = null) =>
+                Results.Ok(await repo.GetPlcFaultCodesAsync(lineNum, ct)))
+           .WithName("GetPlcFaultCodes").WithTags("Lookups")
+           .WithSummary("What each PLC fault code means, for a line (plus the line-0 wildcards that apply to every line). Empty until the plant records its codes.")
+           .Produces<IReadOnlyList<PlcFaultCode>>();
+
+        api.MapPut("/lookups/plc-fault-codes/{lineNum:long}/{faultCode:long}", async (long lineNum, long faultCode,
+                PlcFaultCodeWrite body, IAbisRepository repo, HttpContext ctx, CancellationToken ct) =>
+            {
+                if (string.IsNullOrWhiteSpace(body.Description))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["description"] = ["description is required."] });
+                return Results.Ok(await repo.UpsertPlcFaultCodeAsync(lineNum, faultCode, body.Description.Trim(), body.Notes, ResolveLogin(ctx), ct));
+            })
+           .WithName("UpsertPlcFaultCode").WithTags("Lookups")
+           .WithSummary("Record what a PLC fault code means (line 0 = applies to every line).")
+           .Produces<PlcFaultCode>().ProducesValidationProblem();
+
+        api.MapDelete("/lookups/plc-fault-codes/{lineNum:long}/{faultCode:long}", async (long lineNum, long faultCode, IAbisRepository repo, CancellationToken ct) =>
+                await repo.DeletePlcFaultCodeAsync(lineNum, faultCode, ct) ? Results.NoContent() : Results.NotFound())
+           .WithName("DeletePlcFaultCode").WithTags("Lookups")
+           .WithSummary("Remove a PLC fault-code entry.")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
+
         // Scan-to-load: resolve a scanned coil barcode against the coils on a job (legacy
         // w_scan_coil_id). Read-only and idempotent — the operator confirms before the coil is loaded,
         // so a mis-scan costs nothing. The label's "2S" vendor header is stripped server-side so the

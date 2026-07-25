@@ -53,6 +53,20 @@ public sealed class Coil
     public decimal? AbcoCoilNetWt { get; set; }
 }
 
+/// <summary>What one of a line's PLC fault codes means. The <c>activefault</c> OPC item reports a
+/// numeric code whose meaning lives in that line's PLC program — there is no mapping in the ABIS
+/// schema and legacy never decoded it (it only tested &gt; 0), so this dictionary is maintained by the
+/// plant and ships empty. <see cref="LineNum"/> 0 is the wildcard: a code meaning the same on every line.</summary>
+public sealed class PlcFaultCode
+{
+    public long LineNum { get; set; }
+    public long FaultCode { get; set; }
+    public string Description { get; set; } = "";
+    public string? Notes { get; set; }
+    public DateTime? UpdatedUtc { get; set; }
+    public string? UpdatedBy { get; set; }
+}
+
 /// <summary>Why a scanned coil barcode could not be used. Serialized as a NAME, not an ordinal: the
 /// DAS console branches on this, and "Resolved"/"NotOnJob" is self-describing where 0/2 is not (and
 /// can't silently shift meaning if a member is ever inserted).</summary>
