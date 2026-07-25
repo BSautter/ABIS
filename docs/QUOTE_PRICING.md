@@ -195,6 +195,36 @@ Undocumented in the original (meaning must be recovered from use): `JP`, `KA`, `
 
 ---
 
+## 3.5 The nesting is chosen by the CUSTOMER'S SPEC — and nothing records which one
+
+**Plant answer, 2026-07-25: sales changes the nesting based on customer specs.** It is an *input*,
+not an optimisation. Two consequences:
+
+1. **The port must present all four costings and let a human choose.** It must NOT auto-select the
+   best yield — that would silently overrule a customer requirement.
+2. **A saved quote currently cannot be re-derived.** `SALES_QUOTE` stores the money
+   (`VARIABLE_COST`, `FIXED_COST`, `REG_PROCESS_CHARGE`, `ROS`, `TOTAL_REV_PER_HR`) and the spec
+   (alloy/temper/gauge/width/length, line, volumes) — but **no column for the chosen nesting or the
+   spacing mode**. Given that the choice is customer-driven and specs change, "why was this priced
+   this way?" is unanswerable from the record.
+
+### Legacy never persisted quotes at all
+
+Verified live 2026-07-25:
+
+| database | `SALES_QUOTE` |
+|---|---|
+| **prod (.9)** | **does not exist** — `ORA-00942` |
+| non-prod (.230) | exists, **0 rows** |
+
+The table on .230 is **ours**: modern ABIS creates it (`AbisSchema`, mirrored in
+`docs/data-model/migrations/004_sales_quote.sql`) precisely because the legacy schema never
+provisioned it. CirclePro is a standalone calculator whose result left the building on paper.
+
+**So `sales_quote` is a greenfield table we control** — adding the nesting, the spacing mode and the
+CirclePro inputs to it is a schema decision we can simply make, not a legacy constraint to work
+around. Doing so is what turns a quote from a number into a reproducible record.
+
 ## 4. Port strategy
 
 1. **Pure function, no UI, no database.** The whole model is arithmetic over the inputs above. It
@@ -216,9 +246,12 @@ Undocumented in the original (meaning must be recovered from use): `JP`, `KA`, `
   a re-derivation into a verifiable port. Nothing else de-risks it as cheaply.
 - **SheetPro (rectangular blanks) is still used** — confirmed by the plant 2026-07-25. Its model is
   separate from CirclePro and still needs decoding the same way.
-- **How is the nesting chosen?** The program costs 1-, 2-, 3- and 4-wide and shows all four. Does
-  sales always take the best yield, or is the choice constrained by die availability, line width or
-  customer preference? If a human always picks, the port must present all four; if it is always the
-  best yield, it can return one and show the rest as detail.
+- ~~How is the nesting chosen?~~ **Answered: by the customer's specs** (plant, 2026-07-25). The port
+  presents all four and a human picks. See §3.5.
+- **Should the chosen nesting + spacing mode be stored on the quote?** `sales_quote` is a table we
+  own and it has no column for either today, so a saved quote can't be re-derived. Recommend adding
+  them (plus the CirclePro inputs) — cheap now, impossible to backfill later.
+- **Where do quotes live today?** Legacy never stored them (prod has no `SALES_QUOTE` at all), so
+  whatever sales uses now is outside ABIS. Worth knowing before designing the replacement.
 - **Are both spacing modes actually used?** Metal-thickness spacing (gap = gauge) and operator "input
   spacing" are both computed. If quotes only ever go out on one, that halves the surface to verify.
