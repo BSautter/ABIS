@@ -296,6 +296,10 @@ public interface IAbisRepository
     Task<IReadOnlyList<LineBoardRow>> GetLineBoardAsync(long? lineNum, CancellationToken ct);
     Task<bool> LineExistsAsync(long lineNum, CancellationToken ct);
     Task<bool> CoilIsOnJobAsync(long coilAbcNum, long abJobNum, CancellationToken ct);
+    /// <summary>Resolve a scanned coil barcode against the coils assigned to a job (DAS scan-to-load).</summary>
+    Task<CoilScanResult> ResolveScannedCoilAsync(string? barcode, long abJobNum, CancellationToken ct);
+    /// <summary>Record a coil's actual weighed weight (abco_coil_net_wt); null when the coil is unknown.</summary>
+    Task<Coil?> SetCoilActualWeightAsync(long coilAbcNum, decimal weight, CancellationToken ct);
     Task<IReadOnlyList<LineQueueRow>> GetLineQueueAsync(long lineNum, bool includeEnded, CancellationToken ct);
     Task<LineQueueRow?> UpsertLineQueueJobAsync(long lineNum, long abJobNum, LineQueueWrite body, CancellationToken ct);
     Task<DeleteResult> RemoveLineQueueJobAsync(long lineNum, long abJobNum, CancellationToken ct);

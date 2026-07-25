@@ -112,8 +112,16 @@ function scaffold(): string {
         <div class="dop-lamps" id="tLamps" title="Health lamps — lit means healthy (the legacy DAS DB / OPC / PLC / auto lamps)"></div>
         <div id="dtBanner" style="display:none;background:#7f1d1d;color:#fff;border-radius:10px;padding:14px 18px;margin-bottom:12px"></div>
 
-        <div class="card"><header><h2>Coil being run</h2><span class="sub" id="runCoilSub">tap a coil to select</span></header>
-          <div class="body"><div class="dop-coils" id="tCoils"><span class="muted">Loading…</span></div></div>
+        <div class="card"><header><h2>Coil being run</h2><span class="sub" id="runCoilSub">scan a coil, or tap one below</span></header>
+          <div class="body">
+            <div class="frow" style="align-items:flex-end;margin-bottom:12px">
+              <div class="fld" style="flex:1;min-width:220px"><label>Scan coil barcode</label>
+                <input id="scanBox" class="big" autocomplete="off" placeholder="scan or key the coil number" /></div>
+              <button class="btn sm ghost" id="btnScanClear" type="button">Clear</button>
+            </div>
+            <div id="scanResult" class="dop-scan" hidden></div>
+            <div class="dop-coils" id="tCoils"><span class="muted">Loading…</span></div>
+          </div>
         </div>
 
         <div class="card" id="counterCard" hidden><header><h2>Coil run counters</h2><span class="sub">live from the line PLC · since this coil loaded</span></header>
@@ -719,6 +727,79 @@ async function pollCounters(bases: string[]): Promise<void> {
   renderCounters();
 }
 
+// ---- Scan-to-load (legacy w_scan_coil_id) ----
+// A barcode scanner types the label then Enter, so the box just needs a submit-on-Enter. The label
+// rules (2S header strip + validation) live SERVER-side so every scanning surface shares them; this
+// only renders the outcome and lets the operator confirm before the coil is loaded — a mis-scan must
+// never silently load the wrong coil.
+type ScanResult = {
+  outcome: 'Resolved' | 'Unreadable' | 'NotOnJob'; normalized: string; headerStripped: boolean; reason?: string;
+  coilAbcNum?: number; coilOrgNum?: string; coilGauge?: number; coilWidth?: number; coilAlloy2?: string;
+  netWtBalance?: number; abcoCoilNetWt?: number;
+};
+let scanned: ScanResult | null = null;
+
+function renderScan(): void {
+  const box = $('#scanResult');
+  const s = scanned;
+  if (!s) { box.hidden = true; return; }
+  box.hidden = false;
+  if (s.outcome !== 'Resolved') {
+    box.className = 'dop-scan bad';
+    box.innerHTML = `<strong>⚠ ${esc(s.outcome === 'NotOnJob' ? 'Coil not on this job' : 'Barcode not readable')}</strong>
+      <span>${esc(s.reason ?? '')}</span>
+      <span class="dim">Read as: ${esc(s.normalized || '(nothing)')}${s.headerStripped ? ' (2S header stripped)' : ''}</span>`;
+    return;
+  }
+  const spec = [s.coilAlloy2, s.coilGauge != null ? Number(s.coilGauge).toFixed(3) + '"' : null,
+    s.coilWidth != null ? Number(s.coilWidth).toFixed(3) + '" wide' : null].filter(Boolean).join(' · ');
+  box.className = 'dop-scan ok';
+  box.innerHTML = `<strong>Coil #${esc(s.coilAbcNum)}${s.coilOrgNum ? ' · ' + esc(s.coilOrgNum) : ''}</strong>
+    <span>${esc(spec)}${spec ? ' · ' : ''}${esc(num(s.netWtBalance))} lb left</span>
+    ${s.abcoCoilNetWt != null ? `<span class="dim">Actual weight on file: ${esc(num(s.abcoCoilNetWt))} lb</span>` : ''}
+    <div class="frow" style="margin-top:8px;align-items:flex-end">
+      <div class="fld"><label>Actual weight (optional)</label><input id="scanWt" class="big" type="number" step="1" style="width:150px" /></div>
+      <button class="btn sm" id="btnScanLoad" type="button">Confirm &amp; load coil</button>
+    </div>`;
+  $('#btnScanLoad').addEventListener('click', () => void confirmScannedCoil());
+}
+
+async function doScan(raw: string): Promise<void> {
+  if (job == null) { setErr('Load a job first — a scan resolves against that job’s coils.'); return; }
+  if (!raw.trim()) { scanned = null; renderScan(); return; }
+  setErr('');
+  try {
+    const r = await authFetch(`/api/das/scan/coil?barcode=${encodeURIComponent(raw)}&abJobNum=${job}`);
+    if (!r.ok) throw new Error(`${r.status}`);
+    scanned = await r.json() as ScanResult;
+  } catch (e) { setErr(`Scan failed: ${(e as Error).message}`); scanned = null; }
+  renderScan();
+}
+
+// Confirm = optionally record the ACTUAL weighed weight, then load the coil (opening its run).
+async function confirmScannedCoil(): Promise<void> {
+  const s = scanned;
+  if (!s || s.outcome !== 'Resolved' || s.coilAbcNum == null) return;
+  const wt = v('#scanWt');
+  setBusy(true);
+  try {
+    if (wt !== '') {
+      const r = await authFetch(`/api/coils/${s.coilAbcNum}/actual-weight`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ weight: Number(wt) }),
+      });
+      // The server enforces the legacy 100..99999 guard; surface the refusal and DON'T load on it,
+      // so the operator can re-weigh rather than have a bad number silently dropped.
+      if (!r.ok) { setErr('Actual weight must be greater than 100 and less than 99999 lb.'); return; }
+    }
+    runCoil = s.coilAbcNum;
+    $('#runCoilSub').textContent = `running coil #${s.coilAbcNum}`;
+    resetCounterBaseline();
+    await coilRunAction(`/api/das/lines/${lineNum}/coil-run/start`, { coilAbcNum: s.coilAbcNum, abJobNum: job },
+      () => `Coil ${s.coilAbcNum} scanned in — run open`);
+    scanned = null; renderScan(); setV('#scanBox', '');
+  } finally { setBusy(false); }
+}
+
 // ---- Fault / health lamps (legacy w_da_sheet: uo_sql, uo_opc, uo_plc, uo_noauto) ----
 
 // The line's health tags share the run tag's OPC branch — every line is PLC5-BL<n>.<leaf> (verified
@@ -1084,6 +1165,11 @@ async function pickerBrowse(bases: string[], targetId: string, path: Crumb[]): P
     resetCounterBaseline();
     void coilRunAction(`/api/das/lines/${lineNum}/coil-run/start`, { coilAbcNum: runCoil, abJobNum: job }, () => `Coil ${runCoil} loaded — run open`);
   });
+  // A scanner types the label and sends Enter — submit on Enter, and never on every keystroke.
+  $('#scanBox').addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key === 'Enter') { e.preventDefault(); void doScan(v('#scanBox')); }
+  });
+  $('#btnScanClear').addEventListener('click', () => { setV('#scanBox', ''); scanned = null; renderScan(); $('#scanBox').focus(); });
   $('#btnQAdd').addEventListener('click', () => {
     const j = v('#qJob');
     if (!j) { setErr('Enter the job number to queue.'); return; }

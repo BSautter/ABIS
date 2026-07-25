@@ -148,7 +148,10 @@ public static class SqliteFixture
                 consumed_coil_num TEXT, vo TEXT, customer_po TEXT, production_desc_code TEXT, lfeed REAL,
                 -- Set by the DAS as the coil runs: 1 when it is loaded on a line, then the run's end
                 -- status; net_wt_balance_from_line mirrors the balance the line last reported.
-                coil_status_from_line INTEGER, net_wt_balance_from_line REAL);
+                coil_status_from_line INTEGER, net_wt_balance_from_line REAL,
+                -- The coil's ACTUAL weighed weight, captured by the operator at scan-to-load
+                -- (legacy w_scan_coil_id writes COIL.ABCO_COIL_NET_WT).
+                abco_coil_net_wt REAL);
 
             -- Customer coils earmarked to an order (legacy ORDER_COIL, composite PK). The order-entry
             -- coil picker (w_order_entry_coil_list / w_cust_coil_list) writes this link.

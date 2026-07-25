@@ -48,6 +48,48 @@ public sealed class Coil
     public decimal? NetWt { get; set; }
     public decimal? NetWtBalance { get; set; }
     public int? PiecesPerCase { get; set; }
+    /// <summary>The coil's ACTUAL weight as weighed at the plant (<c>abco_coil_net_wt</c>), as opposed
+    /// to the shipped/declared <see cref="NetWt"/>. Captured by the operator at scan-to-load.</summary>
+    public decimal? AbcoCoilNetWt { get; set; }
+}
+
+/// <summary>Why a scanned coil barcode could not be used. Serialized as a NAME, not an ordinal: the
+/// DAS console branches on this, and "Resolved"/"NotOnJob" is self-describing where 0/2 is not (and
+/// can't silently shift meaning if a member is ever inserted).</summary>
+[System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter))]
+public enum CoilScanOutcome
+{
+    /// <summary>The barcode resolved to a coil on the job — safe to load.</summary>
+    Resolved,
+    /// <summary>The barcode didn't survive normalisation (empty / non-numeric after the header strip).</summary>
+    Unreadable,
+    /// <summary>A well-formed id, but no coil with that number is assigned to this job.</summary>
+    NotOnJob,
+}
+
+/// <summary>The result of scanning a coil barcode at the DAS station (legacy <c>w_scan_coil_id</c>):
+/// what the label normalised to, whether it resolved to a coil ON THIS JOB, and that coil's identity
+/// + weights so the operator can confirm they have the right one before loading it.</summary>
+public sealed class CoilScanResult
+{
+    /// <summary>The scanner's literal output, echoed back for display/troubleshooting.</summary>
+    public string Barcode { get; set; } = "";
+    /// <summary>The barcode after upper-casing, trimming and stripping the vendor header.</summary>
+    public string Normalized { get; set; } = "";
+    /// <summary>True when the "2S" vendor header was found and stripped.</summary>
+    public bool HeaderStripped { get; set; }
+    public CoilScanOutcome Outcome { get; set; }
+    /// <summary>Operator-facing explanation when the scan didn't resolve.</summary>
+    public string? Reason { get; set; }
+    public long? CoilAbcNum { get; set; }
+    public string? CoilOrgNum { get; set; }
+    public decimal? CoilGauge { get; set; }
+    public decimal? CoilWidth { get; set; }
+    public string? CoilAlloy2 { get; set; }
+    /// <summary>Weight left on the coil — what legacy shows on the confirm prompt.</summary>
+    public decimal? NetWtBalance { get; set; }
+    /// <summary>The actual weight already recorded for this coil, if any.</summary>
+    public decimal? AbcoCoilNetWt { get; set; }
 }
 
 /// <summary>A coil consumed by a job (junction table <c>process_coil</c>), enriched with a few coil attributes.</summary>

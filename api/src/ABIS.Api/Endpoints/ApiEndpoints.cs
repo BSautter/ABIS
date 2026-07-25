@@ -1436,6 +1436,40 @@ public static class ApiEndpoints
            .WithSummary("The coil runs recorded in a shift (shift_coil), in run order — the shift's production ledger.")
            .Produces<IReadOnlyList<ShiftCoilRun>>().Produces(StatusCodes.Status404NotFound);
 
+        // Scan-to-load: resolve a scanned coil barcode against the coils on a job (legacy
+        // w_scan_coil_id). Read-only and idempotent — the operator confirms before the coil is loaded,
+        // so a mis-scan costs nothing. The label's "2S" vendor header is stripped server-side so the
+        // rule lives in one place for every scanning surface.
+        api.MapGet("/das/scan/coil", async (IAbisRepository repo, CancellationToken ct, string? barcode, long abJobNum) =>
+            {
+                if (string.IsNullOrWhiteSpace(barcode))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["barcode"] = ["barcode is required."] });
+                if (await repo.GetJobAsync(abJobNum, ct) is null)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["abJobNum"] = [$"Job {abJobNum} does not exist."] });
+                return Results.Ok(await repo.ResolveScannedCoilAsync(barcode, abJobNum, ct));
+            })
+           .WithName("ScanCoil").WithTags("DAS")
+           .WithSummary("Resolve a scanned coil barcode against a job's coils: strips the 2S vendor header, validates, and returns the coil (or why it didn't resolve).")
+           .Produces<CoilScanResult>().ProducesValidationProblem();
+
+        api.MapPost("/coils/{coilAbcNum:long}/actual-weight", async (long coilAbcNum, CoilActualWeightWrite body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (body.Weight is not { } weight)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["weight"] = ["weight is required."] });
+                // Legacy's guard (w_scan_coil_id): a hand-keyed weight outside 100..99999 is a
+                // mis-key or a scale misread, and must not become the coil's recorded weight.
+                if (!AbisRepository.IsPlausibleActualWeight(weight))
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["weight"] = ["Actual weight must be greater than 100 and less than 99999 lb."],
+                    });
+                return await repo.SetCoilActualWeightAsync(coilAbcNum, weight, ct) is { } coil
+                    ? Results.Ok(coil) : Results.NotFound();
+            })
+           .WithName("SetCoilActualWeight").WithTags("Coils")
+           .WithSummary("Record a coil's ACTUAL weighed weight (abco_coil_net_wt); rejects values outside the legacy 100..99999 lb guard.")
+           .Produces<Coil>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
         // Shifts nobody closed. A shift left open never gets its dt_total roll-up and skews its line's
         // efficiency — the live plant DB had three open for 31 h, 31 h and 103 h. READ-ONLY on purpose:
         // closing one is an operator action, because the legacy DAS station owns shift closure on the

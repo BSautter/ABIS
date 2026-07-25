@@ -2583,6 +2583,64 @@
         }
       }
     },
+    "/api/coils/{coilAbcNum}/actual-weight": {
+      "post": {
+        "tags": [
+          "Coils"
+        ],
+        "summary": "Record a coil's ACTUAL weighed weight (abco_coil_net_wt); rejects values outside the legacy 100..99999 lb guard.",
+        "operationId": "SetCoilActualWeight",
+        "parameters": [
+          {
+            "name": "coilAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoilActualWeightWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Coil"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/customers": {
       "get": {
         "tags": [
@@ -3562,6 +3620,58 @@
           },
           "404": {
             "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/das/scan/coil": {
+      "get": {
+        "tags": [
+          "DAS"
+        ],
+        "summary": "Resolve a scanned coil barcode against a job's coils: strips the 2S vendor header, validates, and returns the coil (or why it didn't resolve).",
+        "operationId": "ScanCoil",
+        "parameters": [
+          {
+            "name": "barcode",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "abJobNum",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoilScanResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized"
@@ -15341,6 +15451,22 @@
             "type": "integer",
             "format": "int32",
             "nullable": true
+          },
+          "abcoCoilNetWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CoilActualWeightWrite": {
+        "type": "object",
+        "properties": {
+          "weight": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -16230,6 +16356,71 @@
           "beginStatus": {
             "type": "integer",
             "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CoilScanOutcome": {
+        "enum": [
+          "Resolved",
+          "Unreadable",
+          "NotOnJob"
+        ],
+        "type": "string"
+      },
+      "CoilScanResult": {
+        "type": "object",
+        "properties": {
+          "barcode": {
+            "type": "string",
+            "nullable": true
+          },
+          "normalized": {
+            "type": "string",
+            "nullable": true
+          },
+          "headerStripped": {
+            "type": "boolean"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/CoilScanOutcome"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "coilOrgNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilGauge": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "coilWidth": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "coilAlloy2": {
+            "type": "string",
+            "nullable": true
+          },
+          "netWtBalance": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "abcoCoilNetWt": {
+            "type": "number",
+            "format": "double",
             "nullable": true
           }
         },

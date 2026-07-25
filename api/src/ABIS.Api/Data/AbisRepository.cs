@@ -37,7 +37,7 @@ public sealed class AbisRepository : IAbisRepository
         coil_status AS CoilStatus, coil_notes AS CoilNotes, coil_entry_date AS CoilEntryDate,
         customer_id AS CustomerId, coil_from_cust_id AS CoilFromCustId, date_received AS DateReceived,
         icra AS Icra, lot_num AS LotNum, net_wt AS NetWt, net_wt_balance AS NetWtBalance,
-        pieces_per_case AS PiecesPerCase
+        pieces_per_case AS PiecesPerCase, abco_coil_net_wt AS AbcoCoilNetWt
         """;
 
     // Legacy w_inv_coil "on-hand inventory" predicate: exclude coils that have left inventory —
@@ -6451,6 +6451,71 @@ public sealed class AbisRepository : IAbisRepository
         await using var conn = await OpenAsync(ct);
         return await conn.ExecuteScalarAsync<long>(new CommandDefinition(
             "SELECT COUNT(*) FROM line WHERE line_num = :line", new { line = lineNum }, cancellationToken: ct)) > 0;
+    }
+
+    /// <summary>Legacy's guard on a hand-keyed actual weight (<c>w_scan_coil_id</c> cb_confirm):
+    /// only stored when 100 &lt; weight &lt; 99999. A scale misread or a slipped digit must not become
+    /// the coil's recorded weight, so the bounds are enforced server-side rather than in the UI alone.</summary>
+    public static bool IsPlausibleActualWeight(decimal weight) => weight > 100m && weight < 99999m;
+
+    /// <summary>Resolve a scanned coil barcode against the coils assigned to a job — the DAS
+    /// scan-to-load lookup (legacy <c>w_scan_coil_id</c> searches the job's coil list by
+    /// <c>process_coil.coil_abc_num</c>). Normalisation (header strip + validation) is
+    /// <see cref="CoilBarcode"/>; this adds only the job-scoped lookup.</summary>
+    public async Task<CoilScanResult> ResolveScannedCoilAsync(string? barcode, long abJobNum, CancellationToken ct)
+    {
+        var (normalized, headerStripped, valid) = CoilBarcode.Parse(barcode);
+        var result = new CoilScanResult
+        {
+            Barcode = barcode ?? "", Normalized = normalized, HeaderStripped = headerStripped,
+        };
+        if (!valid)
+        {
+            result.Outcome = CoilScanOutcome.Unreadable;
+            result.Reason = "Barcode is not readable as a coil number — re-scan or key the coil number.";
+            return result;
+        }
+        // A label id longer than a DB id can't be a coil; guard the parse rather than overflow.
+        if (!long.TryParse(normalized, out var coilNum))
+        {
+            result.Outcome = CoilScanOutcome.Unreadable;
+            result.Reason = "Barcode is not readable as a coil number — re-scan or key the coil number.";
+            return result;
+        }
+
+        await using var conn = await OpenAsync(ct);
+        var coil = await conn.QuerySingleOrDefaultAsync<CoilScanResult>(new CommandDefinition(
+            """
+            SELECT c.coil_abc_num AS CoilAbcNum, c.coil_org_num AS CoilOrgNum, c.coil_gauge AS CoilGauge,
+                   c.coil_width AS CoilWidth, c.coil_alloy2 AS CoilAlloy2,
+                   c.net_wt_balance AS NetWtBalance, c.abco_coil_net_wt AS AbcoCoilNetWt
+            FROM process_coil pc JOIN coil c ON c.coil_abc_num = pc.coil_abc_num
+            WHERE pc.ab_job_num = :job AND pc.coil_abc_num = :coil
+            """, new { job = abJobNum, coil = coilNum }, cancellationToken: ct));
+        if (coil is null)
+        {
+            result.Outcome = CoilScanOutcome.NotOnJob;
+            result.Reason = $"Coil {coilNum} is not on job {abJobNum}.";
+            return result;
+        }
+
+        result.Outcome = CoilScanOutcome.Resolved;
+        result.CoilAbcNum = coil.CoilAbcNum; result.CoilOrgNum = coil.CoilOrgNum;
+        result.CoilGauge = coil.CoilGauge; result.CoilWidth = coil.CoilWidth; result.CoilAlloy2 = coil.CoilAlloy2;
+        result.NetWtBalance = coil.NetWtBalance; result.AbcoCoilNetWt = coil.AbcoCoilNetWt;
+        return result;
+    }
+
+    /// <summary>Record a coil's ACTUAL weighed weight (<c>abco_coil_net_wt</c>) — legacy's scan-confirm
+    /// write. Returns null when the coil doesn't exist; the plausibility bound is the caller's check
+    /// (<see cref="IsPlausibleActualWeight"/>) so the endpoint can report it as a validation error.</summary>
+    public async Task<Coil?> SetCoilActualWeightAsync(long coilAbcNum, decimal weight, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE coil SET abco_coil_net_wt = :wt WHERE coil_abc_num = :coil",
+            new { wt = weight, coil = coilAbcNum }, cancellationToken: ct));
+        return n == 0 ? null : await GetCoilAsync(coilAbcNum, ct);
     }
 
     /// <summary>Is a coil assigned to a job (a <c>process_coil</c> row for the pair)? shift_coil FKs

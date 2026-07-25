@@ -1174,3 +1174,12 @@ public sealed class CoilReverseWrite
     public int? ErrorTypeId { get; set; }
     public string? Note { get; set; }
 }
+
+/// <summary>Body for POST /api/coils/{coilAbcNum}/actual-weight — the coil's ACTUAL weighed weight
+/// (<c>abco_coil_net_wt</c>), captured by the operator at scan-to-load. Legacy
+/// (<c>w_scan_coil_id</c>) only stores it when 100 &lt; weight &lt; 99999, so a mis-key or scale
+/// misread can't become the recorded weight.</summary>
+public sealed class CoilActualWeightWrite
+{
+    public decimal? Weight { get; set; }
+}

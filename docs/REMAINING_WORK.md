@@ -114,7 +114,17 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   etc.); needs the real INGEAR item ids wired + the edge on .170/.175 REDEPLOYED (current live build predates
   `/counters` → 404).** PERSISTENCE deferred: the good/reject piece totals already persist via the skid save
   (production_sheet_item); strokes/feed stay a live readout, faithful to legacy (they were display-only there).
-- [ ] **C** Coil barcode scan-to-load + actual-weight (`ABCO_COIL_NET_WT`) update
+- [x] **C** Coil barcode scan-to-load + actual-weight (`ABCO_COIL_NET_WT`) update — done (#300), ported from
+  legacy `w_scan_coil_id`: `GET /das/scan/coil?barcode=&abJobNum=` normalises the label (upper/trim, strips the
+  **`2S` vendor header** — `POS(id,"2S")` → keep what follows — then requires a plain digit string) and resolves
+  it against the coils **on that job**, returning `Resolved` / `NotOnJob` / `Unreadable` with the coil's identity
+  + weight so the operator confirms before loading. `POST /coils/{n}/actual-weight` records
+  `abco_coil_net_wt` under the **legacy plausibility guard (>100 and <99999 lb)** so a scale misread or slipped
+  digit can't become the recorded weight — enforced server-side, not just in the UI. DAS console gained a scan
+  box (submit-on-Enter, as a scanner types) → confirm (optional actual weight) → loads the coil and opens its
+  run. The `abco_coil_net_wt` column did not exist in the modern model at all and was added.
+  *Improvement over legacy:* the label rules live server-side, so every future scanning surface (handheld,
+  kiosk) shares one implementation instead of re-deriving them per window.
 - [x] **H** Live shift efficiency % + coil yield % / finish-% (console, 5s cadence) — done (#287):
   `GET /das/lines/{n}/live`. **Both formulas were recovered from the legacy client, not invented**
   (there is NO efficiency/yield logic in Oracle PL/SQL — same finding as the PM scheduler):

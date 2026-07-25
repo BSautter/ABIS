@@ -414,6 +414,16 @@ tr.run-open td { background:color-mix(in srgb, var(--accent) 10%, transparent); 
 .dop-counter .cn span { font-size:14px; color:var(--ink-3); margin-left:4px; font-weight:500; }
 .dop-counter .cl { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); margin-top:6px; }
 .dop-counter.bad .cn { color:var(--crit); }
+/* Scan-to-load result: the coil a scanned label resolved to (or why it didn't), confirmed by the
+   operator before the coil is loaded. */
+.dop-scan { padding:12px 14px; border-radius:10px; border:1px solid var(--line); border-left:3px solid var(--accent);
+  background:var(--surface-2); display:flex; flex-direction:column; gap:4px; font-size:13px; margin-bottom:12px; }
+.dop-scan strong { font-size:14px; }
+.dop-scan .dim { color:var(--ink-3); font-size:12px; }
+.dop-scan.ok { border-left-color:var(--ok); }
+.dop-scan.bad { border-left-color:var(--crit); background:color-mix(in srgb, var(--crit) 7%, var(--surface-2)); }
+.dop-scan.bad strong { color:var(--crit); }
+
 /* Health lamps (the legacy DAS DB / OPC / PLC / auto lamps). Lit = healthy, red = bad, grey =
    unknown — an unknown signal must never look healthy. Sits on the dark rail under the scale bar. */
 .dop-lamps { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
