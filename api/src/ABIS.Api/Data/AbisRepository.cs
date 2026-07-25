@@ -4737,6 +4737,134 @@ public sealed class AbisRepository : IAbisRepository
         };
     }
 
+    /// <summary>
+    /// Everything a printed bill of lading needs, in one read — the port of legacy
+    /// <c>rpabco/u_default_billoflading.sru</c>. Read-only; printing changes nothing.
+    /// </summary>
+    /// <remarks>
+    /// Structure follows the legacy form exactly: three sections (sheet skids, accumulated scrap return,
+    /// rejected coil return), each with a line count and a weight, then a shipment total. Points where
+    /// the legacy logic is easy to get subtly wrong, all preserved:
+    /// <list type="bullet">
+    /// <item><b>Section weights are GROSS (net + tare) but the per-job subtotal is NET.</b> Not a typo in
+    /// the port — legacy accumulates <c>sheet_net_wt + sheet_tare_wt</c> for the section and bare
+    /// <c>sheet_net_wt</c> for the job block. Reject coils have no tare, so gross = net there.</item>
+    /// <item><b>Job header data comes from the skid's REFERENCE order</b> (<c>sheet_skid.ref_order_abc_num</c>
+    /// / <c>ref_order_abc_item</c>), not from the job's own order. Legacy reads <c>ab_job</c> only to
+    /// confirm the job exists.</item>
+    /// <item><b>More than three jobs → details can't be printed.</b> The legacy form has exactly three
+    /// per-job note blocks and refuses past that; the limit is the paper. Totals stay correct, so this is
+    /// reported as a flag rather than an error.</item>
+    /// <item><b>An empty shipment is flagged, not silently blank.</b> Legacy stops with "There is nothing
+    /// to ship in this shipment!" — a blank BOL is worse than no BOL.</item>
+    /// </list>
+    /// </remarks>
+    public async Task<BolDocument?> GetBolDocumentAsync(long packingList, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+
+        var head = await conn.QuerySingleOrDefaultAsync<BolDocument>(new CommandDefinition(
+            """
+            SELECT s.packing_list AS PackingList, s.bill_of_lading AS BillOfLading,
+                   COALESCE(s.shipment_actualed_date_time, s.date_sent, s.shipment_scheduled_date_time) AS ShipDate,
+                   car.scac AS Scac, car.carrier_full_name AS CarrierName, s.vehicle_id AS VehicleId,
+                   cust.customer_short_name AS ShipperName,
+                   dcust.customer_full_name AS ConsigneeName, dcust.customer_city AS ConsigneeCity,
+                   dcust.customer_state AS ConsigneeState, dcust.customer_zip AS ConsigneeZip
+              FROM shipment s
+              LEFT JOIN carrier car ON car.carrier_id = s.carrier_id
+              LEFT JOIN customer cust ON cust.customer_id = s.customer_id
+              LEFT JOIN customer dcust ON dcust.customer_id = s.des_sh_cust_id
+             WHERE s.packing_list = :pl
+            """, new { pl = packingList }, cancellationToken: ct));
+        if (head is null) return null;
+
+        // Sheet skids, one row per skid, carrying the reference-order fields the job block prints.
+        var sheet = (await conn.QueryAsync<(long AbJobNum, decimal NetWt, decimal TareWt, int Pieces,
+                                            string? OrigCustomerPo, string? EnduserPo, string? PartNum, string? SupplierCode)>(
+            new CommandDefinition(
+            """
+            SELECT ss.ab_job_num AS AbJobNum,
+                   COALESCE(ss.sheet_net_wt, 0) AS NetWt, COALESCE(ss.sheet_tare_wt, 0) AS TareWt,
+                   COALESCE(ss.skid_pieces, 0) AS Pieces,
+                   co.orig_customer_po AS OrigCustomerPo, co.enduser_po AS EnduserPo,
+                   oi.enduser_part_num AS PartNum, oi.supplier_code AS SupplierCode
+              FROM sheet_packing_item spi
+              JOIN sheet_skid ss ON ss.sheet_skid_num = spi.sheet_skid_num
+              LEFT JOIN customer_order co ON co.order_abc_num = ss.ref_order_abc_num
+              LEFT JOIN order_item oi ON oi.order_abc_num = ss.ref_order_abc_num
+                                     AND oi.order_item_num = ss.ref_order_abc_item
+             WHERE spi.packing_list = :pl
+             ORDER BY spi.sheet_packaging_ticket
+            """, new { pl = packingList }, cancellationToken: ct))).ToList();
+
+        var scrap = (await conn.QueryAsync<(decimal NetWt, decimal TareWt)>(new CommandDefinition(
+            """
+            SELECT COALESCE(sk.scrap_net_wt, 0) AS NetWt, COALESCE(sk.scrap_tare_wt, 0) AS TareWt
+              FROM scrap_packing_item spi
+              JOIN scrap_skid sk ON sk.scrap_skid_num = spi.scrap_skid_num
+             WHERE spi.packing_list = :pl
+            """, new { pl = packingList }, cancellationToken: ct))).ToList();
+
+        var reject = (await conn.QueryAsync<decimal>(new CommandDefinition(
+            """
+            SELECT COALESCE(c.net_wt_balance, 0)
+              FROM reject_coil_packing_item rpi
+              JOIN coil c ON c.coil_abc_num = rpi.coil_abc_num
+             WHERE rpi.packing_list = :pl
+            """, new { pl = packingList }, cancellationToken: ct))).ToList();
+
+        head.Sheet = new BolDocumentSection
+        {
+            Heading = "Skids of Aluminum Sheets",
+            Units = sheet.Count,
+            GrossWeight = sheet.Sum(r => r.NetWt + r.TareWt),
+            NetWeight = sheet.Sum(r => r.NetWt),
+            Pieces = sheet.Sum(r => r.Pieces),
+        };
+        head.Scrap = new BolDocumentSection
+        {
+            Heading = "Accumulated Scrap Return",
+            Units = scrap.Count,
+            GrossWeight = scrap.Sum(r => r.NetWt + r.TareWt),
+            NetWeight = scrap.Sum(r => r.NetWt),
+        };
+        head.RejectCoil = new BolDocumentSection
+        {
+            Heading = "Rejected Coil Return",
+            Units = reject.Count,
+            GrossWeight = reject.Sum(),   // a coil has no skid tare; gross = the net balance
+            NetWeight = reject.Sum(),
+        };
+
+        // Group the sheet skids by job, in first-seen order — legacy walks the rows and appends a new job
+        // block the first time it sees one, so the print order follows the packing tickets.
+        head.Jobs = sheet
+            .GroupBy(r => r.AbJobNum)
+            .Select(g => new BolDocumentJob
+            {
+                AbJobNum = g.Key,
+                OrigCustomerPo = g.First().OrigCustomerPo,
+                EnduserPo = g.First().EnduserPo,
+                PartNum = g.First().PartNum,
+                SupplierCode = g.First().SupplierCode,
+                Units = g.Count(),
+                SubTotalNetWeight = g.Sum(r => r.NetWt),   // NET here, GROSS in the section above
+            })
+            .ToList();
+
+        head.TotalWeight = head.Sheet.GrossWeight + head.Scrap.GrossWeight + head.RejectCoil.GrossWeight;
+        head.TotalItems = head.Sheet.Units + head.Scrap.Units + head.RejectCoil.Units;
+        head.Empty = head.TotalItems == 0;
+        head.DetailsPrintable = head.Jobs.Count <= MaxPrintableBolJobs;
+        head.BolTotals = await GetBolTotalsAsync(packingList, ct);
+        return head;
+    }
+
+    /// <summary>The legacy BOL form has exactly three per-job note blocks and refuses to print details past
+    /// that. The cap is the printed layout, not a business rule, so it lives with the document code.</summary>
+    private const int MaxPrintableBolJobs = 3;
+
     /// <summary>Add a skid to a packing list. <paramref name="itemType"/> is SHEET or SCRAP. Guards (typed status,
     /// no throw): valid type, shipment exists, the referenced skid exists, and it isn't already on this list. The
     /// item id is the per-list <c>MAX(id)+1</c> (composite PK, no global sequence); the packaging ticket follows the

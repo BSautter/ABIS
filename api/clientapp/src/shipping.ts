@@ -210,7 +210,18 @@ async function printDoc(url: string, label: string): Promise<void> {
   setErr('');
   try {
     const r = await authFetch(url);
-    if (!r.ok) { setErr(`${label} failed: ${r.status}`); return; }
+    if (!r.ok) {
+      // The server refuses some documents for a reason worth reading — a BOL for a shipment with
+      // nothing on it comes back 409 with an explanation, and "BOL failed: 409" would send an
+      // operator hunting for a fault when the answer is "add freight to the packing list first".
+      let why = `${r.status}`;
+      try {
+        const p = await r.json() as { detail?: string; title?: string };
+        if (p?.detail || p?.title) why = p.detail ?? p.title!;
+      } catch { /* not a problem+json body — keep the status */ }
+      setErr(`${label} failed: ${why}`);
+      return;
+    }
     window.open(URL.createObjectURL(await r.blob()), '_blank');
   } catch (e) { setErr(`${label} failed: ${(e as Error).message}`); }
 }

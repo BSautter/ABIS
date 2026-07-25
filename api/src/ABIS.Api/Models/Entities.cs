@@ -3009,3 +3009,70 @@ public sealed class BolTotals
     /// handed out cannot disagree with a later recount.</summary>
     public bool PackageTextStored { get; set; }
 }
+
+/// <summary>One job's block on a printed bill of lading. Legacy groups the shipment's SHEET skids by
+/// <c>ab_job_num</c> and prints a PO / part / supplier line per job.</summary>
+public sealed class BolDocumentJob
+{
+    public long AbJobNum { get; set; }
+    public string? OrigCustomerPo { get; set; }
+    public string? EnduserPo { get; set; }
+    public string? PartNum { get; set; }
+    public string? SupplierCode { get; set; }
+    /// <summary>Skids on this job — legacy's per-job "units".</summary>
+    public int Units { get; set; }
+    /// <summary>Legacy's per-job subtotal is NET weight, unlike the section totals, which are GROSS.</summary>
+    public decimal SubTotalNetWeight { get; set; }
+}
+
+/// <summary>One of the three sections of a bill of lading, each with the heading legacy prints.</summary>
+public sealed class BolDocumentSection
+{
+    public string Heading { get; set; } = "";
+    /// <summary>Line count — legacy's "units".</summary>
+    public int Units { get; set; }
+    /// <summary>Net + tare for skids; for reject coils there is no tare, so this equals the net balance.</summary>
+    public decimal GrossWeight { get; set; }
+    public decimal NetWeight { get; set; }
+    public int Pieces { get; set; }
+}
+
+/// <summary>Everything a printed bill of lading needs, assembled in one read — the port of legacy
+/// <c>rpabco/u_default_billoflading.sru</c>. Read-only.</summary>
+public sealed class BolDocument
+{
+    public long PackingList { get; set; }
+    public long? BillOfLading { get; set; }
+    public DateTime? ShipDate { get; set; }
+    public string? Scac { get; set; }
+    public string? CarrierName { get; set; }
+    public string? VehicleId { get; set; }
+    public string? ShipperName { get; set; }
+    public string? ConsigneeName { get; set; }
+    public string? ConsigneeCity { get; set; }
+    public string? ConsigneeState { get; set; }
+    public string? ConsigneeZip { get; set; }
+
+    public List<BolDocumentJob> Jobs { get; set; } = new();
+    public BolDocumentSection Sheet { get; set; } = new() { Heading = "Skids of Aluminum Sheets" };
+    public BolDocumentSection Scrap { get; set; } = new() { Heading = "Accumulated Scrap Return" };
+    public BolDocumentSection RejectCoil { get; set; } = new() { Heading = "Rejected Coil Return" };
+
+    /// <summary>Sum of the three sections' gross weights — legacy's <c>t_total_wt</c>.</summary>
+    public decimal TotalWeight { get; set; }
+    /// <summary>Sum of the three sections' line counts.</summary>
+    public int TotalItems { get; set; }
+
+    /// <summary>Nothing on the shipment at all. Legacy stops with "There is nothing to ship in this
+    /// shipment!" rather than printing a blank form, so the caller should refuse to print too.</summary>
+    public bool Empty { get; set; }
+    /// <summary><b>False when the shipment carries more than three jobs.</b> The legacy form has room for
+    /// exactly three per-job note blocks and refuses outright past that ("select not print details
+    /// instead"), so the limit is the paper, not a rule worth loosening blindly. The totals are still
+    /// correct — only the per-job detail can't be laid out.</summary>
+    public bool DetailsPrintable { get; set; }
+
+    /// <summary>The whole bill of lading across every stop, and the multi-stop package note
+    /// (<see cref="BolTotals"/>). Null when the shipment carries no bill of lading.</summary>
+    public BolTotals? BolTotals { get; set; }
+}

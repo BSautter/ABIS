@@ -285,12 +285,58 @@ public static class HtmlDocuments
         _ => itemType ?? "—",
     };
 
-    // The bill of lading (legacy d_report_bol): ship-from / ship-to / carrier + the freight summary (handling
-    // units + total net/gross weight from the packing-list line items) + signature lines. Printable doc only.
-    public static string BillOfLading(Shipment s, Carrier? carrier, Customer? customer, Customer? shipTo, IReadOnlyList<PackingLineItem> items)
+    /// <summary>
+    /// The bill of lading. Ship-from / ship-to / carrier + signature lines around the freight body that
+    /// legacy <c>rpabco/u_default_billoflading</c> prints: three named sections (sheet skids, accumulated
+    /// scrap return, rejected coil return) with counts and weights, a per-job PO / part block, and the
+    /// shipment total. Printable document only — rendering changes nothing.
+    /// </summary>
+    /// <remarks>
+    /// Two legacy behaviours are visible in the output:
+    /// <list type="bullet">
+    /// <item>Section weights are GROSS while a job's subtotal is NET (see <see cref="BolDocument"/>), so
+    /// the two columns intentionally don't reconcile to each other.</item>
+    /// <item>Past three jobs the form has no room for per-job blocks. Legacy offers "print without
+    /// details" at that point, which is what this renders — the totals are correct either way, and a
+    /// truck still needs its BOL. A visible notice says the detail was omitted rather than leaving a
+    /// reader to wonder.</item>
+    /// </list>
+    /// An EMPTY shipment never reaches here: the endpoint refuses it, because a blank bill of lading
+    /// handed to a driver is worse than none.
+    /// </remarks>
+    public static string BillOfLading(Shipment s, Carrier? carrier, Customer? customer, Customer? shipTo, BolDocument doc)
     {
         var shipDate = s.ShipmentActualedDateTime ?? s.DateSent ?? s.ShipmentScheduledDateTime;
         var st = shipTo ?? customer;
+
+        // One row per section that actually carries freight — legacy prints a section's header only when
+        // it has rows, so an all-sheet load doesn't show empty scrap and coil lines.
+        var sections = new[] { doc.Sheet, doc.Scrap, doc.RejectCoil }.Where(x => x.Units > 0).ToList();
+        var sectionRows = sections.Count == 0 ? "" : string.Join("\n", sections.Select(x =>
+            $"""<tr><th>{Esc(x.Heading)}</th><td class="n">{x.Units}</td><td class="n">{Lbs(x.NetWeight)}</td><td class="n">{Lbs(x.GrossWeight)}</td></tr>"""));
+
+        var jobRows = !doc.DetailsPrintable || doc.Jobs.Count == 0 ? "" : string.Join("\n", doc.Jobs.Select(j =>
+            $"""<tr><td class="n">{j.AbJobNum}</td><td>{Esc(j.OrigCustomerPo) ?? "—"}</td><td>{Esc(j.EnduserPo) ?? "—"}</td><td>{Esc(j.PartNum) ?? "—"}</td><td>{Esc(j.SupplierCode) ?? "—"}</td><td class="n">{j.Units}</td><td class="n">{Lbs(j.SubTotalNetWeight)}</td></tr>"""));
+
+        var jobBlock = doc.Jobs.Count == 0 ? "" : doc.DetailsPrintable
+            ? $"""
+              <h2>Jobs on this shipment</h2>
+              <table class="wts">
+                <thead><tr><th class="n">Job #</th><th>Cust PO #</th><th>End-user PO #</th><th>Part #</th><th>Supplier code</th><th class="n">Skids</th><th class="n">Net wt</th></tr></thead>
+                <tbody>
+              {jobRows}
+                </tbody>
+              </table>
+              """
+            : $"""<p class="note">This shipment covers {doc.Jobs.Count} jobs — more than the form prints per-job detail for. Totals below cover the whole shipment.</p>""";
+
+        // On a multi-stop bill of lading each stop's paperwork describes the WHOLE truck, so the driver
+        // and the receiving dock can reconcile what arrived against what was loaded.
+        var packageNote = string.IsNullOrWhiteSpace(doc.BolTotals?.PackageText) ? "" : $"""
+              <h2>Also on this bill of lading</h2>
+              <pre class="pkg">{Esc(doc.BolTotals!.PackageText)}</pre>
+              """;
+
         var body = $"""
             <div class="doc">
               <div class="head">
@@ -324,13 +370,17 @@ public static class HtmlDocuments
                 <tr><th>Bill to</th><td>{Esc(customer?.CustomerName) ?? Opt(s.CustomerId)}</td></tr>
               </table>
 
+              {jobBlock}
+
               <h2>Freight</h2>
               <table class="wts">
-                <thead><tr><th>Description</th><th class="n">Handling units</th><th class="n">Net wt</th><th class="n">Gross wt</th></tr></thead>
+                <thead><tr><th>Description</th><th class="n">Units</th><th class="n">Net wt</th><th class="n">Gross wt</th></tr></thead>
                 <tbody>
-                  <tr><th>Aluminum sheet / scrap skids + rejected coils</th><td class="n">{items.Count}</td><td class="n">{Wt(items.Sum(i => i.NetWeight))}</td><td class="n">{Wt(items.Sum(i => i.GrossWeight))}</td></tr>
+              {sectionRows}
+                  <tr class="tot"><th>Total</th><td class="n">{doc.TotalItems}</td><td class="n"></td><td class="n">{Lbs(doc.TotalWeight)}</td></tr>
                 </tbody>
               </table>
+              {packageNote}
 
               <div class="sign">
                 <div class="sigcol"><div class="sigline"></div>Shipper signature / date</div>
@@ -377,10 +427,16 @@ public static class HtmlDocuments
           table.grid th, table.grid td { border:1px solid #d0d7de; padding:4px 6px; font-size:12px; }
           table.grid thead th { background:#f6f8fa; color:#57606a; font-size:11px; }
           table.grid tfoot .tot th, table.grid tfoot .tot td { font-weight:800; background:#f6f8fa; border-top:2px solid #d0d7de; }
+          table.wts tr.tot th, table.wts tr.tot td { font-weight:800; background:#f6f8fa; border-top:2px solid #d0d7de; }
           .n { text-align:right; font-variant-numeric: tabular-nums; white-space:nowrap; }
           .strong { font-weight:800; }
           .dim { color:#8b949e; }
           .notes { border:1px solid #eaecef; border-radius:4px; padding:8px 10px; background:#fafbfc; white-space:pre-wrap; }
+          /* Why per-job detail was left off (more jobs than the form prints blocks for). */
+          .note { border-left:3px solid #d0d7de; padding:6px 10px; margin:10px 0; color:#57606a; font-size:12px; background:#fafbfc; }
+          /* The multi-stop package note, printed exactly as stored — its line breaks are meaningful. */
+          .pkg { border:1px solid #eaecef; border-radius:4px; padding:8px 10px; background:#fafbfc;
+                 white-space:pre-wrap; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; margin:0; }
           .cols { display:flex; gap:20px; } .cols > div { flex:1; }
           .sign { display:flex; gap:40px; margin-top:34px; }
           .sigcol { flex:1; font-size:12px; color:#57606a; }
@@ -464,6 +520,12 @@ public static class HtmlDocuments
     }
 
     private static string Wt(decimal? v) => v is null ? "—" : $"{v.Value:0.#} lb";
+
+    /// <summary>Weight the way the bill of lading prints it: comma-grouped whole pounds, "lbs" plural —
+    /// legacy's <c>String(wt, "###,###,###") + " lbs"</c>. Distinct from <see cref="Wt"/> (used on skid
+    /// tags) because BOL figures run to five and six digits, where the grouping is what makes a number
+    /// readable at a glance on a loading dock. Whole pounds because the source columns are decimal(0).</summary>
+    private static string Lbs(decimal? v) => v is null ? "—" : $"{decimal.Truncate(v.Value):#,##0} lbs";
     private static string Num(decimal? v) => v?.ToString("0.####") ?? "—";
     private static string Dt(DateTime? d) => d?.ToString("yyyy-MM-dd") ?? "—";
     private static string Opt(object? v) => v?.ToString() ?? "—";

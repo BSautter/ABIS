@@ -4661,7 +4661,7 @@
         "tags": [
           "Documents"
         ],
-        "summary": "Printable bill of lading for a shipment — ship-from / ship-to / carrier + the freight summary (handling units + total net/gross weight) + signature lines.",
+        "summary": "Printable bill of lading (legacy rpabco/u_default_billoflading) — ship-from / ship-to / carrier, the per-job PO/part blocks, the three freight sections (sheet skids / accumulated scrap return / rejected coil return) with counts and weights, the multi-stop package note, and signature lines. 409 when the shipment carries nothing, since a blank BOL is worse than none.",
         "operationId": "BolDocument",
         "parameters": [
           {
@@ -4680,6 +4680,16 @@
           },
           "404": {
             "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized"
@@ -13350,6 +13360,44 @@
         }
       }
     },
+    "/api/shipments/{packingList}/bol-document": {
+      "get": {
+        "tags": [
+          "Shipments"
+        ],
+        "summary": "Everything a printed bill of lading needs (legacy rpabco/u_default_billoflading): parties, the three sections (sheet skids / accumulated scrap return / rejected coil return) with counts and weights, the per-job PO/part blocks, the shipment total, and the whole BOL's multi-stop totals. Read-only. `empty` = nothing to ship (legacy refuses to print); `detailsPrintable` = false past 3 jobs, which the legacy form has no room for.",
+        "operationId": "GetBolDocument",
+        "parameters": [
+          {
+            "name": "packingList",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BolDocument"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/shipments/{packingList}/close": {
       "post": {
         "tags": [
@@ -15330,6 +15378,209 @@
           "otherOrderAbcNum": {
             "type": "integer",
             "format": "int64",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "BolDocument": {
+        "type": "object",
+        "properties": {
+          "packingList": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "billOfLading": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "shipDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "scac": {
+            "type": "string",
+            "nullable": true
+          },
+          "carrierName": {
+            "type": "string",
+            "nullable": true
+          },
+          "vehicleId": {
+            "type": "string",
+            "nullable": true
+          },
+          "shipperName": {
+            "type": "string",
+            "nullable": true
+          },
+          "consigneeName": {
+            "type": "string",
+            "nullable": true
+          },
+          "consigneeCity": {
+            "type": "string",
+            "nullable": true
+          },
+          "consigneeState": {
+            "type": "string",
+            "nullable": true
+          },
+          "consigneeZip": {
+            "type": "string",
+            "nullable": true
+          },
+          "jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BolDocumentJob"
+            },
+            "nullable": true
+          },
+          "sheet": {
+            "$ref": "#/components/schemas/BolDocumentSection"
+          },
+          "scrap": {
+            "$ref": "#/components/schemas/BolDocumentSection"
+          },
+          "rejectCoil": {
+            "$ref": "#/components/schemas/BolDocumentSection"
+          },
+          "totalWeight": {
+            "type": "number",
+            "format": "double"
+          },
+          "totalItems": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "empty": {
+            "type": "boolean"
+          },
+          "detailsPrintable": {
+            "type": "boolean"
+          },
+          "bolTotals": {
+            "$ref": "#/components/schemas/BolTotals"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BolDocumentJob": {
+        "type": "object",
+        "properties": {
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "origCustomerPo": {
+            "type": "string",
+            "nullable": true
+          },
+          "enduserPo": {
+            "type": "string",
+            "nullable": true
+          },
+          "partNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "supplierCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "units": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "subTotalNetWeight": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BolDocumentSection": {
+        "type": "object",
+        "properties": {
+          "heading": {
+            "type": "string",
+            "nullable": true
+          },
+          "units": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "grossWeight": {
+            "type": "number",
+            "format": "double"
+          },
+          "netWeight": {
+            "type": "number",
+            "format": "double"
+          },
+          "pieces": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BolTotals": {
+        "type": "object",
+        "properties": {
+          "packingList": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "billOfLading": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "stopCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "multiStop": {
+            "type": "boolean"
+          },
+          "sheet": {
+            "$ref": "#/components/schemas/BolTotalsGroup"
+          },
+          "scrap": {
+            "$ref": "#/components/schemas/BolTotalsGroup"
+          },
+          "rejectCoil": {
+            "$ref": "#/components/schemas/BolTotalsGroup"
+          },
+          "packageText": {
+            "type": "string",
+            "nullable": true
+          },
+          "packageTextStored": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BolTotalsGroup": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "grossWeight": {
+            "type": "number",
+            "format": "double"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "nullable": true
           }
         },
@@ -22814,6 +23065,33 @@
           }
         },
         "additionalProperties": false
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": { }
       },
       "ProcessCoil": {
         "type": "object",

@@ -261,6 +261,10 @@ public interface IAbisRepository
     /// <summary>What the shipment's whole bill of lading carries, across every stop (legacy
     /// <c>f_get_bol_totals</c>). Null when the packing list is unknown or carries no bill of lading.</summary>
     Task<BolTotals?> GetBolTotalsAsync(long packingList, CancellationToken ct);
+
+    /// <summary>Everything a printed bill of lading needs for a packing list (legacy
+    /// <c>u_default_billoflading</c>). Null when the packing list has no shipment row.</summary>
+    Task<BolDocument?> GetBolDocumentAsync(long packingList, CancellationToken ct);
     Task<PackingItemResult> AddPackingItemAsync(long packingList, string itemType, long refNum, CancellationToken ct);
     Task<bool> DeletePackingItemAsync(long packingList, string itemType, long itemId, CancellationToken ct);
     Task<PagedResult<ReceivingBol>> GetReceivingBolsAsync(int page, int pageSize, long? customerId, int? status, string? orderBy, CancellationToken ct);
