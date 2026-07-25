@@ -339,7 +339,10 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   **Guard ADDED over legacy: only a status-20 coil is ever collected.** In this module the coil is always
   the shell so legacy never checked, but a path that deletes from `coil` is not somewhere to trust
   "can't happen" — a real coil would take everything hanging off it. `coilKeptReason` says why a coil
-  survived. Still TODO: skid **modify** (legacy action 4) + the item-level editor, and the warehouse UI page.
+  survived. **UI wired (#319):** the Warehouse page gained a "Warehouse in a skid" form (job + customer coil #
+  + lot, weights, ticket) and a Delete action on the selected skid; both surface the server's own reason
+  rather than a bare status, and a weight warning is shown as "saved, but note…" so it can't read as a
+  failure. Still TODO: skid **modify** (legacy action 4) + the item-level editor.
 - [x] **H** Coil-ownership transfer mint semantics — done (#224): mints a NEW `coil_abc_num` (status 2, from-cust set) + original → status 13; cert carries the new id
 - [x] **H** Bulk "Change status → Ready for transfer" (status 12) — done (#240 `POST /coils/ready-for-transfer` with eligibility guards; #241 picker `readyOnly` filter + coil-ownership mark-ready UI)
 - [~] **H** Scrap-skid + sheet-skid guarded DELETE done (#243). **Return-scrap done** (#XXX): POST /scrap-skids/{n}/return faithfully ports the live F_CONVERT_BACK_TO_SHEET proc — copies the scrapped mirror rows (scraped_sheet_skid/production_sheet_item/process_partial_skid/detail) back to the live tables, deletes the mirrors + scrap_skid(+detail) + credits back the linked return_scrap_item rows. Still TODO: sheet-skid modify + weight/piece reconciliation.
