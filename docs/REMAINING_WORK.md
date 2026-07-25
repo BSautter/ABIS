@@ -145,6 +145,19 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   and the **ending status is now an operator choice**: a picker seeded with the codes the plant actually
   uses (`shift_coil.coil_end_status` on the COIL_STATUS domain — by frequency over ~108k live runs:
   Done 83k, InProcess 8.6k, Rebanded 7.9k, New 6.4k, Rejected 1.6k, OnHold 54).
+- [~] **H/M** Shift lifecycle: **auto-CREATE from the schedule done** (#301) — `create-scheduled-shifts`, a
+  registered scheduler operation (+ `POST /das/shifts/create-scheduled` to run it on demand), derives the day's
+  `shift` rows from the plant's own **`SHIFT_SCHEDULE` calendar** (~18.7k rows live) joined to `LINE_SCHEDULE`
+  for the standing time pattern. **This is an IMPROVEMENT, not a port**: legacy maintained that calendar for
+  years but still made a human create every SHIFT row on the daily-production screen — which is why the live DB
+  carries shifts left open for days. Rules: idempotent per (line, schedule_type, day) using the same guard as the
+  manual create; a **cancelled** calendar row is never created; a row with no time on either the calendar or the
+  line pattern is **skipped rather than given an invented time**; the created shift is left OPEN (the DAS ends it).
+  **Auto-CLOSE deliberately NOT done** — ending a shift stamps when work actually stopped, and a timer guessing
+  that would corrupt the production record; the stale-shift monitor surfaces the ones nobody closed instead.
+  ⚠ **Unvalidated against live data**: Oracle was unreachable at build time, so it is not yet confirmed the
+  calendar is still maintained for CURRENT dates (18.7k rows may be historical). The operation is self-limiting —
+  no calendar rows for a date creates nothing — so this is safe either way, but confirm before enabling the job.
 - [~] **H/M** Shift lifecycle: **stale-shift detection done** (#289) — `GET /das/shifts/open`
   (`staleOnly=true` for those open longer than a day) + a notification-bell alert. This is the operational
   defect the live DB exposed: three shifts open 31 h / 31 h / 103 h, none with a `dt_total` roll-up.

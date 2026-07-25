@@ -1470,6 +1470,16 @@ public static class ApiEndpoints
            .WithSummary("Record a coil's ACTUAL weighed weight (abco_coil_net_wt); rejects values outside the legacy 100..99999 lb guard.")
            .Produces<Coil>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
 
+        // Create the day's shifts from the plant's SHIFT_SCHEDULE calendar. Idempotent — a (line,
+        // schedule_type, day) that already has a shift is skipped — so it is safe to call repeatedly
+        // and safe to run alongside the scheduled "create-scheduled-shifts" job. Creating a shift is
+        // additive; ENDING one stays a human action (see /das/shifts/open for the ones left open).
+        api.MapPost("/das/shifts/create-scheduled", async (IAbisRepository repo, CancellationToken ct, DateTime? onDate) =>
+                Results.Ok(await repo.CreateScheduledShiftsAsync(onDate ?? DateTime.Now.Date, ct)))
+           .WithName("CreateScheduledShifts").WithTags("DAS")
+           .WithSummary("Create the shift rows for a date from the SHIFT_SCHEDULE calendar (idempotent; defaults to today). Returns the shifts created — empty when none are scheduled or they already exist.")
+           .Produces<IReadOnlyList<Shift>>();
+
         // Shifts nobody closed. A shift left open never gets its dt_total roll-up and skews its line's
         // efficiency — the live plant DB had three open for 31 h, 31 h and 103 h. READ-ONLY on purpose:
         // closing one is an operator action, because the legacy DAS station owns shift closure on the
@@ -2774,6 +2784,15 @@ public static class ApiEndpoints
            .WithName("RunScheduledJob").WithTags("Admin")
            .WithSummary("Run a scheduled job now (records a run). Only allowlisted operations execute — an unknown/legacy operation is recorded 'unsupported' and never fires. 404 if the job is unknown.")
            .Produces<ScheduledJobRun>().Produces(StatusCodes.Status404NotFound);
+
+        // The allowlist itself. Without this an admin defining a job has to GUESS a valid
+        // target_operation, and a typo is only discovered as a run recorded "unsupported" that
+        // silently did nothing.
+        api.MapGet("/admin/jobs/operations", (Abis.Api.Scheduling.ScheduledOperationRegistry registry) =>
+                Results.Ok(registry.Names.OrderBy(n => n, StringComparer.OrdinalIgnoreCase)))
+           .WithName("GetScheduledOperations").WithTags("Admin")
+           .WithSummary("The operations the scheduler is allowed to run — the valid values for a job's target_operation. Anything else is recorded 'unsupported' and never executes.")
+           .Produces<IReadOnlyList<string>>();
 
         // ---- Admin: EDI setup config (docs/ADMIN_SUBSYSTEM_PLAN.md #8 setup UI). Manages the
         // trading-partner / transaction-type config that is hand-maintained in DB tables today. This

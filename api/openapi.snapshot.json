@@ -535,6 +535,33 @@
         }
       }
     },
+    "/api/admin/jobs/operations": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "The operations the scheduler is allowed to run — the valid values for a job's target_operation. Anything else is recorded 'unsupported' and never executes.",
+        "operationId": "GetScheduledOperations",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/admin/edi/types": {
       "post": {
         "tags": [
@@ -3669,6 +3696,43 @@
               "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/das/shifts/create-scheduled": {
+      "post": {
+        "tags": [
+          "DAS"
+        ],
+        "summary": "Create the shift rows for a date from the SHIFT_SCHEDULE calendar (idempotent; defaults to today). Returns the shifts created — empty when none are scheduled or they already exist.",
+        "operationId": "CreateScheduledShifts",
+        "parameters": [
+          {
+            "name": "onDate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Shift"
+                  }
                 }
               }
             }

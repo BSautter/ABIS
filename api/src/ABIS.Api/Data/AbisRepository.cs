@@ -6453,6 +6453,74 @@ public sealed class AbisRepository : IAbisRepository
             "SELECT COUNT(*) FROM line WHERE line_num = :line", new { line = lineNum }, cancellationToken: ct)) > 0;
     }
 
+    /// <summary>Create the <c>shift</c> rows for a date from the plant's own SHIFT_SCHEDULE calendar —
+    /// one per scheduled, non-cancelled (line, schedule_type) that doesn't already have a shift that
+    /// day. Returns the shifts created (empty when the calendar has nothing for the date, which is the
+    /// normal case for a non-working day).
+    /// <para><b>Improvement over legacy, not a port.</b> The plant already maintains SHIFT_SCHEDULE
+    /// (~18.7k rows: the dated calendar of which lines run which shifts, with a cancelled flag) and
+    /// LINE_SCHEDULE (the standing start/end pattern), but legacy still made someone hand-create every
+    /// SHIFT row on the daily-production screen — which is why the live DB carries shifts left open for
+    /// days. This derives them from data that is already there.</para>
+    /// <para>Safe to run repeatedly: existence is checked per (line, schedule_type, day) using the same
+    /// rule as the manual create, so a second run in the same day is a no-op. Times come from the
+    /// calendar row, falling back to the line's standing pattern; a row with neither is skipped rather
+    /// than given an invented time.</para></summary>
+    public async Task<IReadOnlyList<Shift>> CreateScheduledShiftsAsync(DateTime onDate, CancellationToken ct)
+    {
+        var day = onDate.Date;
+        await using var conn = await OpenAsync(ct);
+        // The calendar for the day, with the line's standing pattern as the time fallback. Times are
+        // stored as DATEs whose TIME part is what matters, so the clock is grafted onto the target day.
+        var due = (await conn.QueryAsync<ScheduledShiftRow>(new CommandDefinition(
+            """
+            SELECT ss.line_num AS LineNum, ss.schedule_type AS ScheduleType, ss.supervisor_id AS SupervisorId,
+                   ss.shift_starting_time AS StartingTime, ss.shift_ending_time AS EndingTime,
+                   ls.standard_starting_time AS StandardStartingTime, ls.standard_ending_time AS StandardEndingTime
+            FROM shift_schedule ss
+            LEFT JOIN line_schedule ls ON ls.line_num = ss.line_num AND ls.schedule_type = ss.schedule_type
+            WHERE ss.shift_schedule_date >= :dayStart AND ss.shift_schedule_date < :dayEnd
+              AND (ss.shift_cancelled IS NULL OR ss.shift_cancelled = 0)
+            ORDER BY ss.line_num, ss.schedule_type
+            """, new { dayStart = day, dayEnd = day.AddDays(1) }, cancellationToken: ct))).AsList();
+
+        var created = new List<Shift>();
+        foreach (var row in due)
+        {
+            // Same uniqueness rule as the manual create — a shift already on the board for this
+            // (line, type, day) is left alone, so re-running never duplicates.
+            if (await ShiftExistsAsync(row.LineNum, row.ScheduleType, day, ct))
+                continue;
+            var start = CombineDayAndTime(day, row.StartingTime ?? row.StandardStartingTime);
+            if (start is null)
+                continue;   // no time on the calendar row OR the line's pattern — don't invent one
+            // EndTime stays null: an auto-created shift is OPEN, and the DAS ends it (which is what
+            // stamps end_time + the dt_total roll-up). The scheduled end is only used above to keep an
+            // overnight shift's clock sane; the SHIFT table's planned_* columns aren't written here.
+            created.Add(await CreateShiftAsync(new ShiftWrite
+            {
+                LineNum = row.LineNum, ScheduleType = row.ScheduleType, StartTime = start,
+            }, ct));
+        }
+        return created;
+    }
+
+    /// <summary>Graft a schedule row's clock onto the target day (the schedule stores times as DATEs
+    /// whose date part is a fossil of when the pattern was entered).</summary>
+    private static DateTime? CombineDayAndTime(DateTime day, DateTime? time) =>
+        time is null ? null : day.Date.Add(time.Value.TimeOfDay);
+
+    private sealed class ScheduledShiftRow
+    {
+        public long LineNum { get; set; }
+        public int ScheduleType { get; set; }
+        public long? SupervisorId { get; set; }
+        public DateTime? StartingTime { get; set; }
+        public DateTime? EndingTime { get; set; }
+        public DateTime? StandardStartingTime { get; set; }
+        public DateTime? StandardEndingTime { get; set; }
+    }
+
     /// <summary>Legacy's guard on a hand-keyed actual weight (<c>w_scan_coil_id</c> cb_confirm):
     /// only stored when 100 &lt; weight &lt; 99999. A scale misread or a slipped digit must not become
     /// the coil's recorded weight, so the bounds are enforced server-side rather than in the UI alone.</summary>

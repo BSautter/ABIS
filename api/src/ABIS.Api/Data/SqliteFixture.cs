@@ -489,6 +489,19 @@ public static class SqliteFixture
             CREATE TABLE line (
                 line_num INTEGER PRIMARY KEY, line_desc TEXT, line_location TEXT);
 
+            -- The plant's shift CALENDAR (legacy SHIFT_SCHEDULE, ~18.7k rows live): which lines run
+            -- which shift type on which date, with a cancelled flag. LINE_SCHEDULE is the standing
+            -- start/end pattern per (line, type) used when a calendar row carries no times.
+            CREATE TABLE line_schedule (
+                line_num INTEGER NOT NULL, schedule_type INTEGER NOT NULL, supervisor_id INTEGER,
+                standard_starting_time TEXT, standard_ending_time TEXT,
+                planned_starting_time TEXT, planned_ending_time TEXT,
+                PRIMARY KEY (line_num, schedule_type));
+            CREATE TABLE shift_schedule (
+                shift_schedule_date TEXT NOT NULL, line_num INTEGER NOT NULL, schedule_type INTEGER NOT NULL,
+                supervisor_id INTEGER, shift_starting_time TEXT, shift_ending_time TEXT, shift_cancelled INTEGER,
+                PRIMARY KEY (shift_schedule_date, line_num, schedule_type));
+
             -- The DAS live line board (legacy LINE_CURRENT_STATUS): EXACTLY ONE row per line,
             -- rewritten by the DAS station as it runs (current shift/job/coil, the sheet + scrap
             -- skid being built) plus the physical skid positions — 19 numbered floor locations
@@ -1502,6 +1515,34 @@ public static class SqliteFixture
                       ShiftNum = (long?)7701L, LineStatus = (int?)1, CoilProcessRate = (int?)42, Loc0 = (long?)3001L, Loc5 = (long?)3002L, Stacker1 = (long?)3099L },
                 new { LineNum = 120L, ScrapSkidNum = (long?)null, SheetSkidNum = (long?)null, CoilAbcNum = (long?)null, AbJobNum = (long?)null,
                       ShiftNum = (long?)null, LineStatus = (int?)0, CoilProcessRate = (int?)null, Loc0 = (long?)3003L, Loc5 = (long?)null, Stacker1 = (long?)null }
+            });
+
+        // The shift calendar for TODAY (anchored to today, not the fixed base date, so the
+        // auto-create-from-schedule operation has something due whenever the suite runs):
+        //   line 110 type 1  -> a normal day shift, times ON the calendar row
+        //   line 120 type 1  -> times only on the LINE pattern (calendar row leaves them null)
+        //   line 110 type 2  -> CANCELLED, so it must NOT be created
+        //   line 120 type 3  -> no times anywhere -> skipped rather than invented
+        conn.Execute("""
+            INSERT INTO line_schedule (line_num, schedule_type, standard_starting_time, standard_ending_time)
+            VALUES (:LineNum, :ScheduleType, :Start, :End)
+            """,
+            new[]
+            {
+                new { LineNum = 120L, ScheduleType = 1, Start = "2001-01-01 06:30:00", End = "2001-01-01 14:30:00" },
+                new { LineNum = 110L, ScheduleType = 2, Start = "2001-01-01 14:30:00", End = "2001-01-01 22:30:00" },
+            });
+        var schedDay = DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss");
+        conn.Execute("""
+            INSERT INTO shift_schedule (shift_schedule_date, line_num, schedule_type, shift_starting_time, shift_ending_time, shift_cancelled)
+            VALUES (:Day, :LineNum, :ScheduleType, :Start, :End, :Cancelled)
+            """,
+            new[]
+            {
+                new { Day = schedDay, LineNum = 110L, ScheduleType = 1, Start = (string?)"2001-01-01 05:00:00", End = (string?)"2001-01-01 13:00:00", Cancelled = (int?)0 },
+                new { Day = schedDay, LineNum = 120L, ScheduleType = 1, Start = (string?)null, End = (string?)null, Cancelled = (int?)null },
+                new { Day = schedDay, LineNum = 110L, ScheduleType = 2, Start = (string?)"2001-01-01 14:30:00", End = (string?)"2001-01-01 22:30:00", Cancelled = (int?)1 },
+                new { Day = schedDay, LineNum = 120L, ScheduleType = 3, Start = (string?)null, End = (string?)null, Cancelled = (int?)0 },
             });
 
         // Line 110's job queue. Status legend (legacy d_job_schedule): 0 = Ended, 1 = Running,

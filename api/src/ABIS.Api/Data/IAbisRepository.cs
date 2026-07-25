@@ -298,6 +298,9 @@ public interface IAbisRepository
     Task<bool> CoilIsOnJobAsync(long coilAbcNum, long abJobNum, CancellationToken ct);
     /// <summary>Resolve a scanned coil barcode against the coils assigned to a job (DAS scan-to-load).</summary>
     Task<CoilScanResult> ResolveScannedCoilAsync(string? barcode, long abJobNum, CancellationToken ct);
+    /// <summary>Create the shift rows for a date from the plant's SHIFT_SCHEDULE calendar (idempotent —
+    /// a (line, schedule_type, day) that already has a shift is skipped).</summary>
+    Task<IReadOnlyList<Shift>> CreateScheduledShiftsAsync(DateTime onDate, CancellationToken ct);
     /// <summary>Record a coil's actual weighed weight (abco_coil_net_wt); null when the coil is unknown.</summary>
     Task<Coil?> SetCoilActualWeightAsync(long coilAbcNum, decimal weight, CancellationToken ct);
     Task<IReadOnlyList<LineQueueRow>> GetLineQueueAsync(long lineNum, bool includeEnded, CancellationToken ct);

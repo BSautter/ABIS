@@ -50,6 +50,7 @@ var schedulerOptions = builder.Configuration.GetSection(Abis.Api.Scheduling.Sche
 builder.Services.AddSingleton(schedulerOptions);
 builder.Services.AddSingleton<Abis.Api.Scheduling.IScheduledOperation, Abis.Api.Scheduling.NoopOperation>();
 builder.Services.AddSingleton<Abis.Api.Scheduling.IScheduledOperation, Abis.Api.Scheduling.HeartbeatOperation>();
+builder.Services.AddSingleton<Abis.Api.Scheduling.IScheduledOperation, Abis.Api.Scheduling.CreateScheduledShiftsOperation>();
 builder.Services.AddSingleton<Abis.Api.Scheduling.ScheduledOperationRegistry>();
 builder.Services.AddScoped<Abis.Api.Scheduling.SchedulerService>();
 builder.Services.AddHostedService<Abis.Api.Scheduling.SchedulerHostedService>();
