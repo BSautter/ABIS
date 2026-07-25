@@ -7,7 +7,7 @@
 import { AbisClient, LineErrorWrite } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
-import { statusChip, lineLabel } from './status-labels.js';
+import { statusChip, lineLabel, STACK_PATH } from './status-labels.js';
 const $ = (sel) => document.querySelector(sel);
 const client = () => new AbisClient('', { fetch: authFetch });
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -36,6 +36,11 @@ function scaffold() {
       </table></div>
     </div>
 
+    <div class="card" id="pathCard" style="margin-bottom:16px">
+      <header><h2>Conveyor path</h2><span class="sub" id="pathSub">where each finished stack is between the stacker and the end of the wrapper line</span></header>
+      <div class="body"><div class="stack-path" id="tPath"></div></div>
+    </div>
+
     <div class="card">
       <header><h2>Line / stacker error log</h2></header>
       <div style="overflow-x:auto"><table class="tbl" style="min-width:680px">
@@ -62,7 +67,7 @@ async function load() {
     line = v('#fLine') ? Number(v('#fLine')) : null;
     setBusy(true);
     try {
-        await Promise.all([loadBoard(), loadErrors()]);
+        await Promise.all([loadBoard(), loadPath(), loadErrors()]);
     }
     catch (e) {
         setErr(`Load failed: ${e.message}`);
@@ -70,6 +75,51 @@ async function load() {
     finally {
         setBusy(false);
     }
+}
+async function loadPath() {
+    const box = $('#tPath');
+    let lines = [];
+    try {
+        // authFetch (not the generated client) so an older server without the endpoint degrades to an
+        // empty board instead of failing the whole page.
+        const r = await authFetch(`/api/das/line-board${line != null ? `?lineNum=${line}` : ''}`);
+        lines = r.ok ? (await r.json()) : [];
+    }
+    catch {
+        lines = [];
+    }
+    if (!lines.length) {
+        box.innerHTML = '<span class="muted">No line board data.</span>';
+        return;
+    }
+    // Only the numbered path slots belong here; the two stacker heads are their own thing (the DAS
+    // console's station panel), so filter them out rather than mixing them into the path.
+    const onPath = (s) => /^\d+$/.test(s.slot);
+    const anyStack = lines.some((l) => (l.skids ?? []).some(onPath));
+    const onShownPath = new Set(STACK_PATH.map((p) => p.slot));
+    box.innerHTML = lines.map((l) => {
+        const bySlot = new Map((l.skids ?? []).filter(onPath).map((s) => [s.slot, s]));
+        const cells = STACK_PATH.map(({ slot, label }) => {
+            const s = bySlot.get(slot);
+            return `<div class="stack-cell${s ? ' full' : ''}" title="${esc(label)} (location ${esc(slot)})">
+        <div class="sn">${esc(slot)}</div>
+        <div class="sl">${esc(label)}</div>
+        <div class="sv">${s ? `#${esc(s.sheetSkidDisplayNum ?? s.sheetSkidNum)}${s.abJobNum != null ? `<span>job ${esc(s.abJobNum)}</span>` : ''}` : ''}</div>
+      </div>`;
+        }).join('');
+        // A skid recorded at a station the path no longer shows (wrapper 2 was removed) must NOT vanish —
+        // dropping it silently would hide real inventory. Surface it explicitly instead.
+        const offPath = (l.skids ?? []).filter((s) => onPath(s) && !onShownPath.has(s.slot));
+        const stray = offPath.length
+            ? `<div class="stack-stray">⚠ ${offPath.map((s) => `skid #${esc(s.sheetSkidDisplayNum ?? s.sheetSkidNum)} recorded at removed station ${esc(s.slot)} (${esc(statusChip('stackLocation', Number(s.slot)).replace(/<[^>]*>/g, ''))})`).join('; ')}</div>`
+            : '';
+        return `<div class="stack-line"><div class="sh">${esc(lineLabel(l.lineNum))}</div><div class="stack-cells">${cells}</div>${stray}</div>`;
+    }).join('');
+    // Be explicit when the path is empty rather than showing a silent row of blanks: on the live DB
+    // these columns are unpopulated, so an empty board is expected, not a fault.
+    $('#pathSub').textContent = anyStack
+        ? 'where each finished stack is between the stacker and the end of the wrapper line'
+        : 'no stacks tracked on the conveyor path right now (these positions are written by the stacker automation)';
 }
 async function loadBoard() {
     const rows = await client().getStackerBoard(line ?? undefined);

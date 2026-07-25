@@ -204,7 +204,23 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   the edge on .170/.175 REDEPLOYED** (the `/stacker` endpoint postdates the last edge build → 404). Still
   TODO here: the **stack-complete → auto-save skid** write (legacy `ue_sta1/2_complete` finalizes the skid
   at the head + clears the `SHEET_SKID_STACKER` slot) — the automation's write half.
-- [ ] **M** Stacker physical board (11 shape displays + ~16 conveyor cells + live stack tracking)
+- [~] **M** Stacker physical board (11 shape displays + ~16 conveyor cells + live stack tracking) — **conveyor
+  path DONE** (#302). Key finding: the **19 `LINE_CURRENT_STATUS.SHEET_SKID_LOCATION_0..18` columns ARE the 19
+  stations of the stacker→wrapper conveyor path** — the legacy board's `location_code` value list
+  (`d_conveyor_skid.srd:12`) maps 1:1 onto them (0 Stack complete, 1 Leaving lift table, … 13 Overhead crane, …
+  18 At end WP2 unload). So the board renders straight from the line board's `skids[]` slots with no new read
+  path. Both that legend and the `conveyor` zone legend (`:13`) are now decoded in the shared `status-labels`
+  (`stackLocation` / `stackConveyor` + an ordered `STACK_PATH`), ported verbatim rather than invented. The
+  Stacker page gained a **Conveyor path** card: one row per line, stations left-to-right, occupied stations
+  highlighted with the skid + job. **WRAPPER 2 HAS BEEN REMOVED FROM THE PLANT** (user, 2026-07-25 — the belt
+  now runs stacker → wrapper 1 → output), so locations **14–18 are omitted** and the board shows **14** stations
+  (0–13), not legacy's 19 — a deliberate divergence so the board reflects the real line. The removed codes stay
+  in the decode map so historical rows still resolve, and a skid recorded at a removed station is **surfaced as
+  a warning rather than dropped**, so real inventory can't disappear off the board. ⚠ **These columns are unpopulated on the live DB** (only a stacker head had a
+  value), so the path renders empty in practice and says so explicitly rather than showing a silent blank row —
+  they are written by the stacker automation. Still TODO: the 11 **shape displays**, and driving positions from
+  the live OPC conveyor cells (`StackOnConveyor1..3`, `StackEntering/LeavingWrapper1/2`, …) which are readable
+  via the edge's `/tags` once added to the polled set — a **config change, no new edge binary**.
 - [ ] **M** Supervisor/role PIN gating (exit / override / drop-coil / maintenance)
 - [ ] **M** Serial scale zero command + scrap-scale/gauge separation
 - [ ] **M** Live job sheet / e-folder (sketch image, shape-specific tolerances, coil totals, partial-skid usage)
