@@ -1324,8 +1324,8 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     public async Task List_jobs_returns_paged_envelope()
     {
         var body = await _client.GetFromJsonAsync<JsonElement>("/api/jobs");
-        Assert.Equal(4, body.GetProperty("totalCount").GetInt32());   // 3 base + the Aleris 870 job (990)
-        Assert.Equal(4, body.GetProperty("items").GetArrayLength());
+        Assert.Equal(5, body.GetProperty("totalCount").GetInt32());   // 3 base + the Aleris 870 job (990) + the unassigned-line job (1004)
+        Assert.Equal(5, body.GetProperty("items").GetArrayLength());
     }
 
     [Fact]

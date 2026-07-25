@@ -264,6 +264,23 @@ export async function loadLineNames(fetchFn: (url: string) => Promise<Response>)
   } catch { /* best-effort — lineLabel falls back to the raw code */ }
 }
 
+/**
+ * `line_num = 0` is the plant's **"no line assigned" sentinel**, not a press. The LINE table carries it
+ * as `line_desc = 'NONE'` alongside the seven real lines (BL 24/36/60/78/84/108/110), and ~1,300 jobs
+ * that were never put on a line point at it.
+ *
+ * Keep showing it wherever a single record's line is displayed — on a job row, "NONE" is the truthful
+ * answer to "which line?". Exclude it anywhere the question is "what is on the floor", because there
+ * is no BL 0 to walk up to, and its ~1,300 historical jobs otherwise swamp the real lines' counts.
+ */
+export const NO_LINE_NUM = 0;
+
+/** Is this a real production line (a press on the floor), rather than the "no line" sentinel? */
+export function isProductionLine(lineNum: unknown): boolean {
+  const n = Number(lineNum);
+  return Number.isFinite(n) && n !== NO_LINE_NUM;
+}
+
 /** A production line's real display name (from the LINE table), or the raw code if unmapped. */
 export function lineLabel(lineNum: unknown): string {
   if (lineNum == null || lineNum === '') return '—';

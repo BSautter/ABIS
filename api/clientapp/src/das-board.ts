@@ -14,7 +14,7 @@
 // Compiled by tsc to wwwroot/ui/app/das-board.js; served at /ui/das-board.html.
 import { AbisClient } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
-import { statusChip, lineLabel, loadLineNames } from './status-labels.js';
+import { statusChip, lineLabel, loadLineNames, isProductionLine } from './status-labels.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
@@ -45,6 +45,21 @@ type LiveMetrics = { lineNum?: number; efficiencyPct?: number; downtimeOpen?: bo
 type Line = { line: number; jobs: BoardRow[]; active: BoardRow; coils: number; skids: number; state: State; fault?: ErrRow; live?: LineBoard; metrics?: LiveMetrics };
 type State = 'run' | 'idle' | 'stop' | 'offline';
 const STATE_LABEL: Record<State, string> = { run: 'Running', idle: 'Idle', stop: 'Stopped', offline: 'Offline' };
+
+/**
+ * What each lamp is actually based on. Spelled out on hover because this board reads like a live
+ * mimic panel and is NOT one: the state comes from the shift, coil and job RECORDS, never from the
+ * press itself. Only BL 78, BL 84 and BL 110 have a PLC feed at all (confirmed by the plant
+ * 2026-07-25) — the other four lines have no hardware to ask, so no amount of wiring would make this
+ * lamp a press signal for them. A line can therefore read "Running" while the press is stopped, if
+ * nobody has closed the shift.
+ */
+const STATE_BASIS: Record<State, string> = {
+  run: 'From the shift and job records — a coil is loaded on an open shift (or a job is in process). NOT a live signal from the press.',
+  idle: 'From the shift and job records — no coil loaded, or no open shift. NOT a live signal from the press.',
+  stop: 'A fault was logged against this line in the last hour (ERROR_EVT), not a live signal from the press.',
+  offline: 'No open shift and no jobs on this line.',
+};
 
 function scaffold(): string {
   return `
@@ -89,9 +104,14 @@ function buildLines(board: BoardRow[], errs: ErrRow[], live: LineBoard[], metric
   const byLine = new Map<number, BoardRow[]>();
   // A line with a board row but no active job still belongs on the floor (it is between jobs,
   // not absent), so seed the map from the live board first.
-  for (const l of liveByLine.keys()) byLine.set(l, []);
+  //
+  // The "no line assigned" sentinel (line_num 0, LINE_DESC 'NONE') is NOT a press and never belongs
+  // here. It had been rendering as an eighth tile carrying every job never put on a line — ~1,300 of
+  // them, which showed as "905 jobs on line", 2,021 coils and 2,595 skids, and swamped the floor
+  // totals so "coils on floor" read 2,110 when the real lines held 89.
+  for (const l of liveByLine.keys()) if (isProductionLine(l)) byLine.set(l, []);
   for (const r of board) {
-    if (r.lineNum == null) continue;
+    if (r.lineNum == null || !isProductionLine(r.lineNum)) continue;
     let arr = byLine.get(r.lineNum);
     if (!arr) { arr = []; byLine.set(r.lineNum, arr); }
     arr.push(r);
@@ -152,7 +172,7 @@ function tile(l: Line): string {
   <div class="das-tile ${l.state}">
     <div class="thead">
       <span class="lineno">${esc(lineLabel(l.line))}</span>
-      <span class="das-dot ${l.state}"><i></i>${STATE_LABEL[l.state]}</span>
+      <span class="das-dot ${l.state}" title="${esc(STATE_BASIS[l.state])}"><i></i>${STATE_LABEL[l.state]}</span>
     </div>
     <div class="das-job">${a.abJobNum != null ? '#' + esc(a.abJobNum) : '—'} ${statusChip('jobStatus', a.jobStatus)}</div>
     <div class="das-sub">${a.orderAbcNum != null ? 'Order ' + esc(a.orderAbcNum) : 'No active job'}${l.jobs.length > 1 ? ` · ${l.jobs.length} jobs on line` : ''}</div>

@@ -1324,7 +1324,11 @@ public static class SqliteFixture
                 new { AbJobNum = 1001L, OrderAbcNum = (long?)9001L, OrderItemNum = (long?)7001L, LineNum = (long?)110L, JobStatus = (int?)1, MaterialYield = (decimal?)0.92m, NumberOfMenUsed = (int?)3, SketchId = (long?)1L, CreateDate = (DateTime?)d, DueDate = (DateTime?)d.AddDays(7), TimeDateStarted = (DateTime?)d.AddHours(1), TimeDateFinished = (DateTime?)null, JobNotes = "Running", SketchJobNote = "" },
                 new { AbJobNum = 1002L, OrderAbcNum = (long?)9001L, OrderItemNum = (long?)7002L, LineNum = (long?)110L, JobStatus = (int?)1, MaterialYield = (decimal?)0.88m, NumberOfMenUsed = (int?)2, SketchId = (long?)2L, CreateDate = (DateTime?)d.AddDays(1), DueDate = (DateTime?)d.AddDays(8), TimeDateStarted = (DateTime?)d.AddDays(1), TimeDateFinished = (DateTime?)null, JobNotes = "Queued", SketchJobNote = "" },
                 // job_status 0 = Done (per ab_job_status_desc): this row has a finish time + "Complete" note, so it is Done — and the stacker board must exclude it.
-                new { AbJobNum = 1003L, OrderAbcNum = (long?)9002L, OrderItemNum = (long?)7003L, LineNum = (long?)120L, JobStatus = (int?)0, MaterialYield = (decimal?)0.95m, NumberOfMenUsed = (int?)4, SketchId = (long?)3L, CreateDate = (DateTime?)d.AddDays(2), DueDate = (DateTime?)d.AddDays(5), TimeDateStarted = (DateTime?)d.AddDays(2), TimeDateFinished = (DateTime?)d.AddDays(3), JobNotes = "Complete", SketchJobNote = "" }
+                new { AbJobNum = 1003L, OrderAbcNum = (long?)9002L, OrderItemNum = (long?)7003L, LineNum = (long?)120L, JobStatus = (int?)0, MaterialYield = (decimal?)0.95m, NumberOfMenUsed = (int?)4, SketchId = (long?)3L, CreateDate = (DateTime?)d.AddDays(2), DueDate = (DateTime?)d.AddDays(5), TimeDateStarted = (DateTime?)d.AddDays(2), TimeDateFinished = (DateTime?)d.AddDays(3), JobNotes = "Complete", SketchJobNote = "" },
+                // An in-process job on the "no line" sentinel (line 0). It must NOT appear as a tile on
+                // the floor board: there is no BL 0 to walk up to, and on live data ~1,300 such jobs
+                // rendered as one "NONE" line whose counts swamped the real ones.
+                new { AbJobNum = 1004L, OrderAbcNum = (long?)9002L, OrderItemNum = (long?)7003L, LineNum = (long?)0L, JobStatus = (int?)1, MaterialYield = (decimal?)null, NumberOfMenUsed = (int?)null, SketchId = (long?)null, CreateDate = (DateTime?)d, DueDate = (DateTime?)d.AddDays(9), TimeDateStarted = (DateTime?)d, TimeDateFinished = (DateTime?)null, JobNotes = "Never assigned to a line", SketchJobNote = "" }
             });
 
         conn.Execute("""
@@ -1528,6 +1532,10 @@ public static class SqliteFixture
             """,
             new[]
             {
+                // line_num 0 / 'NONE' is the plant's real "no line assigned" sentinel, not a press —
+                // the live LINE table carries it alongside the seven real lines, and jobs never put on
+                // a line point at it. Seeded so the floor board's exclusion of it stays exercised.
+                new { LineNum = 0L, LineDesc = "NONE", LineLocation = (string?)null },
                 new { LineNum = 110L, LineDesc = "Cut-to-length 1", LineLocation = "Bay A" },
                 new { LineNum = 120L, LineDesc = "Cut-to-length 2", LineLocation = "Bay B" }
             });

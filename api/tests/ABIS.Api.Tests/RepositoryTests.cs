@@ -27,15 +27,15 @@ public sealed class RepositoryTests : IDisposable
     public async Task GetJobs_returns_all_seeded_jobs()
     {
         var page = await _repo.GetJobsAsync(1, 25, status: null, completed: null, search: null, orderBy: null, CancellationToken.None);
-        Assert.Equal(4, page.TotalCount);   // 3 base jobs + the Aleris 870 done job (990)
-        Assert.Equal(4, page.Items.Count);
+        Assert.Equal(5, page.TotalCount);   // 3 base + the Aleris 870 done job (990) + the unassigned-line job (1004)
+        Assert.Equal(5, page.Items.Count);
     }
 
     [Fact]
     public async Task GetJobs_filters_by_status()
     {
         var page = await _repo.GetJobsAsync(1, 25, status: 1, completed: null, search: null, orderBy: null, CancellationToken.None);
-        Assert.Equal(2, page.TotalCount);
+        Assert.Equal(3, page.TotalCount);   // 1001, 1002 + 1004 (in process, but on the "no line" sentinel)
         Assert.All(page.Items, j => Assert.Equal(1, j.JobStatus));
     }
 
@@ -71,9 +71,11 @@ public sealed class RepositoryTests : IDisposable
     [Fact]
     public async Task GetJobs_completed_false_excludes_done_and_cancelled()
     {
-        // completed=false → the "Uncomplete jobs" card: active work only (1001, 1002 are In process; 1003 Done is out).
+        // completed=false → the "Uncomplete jobs" card: active work only (1001, 1002, 1004 are In process;
+        // 1003 Done is out). 1004 sits on the "no line" sentinel and still counts here — it IS open work,
+        // it just has no line yet; only the FLOOR BOARD excludes that line.
         var page = await _repo.GetJobsAsync(1, 25, status: null, completed: false, search: null, orderBy: null, CancellationToken.None);
-        Assert.Equal(2, page.TotalCount);
+        Assert.Equal(3, page.TotalCount);
         Assert.All(page.Items, j => Assert.NotEqual(0, j.JobStatus));
         Assert.DoesNotContain(page.Items, j => j.AbJobNum == 1003);
     }
@@ -127,9 +129,9 @@ public sealed class RepositoryTests : IDisposable
     public async Task GetJobs_paginates()
     {
         var p1 = await _repo.GetJobsAsync(1, 2, status: null, completed: null, search: null, orderBy: null, CancellationToken.None);
-        Assert.Equal(4, p1.TotalCount);   // 3 base + the Aleris 870 job (990)
+        Assert.Equal(5, p1.TotalCount);   // 3 base + the Aleris 870 job (990) + the unassigned-line job (1004)
         Assert.Equal(2, p1.Items.Count);
-        Assert.Equal(2, p1.TotalPages);   // 4 jobs / 2 per page
+        Assert.Equal(3, p1.TotalPages);   // 5 jobs / 2 per page
 
         var p2 = await _repo.GetJobsAsync(2, 2, status: null, completed: null, search: null, orderBy: null, CancellationToken.None);
         Assert.Equal(2, p2.Items.Count);
@@ -579,7 +581,7 @@ public sealed class RepositoryTests : IDisposable
     {
         var created = await _repo.CreateJobAsync(
             new JobWrite { OrderAbcNum = 9001, LineNum = 110, JobStatus = 0, JobNotes = "new job" }, CancellationToken.None);
-        Assert.Equal(1004, created.AbJobNum);   // MAX(1003) + 1
+        Assert.Equal(1005, created.AbJobNum);   // MAX(1004) + 1
         Assert.NotNull(created.CreateDate);
         Assert.Equal("new job", created.JobNotes);
     }
@@ -2841,9 +2843,14 @@ public sealed class RepositoryTests : IDisposable
     public async Task GetLines_returns_seeded_lines()
     {
         var lines = await _repo.GetLinesAsync(CancellationToken.None);
-        Assert.Equal(2, lines.Count);
-        Assert.Equal(110, lines[0].LineNum);
-        Assert.Equal("Cut-to-length 1", lines[0].LineDesc);
+        Assert.Equal(3, lines.Count);
+        // The lookup deliberately INCLUDES the "no line assigned" sentinel: the UI needs it in the
+        // line-name map so an unassigned job's row can read "NONE" rather than a bare 0. Only the floor
+        // board filters it out, because there is no BL 0 to walk up to.
+        Assert.Equal(0, lines[0].LineNum);
+        Assert.Equal("NONE", lines[0].LineDesc);
+        Assert.Equal(110, lines[1].LineNum);
+        Assert.Equal("Cut-to-length 1", lines[1].LineDesc);
     }
 
     [Fact]
