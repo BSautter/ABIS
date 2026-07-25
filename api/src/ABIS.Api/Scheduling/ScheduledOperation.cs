@@ -52,7 +52,16 @@ public sealed class HeartbeatOperation(ILogger<HeartbeatOperation> log) : ISched
 /// operator's record of when work actually stopped, so ending stays a human action (the stale-shift
 /// monitor surfaces the ones nobody closed).</para>
 /// <para><c>args</c> optionally shifts the target day: an integer offset in days ("1" = tomorrow, for
-/// a job that runs the evening before). Default is today. Off unless a scheduled job targets it.</para></summary>
+/// a job that runs the evening before). Default is today. Off unless a scheduled job targets it.</para>
+/// <para><b>⚠ DO NOT ENABLE without reviving a schedule source first (checked live 2026-07-25).</b> The
+/// plant STOPPED maintaining SHIFT_SCHEDULE in <b>2009</b> — newest row 2009-01-14, zero rows in the
+/// last 365 days — so on the real database this creates NOTHING. Falling back to LINE_SCHEDULE would be
+/// worse, not better: its standing pattern says shift 1 starts 06:00 and shift 2 at 14:30, but the
+/// plant actually starts them at <b>05:00</b> and <b>15:31</b>, so every auto-created shift would carry
+/// a start time ~1 h from reality — and shift length is the DENOMINATOR of the efficiency calculation.
+/// Shifts are created by hand today at the moment work actually begins, which is a truer start time
+/// than any stored pattern can give. This operation stays for the case where the plant revives the
+/// calendar; until then it is deliberately inert.</para></summary>
 /// <remarks>Takes <see cref="IServiceScopeFactory"/>, not the repository: operations are registered as
 /// singletons (the allowlist is a singleton) while <c>IAbisRepository</c> is scoped, so the repo is
 /// resolved inside a per-execution scope — the same thing the hosted service does around a run.</remarks>
@@ -72,7 +81,12 @@ public sealed class CreateScheduledShiftsOperation(IServiceScopeFactory scopes, 
             log.LogInformation("Created {Count} scheduled shift(s) for {Day:yyyy-MM-dd}: {Shifts}.",
                 created.Count, day, string.Join(", ", created.Select(s => $"{s.ShiftNum}(line {s.LineNum}/type {s.ScheduleType})")));
         else
-            log.LogInformation("No shifts to create for {Day:yyyy-MM-dd} (none scheduled, or all already exist).", day);
+            // Say WHY nothing happened: the plant's calendar has been unmaintained since 2009, so
+            // "created 0" is the expected result, not a silent failure someone should go hunting for.
+            log.LogInformation(
+                "No shifts to create for {Day:yyyy-MM-dd} — nothing on the SHIFT_SCHEDULE calendar for that date " +
+                "(or they already exist). NOTE: the plant stopped maintaining that calendar in 2009, so this is " +
+                "expected until a schedule source is revived.", day);
         return created.Count;
     }
 }

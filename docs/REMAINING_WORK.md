@@ -155,9 +155,16 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   line pattern is **skipped rather than given an invented time**; the created shift is left OPEN (the DAS ends it).
   **Auto-CLOSE deliberately NOT done** — ending a shift stamps when work actually stopped, and a timer guessing
   that would corrupt the production record; the stale-shift monitor surfaces the ones nobody closed instead.
-  ⚠ **Unvalidated against live data**: Oracle was unreachable at build time, so it is not yet confirmed the
-  calendar is still maintained for CURRENT dates (18.7k rows may be historical). The operation is self-limiting —
-  no calendar rows for a date creates nothing — so this is safe either way, but confirm before enabling the job.
+  ⚠⚠ **VALIDATED AGAINST LIVE DATA 2026-07-25 — THE PREMISE IS FALSE, DO NOT ENABLE.** The plant **stopped
+  maintaining `SHIFT_SCHEDULE` in 2009** (newest row 2009-01-14, oldest 2005-04-03, **zero rows in the last
+  365 days**), so on the real database this creates **nothing**. It is inert and harmless, not broken — but it
+  does not do the job it was built for. **Falling back to `LINE_SCHEDULE` would be worse:** its standing pattern
+  says shift 1 starts 06:00 / shift 2 at 14:30, while the plant actually starts them at **05:00** and **15:31**
+  (30 of 32 recent shifts), so every auto-created shift would be ~1 h off — and **shift length is the denominator
+  of the efficiency calculation**. Shifts are hand-created today *at the moment work actually begins*, which is a
+  truer start than any stored pattern; that is very likely why legacy never automated it. Kept for the case where
+  the plant revives a calendar, with the reason logged at runtime. **Reviving a schedule source is a plant
+  decision, not a code change.**
 - [~] **H/M** Shift lifecycle: **stale-shift detection done** (#289) — `GET /das/shifts/open`
   (`staleOnly=true` for those open longer than a day) + a notification-bell alert. This is the operational
   defect the live DB exposed: three shifts open 31 h / 31 h / 103 h, none with a `dt_total` roll-up.
