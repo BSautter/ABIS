@@ -14,7 +14,7 @@
 import { AbisClient, SheetSkidWrite, ScrapSkidWrite, DowntimeInstanceWrite } from './generated/abis-client.js';
 import { initAuth, authFetch } from './auth.js';
 import { statusChip, lineLabel, loadLineNames } from './status-labels.js';
-import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount, fetchCounters, fetchStacker, browseEdgeTags } from './edge.js';
+import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount, fetchCounters, fetchStacker, fetchLineStatus, browseEdgeTags } from './edge.js';
 const $ = (sel) => document.querySelector(sel);
 const client = () => new AbisClient('', { fetch: authFetch });
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -50,6 +50,12 @@ let counterBaseline = null;
 // Dual-station stacker (edge /stacker). Each head's LIVE piece count + stack-complete, paired in the
 // panel with the skid AT that head (from the line board's STACKER_1/STACKER_2 slots).
 let stackerLive = null;
+// Fault/health lamps (the legacy w_da_sheet DB / OPC / PLC / auto lamps, u_fault_status_button).
+// ALL FOUR ARE "HEALTHY = LIT", faithful to legacy: uo_sql = set_select(db_alive);
+// uo_opc/uo_plc = set_select(error == 0); uo_noauto = set_select(NOT noauto) — i.e. the auto lamp is
+// lit while the line is in AUTO and goes dark on the manual/lockout flag.
+let lineStatusLive = null;
+let dbAlive = null;
 // The status a coil ends its run in (shift_coil.coil_end_status, on the COIL_STATUS domain). These
 // are the codes the plant actually uses, by frequency over ~108k real runs on the production ledger:
 // Done 83k, InProcess 8.6k, Rebanded 7.9k, New 6.4k, Rejected 1.6k, OnHold 54 — the rest are noise.
@@ -88,6 +94,7 @@ function scaffold() {
           <span id="runInd" class="dop-note" style="color:var(--rail-ink-2);margin-left:auto" title="Line run-state from the edge PLC feed">PLC: —</span>
           <span id="pieceInd" class="dop-note" style="color:var(--rail-ink-2)" title="Live stacker piece count for the skid in progress">Stacker: —</span>
         </div>
+        <div class="dop-lamps" id="tLamps" title="Health lamps — lit means healthy (the legacy DAS DB / OPC / PLC / auto lamps)"></div>
         <div id="dtBanner" style="display:none;background:#7f1d1d;color:#fff;border-radius:10px;padding:14px 18px;margin-bottom:12px"></div>
 
         <div class="card"><header><h2>Coil being run</h2><span class="sub" id="runCoilSub">tap a coil to select</span></header>
@@ -664,9 +671,12 @@ function startRunStatePoll() {
         localStorage.setItem('abis_edge_url', edge);
     localStorage.setItem('abis_run_tag', runTag);
     localStorage.setItem('abis_piece_tag', pieceTag);
+    // No edge / no job: the line feeds can't poll, but the health lamps still must — the DB lamp is
+    // independent of the edge, and a dark lamp strip would read as "all fine" rather than "not known".
     if (!edge || job == null) {
         setRunInd('—');
         setPieceInd('—');
+        void pollLamps(edge ? parseEdgeUrls(edge) : []);
         return;
     }
     // One or more edge hosts, primary first (.170 primary, .175 fallback) — failover lives in ./edge.
@@ -678,7 +688,7 @@ function startRunStatePoll() {
     }
     // The same 3s tick drives run-state (auto-downtime), the stacker piece count, and the coil-run
     // production counters (good/reject/strokes/feed).
-    const tick = () => { void pollRunState(bases, runTag); void pollPieceCount(bases, pieceTag); void pollCounters(bases); void pollStacker(bases); };
+    const tick = () => { void pollRunState(bases, runTag); void pollPieceCount(bases, pieceTag); void pollCounters(bases); void pollStacker(bases); void pollLamps(bases); };
     runPollTimer = window.setInterval(tick, 3000);
     tick();
 }
@@ -792,6 +802,51 @@ async function pollCounters(bases) {
         }
     }
     renderCounters();
+}
+// ---- Fault / health lamps (legacy w_da_sheet: uo_sql, uo_opc, uo_plc, uo_noauto) ----
+// The line's health tags share the run tag's OPC branch — every line is PLC5-BL<n>.<leaf> (verified
+// live on .170), so "PLC5-BL110.strokecnt" yields "PLC5-BL110.activefault"/".noauto" with no extra
+// config for the operator. A run tag that isn't branch.leaf falls back to the edge's own defaults.
+function lineStatusTags() {
+    const runTag = v('#runTag');
+    const dot = runTag.lastIndexOf('.');
+    if (dot <= 0)
+        return undefined;
+    const branch = runTag.slice(0, dot);
+    return { autorunning: `${branch}.autorunning`, fault: `${branch}.activefault`, noauto: `${branch}.noauto` };
+}
+// One lamp. `ok` true = healthy (lit), false = bad (red), null = unknown (dark grey) — an unknown
+// signal must never render as healthy, since a dark "fine" lamp is how a real fault gets missed.
+function lampHtml(label, ok, detail) {
+    const cls = ok == null ? 'unk' : ok ? 'ok' : 'bad';
+    return `<span class="dop-lamp ${cls}" title="${esc(detail)}"><i></i>${esc(label)}</span>`;
+}
+function renderLamps() {
+    const s = lineStatusLive;
+    // DB — the API's own readiness (the modern wf_is_db_alive).
+    const db = lampHtml('DB', dbAlive, dbAlive == null ? 'Database: unknown' : dbAlive ? 'Database reachable' : 'Database UNREACHABLE');
+    // OPC — the edge link itself: unreachable, or a tag quality other than Good, is the modern
+    // equivalent of the legacy opc_error item being non-zero.
+    const opcOk = s == null ? null : (!s.reachable ? false : s.quality == null ? null : s.quality === 'Good');
+    const opc = lampHtml('OPC', opcOk, !s?.reachable ? 'OPC/edge unreachable' : `OPC link quality: ${s?.quality ?? 'unknown'}`);
+    // PLC — activefault: 0 = healthy, non-zero = a fault is active and the raw value IS the code.
+    const plcOk = s?.fault == null ? null : !s.fault;
+    const plc = lampHtml('PLC', plcOk, s?.fault ? `PLC fault active (code ${s.faultRaw ?? '?'})` : s?.fault === false ? 'No active PLC fault' : 'PLC fault state unknown');
+    // AUTO — lit while the line is in auto; dark on the no-auto lockout (legacy: set_select(NOT noauto)).
+    const autoOk = s?.noauto == null ? null : !s.noauto;
+    const auto = lampHtml('AUTO', autoOk, s?.noauto ? 'Line is in MANUAL / auto locked out (noauto)' : s?.noauto === false ? 'Line is in auto' : 'Auto state unknown');
+    $('#tLamps').innerHTML = db + opc + plc + auto;
+}
+async function pollLamps(bases) {
+    // The DB lamp rides on the API's anonymous readiness probe.
+    try {
+        dbAlive = (await fetch('/health/ready', { cache: 'no-store' })).ok;
+    }
+    catch {
+        dbAlive = false;
+    }
+    lineStatusLive = await fetchLineStatus(bases, lineStatusTags());
+    renderLamps();
 }
 // ---- Dual-station stacker (edge /stacker → both heads' live count + complete, paired with the
 // skid at each head from the line board) ----

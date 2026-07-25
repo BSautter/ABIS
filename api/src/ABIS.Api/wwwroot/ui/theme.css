@@ -414,6 +414,19 @@ tr.run-open td { background:color-mix(in srgb, var(--accent) 10%, transparent); 
 .dop-counter .cn span { font-size:14px; color:var(--ink-3); margin-left:4px; font-weight:500; }
 .dop-counter .cl { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); margin-top:6px; }
 .dop-counter.bad .cn { color:var(--crit); }
+/* Health lamps (the legacy DAS DB / OPC / PLC / auto lamps). Lit = healthy, red = bad, grey =
+   unknown — an unknown signal must never look healthy. Sits on the dark rail under the scale bar. */
+.dop-lamps { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+.dop-lamp { display:inline-flex; align-items:center; gap:7px; padding:5px 12px; border-radius:999px;
+  border:1px solid var(--rail-line); background:var(--rail-2); color:var(--rail-ink-2);
+  font-family:var(--font-mono); font-size:11px; letter-spacing:.09em; font-weight:600; }
+.dop-lamp i { width:10px; height:10px; border-radius:50%; background:#5c6e88; }
+.dop-lamp.ok  { color:#8fe3b8; border-color:color-mix(in srgb, #33d685 45%, transparent); }
+.dop-lamp.ok i  { background:#33d685; box-shadow:0 0 0 3px color-mix(in srgb, #33d685 25%, transparent); }
+.dop-lamp.bad { color:#ffc2cd; border-color:color-mix(in srgb, #f2506b 55%, transparent); }
+.dop-lamp.bad i { background:#f2506b; box-shadow:0 0 0 3px color-mix(in srgb, #f2506b 28%, transparent); animation:daspulse 1.1s ease-in-out infinite; }
+.dop-lamp.unk { opacity:.65; }
+
 /* Dual-station stacker: the two heads side by side, each with its live count + the skid on it. */
 .dop-stations { display:flex; gap:14px; flex-wrap:wrap; }
 .dop-station { flex:1 1 200px; min-width:200px; background:var(--surface-2); border:1px solid var(--line); border-radius:12px; padding:16px; }

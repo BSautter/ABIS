@@ -162,7 +162,15 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   by the Operation Panel goes back to *Waiting*, and only the job-done cascade sets Ended (an
   earlier comment in #283 called status 2 "ran"; corrected). Console: a Line-queue table with
   move-up / remove / queue-a-job.
-- [ ] **H** Line auto-status controls + `noauto` write (lockout); fault/health lamps (DB / OPC `_ErrorCode` / PLC `activefault`)
+- [~] **H** Line auto-status controls + `noauto` write (lockout); fault/health lamps (DB / OPC `_ErrorCode` / PLC `activefault`)
+  — **lamps DONE** (#299): a DB / OPC / PLC / AUTO lamp strip on the DAS console, ported from legacy
+  `u_fault_status_button` semantics — **all four are "healthy = lit"** (`uo_sql` = db alive, `uo_opc`/`uo_plc` =
+  error code 0, `uo_noauto` = `set_select(NOT noauto)` so AUTO is lit in auto and dark on the lockout).
+  Unknown renders grey, never green, so a dead feed can't look healthy. Health tags are DERIVED from the
+  configured run tag's OPC branch (`PLC5-BL<n>.strokecnt` → `.activefault`/`.noauto`), so no extra operator
+  config. **Verified against the live plant PLC**: BL110 showed PLC red "fault active (code 68)" + AUTO dark
+  "MANUAL / auto locked out", matching the real bits. Still TODO: the **`noauto` WRITE** (the actual lockout
+  control) — blocked on an edge WRITE path, which does not exist (the edge is read-only by design).
 - [~] **H** Stacker dual-station automation (`SHEET_SKID_STACKER_1/2`) — **live dual-station view done**
   (#294): edge `GET /stacker` exposes each head's live piece counter + stack-complete bit + the stacker
   scale (legacy `stacker<n>.station1/2_stack_counter` / `Sta1/2StackComplete` / `ScaleSkidWt/Id`), and the

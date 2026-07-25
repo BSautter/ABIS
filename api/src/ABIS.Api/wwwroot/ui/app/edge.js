@@ -133,6 +133,41 @@ export async function fetchCounters(bases) {
     }
     return { reachable: false, via: '', good: NO_COUNTER, reject: NO_COUNTER, stroke: NO_COUNTER, feed: NO_COUNTER };
 }
+/**
+ * Read a line's health bits across the edge hosts (primary→fallback). Pass the line's tag ids to
+ * scope it to that line; omit them to use the edge's configured defaults. Unreachable → everything
+ * null, so the caller shows "unknown" rather than a fabricated healthy/faulted state.
+ */
+export async function fetchLineStatus(bases, tags) {
+    const q = new URLSearchParams();
+    if (tags?.autorunning)
+        q.set('autorunning', tags.autorunning);
+    if (tags?.fault)
+        q.set('fault', tags.fault);
+    if (tags?.noauto)
+        q.set('noauto', tags.noauto);
+    const qs = q.toString() ? `?${q}` : '';
+    for (let i = 0; i < bases.length; i++) {
+        try {
+            const r = await fetchWithTimeout(`${bases[i]}/line-status${qs}`, 2000);
+            if (!r.ok)
+                continue;
+            const s = await r.json();
+            return {
+                reachable: true, via: i > 0 ? ' (fallback)' : '',
+                running: s.running?.value ?? null,
+                fault: s.fault?.value ?? null,
+                noauto: s.noauto?.value ?? null,
+                faultRaw: s.fault?.raw ?? null,
+                // Any bit's quality reflects the OPC link; prefer the fault tag's, then the others.
+                quality: s.fault?.quality ?? s.running?.quality ?? s.noauto?.quality ?? null,
+                configured: !!(s.running?.configured || s.fault?.configured || s.noauto?.configured),
+            };
+        }
+        catch { /* unreachable/timeout → try the next host */ }
+    }
+    return { reachable: false, via: '', running: null, fault: null, noauto: null, faultRaw: null, quality: null, configured: false };
+}
 const NO_STATION = { configured: false, count: null, complete: null };
 /**
  * Read a line's two stacker stations (live piece count + stack-complete) and the stacker scale, in
