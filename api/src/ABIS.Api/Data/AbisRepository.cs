@@ -703,15 +703,15 @@ public sealed class AbisRepository : IAbisRepository
 
         var p = new DynamicParameters();
         p.Add("coil", coilAbcNum);
-        p.Add("when", when, DbType.DateTime);
+        p.Add("atUtc", when, DbType.DateTime);
         p.Add("pre", fromStatus, DbType.Int32);
         p.Add("cur", toStatus, DbType.Int32);
-        p.Add("by", modifiedBy);
+        p.Add("actor", modifiedBy);
         p.Add("note", note);
         await conn.ExecuteAsync(new CommandDefinition(
             """
             INSERT INTO coil_track_qa (coil_abc_num, coil_track_date, coil_pre_status, coil_cur_status, coil_modified_by, note)
-            VALUES (:coil, :when, :pre, :cur, :by, :note)
+            VALUES (:coil, :atUtc, :pre, :cur, :actor, :note)
             """, p, tx, cancellationToken: ct));
 
         await tx.CommitAsync(ct);
@@ -1270,8 +1270,8 @@ public sealed class AbisRepository : IAbisRepository
         var p = new DynamicParameters();
         p.Add("id", coilAbcNum);
         p.Add("org", orgNum);
-        p.Add("start", body.StartingPosition, DbType.Decimal);
-        p.Add("end", body.EndingPosition, DbType.Decimal);
+        p.Add("startPos", body.StartingPosition, DbType.Decimal);
+        p.Add("endPos", body.EndingPosition, DbType.Decimal);
         p.Add("code", body.FlawCode);
         p.Add("suom", body.StartingPositionUom);
         p.Add("euom", body.EndingPositionUom);
@@ -1280,7 +1280,7 @@ public sealed class AbisRepository : IAbisRepository
             """
             INSERT INTO coil_quality_flaw_mapping (coil_abc_num, coil_org_num, starting_position, ending_position,
                 flaw_code, starting_position_uom, ending_position_uom, handling_code)
-            VALUES (:id, :org, :start, :end, :code, :suom, :euom, :hand)
+            VALUES (:id, :org, :startPos, :endPos, :code, :suom, :euom, :hand)
             """, p, cancellationToken: ct));
         return new CoilQualityFlaw
         {
@@ -1296,8 +1296,8 @@ public sealed class AbisRepository : IAbisRepository
         var n = await conn.ExecuteAsync(new CommandDefinition(
             """
             DELETE FROM coil_quality_flaw_mapping
-            WHERE coil_abc_num = :id AND starting_position = :start AND ending_position = :end AND flaw_code = :code
-            """, new { id = coilAbcNum, start = startingPosition, end = endingPosition, code = flawCode }, cancellationToken: ct));
+            WHERE coil_abc_num = :id AND starting_position = :startPos AND ending_position = :endPos AND flaw_code = :code
+            """, new { id = coilAbcNum, startPos = startingPosition, endPos = endingPosition, code = flawCode }, cancellationToken: ct));
         return n > 0;
     }
 
@@ -3581,9 +3581,9 @@ public sealed class AbisRepository : IAbisRepository
         await conn.ExecuteAsync(new CommandDefinition(
             """
             INSERT INTO recovery_report_customer (customer_id, customer_name, all_products, auto_only, comm_only)
-            VALUES (:id, :name, :all, :auto, :comm)
+            VALUES (:id, :name, :allProd, :auto, :comm)
             """,
-            new { id = customerId, name = body.CustomerName, all = body.AllProducts, auto = body.AutoOnly, comm = body.CommOnly },
+            new { id = customerId, name = body.CustomerName, allProd = body.AllProducts, auto = body.AutoOnly, comm = body.CommOnly },
             transaction: tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
         return new RecoveryCustomer
@@ -7460,17 +7460,17 @@ public sealed class AbisRepository : IAbisRepository
     public async Task<PlcFaultCode> UpsertPlcFaultCodeAsync(long lineNum, long faultCode, string description, string? notes, string? updatedBy, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
-        var args = new { line = lineNum, code = faultCode, desc = description, notes, by = updatedBy, ts = DateTime.UtcNow };
+        var args = new { line = lineNum, code = faultCode, descr = description, notes, actor = updatedBy, ts = DateTime.UtcNow };
         var updated = await conn.ExecuteAsync(new CommandDefinition(
             """
-            UPDATE abis_plc_fault_code SET description = :desc, notes = :notes, updated_by = :by, updated_utc = :ts
+            UPDATE abis_plc_fault_code SET description = :descr, notes = :notes, updated_by = :actor, updated_utc = :ts
             WHERE line_num = :line AND fault_code = :code
             """, args, cancellationToken: ct));
         if (updated == 0)
             await conn.ExecuteAsync(new CommandDefinition(
                 """
                 INSERT INTO abis_plc_fault_code (line_num, fault_code, description, notes, updated_by, updated_utc)
-                VALUES (:line, :code, :desc, :notes, :by, :ts)
+                VALUES (:line, :code, :descr, :notes, :actor, :ts)
                 """, args, cancellationToken: ct));
         return (await GetPlcFaultCodesAsync(lineNum, ct)).First(f => f.LineNum == lineNum && f.FaultCode == faultCode);
     }
@@ -8570,7 +8570,7 @@ public sealed class AbisRepository : IAbisRepository
         "pmshift = :pmshift, titlecraft_id = :craft, maint_freq = :freq, itemdevice_id = :item, " +
         "subsysequipment_id = :subsys, sysequipment_id = :sys, groupdepartment_id = :dept, " +
         "assignedtogroup = :grp, pm_status = :status, pm_notice = :notice, mins_per_unit = :mins, " +
-        "num_of_units = :units, numoftimesperyear = :peryear, daysbetween = :between, " +
+        "num_of_units = :units, numoftimesperyear = :peryear, daysbetween = :daysBetween, " +
         "nextduedate = :nextdue, pm_repeat = :repeat, pmreference = :reference, pm_cost = :cost, " +
         "author = :author, lastupdate = :now";
 
@@ -8581,7 +8581,7 @@ public sealed class AbisRepository : IAbisRepository
         pmshift = b.Pmshift, craft = b.TitleCraftId, freq = b.MaintFreq, item = b.ItemDeviceId,
         subsys = b.SubsysEquipmentId, sys = b.SysEquipmentId, dept = b.GroupDepartmentId,
         grp = b.AssignedToGroup, status = b.PmStatus, notice = b.PmNotice, mins = b.MinsPerUnit,
-        units = b.NumOfUnits, peryear = b.NumOfTimesPerYear, between = b.DaysBetween,
+        units = b.NumOfUnits, peryear = b.NumOfTimesPerYear, daysBetween = b.DaysBetween,
         nextdue = b.NextDueDate, repeat = b.PmRepeat, reference = b.PmReference, cost = b.PmCost,
         author = b.Author, now
     };
@@ -8605,13 +8605,13 @@ public sealed class AbisRepository : IAbisRepository
                 mins_per_unit, num_of_units, numoftimesperyear, daysbetween, nextduedate, pm_repeat,
                 pmreference, pm_cost, author, lastupdate)
             VALUES (:id, :entered, 0, :pmshift, :craft, :freq, :item, :subsys, :sys, :dept, :grp, :status, :notice,
-                :mins, :units, :peryear, :between, :nextdue, :repeat, :reference, :cost, :author, :updated)
+                :mins, :units, :peryear, :daysBetween, :nextdue, :repeat, :reference, :cost, :author, :updated)
             """,
             new { id, entered = (DateTime?)now, pmshift = body.Pmshift, craft = body.TitleCraftId,
                   freq = body.MaintFreq, item = body.ItemDeviceId, subsys = body.SubsysEquipmentId,
                   sys = body.SysEquipmentId, dept = body.GroupDepartmentId, grp = body.AssignedToGroup,
                   status = body.PmStatus, notice = body.PmNotice, mins = body.MinsPerUnit,
-                  units = body.NumOfUnits, peryear = body.NumOfTimesPerYear, between = body.DaysBetween,
+                  units = body.NumOfUnits, peryear = body.NumOfTimesPerYear, daysBetween = body.DaysBetween,
                   nextdue = body.NextDueDate, repeat = body.PmRepeat, reference = body.PmReference,
                   cost = body.PmCost, author = body.Author, updated = (DateTime?)now },
             transaction: tx, cancellationToken: ct));
@@ -8746,23 +8746,23 @@ public sealed class AbisRepository : IAbisRepository
             INSERT INTO pmcompletions (pmcompletion_id, itemdevice_id, subsysequipment_id, sysequipment_id,
                 groupdepartment_id, pm_id, pm_status, completeddate, assignedtogroup, completedby,
                 completed_notes, recordeddate, labor_hours, comp_cost)
-            VALUES (:id, :item, :subsys, :sys, :dept, :pm, :status, :completed, :grp, :by, :notes, :recorded,
+            VALUES (:id, :item, :subsys, :sys, :dept, :pm, :status, :completed, :grp, :actor, :notes, :recorded,
                 :labor, :cost)
             """,
             new { id = completionId, item = pm.ItemDeviceId, subsys = pm.SubsysEquipmentId,
                   sys = pm.SysEquipmentId, dept = pm.GroupDepartmentId, pm = pmId,
                   status = pm.PmStatus ?? 1, completed = completedDate, grp = group,
-                  by = body.CompletedBy, notes = body.CompletedNotes, recorded = (DateTime?)DateTime.UtcNow,
+                  actor = body.CompletedBy, notes = body.CompletedNotes, recorded = (DateTime?)DateTime.UtcNow,
                   labor = body.LaborHours, cost = body.CompCost },
             transaction: tx, cancellationToken: ct));
 
         await conn.ExecuteAsync(new CommandDefinition(
             """
-            UPDATE pm SET pm_completed = :completed, completed_by = :by, nextduedate = :nextdue,
+            UPDATE pm SET pm_completed = :completed, completed_by = :actor, nextduedate = :nextdue,
                           numoverdue = 0, numoverdueresetdate = :reset, lastupdate = :now
             WHERE pm_id = :id
             """,
-            new { completed = completedDate, by = body.CompletedBy, nextdue = nextDue,
+            new { completed = completedDate, actor = body.CompletedBy, nextdue = nextDue,
                   reset = completedDate, now = (DateTime?)DateTime.UtcNow, id = pmId },
             transaction: tx, cancellationToken: ct));
         await tx.CommitAsync(ct);
@@ -9052,8 +9052,8 @@ public sealed class AbisRepository : IAbisRepository
         var conditions = new List<string>();
         if (direction is not null) { conditions.Add("UPPER(direction) = UPPER(:direction)"); p.Add("direction", direction); }
         if (status is not null) { conditions.Add("truck_status = :status"); p.Add("status", status); }
-        if (from is not null) { conditions.Add("scheduled_start >= :from"); p.Add("from", from); }
-        if (to is not null) { conditions.Add("scheduled_start < :to"); p.Add("to", to); }
+        if (from is not null) { conditions.Add("scheduled_start >= :fromDt"); p.Add("fromDt", from); }
+        if (to is not null) { conditions.Add("scheduled_start < :toDt"); p.Add("toDt", to); }
         var where = conditions.Count > 0 ? string.Join(" AND ", conditions) : null;
         return PageAsync<TruckAppointment>(TruckCols, "abis_truck_appointment", "scheduled_start", where, p, page, pageSize, ct);
     }

@@ -76,22 +76,8 @@ public sealed class OracleBindNameTests
     /// </summary>
     private static readonly HashSet<string> KnownOffenders = new(StringComparer.Ordinal)
     {
-        // --- coil quality flaws: :start / :end (add + delete) -------------------------------------
-        "AbisRepository.cs:1283 :start", "AbisRepository.cs:1283 :end",
-        "AbisRepository.cs:1299 :start", "AbisRepository.cs:1299 :end",
-        // --- coil QA hold/release ------------------------------------------------------------------
-        "AbisRepository.cs:714 :by",
-        // --- scrap/recovery filter -----------------------------------------------------------------
-        "AbisRepository.cs:3584 :all",
-        // --- job-folder notes ----------------------------------------------------------------------
-        "AbisRepository.cs:7466 :by", "AbisRepository.cs:7466 :desc",
-        "AbisRepository.cs:7473 :by", "AbisRepository.cs:7473 :desc",
-        // --- preventive maintenance: create/update (:between) and completion (:by) -----------------
-        "AbisRepository.cs:8573 :between", "AbisRepository.cs:8608 :between",
-        "AbisRepository.cs:8749 :by", "AbisRepository.cs:8761 :by",
-        // --- truck appointments: date-range filter -------------------------------------------------
-        "AbisRepository.cs:9055 :from", "AbisRepository.cs:9056 :to",
-        // --- SQLite-only seed data (never reaches Oracle) ------------------------------------------
+        // Only the SQLite seed data remains. It never runs against Oracle, but it is listed rather
+        // than exempted so the rule stays absolute and nobody has to argue about which files count.
         "SqliteFixture.cs:982 :By",
         "SqliteFixture.cs:1576 :Start", "SqliteFixture.cs:1576 :End",
         "SqliteFixture.cs:1586 :Start", "SqliteFixture.cs:1586 :End",
