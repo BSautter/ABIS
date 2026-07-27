@@ -1112,6 +1112,73 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task Production_summary_reports_metal_consumed_not_the_remnant_left_on_the_coil()
+    {
+        // Legacy w_production_folder.srw:1262 — processed = coilnet - unprocessednet - rejnet.
+        //
+        // This roll-up used to report SUM(process_coil.process_end_wt), which is the metal LEFT ON the
+        // coil at end of job, not the metal put through the line. Only rejected and rebanded coils carry
+        // a remnant, so the figure tracked rejected weight: on live Oracle BL 78 reported 606,477 against
+        // a true 41,506,349, and lines that had run reported 0.
+        //
+        // Two lines with deliberately coherent weights, covering every component. Seeded here rather
+        // than in the shared fixture because the fixture's process_quantity and process_end_wt are toy
+        // values on different scales (qty 60 against end_wt 1500), which makes the subtraction negative
+        // and the assertion unreadable.
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO line (line_num, line_desc) VALUES (991, 'TEST LINE A');
+                INSERT INTO line (line_num, line_desc) VALUES (992, 'TEST LINE B');
+
+                -- Straight run: all 10,000 consumed.
+                INSERT INTO ab_job (ab_job_num, line_num, job_status, material_yield, time_date_started) VALUES (9101, 991, 0, 0.95, '2026-03-01 06:00:00');
+                INSERT INTO coil (coil_abc_num, coil_org_num, lot_num, net_wt, net_wt_balance) VALUES (9001, '9900001', 'L9001', 10000, 0);
+                INSERT INTO process_coil (ab_job_num, coil_abc_num, process_coil_status, process_end_wt, process_quantity) VALUES (9101, 9001, 1, 0, 10000);
+
+                -- Applied but never used (status 2): counted into coilnet, then subtracted back out.
+                INSERT INTO ab_job (ab_job_num, line_num, job_status, material_yield, time_date_started) VALUES (9102, 991, 0, 0.95, '2026-03-01 07:00:00');
+                INSERT INTO coil (coil_abc_num, coil_org_num, lot_num, net_wt, net_wt_balance) VALUES (9002, '9900002', 'L9002', 3000, 3000);
+                INSERT INTO process_coil (ab_job_num, coil_abc_num, process_coil_status, process_end_wt, process_quantity) VALUES (9102, 9002, 2, 0, 3000);
+
+                -- Rejected (3). Billed weight = MAX(end_wt 1200, largest prior pass 500) = 1200,
+                -- so 8000 - 1200 = 6800 was actually processed. The prior pass lives on line B, which
+                -- also proves the correlated MAX is not filtered by job.
+                INSERT INTO ab_job (ab_job_num, line_num, job_status, material_yield, time_date_started) VALUES (9103, 991, 0, 0.95, '2026-03-01 08:00:00');
+                INSERT INTO coil (coil_abc_num, coil_org_num, lot_num, net_wt, net_wt_balance) VALUES (9003, '9900003', 'L9003', 8000, 1200);
+                INSERT INTO process_coil (ab_job_num, coil_abc_num, process_coil_status, process_end_wt, process_quantity) VALUES (9103, 9003, 3, 1200, 8000);
+                INSERT INTO ab_job (ab_job_num, line_num, job_status, material_yield, time_date_started) VALUES (9105, 992, 0, 0.95, '2026-03-01 05:00:00');
+                INSERT INTO process_coil (ab_job_num, coil_abc_num, process_coil_status, process_end_wt, process_quantity) VALUES (9105, 9003, 1, 0, 500);
+
+                -- Rebanded (7) with a NULL end weight: the rule falls back to coil.net_wt_balance (900),
+                -- so 5000 - 900 = 4100. This is the branch that made process_end_wt NULL on 51% of live rows.
+                INSERT INTO ab_job (ab_job_num, line_num, job_status, material_yield, time_date_started) VALUES (9104, 991, 0, 0.95, '2026-03-01 09:00:00');
+                INSERT INTO coil (coil_abc_num, coil_org_num, lot_num, net_wt, net_wt_balance) VALUES (9004, '9900004', 'L9004', 5000, 900);
+                INSERT INTO process_coil (ab_job_num, coil_abc_num, process_coil_status, process_end_wt, process_quantity) VALUES (9104, 9004, 7, NULL, 5000);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+
+        var rows = await _repo.GetProductionSummaryAsync(
+            new DateTime(2026, 2, 1), new DateTime(2026, 4, 1), CancellationToken.None);
+
+        var a = rows.Single(r => r.LineNum == 991);
+        // 10000 (straight) + 0 (3000 applied, 3000 unused) + 6800 (8000 less 1200 rejected)
+        // + 4100 (5000 less the 900 rebanded remnant) = 20900.
+        Assert.Equal(20900d, a.ProcessedWt);
+        Assert.Equal(4, a.JobCount);
+
+        // The old expression, SUM(process_end_wt), would have reported 1200 here — the rejected
+        // remnant alone, 6% of the metal the line actually put through.
+        Assert.NotEqual(1200d, a.ProcessedWt);
+
+        var b = rows.Single(r => r.LineNum == 992);
+        Assert.Equal(500d, b.ProcessedWt);
+    }
+
+    [Fact]
     public async Task Edi856_assembles_a_shipment_generates_persists_and_guards_duplicates()
     {
         // A Novelis (1153) shipment with one packed skid, inserted locally (keeps shared counts stable).

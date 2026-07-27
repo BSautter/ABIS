@@ -1810,6 +1810,48 @@ public sealed class AbisRepository : IAbisRepository
         return (await GetSheetSkidAsync(id, ct))!;
     }
 
+    /// <summary>Processed weight for ONE job — legacy <c>w_production_folder.srw:1262</c>:
+    /// <c>processed = coilnet - unprocessednet - rejnet</c>.
+    /// <para>This roll-up used to report <c>SUM(process_coil.process_end_wt)</c> instead, which is not
+    /// the weight processed. Legacy treats <c>process_end_wt</c> as interchangeable with
+    /// <c>coil.net_wt_balance</c> — <c>wf_rejected_coil_wt</c> substitutes one for the other when it is
+    /// NULL — so it is the metal LEFT ON the coil at end of job, and the legacy DataWindows label it
+    /// "End of Job WT". On live data it is NULL or zero for 91% of rows and averages 9% of coil net
+    /// weight, because only rejected and rebanded coils carry a remnant. The reported figure therefore
+    /// tracked rejected weight, not throughput: BL 78 showed 606,477 against a true 41,506,349, and
+    /// lines that had run showed 0.</para>
+    /// <para>The three components, all keyed on the job:
+    /// <list type="bullet">
+    /// <item><c>coilnet</c> — <c>SUM(process_quantity)</c> over every applied coil.</item>
+    /// <item><c>unprocessednet</c> — the same sum restricted to <c>process_coil_status = 2</c>, coils
+    /// applied to the job but never used.</item>
+    /// <item><c>rejnet</c> — over the rejected (3) and rebanded (7) coils, the legacy billed-weight
+    /// rule from <c>wf_rejected_coil_wt</c>: the greater of the shift-end weight (falling back to the
+    /// coil balance when NULL) and the largest prior-pass quantity for that coil. Written as CASE
+    /// rather than GREATEST because GREATEST is Oracle-only and this must also run on SQLite.</item>
+    /// </list></para>
+    /// Every SUM is wrapped in COALESCE: one NULL component would otherwise null the whole
+    /// subtraction rather than contributing zero.</summary>
+    private const string ProcessedWtPerJob = """
+                   (SELECT COALESCE(SUM(pc.process_quantity), 0.0)
+                         - COALESCE(SUM(CASE WHEN pc.process_coil_status = 2
+                                             THEN pc.process_quantity ELSE 0 END), 0.0)
+                         - COALESCE(SUM(CASE WHEN pc.process_coil_status IN (3, 7) THEN
+                               CASE WHEN COALESCE(pc.process_end_wt, c.net_wt_balance, 0)
+                                       >= COALESCE((SELECT MAX(pp.process_quantity) FROM process_coil pp
+                                                     WHERE pp.coil_abc_num = pc.coil_abc_num
+                                                       AND pp.process_quantity < pc.process_quantity), 0)
+                                    THEN COALESCE(pc.process_end_wt, c.net_wt_balance, 0)
+                                    ELSE COALESCE((SELECT MAX(pp.process_quantity) FROM process_coil pp
+                                                    WHERE pp.coil_abc_num = pc.coil_abc_num
+                                                      AND pp.process_quantity < pc.process_quantity), 0)
+                               END
+                           ELSE 0 END), 0.0)
+                      FROM process_coil pc
+                      LEFT JOIN coil c ON c.coil_abc_num = pc.coil_abc_num
+                     WHERE pc.ab_job_num = j.ab_job_num)
+        """;
+
     public async Task<IReadOnlyList<ProductionSummaryRow>> GetProductionSummaryAsync(DateTime? from, DateTime? to, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
@@ -1825,7 +1867,7 @@ public sealed class AbisRepository : IAbisRepository
             SELECT l.line_num AS LineNum, l.line_desc AS LineDesc,
                    COUNT(j.ab_job_num) AS JobCount,
                    ROUND(AVG(j.material_yield), 4) AS AvgYield,
-                   COALESCE(SUM((SELECT SUM(pc.process_end_wt) FROM process_coil pc WHERE pc.ab_job_num = j.ab_job_num)), 0.0) AS ProcessedWt
+                   COALESCE(SUM({ProcessedWtPerJob}), 0.0) AS ProcessedWt
             FROM line l
             LEFT JOIN ab_job j ON j.line_num = l.line_num{dateFilter}
             GROUP BY l.line_num, l.line_desc
@@ -1847,7 +1889,7 @@ public sealed class AbisRepository : IAbisRepository
             $"""
             SELECT l.line_num AS LineNum, l.line_desc AS LineDesc,
                    COUNT(j.ab_job_num) AS JobCount, ROUND(AVG(j.material_yield), 4) AS AvgYield,
-                   COALESCE(SUM((SELECT SUM(pc.process_end_wt) FROM process_coil pc WHERE pc.ab_job_num = j.ab_job_num)), 0.0) AS ProcessedWt
+                   COALESCE(SUM({ProcessedWtPerJob}), 0.0) AS ProcessedWt
             FROM line l
             LEFT JOIN ab_job j ON j.line_num = l.line_num{jobFilter}
             GROUP BY l.line_num, l.line_desc

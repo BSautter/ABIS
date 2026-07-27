@@ -442,6 +442,26 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [ ] **M** Step-up re-auth popup; in-DB job control (DBMS_SCHEDULER enable/disable/run-now)
 
 ## D. Bug / robustness leftovers (from the sweep — verified, low severity)
+
+- [x] **H** **"Processed wt" on the production reports was the remnant, not the throughput** — done (#335).
+  `GetProductionSummaryAsync` and `GetLineEfficiencyAsync` reported `SUM(process_coil.process_end_wt)`
+  as `ProcessedWt`. That column is the metal **left on** the coil at end of job: legacy
+  `wf_rejected_coil_wt` substitutes `coil.net_wt_balance` for it when NULL, and the legacy DataWindows
+  label it "End of Job WT". Only rejected and rebanded coils carry a remnant, so the reported figure
+  tracked **rejected weight** — on live `.230` it is NULL or zero for **91%** of 183,776 rows and
+  averages 1,570 against a 17,819 average coil net weight.
+  Now ports legacy `w_production_folder.srw:1262` — `processed = coilnet − unprocessednet − rejnet`,
+  as one shared `ProcessedWtPerJob` constant used by both roll-ups. Verified on live Oracle:
+
+  | line | was | now |
+  |------|-----|-----|
+  | BL 24 | 0 | 93,951 |
+  | BL 36 | 33,665 | 939,580 |
+  | BL 78 | 606,477 | 41,506,349 |
+  | BL 108 | 1,010,347 | 9,171,278 |
+  | BL 110 | 559,729 | 3,341,667 |
+  | BL 84 | 2,228,841 | 50,948,522 |
+
 - [x] **M** Invoice-save duplicate: return **409** not a 500 — done (#260): `CreateInvoiceAsync` now catches the PK violation on the INSERT (the pre-check's TOCTOU race) and re-checks → returns Duplicate (409) instead of a 500.
 - [ ] **L** `If-Match` optimistic concurrency: push the version into the UPDATE `WHERE` (true compare-and-swap; today check-then-act) — `WithIfMatch`
 - [x] **L** Invoice **tare** bucket — done (#260): `GetInvoiceComputationAsync` tare now excludes voided skids (`skid_sheet_status <> 6`) so it matches `SkidCount`.
