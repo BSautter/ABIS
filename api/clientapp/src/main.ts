@@ -25,6 +25,13 @@ function client(): AbisClient {
   });
 }
 
+// Escape before interpolating into innerHTML. Coil alloy/temper/location/status are plant- and
+// customer-entered free text, so without this they execute as HTML on the served page. Every other
+// module in this app defines this helper; this one did not, which is how it was missed.
+const esc = (v: unknown): string =>
+  String(v ?? '').replace(/[&<>"']/g, (ch) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch] as string));
+
 const fmt = (v: number | undefined): string => (v == null ? '' : v.toLocaleString());
 
 async function search(): Promise<void> {
@@ -39,10 +46,10 @@ async function search(): Promise<void> {
       .map(
         (c: Coil) => `
       <tr class="click" data-id="${c.coilAbcNum}">
-        <td>${c.coilAbcNum}</td><td>${c.coilAlloy2 ?? ''}</td><td>${c.coilTemper ?? ''}</td>
-        <td class="num">${fmt(c.coilGauge)}</td><td>${c.coilLocation ?? ''}</td>
+        <td>${c.coilAbcNum}</td><td>${esc(c.coilAlloy2)}</td><td>${esc(c.coilTemper)}</td>
+        <td class="num">${fmt(c.coilGauge)}</td><td>${esc(c.coilLocation)}</td>
         <td class="num">${fmt(c.netWt)}</td><td class="num">${fmt(c.netWtBalance)}</td>
-        <td>${c.coilStatus ?? ''}</td>
+        <td>${esc(c.coilStatus)}</td>
       </tr>`
       )
       .join('');

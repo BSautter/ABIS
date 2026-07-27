@@ -1421,10 +1421,15 @@ public static class ApiEndpoints
                 // "Job X does not exist." (w_e_car_folder:537) before anything else.
                 if (await repo.GetJobAsync(abJobNum, ct) is null)
                     return Results.NotFound();
-                // The author: the resolved OIDC user, else the body's userId (dev API).
-                long? userId = body.UserId;
-                if (userId is null && ResolveLogin(ctx) is { } login)
+                // The author: the AUTHENTICATED principal wins; body.userId is only a fallback for the
+                // API-key/service path, which has no resolved login. The comment here always said this,
+                // but the code did the inverse — it read body.UserId FIRST — so any signed-in caller
+                // could file a permanent e-folder note attributed to somebody else. An e-folder note is
+                // a production record; who wrote it has to come from who was authenticated.
+                long? userId = null;
+                if (ResolveLogin(ctx) is { } login)
                     userId = (await repo.GetSecurityUserByLoginAsync(login, ct))?.UserId;
+                userId ??= body.UserId;
                 if (userId is null or <= 0)
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["userId"] = ["userId is required (or authenticate as a known user)."] });
                 var created = await repo.AddJobFolderNoteAsync(abJobNum, userId.Value, body.Notes, ct);
@@ -1745,7 +1750,11 @@ public static class ApiEndpoints
                 if (!await repo.LineExistsAsync(lineNum, ct))
                     return Results.NotFound();
                 // The correction goes on the record under whoever is signed in, unless told otherwise.
-                var user = string.IsNullOrWhiteSpace(body.ErrorUser) ? ResolveLogin(ctx) : body.ErrorUser;
+                // Same rule as the e-folder note: the authenticated principal is the author of record,
+                // and body.errorUser is only the fallback for the API-key/service path (the DAS kiosk).
+                // This one already preferred the login when the body omitted it, but a body value could
+                // still override a real signed-in user on an ERROR_EVT row — an audit trail.
+                var user = ResolveLogin(ctx) ?? (string.IsNullOrWhiteSpace(body.ErrorUser) ? null : body.ErrorUser);
                 if (await repo.ReverseCoilRunAsync(lineNum, user, body.ErrorTypeId, body.Note, ct) is not { } result)
                     return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Nothing to reverse",
                         detail: $"Line {lineNum} has no coil run to reverse.");
