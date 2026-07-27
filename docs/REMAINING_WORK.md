@@ -443,6 +443,21 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 
 ## D. Bug / robustness leftovers (from the sweep — verified, low severity)
 
+- [x] **H** **DAS scale pull ignored the reading's stable flag, unit and gross/net mode** — done (#338).
+  The edge `/reading` returns the full `WeightReading` — `value`, `unit`, `stable`, `mode` — and the DAS
+  console read only `value` and `unit`, displayed the unit, and dropped the rest. Each dropped field is
+  a way to write a wrong weight into `sheet_net_wt`, which feeds **the invoice and the 856 ASN**:
+  `stable=false` is the scale still settling (a number in motion, not a measurement); `mode="GS"` is a
+  **gross** reading — it includes the skid tare — being written into the **net** field; `unit` is
+  whatever the indicator is set to, so a KG reading stored as pounds is a 2.2× error.
+  Now refuses rather than warns (a warning on an already-filled box gets dismissed), converts gross to
+  net when the tare is known, and leaves manual entry available in every branch. A bare reading with no
+  status prefix still parses as stable with a null mode, so the existing plant path is unchanged.
+- [ ] **M** **The web client has no unit-test harness** — `api/clientapp` runs `tsc` and an API-level
+  e2e runner, and nothing else. Client logic that decides what gets written to a weight, a piece count
+  or a status is therefore verified by reading it. The scale fix above could not be given a regression
+  test for this reason. Worth adding a small runner (vitest) and starting with the DAS console.
+
 - [x] **Omitted-NOT-NULL-column class: swept, clean, and now guarded in CI** — done (#337).
   Live `.230` has **955** NOT NULL columns; **190** of them are nullable in `SqliteFixture`, so CI's DDL
   is far laxer than production and an `INSERT` omitting a required column would pass CI and raise

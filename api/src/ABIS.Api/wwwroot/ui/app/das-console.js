@@ -529,6 +529,16 @@ async function loadScrap() {
     document.querySelectorAll('#tScrap tr.click').forEach((tr) => tr.addEventListener('click', () => void printDocument(`/api/documents/scrap-skid/${tr.dataset.scrap}`, `scrap #${tr.dataset.scrap}`, '#scrapOk')));
 }
 // Pull the current weight from the shop-floor edge service (/reading), if its URL is set.
+//
+// /reading returns the FULL reading — value, unit, stable, mode — and this used to read only value
+// and unit, display the unit, and drop stable and mode entirely. Each one it dropped is a way to
+// write a wrong weight into a field that feeds the invoice and the 856 ASN:
+//   * stable=false is the scale still settling. That is not a measurement, it is a number in motion.
+//   * mode="GS" is a GROSS reading — it includes the skid tare — and the field being filled is NET.
+//   * unit is whatever the indicator is set to. Storing a KG reading as pounds is a 2.2x error.
+// The edge parser populates all three (WeightParser: "ST,GS,+00123.4 LB"), so the information was
+// there to be used. A bare reading with no status prefix parses as stable with a null mode, which is
+// the pre-existing path and behaves exactly as before.
 async function pullWeight() {
     // Split the edge field the same way run-state/piece-count do — it defaults to a primary,fallback pair,
     // so the raw value ("http://.170:8090, http://.175:8090") is NOT a valid URL. Try hosts in order.
@@ -543,8 +553,42 @@ async function pullWeight() {
             if (!r.ok)
                 continue;
             const reading = await r.json();
+            const from = i > 0 ? ' (fallback)' : '';
+            if (reading.value == null) {
+                setErr('The scale reported no weight — enter it manually.');
+                return;
+            }
+            // Refuse rather than warn: a warning on a filled-in field gets dismissed, and the wrong number
+            // is already in the box. Every branch below leaves the operator free to type the weight by hand.
+            if (reading.stable === false) {
+                setErr('Scale is still settling — wait for it to steady, then pull again.');
+                return;
+            }
+            const unit = (reading.unit ?? '').toUpperCase();
+            if (unit !== '' && unit !== 'LB' && unit !== 'LBS') {
+                setErr(`Scale is reporting ${unit}, not pounds — correct the indicator's unit before weighing.`);
+                return;
+            }
+            if (reading.mode === 'GS') {
+                // Gross includes the tare, and #skNet is the NET weight (the skid's gross is reconstructed
+                // downstream as net + tare — see the 856 assembly). Convert when the tare is known; refuse
+                // when it is not, because filling net with a gross number is silently wrong.
+                const tare = v('#skTare');
+                if (!tare) {
+                    setErr('Scale is in GROSS mode — enter the skid tare first, or switch the indicator to NET.');
+                    return;
+                }
+                const net = reading.value - Number(tare);
+                if (!(net > 0)) {
+                    setErr(`Gross ${reading.value} is not more than the ${tare} tare — check the tare and the scale.`);
+                    return;
+                }
+                setV('#skNet', net);
+                setOk(`Pulled ${reading.value} ${unit || 'LB'} gross − ${tare} tare = ${net} net${from}.`);
+                return;
+            }
             setV('#skNet', reading.value);
-            setOk(`Pulled ${reading.value ?? ''} ${reading.unit ?? ''} from the scale${i > 0 ? ' (fallback)' : ''}.`);
+            setOk(`Pulled ${reading.value}${unit ? ' ' + unit : ''} from the scale${from}.`);
             return;
         }
         catch { /* host unreachable → try the next */ }
