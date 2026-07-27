@@ -306,3 +306,44 @@ The reviewers ran out of budget before reaching these. They are NOT safe; they a
 | low | `main.ts:42` | Unescaped coil fields rendered into innerHTML on /ui/typed.html (stored XSS) |
 | low | `ApiEndpoints.cs:145` | POST /auth/login distinguishes 'Unknown user' from 'Invalid credentials', giving an anonymous login-enumeratio |
 | low | `ApiEndpoints.cs:1555` | PUT/DELETE /lookups/plc-fault-codes carry no feature gate and the 'Lookups' tag is not in the documented ungat |
+
+---
+
+## FINAL VERDICT (2026-07-25) — every class settled against the live database
+
+Each class below was decided by **running a probe against .230**, not by reading code. That method
+matters: of six classes, three were real and three were false, and reading could not tell them apart.
+
+| class | verdict | evidence |
+|---|---|---|
+| **reserved-word bind names** | **REAL — fixed** | `:by :from :start :between :desc` → ORA-01745; `:end` → ORA-01008. Control bind OK. 15 sites renamed (#323, #325). |
+| **sequence resync gap** | **REAL — fixed** | 3 sequences behind their table max live, worst by 827,368 (#326). |
+| **date bound as a string** | **REAL — fixed** | `CAST('2026-07-25 12:34:56' AS DATE)` → ORA-01861 under `NLS_DATE_FORMAT=DD-MON-RR` (#327). |
+| **positional binding** | **FALSE** | Dapper reorders parameters to match the SQL. Six scrambled members and a wrongly-ordered `DynamicParameters` both bound correctly with `BindByName=false` (#324). |
+| **duplicate bind names** | **FALSE** | `SELECT :ts AS A, :ts AS B` with one parameter works in BOTH binding modes. |
+| **reserved-word column aliases** | **NONE PRESENT** | Scanned `AS <alias>` across the SQL-bearing files: zero hits. |
+
+### The probe technique, so this is repeatable
+
+A scratch console app referencing `Oracle.ManagedDataAccess.Core` + `Dapper`, reading `ORA_CS`, is
+enough to settle any of these in about a minute:
+
+```csharp
+OracleConfiguration.BindByName = false;              // or true, one mode per process (ORA-50099)
+await using var c = new OracleConnection(cs); await c.OpenAsync();
+var r = (await c.QueryAsync("SELECT :suspect AS V FROM dual", new { suspect = "x" })).Single();
+```
+
+`SELECT … FROM dual` exercises parse and bind without touching a single row, so it is safe against a
+prod-derived database. Use it BEFORE changing code — it is faster than reasoning and it is right.
+
+### What this cost, and what it saved
+
+Two adversarial sweep runs produced 63 candidates and 17 "confirmed" findings. Seven of those
+confirmed findings were wrong. **Three adversarial reviewers and I all validated the same false claim
+about positional binding** — we each checked that the code had the shape described, and none of us
+checked that the shape caused the failure. Reading code proves what it says; only running it proves
+what it does.
+
+The sweep still earned its keep: the reserved-word class alone had every outbound EDI document dead
+on Oracle, and the scanner it prompted found 23 sites where the sweep had named 7.
