@@ -33,3 +33,4 @@ python-client/
 # Python
 __pycache__/
 *.pyc
+sql_statements.json

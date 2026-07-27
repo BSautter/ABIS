@@ -347,3 +347,30 @@ what it does.
 
 The sweep still earned its keep: the reserved-word class alone had every outbound EDI document dead
 on Oracle, and the scanner it prompted found 23 sites where the sweep had named 7.
+
+---
+
+## Write paths compiled against the real Oracle schema (2026-07-25)
+
+The standing concern "the WRITE paths are unvalidated on Oracle" is now largely answered, without
+executing a single statement. `tools/oraparse` extracts every literal statement from
+`AbisRepository.cs` and runs it through `DBMS_SQL.PARSE` on .230 — which compiles the statement
+(resolving tables, columns, syntax) and stops before execution.
+
+```
+parsed OK : 206/208     (104 SELECT, 62 INSERT, 40 UPDATE, 2 DELETE)
+FAILED    : 2
+```
+
+**Both failures are known and benign** — `opc_log` / `opc_action_log`, never provisioned in any
+deployment. The read is caught by `IsMissingTableError`; the write is caught by `AuditMiddleware`,
+which disables audit logging after the first failure and warns once.
+
+So **104 write statements compile against the production schema**. That does NOT mean the writes are
+correct — parsing says nothing about NOT NULL, foreign keys, or logic, all of which still need a real
+execution. It does mean the structural class that produced today's three real defects (a column or
+identifier the real schema rejects) is now swept and re-runnable after any change.
+
+29 interpolated statements are excluded because their text is built at run time; the tool counts them
+rather than guessing, since a guess reported as validated would be worse than nothing.
+
