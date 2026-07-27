@@ -151,6 +151,14 @@ public sealed class CoilScanTests
 
     [Fact]
     public async Task An_unknown_coil_404s()
-        => Assert.Equal(HttpStatusCode.NotFound,
-            (await Client(new Factory()).PostAsJsonAsync("/api/coils/999999/actual-weight", new { weight = 5000 })).StatusCode);
+    {
+        // The factory MUST be held in a local for the duration of the request. Written inline as
+        // `Client(new Factory())` it was unreachable the moment Client() returned, so the GC was free to
+        // finalize the host — and delete its SQLite file — while the POST was still in flight. That made
+        // this the suite's one flaky test: green in isolation, intermittently red in a full parallel run,
+        // where the memory pressure to trigger a collection mid-request actually exists.
+        using var f = new Factory();
+        var response = await Client(f).PostAsJsonAsync("/api/coils/999999/actual-weight", new { weight = 5000 });
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
 }

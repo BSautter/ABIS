@@ -1435,6 +1435,10 @@ public static class SqliteFixture
             new[]
             {
                 new { ProdItemNum = 6001L, CoilAbcNum = (long?)5001L, AbJobNum = (long?)1001L, ProdItemStatus = (int?)1, ProdItemPieces = (int?)95, ProdItemNetWt = 190m, ProdItemDate = (DateTime?)d.AddHours(4) },
+                // A SECOND production item on the SAME skid (3001), from a different coil. Live data has
+                // ~15% of skids carrying 2+ items (up to 11); this fixture had none, so any query that
+                // joined through sheet_skid_detail fanned out unnoticed.
+                new { ProdItemNum = 6002L, CoilAbcNum = (long?)5002L, AbJobNum = (long?)1001L, ProdItemStatus = (int?)1, ProdItemPieces = (int?)5,  ProdItemNetWt = 10m,  ProdItemDate = (DateTime?)d.AddHours(5) },
                 new { ProdItemNum = 6003L, CoilAbcNum = (long?)5003L, AbJobNum = (long?)1002L, ProdItemStatus = (int?)1, ProdItemPieces = (int?)4,  ProdItemNetWt = 48m,  ProdItemDate = (DateTime?)d.AddDays(2) },
                 // Coil 5003 shipped on the Done job 1003 — sits on shipped skid 3003 (status 0), so it
                 // drives the recovery ship-weight for that (coil, job).
@@ -1450,6 +1454,13 @@ public static class SqliteFixture
             new[]
             {
                 new { SheetSkidNum = 3001L, ProdItemNum = 6001L },  // job 1001, skid status 1 -> not shipped
+                // A SECOND item on skid 3001. On live data ~15% of skids carry more than one production
+                // item (up to 11), but this fixture only ever seeded one — so a query that fanned out
+                // over sheet_skid_detail produced one row per ITEM instead of per SKID and no test could
+                // see it. The 856 ASN shipped exactly that defect; it is now guarded directly in the 856
+                // test, which seeds its own data. This entry closes the same blind spot for every test
+                // that runs on the shared fixture, so the next per-skid query cannot fan out unnoticed.
+                new { SheetSkidNum = 3001L, ProdItemNum = 6002L },
                 new { SheetSkidNum = 3003L, ProdItemNum = 6004L }   // job 1003, skid status 0 -> shipped
             });
 

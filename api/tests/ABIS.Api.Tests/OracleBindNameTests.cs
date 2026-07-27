@@ -50,12 +50,19 @@ public sealed class OracleBindNameTests
         return dir!.FullName;
     }
 
+    /// <summary>Files whose SQL can reach Oracle. <c>SqliteFixture.cs</c> is excluded by path: it is the
+    /// CI seed database and runs only under the SQLite provider, so a reserved-word bind there carries no
+    /// production risk. It was originally listed as eight line-keyed exemptions "so the rule stays
+    /// absolute" — but line numbers shift whenever anything is inserted above them, and that guard then
+    /// fails on edits with nothing to do with Oracle. It did so twice. A guard that cries wolf gets
+    /// ignored, so the exclusion is by path, once, with a reason.</summary>
     private static IEnumerable<string> SqlBearingFiles()
     {
         var root = RepoRoot();
         foreach (var dir in new[] { Path.Combine(root, "api", "src") })
             foreach (var f in Directory.EnumerateFiles(dir, "*.cs", SearchOption.AllDirectories))
-                yield return f;
+                if (!string.Equals(Path.GetFileName(f), "SqliteFixture.cs", StringComparison.OrdinalIgnoreCase))
+                    yield return f;
     }
 
     /// <summary>Strip line comments so prose like "// bind :from here" doesn't register as SQL.</summary>
@@ -65,25 +72,12 @@ public sealed class OracleBindNameTests
         return i >= 0 ? line[..i] : line;
     }
 
-    /// <summary>
-    /// Sites that already carry a reserved-word bind, recorded when this guard was introduced. A
-    /// RATCHET, not an exemption: the guard fails if anything NEW appears, and each entry is deleted as
-    /// its site is fixed. The list may only ever shrink.
-    /// <para>Fixing all of them in one commit would be a large, hard-to-review change across unrelated
-    /// subsystems; the point of the guard is to stop the 24th being written while the existing 23 are
-    /// burned down. <c>SqliteFixture</c> entries are the seed data, which never runs against Oracle —
-    /// they are listed anyway so the rule stays absolute and needs no arguing about exceptions.</para>
-    /// </summary>
-    private static readonly HashSet<string> KnownOffenders = new(StringComparer.Ordinal)
-    {
-        // Only the SQLite seed data remains. It never runs against Oracle, but it is listed rather
-        // than exempted so the rule stays absolute and nobody has to argue about which files count.
-        "SqliteFixture.cs:982 :By",
-        "SqliteFixture.cs:1576 :Start", "SqliteFixture.cs:1576 :End",
-        "SqliteFixture.cs:1586 :Start", "SqliteFixture.cs:1586 :End",
-        "SqliteFixture.cs:2071 :Start", "SqliteFixture.cs:2071 :End",
-        "SqliteFixture.cs:2072 :By",
-    };
+    /// <summary>Sites that already carried a reserved-word bind when this guard was introduced. A
+    /// RATCHET, not an exemption: the guard fails on anything NEW, and entries are deleted as their
+    /// sites are fixed. <b>It is now empty</b> — all 15 repository sites were renamed in #323 and #325,
+    /// and the SQLite seed file is excluded by path above. Anything appearing here again is a
+    /// regression that should be fixed rather than listed.</summary>
+    private static readonly HashSet<string> KnownOffenders = new(StringComparer.Ordinal);
 
     [Fact]
     public void No_bind_parameter_is_named_after_an_Oracle_reserved_word()

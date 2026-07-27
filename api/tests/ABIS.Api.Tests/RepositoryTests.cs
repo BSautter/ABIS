@@ -1130,6 +1130,17 @@ public sealed class RepositoryTests : IDisposable
                 INSERT INTO production_sheet_item (prod_item_num, coil_abc_num, ab_job_num, prod_item_status, prod_item_pieces, prod_item_net_wt) VALUES (7803, 7801, 7802, 1, 300, 4180);
                 INSERT INTO sheet_skid (sheet_skid_num, ab_job_num, sheet_skid_display_num, sheet_net_wt, sheet_tare_wt, skid_pieces, skid_sheet_status) VALUES (7804, 7802, 'T1837203', 4180, 130, 300, 2);
                 INSERT INTO sheet_skid_detail (sheet_skid_num, prod_item_num) VALUES (7804, 7803);
+                -- A SECOND production item on the SAME skid, cut from a different coil. This is the
+                -- normal case on live data, not an edge case: 91,112 skids carry 2+ items (up to 11).
+                -- The 856 skid query used to join sheet_skid -> sheet_skid_detail -> production_sheet_item,
+                -- which fanned one skid into one row PER ITEM, so every per-skid weight was counted twice
+                -- and the pallet count doubled. The assertions below (Single item, PalletCount 1,
+                -- GrossWeight 4310) only hold if the query returns one row per skid.
+                -- Its coil_abc_num is deliberately HIGHER than 7801 so the CoilOrgNum assertion also
+                -- pins WHICH coil represents the skid: the lowest, via MIN().
+                INSERT INTO coil (coil_abc_num, coil_org_num, coil_gauge, coil_width, coil_status, customer_id, lot_num, net_wt, net_wt_balance, coil_alloy2, coil_temper) VALUES (7806, '1865494', 0.0374, 54, 13, 1153, '1638411202', 2000, 0, '5052', 'T4');
+                INSERT INTO production_sheet_item (prod_item_num, coil_abc_num, ab_job_num, prod_item_status, prod_item_pieces, prod_item_net_wt) VALUES (7805, 7806, 7802, 1, 120, 2000);
+                INSERT INTO sheet_skid_detail (sheet_skid_num, prod_item_num) VALUES (7804, 7805);
                 INSERT INTO sheet_packing_item (sh_packing_item, packing_list, sheet_skid_num, sheet_packaging_ticket) VALUES (1, 8850, 7804, 1);
                 """;
             cmd.ExecuteNonQuery();

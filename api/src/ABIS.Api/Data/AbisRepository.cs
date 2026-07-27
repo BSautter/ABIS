@@ -6602,9 +6602,18 @@ public sealed class AbisRepository : IAbisRepository
                    oi.enduser_part_num AS EnduserPart, co.orig_customer_po AS OrigCustomerPo
               FROM sheet_packing_item spi
               JOIN sheet_skid ss ON ss.sheet_skid_num = spi.sheet_skid_num
-              JOIN sheet_skid_detail ssd ON ssd.sheet_skid_num = ss.sheet_skid_num
-              JOIN production_sheet_item psi ON psi.prod_item_num = ssd.prod_item_num
-              JOIN coil c ON c.coil_abc_num = psi.coil_abc_num
+              -- ONE ROW PER SKID. A skid holds many production items (on live data ~15% of skids carry
+              -- 2+, up to 11), so joining through sheet_skid_detail fanned the result out and every
+              -- per-skid weight was emitted once PER ITEM — the ASN overstated net weight, gross weight
+              -- and the pallet count for any multi-item skid. The CI fixture only ever seeds
+              -- single-item skids, which is exactly why the 856 golden tests could not see it.
+              -- The representative coil is the skid's lowest coil_abc_num, matching the MIN() pattern
+              -- GetPackingItemsAsync already uses for the same reason.
+              LEFT JOIN coil c ON c.coil_abc_num =
+                    (SELECT MIN(psi.coil_abc_num)
+                       FROM sheet_skid_detail ssd
+                       JOIN production_sheet_item psi ON psi.prod_item_num = ssd.prod_item_num
+                      WHERE ssd.sheet_skid_num = ss.sheet_skid_num)
               JOIN ab_job aj ON aj.ab_job_num = ss.ab_job_num
               JOIN order_item oi ON oi.order_abc_num = aj.order_abc_num AND oi.order_item_num = aj.order_item_num
               JOIN customer_order co ON co.order_abc_num = aj.order_abc_num
