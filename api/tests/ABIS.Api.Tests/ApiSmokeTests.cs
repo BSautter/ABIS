@@ -1035,6 +1035,20 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
         var getReq = new HttpRequestMessage(HttpMethod.Get, "/api/orders");
         getReq.Headers.Add("X-User-Login", "mlee");
         Assert.NotEqual(HttpStatusCode.Forbidden, (await _client.SendAsync(getReq)).StatusCode);
+
+        // Tags that had NO mapping were authenticated but ungated: any user who could sign in could
+        // write them. Carriers, Sketches and the PLC fault-code dictionary are now mapped to features
+        // that exist on the live database. mlee holds only "User Control", so each is refused at the
+        // gate — before the handler, so nothing is written whatever the body says.
+        Assert.Equal(HttpStatusCode.Forbidden, (await PostAsUser("mlee", "/api/carriers", new { scac = "GATE" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await PostAsUser("mlee", "/api/sketches", new { sketchName = "GATE" })).StatusCode);
+        var faultReq = new HttpRequestMessage(HttpMethod.Put, "/api/lookups/plc-fault-codes/6/99")
+            { Content = JsonContent.Create(new { description = "gate check" }) };
+        faultReq.Headers.Add("X-User-Login", "mlee");
+        Assert.Equal(HttpStatusCode.Forbidden, (await _client.SendAsync(faultReq)).StatusCode);
+
+        // …and the API-key service account still bypasses, so the shop-floor integrations are unaffected.
+        Assert.NotEqual(HttpStatusCode.Forbidden, (await PostAsUser(null, "/api/carriers", new { scac = "GATE2" })).StatusCode);
     }
 
     [Fact]

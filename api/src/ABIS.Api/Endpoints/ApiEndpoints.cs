@@ -60,6 +60,15 @@ public static class ApiEndpoints
         ["Downtime"] = "Downtime report",       // downtime page is gated on Downtime report
         ["Shifts"] = "Shift Control",
         ["Maintenance"] = "Maintenance_logs",
+        // Exact matches against the live SECURITY_APPLICATION list (39 features on .230). These three
+        // tags had no mapping, so their writes were authenticated but ungated — anyone who could sign in
+        // could add a carrier, edit a sketch, or rewrite the PLC fault-code dictionary the fault lamp
+        // reads from. All three features already exist and are broadly granted on live (Carrier
+        // Information 22 users, Production Sketch 24, Production Control 27), so mapping them gates the
+        // endpoints without locking out the people who do the work.
+        ["Carriers"] = "Carrier Information",
+        ["Sketches"] = "Production Sketch",
+        ["Lookups"] = "Production Control",   // the PLC fault-code dictionary is production reference data
     };
 
     public static IEndpointRouteBuilder MapAbisApi(this IEndpointRouteBuilder app)

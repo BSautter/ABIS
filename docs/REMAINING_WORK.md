@@ -443,6 +443,30 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 
 ## D. Bug / robustness leftovers (from the sweep — verified, low severity)
 
+- [x] **M** **Write endpoints under an unmapped tag were authenticated but never feature-gated** — done (#339).
+  The sweep flagged "PLC fault-code PUT/DELETE ungated". True, but it is not an endpoint-level slip: the
+  `f_security_door` parity gate is applied by the `/api` group's endpoint filter, which looks the
+  endpoint's **first tag** up in `FeatureByTag`. A tag nobody mapped means every write under it is
+  writable by any user who can sign in — and it looks identical to a gated endpoint in review.
+  **Audited all 154 write endpoints.** Three tags mapped cleanly to features that exist on live
+  `SECURITY_APPLICATION` and are broadly granted: `Carriers` → Carrier Information (22 users),
+  `Sketches` → Production Sketch (24), `Lookups` → Production Control (27). `WriteEndpointGateTests`
+  now fails any new write whose tag is unmapped and unlisted.
+- [ ] **M — needs a PLANT decision, not a code change: 5 tags still ungated on purpose.**
+  Listed in `WriteEndpointGateTests.UngatedByDecision` so they are visible rather than invisible:
+  - **DAS (12 endpoints)** — shift lifecycle, coil runs, change-job, reverse, line queue. The obvious
+    mapping is Shift Control / Production Control, but **Shift Control is held by only 10 users on
+    live**, so gating the shift lifecycle on it would stop every operator outside that ten from
+    starting a shift. Confirm who should be allowed before gating; see [[abis-phantom-rbac-features]].
+  - **Accounting (1)** — invoice creation. No obvious match among the 39 live features.
+  - **Sales (3)** — quotes. Legacy splits into Quotation(Sheet) and Quotation(Circle); one tag cannot
+    express both, so the endpoints likely need splitting or explicit gates.
+  - **Trucks (5)** — a NEW ABIS feature replacing a spreadsheet; no legacy feature exists to map.
+  - **Dies (4)** — plausibly Production Control, unverified against how the plant assigns it.
+  Correctly ungated and NOT open questions: `/auth/login`, `/auth/change-password` (the caller's own),
+  `/calculator/piece-weight` (computes, persists nothing), and `ScanLog` (append-only handheld telemetry
+  on the API key, which bypasses the gate by rollout policy).
+
 - [x] **H** **DAS scale pull ignored the reading's stable flag, unit and gross/net mode** — done (#338).
   The edge `/reading` returns the full `WeightReading` — `value`, `unit`, `stable`, `mode` — and the DAS
   console read only `value` and `unit`, displayed the unit, and dropped the rest. Each dropped field is

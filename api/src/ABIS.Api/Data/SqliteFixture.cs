@@ -2007,7 +2007,14 @@ public static class SqliteFixture
                 new { ApplicationId = 18L, ApplicationName = "Maintenance_parts", ApplicationNotes = "Maintenance parts" },
                 new { ApplicationId = 19L, ApplicationName = "Maintenance_pm", ApplicationNotes = "Preventive maintenance" },
                 new { ApplicationId = 20L, ApplicationName = "Maintenance_pms", ApplicationNotes = "PM schedules" },
-                new { ApplicationId = 21L, ApplicationName = "Scheduler Admin", ApplicationNotes = "Admin scheduled-job registry (view/define; execution disabled)" }
+                new { ApplicationId = 21L, ApplicationName = "Scheduler Admin", ApplicationNotes = "Admin scheduled-job registry (view/define; execution disabled)" },
+                // Real features on the live database (SECURITY_APPLICATION ids 15 and 16 there, held by
+                // 22 and 24 users). They are seeded because FeatureByTag now gates the Carriers and
+                // Sketches writes on them: a feature the gate names but the table does not contain
+                // resolves to no privilege and 403s EVERY user, which is exactly how the phantom-feature
+                // incident happened. WriteEndpointGateTests enforces that every mapped feature is here.
+                new { ApplicationId = 22L, ApplicationName = "Carrier Information", ApplicationNotes = "Carrier master" },
+                new { ApplicationId = 23L, ApplicationName = "Production Sketch", ApplicationNotes = "Job sketches" }
             });
         conn.Execute(
             "INSERT INTO security_group (user_group_id, group_name, group_notes) VALUES (:UserGroupId, :GroupName, :GroupNotes)",
