@@ -5056,14 +5056,14 @@ public sealed class AbisRepository : IAbisRepository
             INSERT INTO sheet_skid (sheet_skid_num, ab_job_num, sheet_net_wt, sheet_tare_wt, skid_date, skid_pieces,
                                     skid_sheet_status, sheet_theoretical_wt, skid_from_if_whed, skid_ticket_if_whed,
                                     skid_type_if_whed, ref_order_abc_num, ref_order_abc_item)
-            VALUES (:skid, :job, :net, :tare, :dt, :pcs, :status, :theo, :from, :ticket, :type, :ord, :item)
+            VALUES (:skid, :job, :net, :tare, :dt, :pcs, :status, :theo, :whedFrom, :ticket, :whedType, :ord, :item)
             """,
             new
             {
                 skid = skidNum, job = body.AbJobNum, net = body.SheetNetWt, tare = body.SheetTareWt,
                 dt = body.SkidDate ?? DateTime.Now, pcs = body.SkidPieces, status = body.SkidSheetStatus,
-                theo = body.SheetTheoreticalWt, from = body.SkidFromIfWhed, ticket = body.SkidTicketIfWhed,
-                type = body.SkidTypeIfWhed, ord = orderAbcNum, item = job.OrderItemNum,
+                theo = body.SheetTheoreticalWt, whedFrom = body.SkidFromIfWhed, ticket = body.SkidTicketIfWhed,
+                whedType = body.SkidTypeIfWhed, ord = orderAbcNum, item = job.OrderItemNum,
             }, transaction: tx, cancellationToken: ct));
 
         var prodItem = await NextIdAsync(conn, tx, "production_sheet_item", "prod_item_num", ct);
@@ -5274,15 +5274,15 @@ public sealed class AbisRepository : IAbisRepository
             """
             UPDATE sheet_skid
                SET sheet_net_wt = :net, sheet_tare_wt = :tare, skid_date = :dt, skid_pieces = :pcs,
-                   skid_sheet_status = :status, skid_type_if_whed = :type, sheet_theoretical_wt = :theo,
-                   skid_from_if_whed = :from, skid_ticket_if_whed = :ticket
+                   skid_sheet_status = :status, skid_type_if_whed = :whedType, sheet_theoretical_wt = :theo,
+                   skid_from_if_whed = :whedFrom, skid_ticket_if_whed = :ticket
              WHERE sheet_skid_num = :skid
             """,
             new
             {
                 net = body.SheetNetWt, tare = body.SheetTareWt, dt = body.SkidDate ?? DateTime.Now,
-                pcs = body.SkidPieces, status = body.SkidSheetStatus, type = body.SkidTypeIfWhed,
-                theo = body.SheetTheoreticalWt, from = body.SkidFromIfWhed, ticket = body.SkidTicketIfWhed,
+                pcs = body.SkidPieces, status = body.SkidSheetStatus, whedType = body.SkidTypeIfWhed,
+                theo = body.SheetTheoreticalWt, whedFrom = body.SkidFromIfWhed, ticket = body.SkidTicketIfWhed,
                 skid = sheetSkidNum,
             }, transaction: tx, cancellationToken: ct));
 
@@ -5738,12 +5738,12 @@ public sealed class AbisRepository : IAbisRepository
             INSERT INTO outbound_edi_transaction
                 (edi_file_id, duns_from, duns_to, interchange_control_number, group_control_number,
                  transaction_time, edi_file_name, fa_receive_status, customer_id, set_control_num, transaction_type_id)
-            VALUES (:fileId, :from, :to, :icn, :gcn, :now, :name, 0, :cust, :scn, :type)
+            VALUES (:fileId, :dunsFrom, :dunsTo, :icn, :gcn, :now, :name, 0, :cust, :scn, :typeId)
             """,
             new
             {
-                fileId = ediFileId, from = EdiInterchange.SenderParty, to = dunsTo, icn = ediFileId, gcn = ediFileId,
-                now = (DateTime?)timestamp, name, cust = customerId, scn = ediFileId, type = transactionType
+                fileId = ediFileId, dunsFrom = EdiInterchange.SenderParty, dunsTo, icn = ediFileId, gcn = ediFileId,
+                now = (DateTime?)timestamp, name, cust = customerId, scn = ediFileId, typeId = transactionType
             },
             transaction: tx, cancellationToken: ct));
 
