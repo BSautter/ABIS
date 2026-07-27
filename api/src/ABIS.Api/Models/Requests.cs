@@ -1234,3 +1234,27 @@ public sealed class WarehouseSkidWrite
     public int? ProdItemStatus { get; set; }
     public string? ProdItemPlacement { get; set; }
 }
+
+/// <summary>Add one production item to an existing warehoused skid (legacy warehouse module
+/// <c>w_wh_business</c> action 2, "new item"). The item's own (coil number, lot) resolves or mints the
+/// warehouse shell it hangs off, so a single skid can carry material from several customer coils.</summary>
+public sealed class WarehouseSkidItemWrite
+{
+    /// <summary>The CUSTOMER's coil number for THIS item — with the lot, identifies its warehouse coil.</summary>
+    public string CoilOrgNum { get; set; } = "";
+    public string LotNum { get; set; } = "";
+
+    public int? ProdItemPieces { get; set; }
+    public decimal? ProdItemNetWt { get; set; }
+    public decimal? ProdItemTheoreticalWt { get; set; }
+    public int? ProdItemStatus { get; set; }
+    public string? ProdItemPlacement { get; set; }
+
+    /// <summary>Optional restatement of the skid's own totals. Legacy updates them when an item is
+    /// added, because the operator re-weighs the skid — and a weighed total may legitimately differ
+    /// from the sum of its items, which is why the mismatch is a warning rather than a correction.
+    /// Omit to leave the skid header untouched.</summary>
+    public decimal? SheetNetWt { get; set; }
+    public decimal? SheetTareWt { get; set; }
+    public int? SkidPieces { get; set; }
+}

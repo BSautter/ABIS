@@ -3263,3 +3263,30 @@ public sealed class WarehouseSkidModifyResult
     public long? PreviousCoilRemoved { get; set; }
     public List<string> Warnings { get; set; } = new();
 }
+
+/// <summary>Result of adding a production item to a warehoused skid.</summary>
+public sealed class WarehouseSkidItemResult
+{
+    public bool SkidFound { get; set; }
+    public long SheetSkidNum { get; set; }
+    public long ProdItemNum { get; set; }
+    /// <summary>The warehouse shell THIS item hangs off.</summary>
+    public long CoilAbcNum { get; set; }
+    public bool CoilMinted { get; set; }
+    /// <summary>Skid totals vs the sum of its items. Advisory, never a refusal.</summary>
+    public List<string> Warnings { get; set; } = new();
+}
+
+/// <summary>Result of removing one production item from a warehoused skid.</summary>
+public sealed class WarehouseItemDeleteResult
+{
+    public bool Deleted { get; set; }
+    public long ProdItemNum { get; set; }
+    public long? CoilAbcNum { get; set; }
+    /// <summary>The shell was collected because this was the last item on it.</summary>
+    public bool CoilRemoved { get; set; }
+    public string? CoilKeptReason { get; set; }
+    /// <summary>Items left on the skid afterwards. Zero means the skid is now empty — legacy leaves it
+    /// standing rather than cascading, so an operator can re-stock it.</summary>
+    public int RemainingItems { get; set; }
+}

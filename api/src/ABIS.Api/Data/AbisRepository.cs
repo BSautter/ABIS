@@ -5388,6 +5388,181 @@ public sealed class AbisRepository : IAbisRepository
                 "certificate label or a cash date - a warehouse coil minted without one would leave the certificate unbacked.");
     }
 
+    /// <summary>
+    /// Add one production item to an existing warehoused skid — legacy warehouse action 2 ("new item").
+    /// </summary>
+    /// <remarks>
+    /// <para>A skid can carry material from SEVERAL customer coils, so the item brings its own
+    /// (coil number, lot) and resolves or mints its own status-20 shell — the same lookup and the same
+    /// cert/cash-date refusal the create path uses.</para>
+    /// <para>Legacy also UPDATES the skid header here, because the operator re-weighs the skid when
+    /// adding to it. That is optional in this port: omit the totals and the header is left alone.
+    /// A restated total that disagrees with the sum of the items is reported as a warning, never
+    /// corrected — a weighed skid legitimately differs from the arithmetic, which is exactly why legacy
+    /// asks "save it anyway?" rather than silently reconciling.</para>
+    /// </remarks>
+    public async Task<WarehouseSkidItemResult> AddWarehouseSkidItemAsync(long sheetSkidNum, WarehouseSkidItemWrite body, CancellationToken ct)
+    {
+        var coilOrg = (body.CoilOrgNum ?? "").Trim();
+        var lot = (body.LotNum ?? "").Trim();
+        if (coilOrg.Length == 0 || lot.Length == 0)
+            throw new InvalidOperationException("An item needs the customer's coil number and lot — together they identify its warehouse coil.");
+
+        var result = new WarehouseSkidItemResult { SheetSkidNum = sheetSkidNum };
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        var skid = await conn.QuerySingleOrDefaultAsync<(long? AbJobNum, long? RefOrder)>(new CommandDefinition(
+            "SELECT ab_job_num AS AbJobNum, ref_order_abc_num AS RefOrder FROM sheet_skid WHERE sheet_skid_num = :skid",
+            new { skid = sheetSkidNum }, transaction: tx, cancellationToken: ct));
+        var exists = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT COUNT(*) FROM sheet_skid WHERE sheet_skid_num = :skid",
+            new { skid = sheetSkidNum }, transaction: tx, cancellationToken: ct));
+        if (exists == 0) { await tx.RollbackAsync(ct); return result; }
+        result.SkidFound = true;
+
+        var coilAbc = await conn.ExecuteScalarAsync<long?>(new CommandDefinition(
+            "SELECT MIN(coil_abc_num) FROM coil WHERE coil_org_num = :org AND lot_num = :lot AND coil_status = 20",
+            new { org = coilOrg, lot }, transaction: tx, cancellationToken: ct));
+        if (coilAbc is null)
+        {
+            var real = await WarehouseCoilIdentityAsync(conn, tx, coilOrg, ct);
+            if (!real.Found && skid.RefOrder is long guardOrder)
+                await GuardWarehouseShellAllowedAsync(conn, tx, guardOrder, coilOrg, ct);
+
+            coilAbc = await NextIdAsync(conn, tx, "coil", "coil_abc_num", ct);
+            await conn.ExecuteAsync(new CommandDefinition(
+                """
+                INSERT INTO coil (coil_abc_num, coil_org_num, lot_num, coil_status, net_wt, net_wt_balance, cash_date, customer_id)
+                VALUES (:abc, :org, :lot, 20, 0, 0, :cash, :cust)
+                """, new { abc = coilAbc, org = coilOrg, lot, cash = real.CashDate, cust = real.CustomerId },
+                transaction: tx, cancellationToken: ct));
+            await conn.ExecuteAsync(new CommandDefinition(
+                "INSERT INTO process_coil (coil_abc_num, ab_job_num, process_quantity) VALUES (:abc, :job, 0)",
+                new { abc = coilAbc, job = skid.AbJobNum }, transaction: tx, cancellationToken: ct));
+            result.CoilMinted = true;
+        }
+        result.CoilAbcNum = coilAbc.Value;
+
+        var prodItem = await NextIdAsync(conn, tx, "production_sheet_item", "prod_item_num", ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO production_sheet_item (prod_item_num, coil_abc_num, ab_job_num, prod_item_status,
+                                               prod_item_net_wt, prod_item_date, prod_item_pieces,
+                                               prod_item_theoretical_wt, prod_item_placement)
+            VALUES (:item, :abc, :job, :status, :net, :dt, :pcs, :theo, :place)
+            """,
+            new
+            {
+                item = prodItem, abc = coilAbc, job = skid.AbJobNum, status = body.ProdItemStatus,
+                net = body.ProdItemNetWt, dt = (DateTime?)DateTime.Now, pcs = body.ProdItemPieces,
+                theo = body.ProdItemTheoreticalWt, place = body.ProdItemPlacement,
+            }, transaction: tx, cancellationToken: ct));
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            "INSERT INTO sheet_skid_detail (sheet_skid_num, prod_item_num) VALUES (:skid, :item)",
+            new { skid = sheetSkidNum, item = prodItem }, transaction: tx, cancellationToken: ct));
+
+        // Optional header restatement (legacy always writes it; here only what was supplied).
+        if (body.SheetNetWt is not null || body.SheetTareWt is not null || body.SkidPieces is not null)
+            await conn.ExecuteAsync(new CommandDefinition(
+                """
+                UPDATE sheet_skid
+                   SET sheet_net_wt = COALESCE(:net, sheet_net_wt),
+                       sheet_tare_wt = COALESCE(:tare, sheet_tare_wt),
+                       skid_pieces = COALESCE(:pcs, skid_pieces)
+                 WHERE sheet_skid_num = :skid
+                """,
+                new { net = body.SheetNetWt, tare = body.SheetTareWt, pcs = body.SkidPieces, skid = sheetSkidNum },
+                transaction: tx, cancellationToken: ct));
+
+        var totals = await conn.QuerySingleOrDefaultAsync<(int? Pieces, decimal? Net)>(new CommandDefinition(
+            """
+            SELECT SUM(psi.prod_item_pieces) AS Pieces, SUM(psi.prod_item_net_wt) AS Net
+              FROM sheet_skid_detail ssd
+              JOIN production_sheet_item psi ON psi.prod_item_num = ssd.prod_item_num
+             WHERE ssd.sheet_skid_num = :skid
+            """, new { skid = sheetSkidNum }, transaction: tx, cancellationToken: ct));
+        var head = await conn.QuerySingleOrDefaultAsync<(decimal? Net, int? Pieces)>(new CommandDefinition(
+            "SELECT sheet_net_wt AS Net, skid_pieces AS Pieces FROM sheet_skid WHERE sheet_skid_num = :skid",
+            new { skid = sheetSkidNum }, transaction: tx, cancellationToken: ct));
+        if (head.Pieces is int hp && totals.Pieces is int tp && hp != tp)
+            result.Warnings.Add($"Skid pieces ({hp}) do not add up to its items' pieces ({tp}).");
+        if (head.Net is decimal hn && totals.Net is decimal tn && hn != tn)
+            result.Warnings.Add($"Skid net weight ({hn}) does not add up to its items' net weight ({tn}).");
+
+        await tx.CommitAsync(ct);
+        result.ProdItemNum = prodItem;
+        return result;
+    }
+
+    /// <summary>
+    /// Remove one production item from a warehoused skid — legacy warehouse action 3 ("delete item"):
+    /// drop the link, the item, and then the item's status-20 shell if nothing else references it.
+    /// </summary>
+    /// <remarks>
+    /// <para>The skid itself is left standing even when its last item goes. Legacy does the same — an
+    /// empty skid is re-stockable, and cascading it away would destroy a physical pallet's record
+    /// because someone corrected one line.</para>
+    /// <para>As everywhere in this module, only a status-20 shell is ever collected; a real coil that
+    /// happened to be referenced is left alone and the reason reported.</para>
+    /// </remarks>
+    public async Task<WarehouseItemDeleteResult> DeleteWarehouseSkidItemAsync(long sheetSkidNum, long prodItemNum, CancellationToken ct)
+    {
+        var result = new WarehouseItemDeleteResult { ProdItemNum = prodItemNum };
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        var linked = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT COUNT(*) FROM sheet_skid_detail WHERE sheet_skid_num = :skid AND prod_item_num = :item",
+            new { skid = sheetSkidNum, item = prodItemNum }, transaction: tx, cancellationToken: ct));
+        if (linked == 0) { await tx.RollbackAsync(ct); return result; }
+
+        var coil = await conn.ExecuteScalarAsync<long?>(new CommandDefinition(
+            "SELECT coil_abc_num FROM production_sheet_item WHERE prod_item_num = :item",
+            new { item = prodItemNum }, transaction: tx, cancellationToken: ct));
+        result.CoilAbcNum = coil;
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM sheet_skid_detail WHERE sheet_skid_num = :skid AND prod_item_num = :item",
+            new { skid = sheetSkidNum, item = prodItemNum }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM production_sheet_item WHERE prod_item_num = :item",
+            new { item = prodItemNum }, transaction: tx, cancellationToken: ct));
+
+        if (coil is long coilNum)
+        {
+            var stillUsed = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+                "SELECT COUNT(*) FROM production_sheet_item WHERE coil_abc_num = :abc",
+                new { abc = coilNum }, transaction: tx, cancellationToken: ct));
+            var status = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(
+                "SELECT coil_status FROM coil WHERE coil_abc_num = :abc",
+                new { abc = coilNum }, transaction: tx, cancellationToken: ct));
+            if (stillUsed > 0)
+                result.CoilKeptReason = $"{stillUsed} other production item(s) still reference coil {coilNum}.";
+            else if (status != 20)
+                result.CoilKeptReason = $"Coil {coilNum} is not a status-20 warehouse shell (status {status?.ToString() ?? "null"}), so it was left alone.";
+            else
+            {
+                await conn.ExecuteAsync(new CommandDefinition(
+                    "DELETE FROM process_coil WHERE coil_abc_num = :abc", new { abc = coilNum },
+                    transaction: tx, cancellationToken: ct));
+                await conn.ExecuteAsync(new CommandDefinition(
+                    "DELETE FROM coil WHERE coil_abc_num = :abc", new { abc = coilNum },
+                    transaction: tx, cancellationToken: ct));
+                result.CoilRemoved = true;
+            }
+        }
+
+        result.RemainingItems = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT COUNT(*) FROM sheet_skid_detail WHERE sheet_skid_num = :skid",
+            new { skid = sheetSkidNum }, transaction: tx, cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
+        result.Deleted = true;
+        return result;
+    }
+
     /// <summary>The legacy BOL form has exactly three per-job note blocks and refuses to print details past
     /// that. The cap is the printed layout, not a business rule, so it lives with the document code.</summary>
     private const int MaxPrintableBolJobs = 3;

@@ -471,6 +471,128 @@ public sealed class WarehouseSkidTests : IDisposable
         Assert.Equal(0, Scalar<long>("SELECT COUNT(*) FROM coil WHERE coil_org_num = 'CUST-NO-CASH'"));
     }
 
+    // ---- item editor (legacy actions 2 and 3) ----------------------------------------------------
+
+    private static WarehouseSkidItemWrite Item(string lot = "LOT-WH") => new()
+    {
+        CoilOrgNum = "CUST-WH-1", LotNum = lot,
+        ProdItemPieces = 40, ProdItemNetWt = 400, ProdItemStatus = 1,
+    };
+
+    [Fact]
+    public async Task An_added_item_hangs_off_the_same_shell_when_the_coil_and_lot_match()
+    {
+        Seed();
+        var made = await _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None);
+
+        var r = await _repo.AddWarehouseSkidItemAsync(made.SheetSkidNum, Item(), CancellationToken.None);
+
+        Assert.True(r.SkidFound);
+        Assert.False(r.CoilMinted);                       // reused, same (coil, lot)
+        Assert.Equal(made.CoilAbcNum, r.CoilAbcNum);
+        Assert.Equal(2, Scalar<long>($"SELECT COUNT(*) FROM sheet_skid_detail WHERE sheet_skid_num = {made.SheetSkidNum}"));
+    }
+
+    [Fact]
+    public async Task An_item_from_a_DIFFERENT_customer_coil_mints_its_own_shell()
+    {
+        // The point of a per-item coil: one skid can carry material from several coils.
+        Seed();
+        var made = await _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None);
+
+        var r = await _repo.AddWarehouseSkidItemAsync(made.SheetSkidNum, Item(lot: "LOT-OTHER"), CancellationToken.None);
+
+        Assert.True(r.CoilMinted);
+        Assert.NotEqual(made.CoilAbcNum, r.CoilAbcNum);
+        Assert.Equal(20, Scalar<long>($"SELECT coil_status FROM coil WHERE coil_abc_num = {r.CoilAbcNum}"));
+        Assert.Equal(0d, Scalar<double>($"SELECT net_wt FROM coil WHERE coil_abc_num = {r.CoilAbcNum}"));
+    }
+
+    [Fact]
+    public async Task A_restated_skid_total_that_disagrees_with_its_items_warns_but_saves()
+    {
+        Seed();
+        var made = await _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None);
+        var b = Item();
+        b.SkidPieces = 999;      // deliberately not 120 + 40
+        b.SheetNetWt = 9999;
+
+        var r = await _repo.AddWarehouseSkidItemAsync(made.SheetSkidNum, b, CancellationToken.None);
+
+        Assert.NotEmpty(r.Warnings);
+        Assert.Equal(999, Scalar<long>($"SELECT skid_pieces FROM sheet_skid WHERE sheet_skid_num = {made.SheetSkidNum}"));
+        Assert.Equal(2, Scalar<long>($"SELECT COUNT(*) FROM sheet_skid_detail WHERE sheet_skid_num = {made.SheetSkidNum}"));
+    }
+
+    [Fact]
+    public async Task Omitting_the_totals_leaves_the_skid_header_untouched()
+    {
+        Seed();
+        var made = await _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None);
+        await _repo.AddWarehouseSkidItemAsync(made.SheetSkidNum, Item(), CancellationToken.None);
+
+        Assert.Equal(1000d, Scalar<double>($"SELECT sheet_net_wt FROM sheet_skid WHERE sheet_skid_num = {made.SheetSkidNum}"));
+        Assert.Equal(120, Scalar<long>($"SELECT skid_pieces FROM sheet_skid WHERE sheet_skid_num = {made.SheetSkidNum}"));
+    }
+
+    [Fact]
+    public async Task Removing_the_last_item_on_a_shell_collects_it_but_KEEPS_the_skid()
+    {
+        // An empty skid is re-stockable. Cascading it away would destroy a pallet's record because
+        // someone corrected one line.
+        Seed();
+        var made = await _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None);
+
+        var r = await _repo.DeleteWarehouseSkidItemAsync(made.SheetSkidNum, made.ProdItemNum, CancellationToken.None);
+
+        Assert.True(r.Deleted);
+        Assert.True(r.CoilRemoved);
+        Assert.Equal(0, r.RemainingItems);
+        Assert.Equal(0, Scalar<long>($"SELECT COUNT(*) FROM coil WHERE coil_abc_num = {made.CoilAbcNum}"));
+        Assert.Equal(1, Scalar<long>($"SELECT COUNT(*) FROM sheet_skid WHERE sheet_skid_num = {made.SheetSkidNum}"));
+    }
+
+    [Fact]
+    public async Task Removing_one_of_two_items_keeps_the_shared_shell()
+    {
+        Seed();
+        var made = await _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None);
+        var added = await _repo.AddWarehouseSkidItemAsync(made.SheetSkidNum, Item(), CancellationToken.None);
+
+        var r = await _repo.DeleteWarehouseSkidItemAsync(made.SheetSkidNum, added.ProdItemNum, CancellationToken.None);
+
+        Assert.False(r.CoilRemoved);
+        Assert.Contains("still reference", r.CoilKeptReason);
+        Assert.Equal(1, r.RemainingItems);
+        Assert.Equal(1, Scalar<long>($"SELECT COUNT(*) FROM coil WHERE coil_abc_num = {made.CoilAbcNum}"));
+    }
+
+    [Fact]
+    public async Task An_item_on_a_real_coil_never_collects_it()
+    {
+        Seed();
+        var made = await _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None);
+        Exec($"UPDATE production_sheet_item SET coil_abc_num = 6900 WHERE prod_item_num = {made.ProdItemNum};");
+
+        var r = await _repo.DeleteWarehouseSkidItemAsync(made.SheetSkidNum, made.ProdItemNum, CancellationToken.None);
+
+        Assert.True(r.Deleted);
+        Assert.False(r.CoilRemoved);
+        Assert.Contains("not a status-20", r.CoilKeptReason);
+        Assert.Equal(1, Scalar<long>("SELECT COUNT(*) FROM coil WHERE coil_abc_num = 6900"));
+    }
+
+    [Fact]
+    public async Task Unknown_skid_or_item_reports_not_found_and_changes_nothing()
+    {
+        Seed();
+        var made = await _repo.CreateWarehouseSkidAsync(Body(), CancellationToken.None);
+
+        Assert.False((await _repo.AddWarehouseSkidItemAsync(999999, Item(), CancellationToken.None)).SkidFound);
+        Assert.False((await _repo.DeleteWarehouseSkidItemAsync(made.SheetSkidNum, 999999, CancellationToken.None)).Deleted);
+        Assert.Equal(1, Scalar<long>($"SELECT COUNT(*) FROM sheet_skid_detail WHERE sheet_skid_num = {made.SheetSkidNum}"));
+    }
+
     public void Dispose()
     {
         try { SqliteConnection.ClearAllPools(); } catch { /* best effort */ }

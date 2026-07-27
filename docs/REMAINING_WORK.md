@@ -351,7 +351,14 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   **`ll_icoil` — the shell it just minted** — leaving `production_sheet_item.coil_abc_num` dangling and
   stranding the real orphan. The evident intent (collect the ORIGINAL) is implemented instead: reproducing
   a delete that removes the row the caller now depends on is data corruption, not a quirk worth keeping.
-  Still TODO: the item-level editor (add/remove individual production items on an existing skid).
+  **ITEM EDITOR done (#329) — this item is now COMPLETE.** `POST /warehouse/skids/{n}/items` (legacy
+  action 2) and `DELETE /warehouse/skids/{n}/items/{item}` (action 3). The item carries its OWN
+  customer coil number + lot, so one skid can hold material from several coils — each resolving or
+  minting its own shell under the same cert/cash-date refusal. Adding may restate the skid header
+  (legacy re-weighs on add); a total disagreeing with the item sum is a WARNING, since a weighed skid
+  legitimately differs from the arithmetic. Removing the last item collects the shell but KEEPS the
+  skid — an empty skid is re-stockable, and cascading would destroy a pallet's record over one
+  corrected line. A coil that is not a status-20 shell is never collected, anywhere in this module.
 - [x] **H** Coil-ownership transfer mint semantics — done (#224): mints a NEW `coil_abc_num` (status 2, from-cust set) + original → status 13; cert carries the new id
 - [x] **H** Bulk "Change status → Ready for transfer" (status 12) — done (#240 `POST /coils/ready-for-transfer` with eligibility guards; #241 picker `readyOnly` filter + coil-ownership mark-ready UI)
 - [~] **H** Scrap-skid + sheet-skid guarded DELETE done (#243). **Return-scrap done** (#XXX): POST /scrap-skids/{n}/return faithfully ports the live F_CONVERT_BACK_TO_SHEET proc — copies the scrapped mirror rows (scraped_sheet_skid/production_sheet_item/process_partial_skid/detail) back to the live tables, deletes the mirrors + scrap_skid(+detail) + credits back the linked return_scrap_item rows. Still TODO: sheet-skid modify + weight/piece reconciliation.

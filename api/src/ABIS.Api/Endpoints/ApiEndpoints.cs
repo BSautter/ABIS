@@ -1029,6 +1029,35 @@ public static class ApiEndpoints
            .Produces(StatusCodes.Status404NotFound)
            .ProducesValidationProblem().ProducesProblem(StatusCodes.Status409Conflict);
 
+        api.MapPost("/warehouse/skids/{sheetSkidNum:long}/items", async (long sheetSkidNum, WarehouseSkidItemWrite body,
+                                                                          IAbisRepository repo, CancellationToken ct) =>
+            {
+                try
+                {
+                    var r = await repo.AddWarehouseSkidItemAsync(sheetSkidNum, body, ct);
+                    return r.SkidFound ? Results.Created($"/api/sheet-skids/{sheetSkidNum}", r) : Results.NotFound();
+                }
+                catch (InvalidOperationException ex)
+                {
+                    return Results.Problem(title: "Cannot add item", detail: ex.Message,
+                        statusCode: StatusCodes.Status409Conflict);
+                }
+            })
+           .WithName("AddWarehouseSkidItem").WithTags("Warehouse")
+           .WithSummary("Add one production item to an existing warehoused skid (legacy warehouse module action 2). The item carries its OWN customer coil number + lot, so a skid can hold material from several coils — that pair resolves or MINTS its status-20 shell, with the same cert/cash-date refusal as the create path. Optionally restates the skid header (legacy re-weighs on add); a total that disagrees with the sum of the items comes back in `warnings`, never corrected.")
+           .Produces<WarehouseSkidItemResult>(StatusCodes.Status201Created)
+           .Produces(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+
+        api.MapDelete("/warehouse/skids/{sheetSkidNum:long}/items/{prodItemNum:long}",
+            async (long sheetSkidNum, long prodItemNum, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var r = await repo.DeleteWarehouseSkidItemAsync(sheetSkidNum, prodItemNum, ct);
+                return r.Deleted ? Results.Ok(r) : Results.NotFound();
+            })
+           .WithName("DeleteWarehouseSkidItem").WithTags("Warehouse")
+           .WithSummary("Remove one production item from a warehoused skid (legacy warehouse module action 3), collecting its status-20 shell when nothing else references it. The SKID is left standing even when its last item goes — an empty skid is re-stockable, and cascading it away would destroy a pallet's record over a single corrected line. A coil that is not a status-20 shell is never collected.")
+           .Produces<WarehouseItemDeleteResult>().Produces(StatusCodes.Status404NotFound);
+
         api.MapDelete("/warehouse/skids/{sheetSkidNum:long}", async (long sheetSkidNum, IAbisRepository repo, CancellationToken ct) =>
             {
                 var r = await repo.DeleteWarehouseSkidAsync(sheetSkidNum, ct);

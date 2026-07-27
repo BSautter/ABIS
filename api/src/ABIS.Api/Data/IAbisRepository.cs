@@ -286,6 +286,16 @@ public interface IAbisRepository
     /// the previous shell when the move leaves nothing on it.</summary>
     Task<WarehouseSkidModifyResult> ModifyWarehouseSkidAsync(long sheetSkidNum, WarehouseSkidWrite body, CancellationToken ct);
 
+    /// <summary>Add one production item to an existing warehoused skid (legacy action 2). The item's own
+    /// (coil number, lot) resolves or mints its warehouse shell. Returns SkidFound=false if the skid
+    /// does not exist; throws <see cref="InvalidOperationException"/> when the customer's cert/cash-date
+    /// rules forbid minting an unbacked shell.</summary>
+    Task<WarehouseSkidItemResult> AddWarehouseSkidItemAsync(long sheetSkidNum, WarehouseSkidItemWrite body, CancellationToken ct);
+
+    /// <summary>Remove one production item from a warehoused skid (legacy action 3), collecting its
+    /// status-20 shell if nothing else references it.</summary>
+    Task<WarehouseItemDeleteResult> DeleteWarehouseSkidItemAsync(long sheetSkidNum, long prodItemNum, CancellationToken ct);
+
     /// <summary>Mint an ABC number for a scanned inbound coil and stamp it on
     /// <c>inbound_coil_status</c> (legacy handheld). Call ONLY after the label printer has been
     /// confirmed reachable — see <c>ICoilLabelPrinter</c> for why the order matters.</summary>
