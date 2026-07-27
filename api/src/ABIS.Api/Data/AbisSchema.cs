@@ -506,21 +506,40 @@ public static class AbisSchema
             logger.LogInformation("ABIS-owned schema ensured ({Count} DDL statements applied idempotently).", owned.Length);
     }
 
-    // Every table whose id column the app mints from a sequence (one row per NextIdAsync call site in
-    // AbisRepository). The sequence NAME is resolved through the factory, so it honours the
-    // Database:Sequences overrides and the {id}_seq default automatically; MaxIdTables resolve to null
-    // (no sequence) and are skipped. KEEP IN STEP with AbisRepository.NextIdAsync + tools/resync_sequences.sql.
-    private static readonly (string Table, string IdColumn)[] SequenceBackedTables =
+    // Every table whose id column the app mints from a sequence. The sequence NAME is normally resolved
+    // through the factory (honouring Database:Sequences overrides and the {id}_seq default); an explicit
+    // Sequence overrides that, exactly as NextIdAsync's `sequence:` argument does. MaxIdTables resolve
+    // to null (no sequence) and are skipped.
+    //
+    // KEEP IN STEP with AbisRepository.NextIdAsync + tools/resync_sequences.sql — and that is now
+    // ENFORCED by SequenceResyncCoverageTests rather than left to a comment. It had drifted: three
+    // sequences were missing and ALL THREE were sitting behind their table max on the live database,
+    // which is precisely the breakage this self-heal exists to prevent.
+    private static readonly (string Table, string IdColumn, string? Sequence)[] SequenceBackedTables =
     [
-        ("ab_job", "ab_job_num"), ("carrier", "carrier_id"), ("coil", "coil_abc_num"),
-        ("coil_ownership_transfer", "certificate_num"), ("customer", "customer_id"),
-        ("customer_contact", "contact_id"), ("customer_order", "order_abc_num"), ("die", "die_id"),
-        ("dt_instance", "instance_num"), ("error_evt", "error_evt_id"),
-        ("outbound_edi_transaction", "edi_file_id"), ("part_num", "part_num_id"),
-        ("receiving_bol", "receiving_bol_id"), ("return_scrap_item", "return_scrap_item_num"),
-        ("scan_log", "scan_id"), ("scrap_skid", "scrap_skid_num"), ("sheet_skid", "sheet_skid_num"),
-        ("sheet_skid_dimension_check", "dimension_check_num"), ("shift", "shift_num"),
-        ("sketch", "sketch_id"), ("shipment", "packing_list"),
+        ("ab_job", "ab_job_num", null), ("carrier", "carrier_id", null), ("coil", "coil_abc_num", null),
+        ("coil_ownership_transfer", "certificate_num", null), ("customer", "customer_id", null),
+        ("customer_contact", "contact_id", null), ("customer_order", "order_abc_num", null), ("die", "die_id", null),
+        ("dt_instance", "instance_num", null), ("error_evt", "error_evt_id", null),
+        ("outbound_edi_transaction", "edi_file_id", null), ("part_num", "part_num_id", null),
+        ("receiving_bol", "receiving_bol_id", null), ("return_scrap_item", "return_scrap_item_num", null),
+        ("scan_log", "scan_id", null), ("scrap_skid", "scrap_skid_num", null), ("sheet_skid", "sheet_skid_num", null),
+        ("sheet_skid_dimension_check", "dimension_check_num", null), ("shift", "shift_num", null),
+        ("sketch", "sketch_id", null), ("shipment", "packing_list", null),
+
+        // --- added 2026-07-25 after all three were found BEHIND on the live database ---------------
+        // Every finished-sheet write (DAS skid save, warehouse skid) mints from this one.
+        ("production_sheet_item", "prod_item_num", null),
+        // shipment already maps to PACKING_LIST_NUM_SEQ via Database:Sequences, so the table-keyed
+        // resolution would resync the WRONG sequence here. Named explicitly, mirroring the
+        // `sequence: "bill_of_lading_seq"` argument the insert itself passes.
+        ("shipment", "bill_of_lading", "bill_of_lading_seq"),
+        // The packaging-ticket sequence is SHARED by the sheet and reject-coil packing items, and is
+        // drawn via PackingItemCfg rather than NextIdAsync. Listed against both tables: the resync only
+        // ever advances a sequence that is behind, so two passes settle on the higher of the two maxima
+        // whichever order they run in.
+        ("sheet_packing_item", "sheet_packaging_ticket", "sheet_packaging_ticket_seq"),
+        ("reject_coil_packing_item", "rej_coil_packaging_ticket", "sheet_packaging_ticket_seq"),
     ];
 
     /// <summary>Self-heal the Oracle id sequences on startup: any sequence sitting at or below its
@@ -538,9 +557,9 @@ public static class AbisSchema
         await using var conn = factory.Create();
         await conn.OpenAsync(ct);
         var bumped = 0;
-        foreach (var (table, idColumn) in SequenceBackedTables)
+        foreach (var (table, idColumn, explicitSequence) in SequenceBackedTables)
         {
-            var seq = factory.SequenceFor(table, idColumn);
+            var seq = explicitSequence ?? factory.SequenceFor(table, idColumn);
             if (seq is null) continue;   // MaxIdTables have no sequence
             try
             {

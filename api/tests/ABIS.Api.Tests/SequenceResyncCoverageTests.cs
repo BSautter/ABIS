@@ -1,0 +1,105 @@
+using System.Reflection;
+using System.Text.RegularExpressions;
+using Abis.Api.Data;
+using Xunit;
+
+namespace Abis.Api.Tests;
+
+/// <summary>
+/// Enforces that every id the app mints from an Oracle sequence is covered by the startup self-heal.
+/// <para>A Data Pump refresh of the non-prod database imports rows but leaves sequences behind their
+/// new table max, so <c>seq.NEXTVAL</c> returns an id that already exists and every insert fails with
+/// ORA-00001. <c>ResyncSequencesAsync</c> exists to repair that on boot — but it works from a
+/// hand-maintained list whose only protection was a "KEEP IN STEP" comment.</para>
+/// <para>The comment lost. Three sequences were missing from it, and on 2026-07-25 <b>all three were
+/// sitting behind their table max on the live database</b> — including the one every finished-sheet
+/// write mints from, and one that was 827,368 behind. The self-heal would have reported success while
+/// skipping them.</para>
+/// </summary>
+public sealed class SequenceResyncCoverageTests
+{
+    private static string RepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "api", "src")))
+            dir = dir.Parent;
+        Assert.NotNull(dir);
+        return dir!.FullName;
+    }
+
+    /// <summary>The (table, idColumn) pairs the resync covers, read from the real private field so the
+    /// test can never drift from the list it is guarding.</summary>
+    private static HashSet<(string Table, string Column)> Covered()
+    {
+        var field = typeof(AbisSchema).GetField("SequenceBackedTables", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(field);
+        var rows = (System.Collections.IEnumerable)field!.GetValue(null)!;
+        var set = new HashSet<(string, string)>();
+        foreach (var row in rows)
+        {
+            var t = row.GetType();
+            set.Add(((string)t.GetField("Item1")!.GetValue(row)!, (string)t.GetField("Item2")!.GetValue(row)!));
+        }
+        return set;
+    }
+
+    [Fact]
+    public void Every_NextIdAsync_call_site_is_either_MAX_plus_1_or_covered_by_the_resync()
+    {
+        var repo = File.ReadAllText(Path.Combine(RepoRoot(), "api", "src", "ABIS.Api", "Data", "AbisRepository.cs"));
+        var sites = Regex.Matches(repo, @"NextIdAsync\(conn, tx, ""([a-z_]+)"", ""([a-z_]+)""")
+            .Select(m => (Table: m.Groups[1].Value, Column: m.Groups[2].Value))
+            .Distinct().ToList();
+        Assert.NotEmpty(sites);
+
+        // Tables that mint MAX+1 have no sequence and cannot drift.
+        var maxId = new HashSet<string>(new DatabaseOptions().MaxIdTables, StringComparer.OrdinalIgnoreCase);
+        var cfg = Path.Combine(RepoRoot(), "api", "src", "ABIS.Api", "appsettings.json");
+        foreach (Match m in Regex.Matches(File.ReadAllText(cfg), @"""MaxIdTables""\s*:\s*\[(.*?)\]", RegexOptions.Singleline))
+            foreach (Match t in Regex.Matches(m.Groups[1].Value, @"""([a-z_]+)"""))
+                maxId.Add(t.Groups[1].Value);
+
+        var covered = Covered();
+        var missing = sites
+            .Where(s => !maxId.Contains(s.Table) && !covered.Contains(s))
+            .Select(s => $"{s.Table}.{s.Column}")
+            .OrderBy(x => x)
+            .ToList();
+
+        Assert.True(missing.Count == 0,
+            $"{missing.Count} id(s) are minted from an Oracle sequence that the startup self-heal never " +
+            "resyncs. After a Data Pump refresh those sequences sit behind their table max and EVERY " +
+            "insert on them fails with ORA-00001, while the self-heal reports success. Add them to " +
+            "AbisSchema.SequenceBackedTables (with an explicit sequence name if the table-keyed " +
+            "resolution would pick the wrong one), or to Database:MaxIdTables if they genuinely mint " +
+            "MAX+1.\n\n" + string.Join("\n", missing));
+    }
+
+    [Fact]
+    public void The_shared_packaging_ticket_sequence_is_covered_for_both_of_its_tables()
+    {
+        // It is drawn via PackingItemCfg rather than NextIdAsync, so the scan above cannot see it —
+        // and it was the worst offender found live, 827,368 behind its max.
+        var covered = Covered();
+        Assert.Contains(("sheet_packing_item", "sheet_packaging_ticket"), covered);
+        Assert.Contains(("reject_coil_packing_item", "rej_coil_packaging_ticket"), covered);
+    }
+
+    [Fact]
+    public void Bill_of_lading_is_resynced_against_its_OWN_sequence()
+    {
+        // `shipment` maps to PACKING_LIST_NUM_SEQ via Database:Sequences, so a table-keyed entry would
+        // silently resync the wrong sequence and leave BILL_OF_LADING_SEQ behind.
+        var field = typeof(AbisSchema).GetField("SequenceBackedTables", BindingFlags.NonPublic | BindingFlags.Static);
+        var rows = (System.Collections.IEnumerable)field!.GetValue(null)!;
+        string? explicitSeq = null;
+        foreach (var row in rows)
+        {
+            var t = row.GetType();
+            if ((string)t.GetField("Item1")!.GetValue(row)! == "shipment"
+             && (string)t.GetField("Item2")!.GetValue(row)! == "bill_of_lading")
+                explicitSeq = (string?)t.GetField("Item3")!.GetValue(row);
+        }
+        Assert.Equal("bill_of_lading_seq", explicitSeq);
+    }
+}
