@@ -1112,6 +1112,65 @@ public sealed class RepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task A_duplicate_login_cannot_lend_its_privileges_to_the_signed_in_identity()
+    {
+        // security_user has NO unique constraint on login_id on Oracle — live .230 shows its only
+        // constraints are the user_id PK and a NOT NULL check. Both modern write paths reject a
+        // colliding login with a 409 and live has no duplicates, but the legacy application writes this
+        // table too and the API guard is check-then-act, so a duplicate is possible from outside.
+        //
+        // It mattered because the two halves of the auth bridge disagreed: the signed-in identity
+        // resolves to the LOWEST user_id matching the login, while the privilege lookup used to match
+        // the login itself and MAX over every row sharing it. You would authenticate as one user and
+        // inherit another's grants, with the audit trail naming the user who never held the access.
+        //
+        // Note this scenario is UNREACHABLE in CI by default: the SQLite fixture declares
+        // ux_security_user_login UNIQUE ... COLLATE NOCASE, a constraint Oracle does not have, so the
+        // test database is stricter than production. The index is dropped for this test and restored
+        // afterwards, which is the only way to exercise the case the real schema permits.
+        using (var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create())
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                DROP INDEX IF EXISTS ux_security_user_login;
+                -- A second row for the same person, differing only in case, with a HIGHER user_id and a
+                -- direct User Control grant. Seeded user 9001 'jsmith' holds no User Control.
+                INSERT INTO security_user (user_id, login_id, user_last_name, user_first_name, user_status) VALUES (9500, 'JSMITH', 'Smith', 'John', 1);
+                INSERT INTO security_user_application (user_id, application_id, user_application_privilege) VALUES (9500, 3, 1);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+
+        try
+        {
+            // The identity is still the lowest user_id — user 9001.
+            var who = await _repo.GetSecurityUserByLoginAsync("jsmith", CancellationToken.None);
+            Assert.Equal(9001L, who!.UserId);
+
+            // …so User Control must NOT be granted. Matching the login and taking MAX would have
+            // returned 1 here, handing user 9001 the duplicate's admin rights.
+            Assert.Null(await _repo.GetEffectivePrivilegeAsync("jsmith", "User Control", CancellationToken.None));
+
+            // The identity's own grants still resolve normally: direct Write (1) beats the group's
+            // ReadOnly (0) on Order Entry.
+            Assert.Equal(1, await _repo.GetEffectivePrivilegeAsync("jsmith", "Order Entry", CancellationToken.None));
+        }
+        finally
+        {
+            using var conn = new DbConnectionFactory(new DatabaseOptions { Provider = "Sqlite", ConnectionString = $"Data Source={_dbPath}" }).Create();
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                DELETE FROM security_user_application WHERE user_id = 9500;
+                DELETE FROM security_user WHERE user_id = 9500;
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_security_user_login ON security_user (login_id COLLATE NOCASE);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+    [Fact]
     public async Task Production_summary_reports_metal_consumed_not_the_remnant_left_on_the_coil()
     {
         // Legacy w_production_folder.srw:1262 — processed = coilnet - unprocessednet - rejnet.

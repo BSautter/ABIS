@@ -3531,8 +3531,19 @@ public sealed class AbisRepository : IAbisRepository
     }
 
     // The caller's effective privilege on a feature, resolved by login (case-insensitive):
-    // MAX over direct + group grants. null = no such user, feature, or grant. Mirrors the
-    // legacy f_security_door and is the server-side enforcement primitive.
+    // MAX over that user's direct + group grants. null = no such user, feature, or grant. Mirrors
+    // the legacy f_security_door and is the server-side enforcement primitive.
+    //
+    // The user is resolved the SAME way GetSecurityUserByLoginAsync resolves the signed-in identity
+    // — the lowest user_id matching the login — rather than by matching the login here directly.
+    // security_user has no unique constraint on login_id (its only constraint is the user_id PK), so
+    // nothing in the schema prevents two rows sharing a login. Both modern write paths reject that
+    // with a 409 and live .230 has no duplicates, but the legacy application writes this table too
+    // and the API guard is check-then-act. If a duplicate ever did arrive, matching the login here
+    // would MAX across every row sharing it: you would authenticate as the lowest user_id while
+    // inheriting the highest privilege held by any of them — a silent escalation, and an audit trail
+    // naming a user who was never granted the access. Privilege now follows identity by
+    // construction, so the two cannot disagree.
     public async Task<int?> GetEffectivePrivilegeAsync(string login, string applicationName, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
@@ -3548,7 +3559,7 @@ public sealed class AbisRepository : IAbisRepository
                 SELECT ug.user_id AS usr_id, ga.application_id AS aid, ga.group_application_privilege AS priv
                 FROM security_group_application ga JOIN security_user_group ug ON ug.user_group_id = ga.user_group_id
             ) g ON g.usr_id = u.user_id AND g.aid = a.application_id
-            WHERE LOWER(u.login_id) = LOWER(:login)
+            WHERE u.user_id = (SELECT MIN(user_id) FROM security_user WHERE LOWER(login_id) = LOWER(:login))
             """, new { login, feature = applicationName }, cancellationToken: ct));
     }
 

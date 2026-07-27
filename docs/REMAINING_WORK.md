@@ -443,6 +443,22 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 
 ## D. Bug / robustness leftovers (from the sweep — verified, low severity)
 
+- [x] **M** **Effective privilege now follows the signed-in identity** — done (#336). The sweep claimed
+  the RBAC gate "unions grants across duplicate logins". Partly wrong: **both** modern write paths
+  already reject a colliding login with a 409 (create and the rename, exclude-self), and live `.230`
+  has **no** duplicates — so this was never exploitable through the app.
+  What was real is that the two halves of the auth bridge disagreed. The signed-in identity resolves to
+  the **lowest** `user_id` matching the login; the privilege lookup matched the login itself and took
+  `MAX` over **every** row sharing it. `security_user` has no unique constraint on `login_id` on Oracle
+  (its only constraints are the `user_id` PK and a NOT NULL check), the legacy application writes the
+  same table, and the API guard is check-then-act — so a duplicate can arrive from outside. Privilege
+  is now resolved for the same single user the identity resolves to, so the two cannot diverge.
+  **Worth knowing:** the SQLite fixture declares `ux_security_user_login UNIQUE … COLLATE NOCASE` —
+  a constraint **Oracle does not have**. CI is *stricter* than production here, which is the inverse of
+  the usual trap and is why this went unseen. The test drops the index to reach the case the real
+  schema permits.
+
+
 - [x] **H** **"Processed wt" on the production reports was the remnant, not the throughput** — done (#335).
   `GetProductionSummaryAsync` and `GetLineEfficiencyAsync` reported `SUM(process_coil.process_end_wt)`
   as `ProcessedWt`. That column is the metal **left on** the coil at end of job: legacy
