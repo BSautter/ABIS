@@ -269,6 +269,15 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   NESTINGS — 1, 2, 3 or 4 circles across the coil width** (the program labels them "1 WIDE"…"4 WIDE"),
   staggered by √3/2 for hex packing, so the estimator sees four complete costings and picks one. Yield is
   circle area over consumed strip area. `ZU$` switches the whole model between the coil and PLATE paths.
+  **SheetPro DECODED too (2026-07-25)** — it is `w_quotation_new.srw` (no `w_sheetpro.srw` exists; identified
+  by its `d_report_sheetpro` report object), same transliterated-BASIC lineage, 166 variables. It is the more
+  COMPLETE commercial model: cost, mark-up, price/lb, invoice, plus an actual-vs-computed profit analysis.
+  The whole thing is four formulas.
+  ⚠ **Two hard-coded constants must NOT be ported as literals: `40` is a labour rate ($/hr) and `45` is
+  assumed productive minutes per hour.** A rate frozen at 1990s levels quotes every job wrong and nothing in
+  the output would reveal it — they must become configuration, confirmed by the plant before any quote is issued.
+  ⚠ **`hi` is a MARGIN divisor, not cost-plus** — entering 30 gives `price = cost/0.70` (a 42.9% markup);
+  reading it as cost-plus understates every price by ~9%.
   ⚠ **Gating task: real worked quotes (inputs + accepted outputs) from the plant.** Without goldens this is a
   re-derivation of a pricing engine, not a port, and errors surface as wrong prices to customers rather than
   as anything the UI would show. Also watch `Int(x + 0.5)` — round-half-up, NOT .NET banker's rounding.

@@ -255,3 +255,115 @@ around. Doing so is what turns a quote from a number into a reproducible record.
   whatever sales uses now is outside ABIS. Worth knowing before designing the replacement.
 - **Are both spacing modes actually used?** Metal-thickness spacing (gap = gauge) and operator "input
   spacing" are both computed. If quotes only ever go out on one, that halves the surface to verify.
+
+---
+
+# SheetPro — the rectangular-blank model
+
+**Status: SPEC ONLY.** Confirmed still in use by the plant (2026-07-25).
+
+Source: **`legacy/src/quotation/w_quotation_new.srw`** (5,778 lines). There is no `w_sheetpro.srw` —
+the window is named for the quotation screen, and it is identified as SheetPro by its report
+DataObject, `d_report_sheetpro`.
+
+Same lineage as CirclePro: transliterated BASIC (`wf_line_680`, `wf_line_1180`, `wf_line_5000`,
+`wf_sub_9900`, `wf_sub_65000`), and `wf_coil_info` is even annotated `// line 10 to 592`. It is
+better organised than CirclePro, though — some sections earned real names: `wf_coil_info`,
+`wf_pallet_info`, `wf_production_info`, `wf_alt_skid_cost`.
+
+## It is a more complete COMMERCIAL model than CirclePro
+
+CirclePro stops at cost and price/lb. SheetPro carries mark-up, the invoice total, and an
+actual-versus-computed analysis mode — note the paired comments in its variable map, e.g.
+`AR // Computed job cost | Actual job cost`, `AS // Computed line hours | Actual hrs used`. The
+estimator can enter what the job ACTUALLY took and see the profit that resulted.
+
+166 instance variables (CirclePro has 129), of which **39 are `$`-suffixed operator questions** — the
+interactive Q&A of the original BASIC program, e.g. `PP$` "Is paper or PVC interleaving req'd?",
+`CC$` "Will 4X4 blocks be used instead of skids?", `SP$` "Steel pallets rather than wood?".
+
+## The whole model is four lines
+
+```powerbuilder
+r  = l * 40 * (q * i + u * g + (p / x1)/(m * 45)) + 40 * o + (p / x1) * (b * c * k /144)
+     + j * q + s * sc + qs + pt * u + jp * q
+y1 = r / hi / p + eo
+w  = p / x1 / s
+z  = y1 * p
+```
+
+| symbol | meaning |
+|---|---|
+| `r` | **our total job cost** |
+| `y1` | **price per lb** |
+| `z` | **total invoice** |
+| `w` | average production rate (pcs/hr) |
+| `l` `o` | men required · man-hours for die setting |
+| `q` `u` | number of skids · number of coils |
+| `i` `g` | skid change time · coil change time |
+| `p` `x1` | total incoming material weight · piece weight (so `p/x1` = piece count) |
+| `m` | production rate, pieces per minute |
+| `b` `c` `k` | coil width · feed length · paper-or-PVC cost per sq ft |
+| `j` | skid cost |
+| `s` `sc` | total line hours · surcharge |
+| `qs` `pt` `jp` | stretch wrap · paper-tube cost per coil · packaging cost per skid |
+| `hi` | mark-up, as a divisor — see below |
+| `eo` | electrostatic oiling charge, $/lb |
+
+Read plainly, the cost is: labour + die setting + interleaving + skids + surcharge + stretch wrap +
+paper tubes + packaging. `(p/x1) * (b*c*k/144)` is the interleaving sheet cost — piece count times
+sheet area in square feet (144 sq in/sq ft) times cost per square foot.
+
+## ⚠ Two hard-coded constants that must NOT be ported as literals
+
+```powerbuilder
+r = l * 40 * (...) + 40 * o + ...      ' 40  = labour rate, $/hr
+                (p / x1)/(m * 45)      ' 45  = PRODUCTIVE MINUTES PER HOUR
+```
+
+`40` is a burdened labour rate and `45` is an assumed 45 productive minutes in every hour (a 75%
+efficiency allowance). Both are baked into the arithmetic of a program whose lineage is 1990s BASIC.
+
+**A labour rate frozen at $40/hr will quote every job wrong, and nothing in the output would show it.**
+Both must become configuration, and the plant must confirm the current values before the first quote
+is issued from the modern system. This is the single most important thing to settle about SheetPro.
+
+## ⚠ `hi` is a MARGIN divisor, not a cost-plus multiplier
+
+```powerbuilder
+hi = real(em_hi.Text)
+IF hi > 0 AND hi < 100 THEN hi = (100 - hi) / 100 ELSE hi = 0.7   ' default 30
+...
+y1 = r / hi / p + eo
+```
+
+Entering **30** does not mean "cost + 30%". It means `price = cost / 0.70` — a **30% margin**, which is
+a 42.9% markup on cost. Getting this backwards understates every price by about 9%. The default when
+the entry is invalid is 30 (`hi = 0.7`).
+
+The inverse appears in the analysis mode, which reports the profit actually achieved:
+
+```powerbuilder
+hi = (z - (r + eo * p)) / (z - eo * p) * 100
+```
+
+Note the oiling charge is excluded from both sides — it is a pass-through, not margin-bearing.
+
+## Line selection is an INPUT
+
+`A$ // Line No. to be used - 24, 36, 60 75, 108 or 110`, with `AA$` for a second attempt and
+`L$ // Enter "N" for no if this job will not run in 60 line`. So the estimator picks the line and the
+model prices it there — the same shape as CirclePro's nesting choice being customer-driven rather
+than optimised. **Note `75` appears in that list and is not a line the plant runs today**
+(BL 24/36/60/78/84/108/110) — worth asking whether it is a typo for 78 or a retired line.
+
+## Open questions for the plant
+
+- **What are the real labour rate and the productive-minutes allowance?** Nothing can be quoted
+  correctly until these are confirmed. They are the `40` and the `45` above.
+- **Worked examples** — same ask as CirclePro, and the same reason: this must be a port, not a
+  re-derivation. Inputs plus the accepted price/lb and invoice for a handful of real quotes.
+- **Is the actual-vs-computed analysis mode used?** If estimators genuinely feed back what jobs took,
+  that is a feature worth keeping; if not, a large part of the window can be dropped.
+- **Is `75` in the line list real?**
+
