@@ -7175,9 +7175,14 @@ public sealed class AbisRepository : IAbisRepository
     {
         await using var conn = await OpenAsync(ct);
         var ts = DateTime.UtcNow;
+        // Bind the DateTime itself, NOT a formatted string. JOB_EFOLDER_NOTES.TIMESTAMP is a NOT NULL
+        // Oracle DATE; a "yyyy-MM-dd HH:mm:ss" string only converts if the session NLS_DATE_FORMAT
+        // happens to match it, and on this database it does not — NLS_DATE_FORMAT is DD-MON-RR, so
+        // Oracle rejects that literal with ORA-01861 and the note is never saved. SQLite stores dates
+        // as text and accepted the string happily, which is why no test caught it.
         await conn.ExecuteAsync(new CommandDefinition(
             "INSERT INTO job_efolder_notes (ab_job_num, user_id, timestamp, notes) VALUES (:job, :usrid, :ts, :notes)",
-            new { job = abJobNum, usrid = userId, ts = ts.ToString("yyyy-MM-dd HH:mm:ss"), notes }, cancellationToken: ct));
+            new { job = abJobNum, usrid = userId, ts, notes }, cancellationToken: ct));
         return (await GetJobFolderNotesAsync(abJobNum, ct)).Last(n => n.UserId == userId);
     }
 
