@@ -11,10 +11,25 @@ each trying to REFUTE it. Only findings that survived >= 2 of 3 are listed as co
 
 1. **Reserved-word bind names** (`:from` `:to` `:by` `:when` `:start` `:end` `:between`) —
    ORA-01745 at parse time. The statement never runs.
-2. **Positional binding.** `BindByName` is never set, so ODP.NET binds by POSITION. The
-   anonymous object / DynamicParameters order must match the placeholder order exactly.
-   Where it doesn't, values land in the wrong columns. SQLite binds by name, so CI passes.
-3. A third, smaller class: **a bind name reused for two placeholders** → ORA-01008.
+2. ~~**Positional binding.**~~ **DISPROVEN — verified against live Oracle 2026-07-25.**
+   The sweep claimed that because `BindByName` is unset, a parameter object whose member order
+   differs from the placeholder order silently writes values into the wrong columns. **It does not.**
+   **Dapper reorders parameters to match the SQL text before executing**, so ODP.NET never sees a
+   mismatch. Proven both ways on .230 with `BindByName=false`: six deliberately scrambled members,
+   and a `DynamicParameters` built in the wrong order (the exact shape `PartParams` uses) — both
+   bound correctly.
+
+   **Every finding in this class is a false positive**, including `CreatePartAsync` ("all 54 columns
+   shifted"), `UpdateSecurityUserAsync`, `UpdateDimensionCheckAsync`, `UpsertEvalScrapAsync`,
+   `UpsertRecoveryJobCoilAsync`, the order/order-item INSERTs and the truck-appointment writes.
+
+   Worth recording HOW this got through: three adversarial reviewers confirmed it, and I confirmed
+   it myself by reading the code. But all four of us verified the *code shape* the claim described —
+   member order really does differ from placeholder order — and none of us tested the *premise* that
+   the shape causes a wrong result. Reading code proves what code says; only running it proves what
+   it does.
+3. **A bind name reused for two placeholders** → ORA-01008. Untested against live Oracle; treat as
+   unconfirmed until it is, given class 2's fate.
 
 ## Confirmed
 
