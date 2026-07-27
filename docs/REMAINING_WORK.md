@@ -443,6 +443,23 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 
 ## D. Bug / robustness leftovers (from the sweep — verified, low severity)
 
+- [x] **Omitted-NOT-NULL-column class: swept, clean, and now guarded in CI** — done (#337).
+  Live `.230` has **955** NOT NULL columns; **190** of them are nullable in `SqliteFixture`, so CI's DDL
+  is far laxer than production and an `INSERT` omitting a required column would pass CI and raise
+  `ORA-01400` on the plant floor. This class has bitten twice already (`ERROR_EVT.ERROR_USER` /
+  `ERROR_TYPE_ID`, `sheet_tare_wt`), each found only by running against a real Oracle.
+  **Swept the whole repository: zero app INSERTs omit a required column.** The scary version of this —
+  a table whose every write is a guaranteed `ORA-01400` — does not exist. `OracleNotNullInsertTests`
+  now locks that in against a committed schema snapshot (`oracle-not-null.tsv`), with no exemption list
+  because there is nothing to exempt.
+- [ ] **L** **Residual of the above, NOT covered by the guard:** a column that IS in the INSERT but
+  receives a null at runtime. The guard is static, so it cannot see this; it fails only that one
+  request, as a 500 carrying an Oracle error rather than a clean 400. Tightening `SqliteFixture` to
+  match Oracle's 190 columns surfaces it — I measured this: **60 tests fail**, but the great majority
+  are tests seeding their own rows sloppily (41 alone are `customer.customer_short_name` from
+  test-local inserts), not app defects. Worth doing as its own pass for the API-validation wins;
+  deliberately not bundled, since it is mostly mechanical test-data churn.
+
 - [x] **M** **Effective privilege now follows the signed-in identity** — done (#336). The sweep claimed
   the RBAC gate "unions grants across duplicate logins". Partly wrong: **both** modern write paths
   already reject a colliding login with a 409 (create and the rename, exclude-self), and live `.230`
