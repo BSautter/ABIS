@@ -570,7 +570,21 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   | BL 84 | 2,228,841 | 50,948,522 |
 
 - [x] **M** Invoice-save duplicate: return **409** not a 500 — done (#260): `CreateInvoiceAsync` now catches the PK violation on the INSERT (the pre-check's TOCTOU race) and re-checks → returns Duplicate (409) instead of a 500.
-- [ ] **L** `If-Match` optimistic concurrency: push the version into the UPDATE `WHERE` (true compare-and-swap; today check-then-act) — `WithIfMatch`
+- [x] **M** **`If-Match` optimistic concurrency was dormant — no client ever sent one** — done (#342).
+  The old entry here ("push the version into the UPDATE `WHERE`") was doubly wrong: there is no version
+  column (the ETag is a hash of the serialized entity), and the check-then-act race it named was
+  unreachable, because **the client never sent `If-Match` at all** — zero occurrences of `etag` in
+  client code. The server half was complete and tested the whole time; every edit was simply
+  last-write-wins, so two people with the same job open silently overwrote each other.
+  `authFetch` is the single choke point for all client HTTP (every page builds
+  `new AbisClient('', { fetch: authFetch })`), so capture-and-replay wired there turns it on app-wide.
+  A write with no stored validator sends nothing and behaves exactly as before.
+- [ ] **L** The check-then-act window in `WithIfMatch` itself (read and update run on separate
+  connections) is now reachable, since clients send `If-Match`. Closing it properly needs
+  `SELECT … FOR UPDATE` with one transaction spanning both halves, across ~12 entities on the busiest
+  write paths. Worth doing deliberately, not as a drive-by — and note the legacy PowerBuilder app is a
+  concurrent writer on the same tables, so only a DB-level lock helps; an in-process one would be false
+  comfort.
 - [x] **L** Invoice **tare** bucket — done (#260): `GetInvoiceComputationAsync` tare now excludes voided skids (`skid_sheet_status <> 6`) so it matches `SkidCount`.
 - [x] **L** Stacker board — done (#260): `job_status NOT IN (0,3)` → `IN (1,2,4)` (matches its comment; robust to NULL/new codes).
 - [x] **L** On-hand-coil + skid-count `IS NULL` guards — done (#260): `OnHandCoilPredicate` + every `skid_sheet_status <> 6` now guard NULL (`IS NULL OR …`).

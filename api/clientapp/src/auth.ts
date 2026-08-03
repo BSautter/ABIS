@@ -222,11 +222,40 @@ async function doInit(): Promise<void> {
   renderOidcBar();
 }
 
+// ---- optimistic concurrency (If-Match) -------------------------------------
+// The server has supported this from the start: GETs under /api carry an ETag, and PUT/PATCH compare
+// If-Match and answer 412 when the validator is stale (WithIfMatch). No client ever SENT one, so the
+// whole mechanism sat dormant and every edit was last-write-wins — two people with the same job open
+// silently overwrote each other, with nothing to show it had happened.
+//
+// authFetch is the single choke point for all client HTTP: every page builds its client as
+// `new AbisClient('', { fetch: authFetch })`. Wiring it here turns the mechanism on app-wide instead
+// of page by page.
+//
+// Keyed on the resource PATH, so the validator a GET of /api/jobs/1001 returns is the one a later
+// PATCH of /api/jobs/1001 asserts. A write with no stored validator sends no If-Match and behaves
+// exactly as before, so this can only add protection, never withdraw it.
+const etags = new Map<string, string>();
+
+const resourceKey = (url: RequestInfo): string => {
+  const raw = typeof url === 'string' ? url : url.url;
+  try { return new URL(raw, location.origin).pathname; } catch { return raw; }
+};
+
 /** Drop-in `fetch` for the generated client. Attaches a Bearer token (OIDC) or the
- *  API key (fallback). In OIDC mode with no token it kicks off the login redirect. */
+ *  API key (fallback). In OIDC mode with no token it kicks off the login redirect.
+ *  Also carries the If-Match validator so a concurrent edit is refused rather than overwritten. */
 export async function authFetch(url: RequestInfo, init?: RequestInit): Promise<Response> {
   await initAuth();
   const headers = new Headers(init?.headers);
+  const key = resourceKey(url);
+  const method = (init?.method ?? (typeof url === 'string' ? 'GET' : url.method) ?? 'GET').toUpperCase();
+
+  // Assert the record has not moved since we read it. Never override an If-Match a caller set itself.
+  if ((method === 'PUT' || method === 'PATCH') && !headers.has('If-Match')) {
+    const tag = etags.get(key);
+    if (tag) headers.set('If-Match', tag);
+  }
   const sessionJwt = SS.getItem(K_SESSION);
   if (sessionJwt) {
     // Per-user ABIS sign-in (POST /auth/login) — the bearer the server issued.
@@ -249,6 +278,24 @@ export async function authFetch(url: RequestInfo, init?: RequestInit): Promise<R
   const res = await fetch(url, { ...init, headers });
   // A rejected session token (expired / bad) — drop it so the next load re-prompts sign-in.
   if (res.status === 401 && sessionJwt) { SS.removeItem(K_SESSION); SS.removeItem('abis_entered'); }
+
+  if (method === 'GET') {
+    // Remember the validator so a later write on this resource can assert it.
+    const tag = res.ok ? res.headers.get('ETag') : null;
+    if (tag) etags.set(key, tag);
+  } else {
+    // Any write settles the question: on success the row has moved on, and on a 412 ours was stale.
+    // Dropping it either way means the next read establishes a current validator rather than the page
+    // retrying forever against a validator that can no longer match.
+    etags.delete(key);
+  }
+
+  // 412 only happens now that we send If-Match, so no existing caller is expecting to see one. Turn it
+  // into a message that says what actually went wrong — the generated client would otherwise surface
+  // a bare status, which reads like a bug rather than someone else's edit.
+  if (res.status === 412) {
+    throw new Error('Someone else changed this record while you had it open. Reload to see their version, then re-apply your change.');
+  }
   return res;
 }
 
