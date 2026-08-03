@@ -558,6 +558,14 @@ async function pullWeight() {
                 setErr('The scale reported no weight — enter it manually.');
                 return;
             }
+            // A SIMULATED device is not a measurement. The edge defaults to Edge:Scale:Provider=Mock, and the
+            // plant's hosts configure only Edge:Opc — so on 2026-07-29 the live edge on .170 was answering
+            // /reading with MockScale's invented ~1234.7 LB, which this button wrote into the skid's net
+            // weight and invoicing then billed. Refuse it outright: a plausible fake is worse than no reading.
+            if (reading.simulated) {
+                setErr(`The edge on this host has no scale configured, so it is reporting a SIMULATED weight (${reading.device ?? 'mock'}). Weigh the skid and enter the weight manually.`);
+                return;
+            }
             // Refuse rather than warn: a warning on a filled-in field gets dismissed, and the wrong number
             // is already in the box. Every branch below leaves the operator free to type the weight by hand.
             if (reading.stable === false) {
@@ -569,13 +577,24 @@ async function pullWeight() {
                 setErr(`Scale is reporting ${unit}, not pounds — correct the indicator's unit before weighing.`);
                 return;
             }
+            // A reading with no explicit mode is treated as NET, which is what the DA console this page
+            // replaces did. Checked against the PowerBuilder rather than assumed, because the plant has three
+            // scales and they do NOT agree:
+            //   * w_da_sheet (THIS console's ancestor) reads its serial scale — guarded by
+            //     ib_scrap_scale_connected — and of_add_scrap_item writes the value straight to
+            //     RETURN_ITEM_NET_WT, with the tare coming separately from w_load_scrap_tare. NET.
+            //   * The BL110 stacker window weighs a bare stack on the conveyor and writes it to
+            //     sheet_net_wt via update_sheet_skid_wt. NET (there is no pallet under it).
+            //   * w_scale_skid (inv_coil, the FLOOR scale) is the one that reads GROSS — it puts the reading
+            //     in em_gross and derives em_net = em_gross - il_tare, because a skid on the floor scale is
+            //     sitting on its pallet.
+            // So net is right here, and the mode="GS" branch below covers an indicator that says otherwise.
             if (reading.mode === 'GS') {
-                // Gross includes the tare, and #skNet is the NET weight (the skid's gross is reconstructed
-                // downstream as net + tare — see the 856 assembly). Convert when the tare is known; refuse
-                // when it is not, because filling net with a gross number is silently wrong.
+                // Explicitly gross: it includes the tare, and #skNet is NET (the skid's gross is rebuilt
+                // downstream as net + tare — see the 856 assembly). This mirrors w_scale_skid's arithmetic.
                 const tare = v('#skTare');
                 if (!tare) {
-                    setErr('Scale is in GROSS mode — enter the skid tare first, or switch the indicator to NET.');
+                    setErr('The indicator is reporting GROSS — enter the skid tare first, or switch it to NET.');
                     return;
                 }
                 const net = reading.value - Number(tare);

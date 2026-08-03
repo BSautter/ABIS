@@ -21,6 +21,10 @@ public sealed class MockScale : IScale
 
     public string Name => "mock-scale";
 
+    /// <summary>Fabricated by definition — this device wanders around a setpoint and has never been
+    /// near a load cell. Nothing that saves a weight may accept it.</summary>
+    public bool Simulated => true;
+
     public async IAsyncEnumerable<WeightReading> ReadAsync([EnumeratorCancellation] CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)

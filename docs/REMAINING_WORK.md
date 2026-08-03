@@ -443,6 +443,34 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 
 ## D. Bug / robustness leftovers (from the sweep — verified, low severity)
 
+- [x] **C** **The plant edge was serving SIMULATED weights, and the DAS console saved them** — done (#340).
+  `Edge:Scale:Provider` defaults to `Mock`, and both plant edge hosts configure only `Edge:Opc` (their
+  skid scale is the OPC tag `ScaleSkidWt`, not a serial device). So `/reading` answered with MockScale's
+  invented ~1234.5 lb and the console's Pull button wrote it into `sheet_net_wt`.
+  **Confirmed live on .170 (2026-07-29):** `{"status":"ok","scale":"mock-scale"}` and
+  `value 1234.7, stable False, mode GS, raw "US,GS,+1234.7 LB"`.
+  Mitigating: the deployed app runs on the **non-prod .230 sandbox**, so no real invoice or ASN was
+  built from a fabricated weight — this is a cutover blocker, not billing damage.
+  `IScale.Simulated` is now part of the contract, `/reading` publishes `device` + `simulated`, the edge
+  logs a startup warning, and the console refuses a simulated reading outright.
+- [ ] **H — the Pull button is wired to the WRONG SCALE (plant-confirmed).** Legacy split three ways and
+  the modern console inverted it:
+  | | legacy | modern today |
+  |---|---|---|
+  | finished skid net wt | **conveyor scale** (OPC `ScaleSkidWt`) → `update_sheet_skid_wt` | serial `/reading` ❌ |
+  | scrap weight | serial scrap scale (`ib_scrap_scale_connected`) → `RETURN_ITEM_NET_WT` | typed by hand ❌ |
+  | (floor scale, `w_scale_skid`) | reads **GROSS** → `net = gross − tare` | n/a |
+  Plant confirmed 2026-07-29: "the scrap scale screen is for weighing the scrap, the conveyor scale is
+  for measuring finished product skids." So Pull must read the **conveyor** scale — already fetched and
+  merely *displayed* at `das-console.ts:938` — treated as **NET** (a bare stack has no pallet under it).
+  To port with it: legacy's plausibility band (`ll_nw < 10 or > 39000` → "Invalid weight!!"), enabling
+  it only where a stacker scale exists (BL110 only; BL84's tags read quality Bad), and legacy's
+  positional precondition — it only read the scale with the stack at conveyor location **3 or 4**
+  ("Stack not on Conveyor1!, Can not read scale."), which needs confirming against the belt as it
+  stands since wrapper 2 was removed.
+  Note the modern edge also **streams** readings where legacy **polled on demand** (`SioPutc('b')` =
+  Print), which is why stability has to be checked now and did not then.
+
 - [x] **M** **Write endpoints under an unmapped tag were authenticated but never feature-gated** — done (#339).
   The sweep flagged "PLC fault-code PUT/DELETE ungated". True, but it is not an endpoint-level slip: the
   `f_security_door` parity gate is applied by the `/api` group's endpoint filter, which looks the

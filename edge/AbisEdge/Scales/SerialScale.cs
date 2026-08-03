@@ -28,6 +28,9 @@ public sealed class SerialScale : IScale
 
     public string Name => $"serial-scale ({_port}@{_baud})";
 
+    /// <summary>A real load cell on the other end of a serial port.</summary>
+    public bool Simulated => false;
+
     public async IAsyncEnumerable<WeightReading> ReadAsync([EnumeratorCancellation] CancellationToken ct)
     {
         using var sp = new SerialPort(_port, _baud, _parity, _dataBits, _stopBits)

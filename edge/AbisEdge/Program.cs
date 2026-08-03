@@ -147,6 +147,16 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAn
 var app = builder.Build();
 app.UseCors();
 
+// Say so, loudly, when the weigh device is simulated. Edge:Scale:Provider defaults to Mock, so an edge
+// host with no Edge:Scale section serves invented weights that look entirely plausible (~1234.5 LB) —
+// and did exactly that on the plant's .170 until 2026-07-29. A default that fabricates data has to
+// announce itself in the log, not wait to be discovered downstream of an invoice.
+if (app.Services.GetRequiredService<IScale>().Simulated)
+    app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("AbisEdge.Scale").LogWarning(
+        "SIMULATED SCALE: no Edge:Scale:Provider is configured, so /reading serves MockScale's invented " +
+        "weights and reports simulated=true. Set Edge:Scale:Provider=serial (with Port) to read a real " +
+        "device. Nothing that saves a weight should accept a reading from this host.");
+
 // Serve the DAS readout (wwwroot/index.html) at the root — the shop-floor live
 // display of the scale + OPC tags, replacing the legacy `da`/DAS screen. Same
 // origin as /reading + /tags, so no CORS or auth on the local edge host.
@@ -158,8 +168,23 @@ app.MapGet("/health", (IScale scale, ITagSource tags) =>
     Results.Ok(new { status = "ok", scale = scale.Name, opc = tags.Name }));
 
 // The latest weight reading (503 until the device has produced one).
-app.MapGet("/reading", (LatestReading latest) =>
-    latest.Value is { } r ? Results.Ok(r) : Results.Json(new { status = "no-reading-yet" }, statusCode: 503));
+//
+// Carries `device` and `simulated` so a consumer can tell a real measurement from a fabricated one.
+// It could not before, and that mattered: Edge:Scale:Provider defaults to Mock, the plant's edge
+// config configures only Edge:Opc (its skid scale is the OPC tag ScaleSkidWt, not a serial device),
+// so /reading on the live plant host answers with MockScale's wandering ~1234.5 LB. Confirmed on
+// .170 on 2026-07-29: {"scale":"mock-scale"} and raw "US,GS,+1234.7 LB". The DAS console's Pull
+// button fed that straight into a skid's NET weight, which invoicing and the 856 ASN are built from.
+// A simulated device must never be able to pass itself off as a real one.
+app.MapGet("/reading", (LatestReading latest, IScale scale) =>
+    latest.Value is { } r
+        ? Results.Ok(new
+        {
+            r.Value, r.Unit, r.Stable, r.Mode, r.Raw, r.At,
+            device = scale.Name,
+            simulated = scale.Simulated,
+        })
+        : Results.Json(new { status = "no-reading-yet", device = scale.Name, simulated = scale.Simulated }, statusCode: 503));
 
 // The latest OPC tag values (the configured Edge:Opc:Tags), and one by name.
 app.MapGet("/tags", (LatestTags tags) => Results.Ok(tags.All()));
