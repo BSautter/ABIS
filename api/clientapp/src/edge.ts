@@ -228,7 +228,7 @@ type StackerTag = { configured?: boolean; count?: number | null; complete?: bool
  * one call across the edge hosts (primary→fallback). The DAS console pairs each station's live count
  * with the skid AT that head from the line board. null values mean "unknown" — never fabricated.
  */
-export async function fetchStacker(bases: string[]): Promise<StackerResult> {
+export async function fetchStacker(bases: string[], scaleWeightTag?: string): Promise<StackerResult> {
   const station = (s?: { count?: StackerTag; done?: StackerTag }): StackerStation => ({
     configured: !!(s?.count?.configured || s?.done?.configured),
     count: s?.count?.count ?? null,
@@ -236,7 +236,11 @@ export async function fetchStacker(bases: string[]): Promise<StackerResult> {
   });
   for (let i = 0; i < bases.length; i++) {
     try {
-      const r = await fetchWithTimeout(`${bases[i]}/stacker`, 2000);
+      // The edge's /stacker defaults point at ONE line's branch (stacker110). Pass this line's scale
+      // item id explicitly when the caller knows it, so a console on another line cannot read BL110's
+      // scale by falling through to the default — the same reason /conveyor is asked per line.
+      const qs = scaleWeightTag ? `?scalewt=${encodeURIComponent(scaleWeightTag)}` : '';
+      const r = await fetchWithTimeout(`${bases[i]}/stacker${qs}`, 2000);
       if (!r.ok) continue;
       const s = await r.json() as {
         station1?: { count?: StackerTag; done?: StackerTag };

@@ -443,6 +443,13 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 
 ## D. Bug / robustness leftovers (from the sweep — verified, low severity)
 
+- [ ] **H — REDEPLOY THE EDGE: the deployed build predates the per-line conveyor fix.** Live check
+  2026-08-02: `GET /conveyor?line=4` on `.170` answers **`configured:true` with 12 cells** for **BL78**,
+  a line with no stacker at all — it is serving BL110's cell map under another line's number. The fix
+  is already in the repo (#305/#306: a line with no map of its own answers with NO cells, never the
+  default), it is simply not deployed. Until it is, the floor board can paint BL110's belt under BL78.
+  The same redeploy carries #340's `simulated` flag, which `/reading` on `.170` still does not report.
+
 - [x] **C** **The plant edge was serving SIMULATED weights, and the DAS console saved them** — done (#340).
   `Edge:Scale:Provider` defaults to `Mock`, and both plant edge hosts configure only `Edge:Opc` (their
   skid scale is the OPC tag `ScaleSkidWt`, not a serial device). So `/reading` answered with MockScale's
@@ -453,7 +460,7 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   built from a fabricated weight — this is a cutover blocker, not billing damage.
   `IScale.Simulated` is now part of the contract, `/reading` publishes `device` + `simulated`, the edge
   logs a startup warning, and the console refuses a simulated reading outright.
-- [ ] **H — the Pull button is wired to the WRONG SCALE (plant-confirmed).** Legacy split three ways and
+- [x] **H — the Pull button was wired to the WRONG SCALE (plant-confirmed)** — done (#341). Legacy split three ways and
   the modern console inverted it:
   | | legacy | modern today |
   |---|---|---|

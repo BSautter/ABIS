@@ -14,7 +14,7 @@
 import { AbisClient, SheetSkidWrite, ScrapSkidWrite, DowntimeInstanceWrite } from './generated/abis-client.js';
 import { initAuth, authFetch } from './auth.js';
 import { statusChip, lineLabel, loadLineNames } from './status-labels.js';
-import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount, fetchCounters, fetchStacker, fetchLineStatus, browseEdgeTags } from './edge.js';
+import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount, fetchCounters, fetchStacker, fetchConveyor, fetchLineStatus, browseEdgeTags } from './edge.js';
 const $ = (sel) => document.querySelector(sel);
 const client = () => new AbisClient('', { fetch: authFetch });
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -93,6 +93,7 @@ function scaffold() {
           <input id="runTag" placeholder="PLC run tag (e.g. PLC5-BL84.strokecnt)" style="width:190px" title="The edge item id whose change = this line running" />
           <button class="btn sm ghost" id="btnBrowseRun" type="button" title="Browse the edge for this line's run tag" style="color:#fff;border-color:var(--rail-line)">🔎</button>
           <input id="pieceTag" placeholder="Stacker count tag (e.g. PLC5-BL110.piececount)" style="width:210px" title="The edge item id of the stacker's running piece counter for this line" />
+          <input id="scaleTag" placeholder="Conveyor scale tag (e.g. stacker110.ScaleSkidWt)" style="width:210px" title="The edge item id of THIS line's conveyor scale — the skid weight the Pull button reads" />
           <button class="btn sm ghost" id="btnBrowsePiece" type="button" title="Browse the edge for this line's stacker count tag" style="color:#fff;border-color:var(--rail-line)">🔎</button>
           <span id="runInd" class="dop-note" style="color:var(--rail-ink-2);margin-left:auto" title="Line run-state from the edge PLC feed">PLC: —</span>
           <span id="pieceInd" class="dop-note" style="color:var(--rail-ink-2)" title="Live stacker piece count for the skid in progress">Stacker: —</span>
@@ -528,17 +529,32 @@ async function loadScrap() {
         : '<tr><td colspan="5" class="muted">No scrap yet.</td></tr>';
     document.querySelectorAll('#tScrap tr.click').forEach((tr) => tr.addEventListener('click', () => void printDocument(`/api/documents/scrap-skid/${tr.dataset.scrap}`, `scrap #${tr.dataset.scrap}`, '#scrapOk')));
 }
-// Pull the current weight from the shop-floor edge service (/reading), if its URL is set.
+// Pull the finished skid's weight from the CONVEYOR scale.
 //
-// /reading returns the FULL reading — value, unit, stable, mode — and this used to read only value
-// and unit, display the unit, and drop stable and mode entirely. Each one it dropped is a way to
-// write a wrong weight into a field that feeds the invoice and the 856 ASN:
-//   * stable=false is the scale still settling. That is not a measurement, it is a number in motion.
-//   * mode="GS" is a GROSS reading — it includes the skid tare — and the field being filled is NET.
-//   * unit is whatever the indicator is set to. Storing a KG reading as pounds is a 2.2x error.
-// The edge parser populates all three (WeightParser: "ST,GS,+00123.4 LB"), so the information was
-// there to be used. A bare reading with no status prefix parses as stable with a null mode, which is
-// the pre-existing path and behaves exactly as before.
+// This used to read the edge's serial /reading endpoint, which is the wrong device. The plant runs
+// two scales for two jobs, confirmed by the plant 2026-08-02 — "the scrap scale screen is for weighing
+// the scrap, the conveyor scale is for measuring finished product skids" — and legacy wired them that
+// way: the DA console's serial scale sat behind ib_scrap_scale_connected and fed RETURN_ITEM_NET_WT,
+// while the BL110 stacker window read the conveyor scale and wrote it to sheet_net_wt via
+// update_sheet_skid_wt. This console had them crossed, pulling a skid weight off the scrap-scale path.
+// That is also why nobody had ever configured Edge:Scale on the plant hosts: the serial device this
+// button was reading does not exist there, so /reading was answering with the edge's MOCK scale.
+//
+// The reading is NET — a bare stack on the conveyor has no pallet under it. (The inv_coil FLOOR scale
+// is the one that reads gross, because a skid there is sitting on its pallet; see w_scale_skid.srw.)
+//
+// Two guards ported from the legacy stacker window, both of which matter on live data:
+//   * The stack must be ON the scale. Legacy read it only with the stack at location 3 or 4, else
+//     "Stack not on Conveyor1!, Can not read scale." — cells 3/4 are StackOnConveyor1 and
+//     StackLeavingConveyor1. Confirmed still correct: the plant removed wrapper 2 and everything after
+//     it, but the scale never moved. Without this the button captures whatever the tag last held; an
+//     idle BL110 reads ScaleSkidWt = 0 with every cell clear.
+//   * The plausibility band, legacy's `if ll_nw < 10 or ll_nw > 39000 then ... "Invalid weight!!"`.
+//
+// Which lines can do this is taken from the edge's own conveyor map rather than hardcoded: it answers
+// configured=false for a line with no cells, which today means everything except BL110. BL84 is the
+// only other line with a stacker installed and it has been down for years, its whole OPC branch
+// stripped. When it returns and its cells are mapped, this starts working with no code change.
 async function pullWeight() {
     // Split the edge field the same way run-state/piece-count do — it defaults to a primary,fallback pair,
     // so the raw value ("http://.170:8090, http://.175:8090") is NOT a valid URL. Try hosts in order.
@@ -547,72 +563,46 @@ async function pullWeight() {
         setErr('Set the edge URL to pull a live weight (e.g. http://edge-host:8090).');
         return;
     }
-    for (let i = 0; i < bases.length; i++) {
-        try {
-            const r = await fetch(`${bases[i]}/reading`, { cache: 'no-store' });
-            if (!r.ok)
-                continue;
-            const reading = await r.json();
-            const from = i > 0 ? ' (fallback)' : '';
-            if (reading.value == null) {
-                setErr('The scale reported no weight — enter it manually.');
-                return;
-            }
-            // A SIMULATED device is not a measurement. The edge defaults to Edge:Scale:Provider=Mock, and the
-            // plant's hosts configure only Edge:Opc — so on 2026-07-29 the live edge on .170 was answering
-            // /reading with MockScale's invented ~1234.7 LB, which this button wrote into the skid's net
-            // weight and invoicing then billed. Refuse it outright: a plausible fake is worse than no reading.
-            if (reading.simulated) {
-                setErr(`The edge on this host has no scale configured, so it is reporting a SIMULATED weight (${reading.device ?? 'mock'}). Weigh the skid and enter the weight manually.`);
-                return;
-            }
-            // Refuse rather than warn: a warning on a filled-in field gets dismissed, and the wrong number
-            // is already in the box. Every branch below leaves the operator free to type the weight by hand.
-            if (reading.stable === false) {
-                setErr('Scale is still settling — wait for it to steady, then pull again.');
-                return;
-            }
-            const unit = (reading.unit ?? '').toUpperCase();
-            if (unit !== '' && unit !== 'LB' && unit !== 'LBS') {
-                setErr(`Scale is reporting ${unit}, not pounds — correct the indicator's unit before weighing.`);
-                return;
-            }
-            // A reading with no explicit mode is treated as NET, which is what the DA console this page
-            // replaces did. Checked against the PowerBuilder rather than assumed, because the plant has three
-            // scales and they do NOT agree:
-            //   * w_da_sheet (THIS console's ancestor) reads its serial scale — guarded by
-            //     ib_scrap_scale_connected — and of_add_scrap_item writes the value straight to
-            //     RETURN_ITEM_NET_WT, with the tare coming separately from w_load_scrap_tare. NET.
-            //   * The BL110 stacker window weighs a bare stack on the conveyor and writes it to
-            //     sheet_net_wt via update_sheet_skid_wt. NET (there is no pallet under it).
-            //   * w_scale_skid (inv_coil, the FLOOR scale) is the one that reads GROSS — it puts the reading
-            //     in em_gross and derives em_net = em_gross - il_tare, because a skid on the floor scale is
-            //     sitting on its pallet.
-            // So net is right here, and the mode="GS" branch below covers an indicator that says otherwise.
-            if (reading.mode === 'GS') {
-                // Explicitly gross: it includes the tare, and #skNet is NET (the skid's gross is rebuilt
-                // downstream as net + tare — see the 856 assembly). This mirrors w_scale_skid's arithmetic.
-                const tare = v('#skTare');
-                if (!tare) {
-                    setErr('The indicator is reporting GROSS — enter the skid tare first, or switch it to NET.');
-                    return;
-                }
-                const net = reading.value - Number(tare);
-                if (!(net > 0)) {
-                    setErr(`Gross ${reading.value} is not more than the ${tare} tare — check the tare and the scale.`);
-                    return;
-                }
-                setV('#skNet', net);
-                setOk(`Pulled ${reading.value} ${unit || 'LB'} gross − ${tare} tare = ${net} net${from}.`);
-                return;
-            }
-            setV('#skNet', reading.value);
-            setOk(`Pulled ${reading.value}${unit ? ' ' + unit : ''} from the scale${from}.`);
-            return;
-        }
-        catch { /* host unreachable → try the next */ }
+    if (lineNum == null) {
+        setErr('Load a job first — the conveyor scale is per line.');
+        return;
     }
-    setErr('Scale read failed on all edge hosts (enter the weight manually).');
+    const conveyor = await fetchConveyor(bases, lineNum);
+    if (!conveyor.reachable) {
+        setErr('Edge unreachable on every host — weigh the skid and enter the weight manually.');
+        return;
+    }
+    if (!conveyor.configured) {
+        setErr(`${lineLabel(lineNum)} has no conveyor scale — weigh the skid and enter the weight manually.`);
+        return;
+    }
+    // occupied === true only: null is an unreadable sensor, and treating unknown as "on the scale" is
+    // how you record the weight of an empty belt.
+    if (![3, 4].some((c) => conveyor.cells.get(c)?.occupied === true)) {
+        setErr('No stack on Conveyor 1 yet — the scale reads nothing until the stack reaches it.');
+        return;
+    }
+    // Bind the scale to THIS line explicitly. The edge's /stacker defaults resolve to stacker110, so a
+    // console left on the defaults would happily hand BL110's scale weight to another line's skid. The
+    // deployed edge makes that concrete: it still answers /conveyor?line=4 (BL78, no stacker at all)
+    // with 12 cells, because it predates the per-line conveyor fix. Requiring the tag removes the
+    // dependence on which edge build happens to be out there.
+    const scaleTag = v('#scaleTag');
+    if (!scaleTag) {
+        setErr('Set this line’s conveyor scale tag in Settings (⚙) before pulling — otherwise the edge would answer with another line’s scale.');
+        return;
+    }
+    const s = await fetchStacker(bases, scaleTag);
+    if (!s.reachable || s.scaleWeight == null) {
+        setErr('The conveyor scale did not answer — weigh the skid and enter the weight manually.');
+        return;
+    }
+    if (s.scaleWeight < 10 || s.scaleWeight > 39000) {
+        setErr(`The conveyor scale reads ${s.scaleWeight.toLocaleString()} lb, outside the 10–39,000 lb range a skid can be — check the scale.`);
+        return;
+    }
+    setV('#skNet', s.scaleWeight);
+    setOk(`Pulled ${s.scaleWeight.toLocaleString()} lb net from the conveyor scale${s.via}.`);
 }
 async function saveSkid() {
     if (job == null)
@@ -745,6 +735,7 @@ function startRunStatePoll() {
         localStorage.setItem('abis_edge_url', edge);
     localStorage.setItem('abis_run_tag', runTag);
     localStorage.setItem('abis_piece_tag', pieceTag);
+    localStorage.setItem('abis_scale_tag', v('#scaleTag'));
     // No edge / no job: the line feeds can't poll, but the health lamps still must — the DB lamp is
     // independent of the edge, and a dark lamp strip would read as "all fine" rather than "not known".
     if (!edge || job == null) {
@@ -1385,6 +1376,7 @@ async function pickerBrowse(bases, targetId, path) {
     setV('#edgeUrl', localStorage.getItem('abis_edge_url') ?? DEFAULT_EDGE_URLS); // primary→fallback, remembered per station
     setV('#runTag', localStorage.getItem('abis_run_tag') ?? '');
     setV('#pieceTag', localStorage.getItem('abis_piece_tag') ?? '');
+    setV('#scaleTag', localStorage.getItem('abis_scale_tag') ?? '');
     $('#edgeUrl').addEventListener('change', () => startRunStatePoll()); // (re)start PLC run-state + stacker watch
     $('#runTag').addEventListener('change', () => startRunStatePoll());
     $('#pieceTag').addEventListener('change', () => startRunStatePoll());
