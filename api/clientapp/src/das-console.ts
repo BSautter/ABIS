@@ -108,8 +108,9 @@ function scaffold(): string {
           <input id="runTag" placeholder="PLC run tag (e.g. PLC5-BL84.strokecnt)" style="width:190px" title="The edge item id whose change = this line running" />
           <button class="btn sm ghost" id="btnBrowseRun" type="button" title="Browse the edge for this line's run tag" style="color:#fff;border-color:var(--rail-line)">🔎</button>
           <input id="pieceTag" placeholder="Stacker count tag (e.g. PLC5-BL110.piececount)" style="width:210px" title="The edge item id of the stacker's running piece counter for this line" />
-          <input id="scaleTag" placeholder="Conveyor scale tag (e.g. stacker110.ScaleSkidWt)" style="width:210px" title="The edge item id of THIS line's conveyor scale — the skid weight the Pull button reads" />
           <button class="btn sm ghost" id="btnBrowsePiece" type="button" title="Browse the edge for this line's stacker count tag" style="color:#fff;border-color:var(--rail-line)">🔎</button>
+          <input id="scaleTag" placeholder="Conveyor scale tag (e.g. stacker110.ScaleSkidWt)" style="width:210px" title="The edge item id of THIS line's conveyor scale — the skid weight the Pull button reads" />
+          <button class="btn sm ghost" id="btnBrowseScale" type="button" title="Browse the edge for this line's conveyor scale tag" style="color:#fff;border-color:var(--rail-line)">🔎</button>
           <span id="runInd" class="dop-note" style="color:var(--rail-ink-2);margin-left:auto" title="Line run-state from the edge PLC feed">PLC: —</span>
           <span id="pieceInd" class="dop-note" style="color:var(--rail-ink-2)" title="Live stacker piece count for the skid in progress">Stacker: —</span>
         </div>
@@ -555,7 +556,7 @@ async function pullWeight(): Promise<void> {
   // dependence on which edge build happens to be out there.
   const scaleTag = v('#scaleTag');
   if (!scaleTag) {
-    setErr('Set this line’s conveyor scale tag in Settings (⚙) before pulling — otherwise the edge would answer with another line’s scale.'); return;
+    setErr('Set this line’s conveyor scale tag in the ⚖ Scale bar above (e.g. stacker110.ScaleSkidWt, or use 🔎) before pulling — otherwise the edge would answer with another line’s scale.'); return;
   }
   const s = await fetchStacker(bases, scaleTag);
   if (!s.reachable || s.scaleWeight == null) {
@@ -1208,8 +1209,13 @@ async function pickerBrowse(bases: string[], targetId: string, path: Crumb[]): P
   $('#edgeUrl').addEventListener('change', () => startRunStatePoll());   // (re)start PLC run-state + stacker watch
   $('#runTag').addEventListener('change', () => startRunStatePoll());
   $('#pieceTag').addEventListener('change', () => startRunStatePoll());
+  // The scale tag persists in startRunStatePoll like the others, so it needs the same change hook —
+  // without it the value saved only when some OTHER field happened to change, and typing the tag on
+  // its own was silently lost at the next reload.
+  $('#scaleTag').addEventListener('change', () => startRunStatePoll());
   $('#btnBrowseRun').addEventListener('click', () => openTagPicker('#runTag', 'Pick this line’s run tag'));
   $('#btnBrowsePiece').addEventListener('click', () => openTagPicker('#pieceTag', 'Pick this line’s stacker count tag'));
+  $('#btnBrowseScale').addEventListener('click', () => openTagPicker('#scaleTag', 'Pick this line’s conveyor scale tag (e.g. stacker110.ScaleSkidWt)'));
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeTagPicker(); });
   $('#btnPullPieces').addEventListener('click', () => pullPieces());
   $('#btnSkid').addEventListener('click', () => void saveSkid());
