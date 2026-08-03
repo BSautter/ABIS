@@ -47,6 +47,7 @@ function scaffold() {
     </div>
     <div class="das-refresh" id="bar"></div>
     <div class="das-strip" id="strip"></div>
+    <div id="liveWarn"></div>
     <div class="das-grid" id="grid"><div class="das-empty">Loading the floor…</div></div>
   </div>`;
 }
@@ -178,32 +179,36 @@ function tile(l) {
     ${fault}
   </div>`;
 }
-function renderStrip(lines) {
+function renderStrip(lines, liveKnown) {
     const running = lines.filter((l) => l.state === 'run').length;
     const stopped = lines.filter((l) => l.state === 'stop').length;
     const coils = lines.reduce((s, l) => s + l.coils, 0);
     const skids = lines.reduce((s, l) => s + l.skids, 0);
     const openShifts = lines.filter((l) => l.live?.shiftNum != null).length;
     const kpi = (n, l, cls = '') => `<div class="das-kpi"><div class="n ${cls}">${n}</div><div class="l">${l}</div></div>`;
+    // Running, Stopped and Open shifts are read from the live board. If that read failed, they are not
+    // zero — they are unknown, and a dash says so. Coils and skids come from the stacker board and are
+    // unaffected, so they keep their numbers rather than being blanked for a fault they did not have.
+    const kpiLive = (n, label, cls = '') => (liveKnown ? kpi(String(n), label, cls) : `<div class="das-kpi" title="The live line board could not be read, so this is unknown — not zero"><div class="n muted">—</div><div class="l">${label}</div></div>`);
     $('#strip').innerHTML =
         kpi(String(lines.length), 'Active lines') +
-            kpi(String(running), 'Running', 'run') +
-            kpi(String(stopped), 'Stopped', stopped ? 'stop' : '') +
-            kpi(String(openShifts), 'Open shifts') +
+            kpiLive(running, 'Running', 'run') +
+            kpiLive(stopped, 'Stopped', stopped ? 'stop' : '') +
+            kpiLive(openShifts, 'Open shifts') +
             kpi(n0(coils), 'Coils on floor') +
             kpi(n0(skids), 'Skids on floor');
 }
-// The live board is fetched with authFetch (not the generated client) so an older server that
-// predates the endpoint degrades to the job-derived board instead of blanking the floor.
 async function fetchLineBoard() {
     try {
         const r = await authFetch('/api/das/line-board');
+        // 404 = a server older than the endpoint. Still "unknown", not "nothing running" — the board
+        // falls back to what the job data can tell it, but the live counters must not claim zero.
         if (!r.ok)
-            return [];
-        return (await r.json());
+            return { live: [], known: false };
+        return { live: (await r.json()), known: true };
     }
     catch {
-        return [];
+        return { live: [], known: false };
     }
 }
 // Metrics are per line, so they are fetched once the board says which lines exist. One failure
@@ -227,9 +232,11 @@ async function load() {
             client().getLineErrors(undefined, undefined, undefined),
             fetchLineBoard(),
         ]);
-        const metrics = await fetchLiveMetrics(live ?? []);
-        const lines = buildLines(board ?? [], errs ?? [], live ?? [], metrics);
-        renderStrip(lines);
+        const metrics = await fetchLiveMetrics(live.live);
+        const lines = buildLines(board ?? [], errs ?? [], live.live, metrics);
+        renderStrip(lines, live.known);
+        $('#liveWarn').innerHTML = live.known ? ''
+            : '<div class="das-empty" style="margin-bottom:8px">Live line state unavailable — run/stop and open-shift counts are unknown, not zero. Coil and skid counts are still current.</div>';
         $('#grid').innerHTML = lines.length ? lines.map(tile).join('') : '<div class="das-empty">No active lines on the floor.</div>';
         $('#updated').textContent = `Updated ${new Date().toLocaleTimeString()}`;
         // restart the refresh-countdown bar

@@ -443,6 +443,15 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 
 ## D. Bug / robustness leftovers (from the sweep — verified, low severity)
 
+- [x] **M** **The floor board reported a failed read as "nothing running"** — done (#344).
+  `fetchLineBoard` returned `[]` for a network failure, a 5xx and a 404 alike, and `Running` /
+  `Stopped` / `Open shifts` are all derived from that. A request that never arrived rendered as
+  **`Running 0 · Stopped 0 · Open shifts 0`** — a confident claim that the plant is idle, on a display
+  read from across the floor. It now reports whether the read succeeded, those three KPIs show `—`
+  when it did not, and a banner says so. Coil/skid counts come from the stacker board and keep their
+  values rather than being blanked for a fault they did not have. Verified in a browser by failing
+  only that one request: `1 / 0 / 1` → `— / — / —` + banner, recovering on the next 15s tick.
+
 - [ ] **H — REDEPLOY THE EDGE: the deployed build predates the per-line conveyor fix.** Live check
   2026-08-02: `GET /conveyor?line=4` on `.170` answers **`configured:true` with 12 cells** for **BL78**,
   a line with no stacker at all — it is serving BL110's cell map under another line's number. The fix
