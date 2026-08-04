@@ -355,7 +355,20 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   request — a plain `src` gets a **401** and leaves a broken-image icon on a production screen. It must
   be fetched through `authFetch` and rendered from an object URL (revoked on replace; these are 417 KB
   each). The day-long `Cache-Control` still applies, since the fetch is an ordinary GET.
-  Still TODO: the DAS console's own render, and image **upload** (legacy imported BMPs).
+  Still TODO **and parity-complete without it**: image **upload is NOT a parity gap** — legacy ABIS
+  *never writes sketches*. There is no `INSERT`/`UPDATE`/`UPDATEBLOB`/`DELETE` against the table
+  anywhere in the vendored source, and all seven `sketch_view` references are `SELECTBLOB`. The earlier
+  note here claiming "legacy imported BMPs" was wrong: the `.bmp` file legacy wrote was an **output**
+  for a picture control to display, not an import. So the 128 live images arrived by some route outside
+  the application, and **not having upload matches legacy**.
+  Caveat on that: `w_sketch_viewer` is referenced (`w_stacker_job_details.srw:1790`) but **not
+  vendored**, so the source is incomplete here. Its name says viewer, but it cannot be ruled out as a
+  writer without seeing it.
+  Open question for the plant before any upload is built: **how does a new sketch get into ABIS
+  today?** If that needs a DBA, an upload screen is a real improvement — but it is new capability, not
+  parity, and should be chosen deliberately.
+  Still genuinely TODO for parity: the **DAS console's own render** (legacy showed the drawing there —
+  `w_da_sheet.srw:909`).
 - [~] **H** Die → shape mapping — done (#254): `GET/POST /line-die-shapes` + `DELETE /line-die-shapes/{shape}/{line}/{die}` over `LINE_DIE_4SHEET_TYPE` (composite PK), so scheduling can resolve the eligible line/die for a shape (filter by sheetType/lineNum/dieId; add guards line/die-exist + dup). Dies page gained a mapping panel. Still TODO: **die label/report print**.
 - [x] **M** Shipment header EDI-trigger fields — done (#259): the shipment read now carries `edi_req`/`edi_triggered`/`edi_file_id_856`/`edi_file_id_desadv` + the 856/desadv/des-856 dates, and `POST /shipments/{pl}/edi-trigger` (docType 856|desadv + optional file id) stamps them (bookkeeping only — never transmits). Surfacing on the shipping UI is a follow-up.
 - [~] **M** **View archived EDI payload — done (#270)**: the EDI monitor's Transaction-detail card has a "View X12 payload" button that fetches the stored X12 (`GET /edi/transactions/{id}/payload`) into a scrollable pre + Copy. Still TODO (both deliberately deferred): manual EDI **send/resend** from UI (blocked by the no-transmit guardrail — legacy owns the VAN); X12 map maintenance.
