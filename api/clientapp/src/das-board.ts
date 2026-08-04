@@ -14,7 +14,7 @@
 // Compiled by tsc to wwwroot/ui/app/das-board.js; served at /ui/das-board.html.
 import { AbisClient } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
-import { statusChip, lineLabel, loadLineNames, isProductionLine } from './status-labels.js';
+import { statusChip, lineLabel, loadLineNames, isProductionLine, lineBoardRank, isDecommissionedLine } from './status-labels.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
@@ -132,7 +132,12 @@ function buildLines(board: BoardRow[], errs: ErrRow[], live: LineBoard[], metric
       state: stateOf(jobs, fault, lcs), fault, live: lcs, metrics: metricsByLine.get(line),
     });
   }
-  return lines.sort((a, b) => a.line - b.line);
+  // The plant's card order, then anything it has not placed (by line number, so a new line lands
+  // somewhere predictable instead of vanishing). Decommissioned lines drop out here — this is a
+  // "what is on the floor" view; their history stays intact everywhere else.
+  return lines
+    .filter((l) => !isDecommissionedLine(l.line))
+    .sort((a, b) => lineBoardRank(a.line) - lineBoardRank(b.line) || a.line - b.line);
 }
 
 // The coil currently on the mandrel, as the line reports it: id, spec, and the weight left to run.

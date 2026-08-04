@@ -219,16 +219,50 @@ export const STATUS_MAPS = {
 // (the shell + the standalone DAS kiosks do); lineLabel then resolves the real name, falling back to the
 // raw code only when the map isn't loaded or the line isn't in it.
 let lineNames = new Map();
+// The floor board's view of each line, carried on the same lookup as the names: where the plant wants
+// the card, and whether the line still exists on the floor. Kept beside the names because every page
+// that needs one already loads the other.
+let lineBoardOrder = new Map();
+let decommissionedLines = new Set();
 /** Populate the line_num → name map from ProductionLine rows (GET /api/lookups/lines). */
 export function setLineNames(lines) {
     const m = new Map();
+    const ord = new Map();
+    const gone = new Set();
     for (const l of lines ?? []) {
         const n = Number(l.lineNum);
+        if (!Number.isFinite(n))
+            continue;
         const name = (l.lineDesc ?? '').trim();
-        if (Number.isFinite(n) && name)
+        if (name)
             m.set(n, name);
+        if (l.displayOrder != null)
+            ord.set(n, Number(l.displayOrder));
+        if (l.decommissioned)
+            gone.add(n);
     }
     lineNames = m;
+    lineBoardOrder = ord;
+    decommissionedLines = gone;
+}
+/**
+ * Sort key for the floor board. The plant's order is not numeric, alphabetical or activity-based, so
+ * it comes from configuration; a line the plant has not placed sorts AFTER the placed ones rather
+ * than vanishing, because a new line must never become invisible through an omission.
+ */
+export function lineBoardRank(lineNum) {
+    const i = lineBoardOrder.get(lineNum);
+    return i == null ? Number.MAX_SAFE_INTEGER : i;
+}
+/**
+ * True when the line no longer exists on the floor (BL 60 as of 2026-08-04).
+ *
+ * Use this ONLY where the question is "what is running now". A decommissioned line keeps every job it
+ * ever ran, so filtering it out of reporting would silently restate the past — the same split already
+ * applied to `line_num = 0`: identity display keeps it, floor enumeration drops it.
+ */
+export function isDecommissionedLine(lineNum) {
+    return decommissionedLines.has(lineNum);
 }
 /** Best-effort: fetch the LINE lookup and populate the map. Pass authFetch (kept auth-agnostic here). */
 export async function loadLineNames(fetchFn) {

@@ -743,6 +743,22 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [ ] **L** `pollPieceCount`: clear `pieceCurrent` on a transient edge outage so a stale count isn't shown — `das-console.ts`
 - [ ] **L** Committed `wwwroot/…/generated/abis-client.js` drifts vs a fresh gen — regen periodically or CI-enforce
 
+- [x] **M** **DAS floor board: plant card order + BL 60 hidden — done (#356).**
+  The board ordered by `line_num`; the plant reads the floor as `BL 84, BL 78, BL 110, BL 108, BL 36,
+  BL 24` (`line_num` 7, 4, 6, 5, 2, 1), and **BL 60 no longer exists** (user, 2026-08-04).
+  Both live in configuration (`Board:LineOrder`, `Board:DecommissionedLines`) and ride to the client on
+  `/lookups/lines`. The order is not numeric, alphabetical or activity-based, so a hardcoded sequence
+  is what a later reader "corrects" into ascending without realising it meant something.
+  **Two settings, not one, on purpose:** if a line vanished merely by being absent from `LineOrder`,
+  forgetting to list a newly added line would hide it. An unplaced line sorts *after* the placed ones.
+  `/lookups/lines` still returns **every** line, unfiltered — it answers "what does this `line_num`
+  mean", which a job that ran on BL 60 still needs. Same split as `line_num = 0`: identity display
+  keeps it, floor enumeration drops it.
+- [ ] **POST-1.0** **Fully decommission BL 60.** The floor board is only the visible half. A retired
+  line should also stop being *offerable* for new work — line pickers, downtime entry, the DAS
+  console's line resolution, and anywhere a job can still be assigned to it. Its history stays
+  untouched throughout. Deferred deliberately (user, 2026-08-04): wider than a sort order.
+
 ## E. Config / turn-on / deploy (user-gated, not code)
 - [ ] Redeploy codi-ABIS to **v0.4.18** (dashboard piece count + the client bug fixes)
 - [ ] Wire BL110 piece-count tag per DAS station via the 🔎 picker (`stacker110.station1/2_stack_counter`)

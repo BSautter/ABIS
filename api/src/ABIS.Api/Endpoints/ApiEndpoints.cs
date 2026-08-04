@@ -3833,10 +3833,25 @@ public static class ApiEndpoints
            .WithSummary("Blank shape catalog: each shape's dimension schema (names + which carry a tolerance) and die count — drives a dynamic per-shape form.")
            .Produces<IReadOnlyList<ShapeTypeInfo>>();
 
-        api.MapGet("/lookups/lines", async (IAbisRepository repo, CancellationToken ct) =>
-                Results.Ok(await repo.GetLinesAsync(ct)))
+        // Every line, always — this is IDENTITY display, so nothing is filtered out here. A job row
+        // must still be able to say which line it ran on, including line 0 ("NONE") and a line since
+        // decommissioned. The floor-board metadata rides along and the BOARD decides what to show,
+        // which keeps "what is on the floor now" separate from "what does this row mean".
+        api.MapGet("/lookups/lines", async (IAbisRepository repo, IConfiguration cfg, CancellationToken ct) =>
+            {
+                var order = cfg.GetSection("Board:LineOrder").Get<long[]>() ?? Array.Empty<long>();
+                var gone = (cfg.GetSection("Board:DecommissionedLines").Get<long[]>() ?? Array.Empty<long>()).ToHashSet();
+                var lines = await repo.GetLinesAsync(ct);
+                foreach (var l in lines)
+                {
+                    var i = Array.IndexOf(order, l.LineNum);
+                    l.DisplayOrder = i < 0 ? null : i;      // null = unlisted, sorts after the listed ones
+                    l.Decommissioned = gone.Contains(l.LineNum);
+                }
+                return Results.Ok(lines);
+            })
            .WithName("ListLines").WithTags("Lookups")
-           .WithSummary("List production lines (referenced by jobs, coils, downtime).")
+           .WithSummary("List production lines (referenced by jobs, coils, downtime), with the floor board's order + decommissioned flag.")
            .Produces<IEnumerable<ProductionLine>>();
 
         api.MapGet("/lookups/groupdepartments", async (IAbisRepository repo, CancellationToken ct) =>

@@ -1246,6 +1246,13 @@ public sealed class ProductionLine
     public long LineNum { get; set; }
     public string? LineDesc { get; set; }
     public string? LineLocation { get; set; }
+    /// <summary>Where this line sits on the floor board, lowest first. Null = not in the plant's
+    /// ordering, which sorts after the ordered ones rather than disappearing — adding a line to the
+    /// plant must never make it invisible because someone forgot to list it.</summary>
+    public int? DisplayOrder { get; set; }
+    /// <summary>The line no longer exists on the floor. It keeps all of its history: this hides it
+    /// from "what is running now", never from reporting, which would silently restate the past.</summary>
+    public bool Decommissioned { get; set; }
 }
 
 /// <summary>A maintenance group/department (table <c>groupdepartment</c>).

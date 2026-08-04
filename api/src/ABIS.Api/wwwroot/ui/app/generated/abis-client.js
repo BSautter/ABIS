@@ -8158,7 +8158,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * List production lines (referenced by jobs, coils, downtime).
+     * List production lines (referenced by jobs, coils, downtime), with the floor board's order + decommissioned flag.
      * @return OK
      */
     listLines() {
@@ -28076,6 +28076,8 @@ export class ProductionLine {
             this.lineNum = _data["lineNum"];
             this.lineDesc = _data["lineDesc"];
             this.lineLocation = _data["lineLocation"];
+            this.displayOrder = _data["displayOrder"];
+            this.decommissioned = _data["decommissioned"];
         }
     }
     static fromJS(data) {
@@ -28089,6 +28091,8 @@ export class ProductionLine {
         data["lineNum"] = this.lineNum;
         data["lineDesc"] = this.lineDesc;
         data["lineLocation"] = this.lineLocation;
+        data["displayOrder"] = this.displayOrder;
+        data["decommissioned"] = this.decommissioned;
         return data;
     }
 }

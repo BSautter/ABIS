@@ -6402,7 +6402,7 @@
         "tags": [
           "Lookups"
         ],
-        "summary": "List production lines (referenced by jobs, coils, downtime).",
+        "summary": "List production lines (referenced by jobs, coils, downtime), with the floor board's order + decommissioned flag.",
         "operationId": "ListLines",
         "responses": {
           "200": {
@@ -23972,6 +23972,14 @@
           "lineLocation": {
             "type": "string",
             "nullable": true
+          },
+          "displayOrder": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "decommissioned": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
