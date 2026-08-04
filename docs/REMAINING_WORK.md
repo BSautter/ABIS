@@ -443,6 +443,22 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 
 ## D. Bug / robustness leftovers (from the sweep — verified, low severity)
 
+- [x] **MAX+1 id minting: swept, no corruption risk, and now guarded** — done (#346).
+  Most tables mint ids from an Oracle sequence (atomic). The **14** in `Database:MaxIdTables` use
+  `SELECT COALESCE(MAX(id),0)+1` on Oracle too, which is a real race — two transactions can read the
+  same MAX before either commits.
+  **It is deliberate, and that rationale was not written down anywhere:** the legacy PowerBuilder app
+  still writes 11 of those 14 and assigns ids the same way, so minting from a sequence in the modern
+  stack would hand out ids legacy is about to reuse. Only `abis_truck_appointment`,
+  `abis_scheduled_job` and `abis_job_run` are ABIS-owned and *could* take a sequence.
+  **Live-verified on `.230`: all 14 have a primary key**, so a collision is a clean `ORA-00001` — a
+  failed request, not two rows sharing an id. `MaxIdTableTests` now fails if a table is added to that
+  list without one, which is the case that would turn this from a visible error into silent
+  corruption.
+- [ ] **L** Residual: a concurrent create on any of those 14 tables returns a 500 (`ORA-00001`) rather
+  than retrying. A retry-once-on-PK-violation around the mint+insert would close it; not done because
+  it touches ~14 create paths for a collision that needs two saves in the same instant.
+
 - [x] **H** **Invoice offal omitted rebanded weight — the larger half** — done (#345).
   `OffalWt` summed processed + scrap + **rejected** + unapplied − net. Legacy's `ll_rejnet`
   accumulates over BOTH lists — rejected (`process_coil_status` 3) **and** rebanded (7) —
