@@ -205,7 +205,10 @@ test('accounting flow: invoice rej/reband coils for a job (typed)', async () => 
   const coils = await client.getInvoiceCoils(1002);
   assert.ok(Array.isArray(coils) && coils.length > 0);
   assert.ok(coils.every((c) => c.processCoilStatus === 3 || c.processCoilStatus === 7));
-  assert.equal(coils[0].coilAbcNum, 5003);
+  // Select by status, not by position: the list is ordered coil_abc_num DESC, so an index quietly
+  // points at a different coil as soon as the job has both a rejected and a rebanded coil.
+  assert.equal(coils.find((c) => c.processCoilStatus === 3).coilAbcNum, 5003);
+  assert.equal(coils.find((c) => c.processCoilStatus === 7).coilAbcNum, 5002);
 });
 
 // The warehouse SPA's flow: list sheet skids + a warehouse update (location/ticket/status) (typed).

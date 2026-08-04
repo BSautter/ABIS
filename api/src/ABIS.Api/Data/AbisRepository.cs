@@ -3716,9 +3716,19 @@ public sealed class AbisRepository : IAbisRepository
                    pc.process_end_wt AS ProcessEndWt, pc.process_quantity AS ProcessQuantity,
                    pc.process_date AS ProcessDate, c.coil_status AS CoilStatus,
                    pc.process_coil_status AS ProcessCoilStatus,
-                   (SELECT MAX(pp.process_quantity) FROM process_coil pp
-                     WHERE pp.coil_abc_num = pc.coil_abc_num
-                       AND pp.process_quantity < pc.process_quantity) AS MaxPriorProcessQuantity
+                   -- COALESCE to 0, which RejectedCoilBilledWeight already does with a null anyway
+                   -- (ll_wt2 = 0 when there is no earlier pass), so this changes no arithmetic. It
+                   -- keeps the column's type stable instead: process_quantity is REAL in the SQLite
+                   -- fixture, so MAX() yields a double, and a NULL in the first row made the reader
+                   -- infer the column from that row and then fail to cast a later row's double. The
+                   -- literal is 0.0, not 0: Microsoft.Data.Sqlite reports the type of each VALUE for a
+                   -- computed column, and Dapper builds its deserializer from the first row — an
+                   -- integer 0 there makes it expect Int64 and choke on the next row's REAL just the
+                   -- same. A job with more than one rejected/rebanded coil is enough to hit either.
+                   -- Oracle is unaffected: NUMBER comes back uniform whatever the literal.
+                   COALESCE((SELECT MAX(pp.process_quantity) FROM process_coil pp
+                              WHERE pp.coil_abc_num = pc.coil_abc_num
+                                AND pp.process_quantity < pc.process_quantity), 0.0) AS MaxPriorProcessQuantity
             FROM coil c JOIN process_coil pc ON c.coil_abc_num = pc.coil_abc_num
             WHERE pc.process_coil_status IN (3, 7) AND pc.ab_job_num = :id
             ORDER BY pc.coil_abc_num DESC
@@ -3856,9 +3866,22 @@ public sealed class AbisRepository : IAbisRepository
         inv.RejectedWt = inv.Coils.Where(c => c.ProcessCoilStatus == 3).Sum(c => c.BilledWeight);
         inv.RebandedWt = inv.Coils.Where(c => c.ProcessCoilStatus == 7).Sum(c => c.BilledWeight);
 
-        // Offal = processed + scrap + rejected + unapplied − net (legacy wf_set_values, using the
-        // exact rejected figure; the vestigial legacy copy left rejnet stubbed at 0).
-        inv.OffalWt = inv.ProcessedWt + inv.ScrapWt + inv.RejectedWt + inv.UnappliedWt - inv.NetWt;
+        // Offal = processed + scrap + rejected + REBANDED + unapplied − net.
+        //
+        // The rejected term is legacy's ll_rejnet, which accumulates over BOTH lists — the rejected
+        // coils (process_coil_status 3) and the rebanded ones (7). w_production_folder.srw:1176-1187
+        // runs the same wf_rejected_coil_wt over lds_rej and then lds_reb into one running total, and
+        // d_rej_reband_coil_list_for_invoice selects `IN (3,7)` for exactly that reason.
+        //
+        // Rebanded was previously left out, which understated offal by the LARGER of the two: on live
+        // .230 the rebanded coils carry 217,972,266 lb of billed weight across 30,708 coils against
+        // 52,547,246 lb across 3,866 rejected. Offal is the loss figure, so dropping it hid loss.
+        //
+        // The copy of this sum inside w_invoice cannot be used as the reference: its two accumulation
+        // lines are commented out (w_invoice.srw:425,430), leaving ll_rejnet stubbed at 0 there. That
+        // vestigial version is why this was ported without the rejected term in the first place.
+        inv.OffalWt = inv.ProcessedWt + inv.ScrapWt + inv.RejectedWt + inv.RebandedWt
+                    + inv.UnappliedWt - inv.NetWt;
         inv.OffalPct = inv.NetWt == 0 ? 0 : Math.Round(inv.OffalWt / inv.NetWt * 100m, 4);
 
         // Scrap status: the single scrap type's name, "Multiple" for >1 scrap skid, else null

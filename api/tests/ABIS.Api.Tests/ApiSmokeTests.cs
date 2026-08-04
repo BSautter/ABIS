@@ -2190,11 +2190,21 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
         var list = await _client.GetFromJsonAsync<JsonElement>("/api/accounting/invoices?abJobNum=1001");
         Assert.Contains(list.EnumerateArray(), e => e.GetProperty("invoiceNum").GetString() == "INV-HTTP-1");
 
-        // The computed invoice for the rejected-coil job 1002 exposes the exact billed reject.
+        // The computed invoice for job 1002 exposes the exact billed reject AND reband.
         var comp = await _client.GetFromJsonAsync<JsonElement>("/api/accounting/invoices/1002/computation");
         Assert.Equal(1500m, comp.GetProperty("rejectedWt").GetDecimal());
+        Assert.Equal(900m, comp.GetProperty("rebandedWt").GetDecimal());
         Assert.Equal(60m, comp.GetProperty("netWt").GetDecimal());
-        Assert.Equal(1500m, comp.GetProperty("coils")[0].GetProperty("billedWeight").GetDecimal());
+        // Offal carries BOTH — 48 processed + 6 scrap + 1500 rejected + 900 rebanded + 0 unapplied − 60 net.
+        // Leaving reband out understated it, and on live data reband is the larger of the two.
+        Assert.Equal(2394m, comp.GetProperty("offalWt").GetDecimal());
+        // Select the coil by status rather than by position: the list is ordered coil_abc_num DESC,
+        // so an index silently points at a different coil the moment the job gains another one.
+        var billed = comp.GetProperty("coils").EnumerateArray()
+            .ToDictionary(c => c.GetProperty("processCoilStatus").GetInt32(),
+                          c => c.GetProperty("billedWeight").GetDecimal());
+        Assert.Equal(1500m, billed[3]);
+        Assert.Equal(900m, billed[7]);
     }
 
     [Fact]

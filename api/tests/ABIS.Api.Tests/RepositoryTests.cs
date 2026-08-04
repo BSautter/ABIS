@@ -338,17 +338,20 @@ public sealed class RepositoryTests : IDisposable
         Assert.Equal(60m, inv.NetWt);                   // SUM(process_quantity)
         Assert.Equal(0m, inv.UnappliedWt);
         Assert.Equal(1500m, inv.RejectedWt);            // the MAX rule, NOT the naive process_end_wt sum
-        Assert.Equal(0m, inv.RebandedWt);
+        // A REBANDED coil (status 7) on the same job, so the offal assertion below actually exercises
+        // the rebanded term. Without one the sum is identical whether or not rebanded is included —
+        // which is precisely why this went unnoticed.
+        Assert.Equal(900m, inv.RebandedWt);
         Assert.Equal(48m, inv.ProcessedWt);             // SUM(prod_item_net_wt)
         Assert.Equal(6m, inv.ScrapWt);                  // SUM(return_item_net_wt)
         Assert.Equal(0m, inv.TareWt);                   // no sheet skids on job 1002
         Assert.Equal(0, inv.SkidCount);
-        Assert.Equal(1494m, inv.OffalWt);               // 48 + 6 + 1500 + 0 − 60
-        Assert.Equal(2490m, inv.OffalPct);              // 1494 / 60 × 100
+        Assert.Equal(2394m, inv.OffalWt);               // 48 + 6 + 1500 + 900 + 0 − 60
+        Assert.Equal(3990m, inv.OffalPct);              // 2394 / 60 × 100
         Assert.Null(inv.ScrapStatus);                   // no scrap skids on job 1002
 
         // The driving coil carries its billed weight and the resolved prior-process term.
-        var coil = Assert.Single(inv.Coils);
+        var coil = inv.Coils.Single(c => c.ProcessCoilStatus == 3);
         Assert.Equal(5003, coil.CoilAbcNum);
         Assert.Equal(3, coil.ProcessCoilStatus);
         Assert.Equal(40m, coil.MaxPriorProcessQuantity);
@@ -375,12 +378,25 @@ public sealed class RepositoryTests : IDisposable
     [Fact]
     public async Task GetInvoiceCoils_carries_billed_weight()
     {
-        // The rejected/rebanded list now sources the prior-process term, so BilledWeight is exact
-        // at the source (fixing the browser's naive process_end_wt sum).
+        // The rejected/rebanded list sources the prior-process term, so BilledWeight is exact at the
+        // source (fixing the browser's naive process_end_wt sum). The list is IN (3,7) — BOTH
+        // statuses — and job 1002 now carries one of each, which is the normal shape on live data.
         var coils = await _repo.GetInvoiceCoilsAsync(1002, CancellationToken.None);
-        var c = Assert.Single(coils);
-        Assert.Equal(40m, c.MaxPriorProcessQuantity);
-        Assert.Equal(1500m, c.BilledWeight);
+        Assert.Equal(2, coils.Count());
+
+        // Rejected (3): the prior pass of 40 resolves, but the 1500 shift-end weight is larger and wins.
+        var rejected = coils.Single(x => x.ProcessCoilStatus == 3);
+        Assert.Equal(5003, rejected.CoilAbcNum);
+        Assert.Equal(40m, rejected.MaxPriorProcessQuantity);
+        Assert.Equal(1500m, rejected.BilledWeight);
+
+        // Rebanded (7): no earlier pass below its own quantity, so the prior term is 0 and the
+        // shift-end weight stands. This is the branch that reaches the coalesced subquery — with a
+        // bare MAX() it came back NULL and the reader mistyped the whole column.
+        var rebanded = coils.Single(x => x.ProcessCoilStatus == 7);
+        Assert.Equal(5002, rebanded.CoilAbcNum);
+        Assert.Equal(0m, rebanded.MaxPriorProcessQuantity);
+        Assert.Equal(900m, rebanded.BilledWeight);
     }
 
     [Fact]

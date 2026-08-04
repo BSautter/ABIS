@@ -443,6 +443,25 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 
 ## D. Bug / robustness leftovers (from the sweep — verified, low severity)
 
+- [x] **H** **Invoice offal omitted rebanded weight — the larger half** — done (#345).
+  `OffalWt` summed processed + scrap + **rejected** + unapplied − net. Legacy's `ll_rejnet`
+  accumulates over BOTH lists — rejected (`process_coil_status` 3) **and** rebanded (7) —
+  in `w_production_folder.srw:1176-1187`, which is why `d_rej_reband_coil_list_for_invoice`
+  selects `IN (3,7)`. On live `.230` rebanded is much the larger term:
+
+  | status | coils | billed weight |
+  |--------|-------|---------------|
+  | 3 rejected | 3,866 | 52,547,246 lb |
+  | **7 rebanded** | **30,708** | **217,972,266 lb** |
+
+  Offal is the **loss** figure, so dropping it hid loss. Note `w_invoice`'s own copy of the sum cannot
+  be used as the reference — its two accumulation lines are commented out (`w_invoice.srw:425,430`),
+  leaving `ll_rejnet` stubbed at 0, which is how the original port came to omit it.
+  **Checked and found CLEAN in the same pass:** the four weight buckets (`net`/`unapplied`/`processed`/
+  `scrap`) match `w_invoice` exactly; `RejectedWt` and `RebandedWt` are both reported as legacy does;
+  and the `skid_sheet_status <> 6` guard is faithful to `w_e_car_folder:701` even though 6 is absent
+  from the legacy legend and from all 618,174 live skids.
+
 - [x] **M** **The floor board reported a failed read as "nothing running"** — done (#344).
   `fetchLineBoard` returned `[]` for a network failure, a 5xx and a 404 alike, and `Running` /
   `Stopped` / `Open shifts` are all derived from that. A request that never arrived rendered as

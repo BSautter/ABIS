@@ -1366,6 +1366,18 @@ public static class SqliteFixture
                 new { AbJobNum = 1001L, CoilAbcNum = 5002L, ProcessCoilStatus = (int?)1, ProcessDate = (DateTime?)d.AddHours(3), ProcessEndWt = 0m, ProcessQuantity = 0m },
                 // Job 1002's coil is rejected (status 3) → drives the invoice rej/reband list for that job.
                 new { AbJobNum = 1002L, CoilAbcNum = 5003L, ProcessCoilStatus = (int?)3, ProcessDate = (DateTime?)d.AddDays(2), ProcessEndWt = 1500m, ProcessQuantity = 60m },
+                // A REBANDED coil (status 7) on the same job. Legacy's ll_rejnet accumulates over the
+                // rejected AND rebanded lists into one total, and offal uses that total — so without a
+                // status-7 coil here the offal sum reads identically whether or not rebanded is
+                // included, and the omission is invisible. On live data rebanded is the bigger of the
+                // two (30,708 coils against 3,866), so this is the normal case, not an edge one.
+                // On coil 5002, NOT 5004: 5004 is deliberately absent from process_coil because it is
+                // the fixture's unmatched-coil case, and giving it a job silently destroys that.
+                // ProcessQuantity 0 deliberately: net weight is SUM(process_quantity), so giving this
+                // coil a quantity would move job 1002's NetWt and ripple into assertions that have
+                // nothing to do with offal. The billed-weight rule still runs its real path — the
+                // MAX(end_wt, largest prior pass) resolves to the 900 end weight.
+                new { AbJobNum = 1002L, CoilAbcNum = 5002L, ProcessCoilStatus = (int?)7, ProcessDate = (DateTime?)d.AddDays(2), ProcessEndWt = 900m, ProcessQuantity = 0m },
                 // A prior process pass of coil 5003 (a smaller quantity, on the Done job 1003) so the
                 // invoice billed-weight rule's "max prior-process qty" term (< this job's 60) resolves
                 // to 40 — exercises the correlated subquery in GetInvoiceCoilsAsync.
