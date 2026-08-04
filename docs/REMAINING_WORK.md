@@ -367,8 +367,14 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   Open question for the plant before any upload is built: **how does a new sketch get into ABIS
   today?** If that needs a DBA, an upload screen is a real improvement — but it is new capability, not
   parity, and should be chosen deliberately.
-  Still genuinely TODO for parity: the **DAS console's own render** (legacy showed the drawing there —
-  `w_da_sheet.srw:909`).
+  **DAS console render done (#352)** — a collapsed "Sketch" panel on the operator console, matching
+  legacy showing the drawing there (`w_da_sheet.srw:909`). Collapsed by default because that console is
+  dense and the running controls must not move; loaded fire-and-forget so a 417 KB bitmap never delays
+  the coil/skid/scrap reads the operator is waiting on.
+  The rendering now lives in one place — `clientapp/src/sketch.ts` — precisely so the `<img src>` 401
+  trap above is not rediscovered per screen. It also revokes the previous object URL, which matters
+  most on the kiosk: a console left open all shift would otherwise hold 417 KB for every job looked at.
+  **Sketches are parity-complete.** What is left is upload, which is new capability, not parity.
 - [~] **H** Die → shape mapping — done (#254): `GET/POST /line-die-shapes` + `DELETE /line-die-shapes/{shape}/{line}/{die}` over `LINE_DIE_4SHEET_TYPE` (composite PK), so scheduling can resolve the eligible line/die for a shape (filter by sheetType/lineNum/dieId; add guards line/die-exist + dup). Dies page gained a mapping panel. Still TODO: **die label/report print**.
 - [x] **M** Shipment header EDI-trigger fields — done (#259): the shipment read now carries `edi_req`/`edi_triggered`/`edi_file_id_856`/`edi_file_id_desadv` + the 856/desadv/des-856 dates, and `POST /shipments/{pl}/edi-trigger` (docType 856|desadv + optional file id) stamps them (bookkeeping only — never transmits). Surfacing on the shipping UI is a follow-up.
 - [~] **M** **View archived EDI payload — done (#270)**: the EDI monitor's Transaction-detail card has a "View X12 payload" button that fetches the stored X12 (`GET /edi/transactions/{id}/payload`) into a scrollable pre + Copy. Still TODO (both deliberately deferred): manual EDI **send/resend** from UI (blocked by the no-transmit guardrail — legacy owns the VAN); X12 map maintenance.

@@ -5,6 +5,7 @@
 // Compiled by tsc to wwwroot/ui/app/prod-folder.js; served at /ui/prod-folder.html.
 import { AbisClient, JobFolderNoteWrite } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
+import { renderSketch } from './sketch.js';
 import { initShell } from './shell.js';
 import { lineLabel } from './status-labels.js';
 
@@ -81,55 +82,12 @@ async function loadFolder(): Promise<void> {
       <span><b>Order / PO</b>${esc(f.orderAbcNum)} · ${esc(f.origCustomerPo)}</span>
       <span><b>Customer</b>${esc(f.customerShortName)}</span>
       <span><b>Contents</b>${esc(f.coilCount)} coil(s) · ${esc(f.skidCount)} skid(s) · ${esc(f.noteCount)} note(s)</span>`;
-    void renderSketch(f.sketchId, f.sketchName, f.sketchJobNote);
+    void renderSketch(
+      { card: $('#sketchCard'), meta: $('#sketchMeta'), img: $<HTMLImageElement>('#sketchImg'), link: $<HTMLAnchorElement>('#sketchLink') },
+      f.sketchId, f.sketchName, f.sketchJobNote);
     await loadNotes();
   } catch (e) { setErr(`Load folder failed: ${(e as Error).message}`); job = null; $('#workarea').classList.add('disabled'); }
   finally { setBusy(false); }
-}
-
-// Show the job's drawing, or hide the card when it has none. A job without a sketch is ordinary —
-// showing an empty frame or a broken image would read as a fault rather than an absence.
-//
-// The image is FETCHED and rendered from a blob rather than pointed at with <img src>. It has to be:
-// /api/sketches/{id}/image sits behind the same auth as every other endpoint, and a browser cannot put
-// X-Api-Key or an Authorization bearer on an <img> request — a plain src attribute gets a 401 and
-// leaves a broken-image icon on a production screen. Verified: the endpoint answers 401 unauthenticated
-// and 200 image/bmp with the key.
-//
-// The HTTP cache still does its job here: the fetch is a normal GET, so the day-long Cache-Control on
-// the response means re-opening a folder does not re-download 417 KB.
-let sketchObjectUrl: string | null = null;
-
-async function renderSketch(sketchId?: number, sketchName?: string, jobNote?: string): Promise<void> {
-  const card = $('#sketchCard');
-  // Release the previous drawing before replacing it; these are 417 KB each and the folder is
-  // re-loaded every time the operator types a different job number.
-  if (sketchObjectUrl) { URL.revokeObjectURL(sketchObjectUrl); sketchObjectUrl = null; }
-  if (sketchId == null) { card.hidden = true; return; }
-
-  card.hidden = false;
-  const img = $<HTMLImageElement>('#sketchImg');
-  const link = $<HTMLAnchorElement>('#sketchLink');
-  const meta = (extra = '') =>
-    `<span><b>Drawing</b>${esc(sketchName || `#${sketchId}`)}</span>` +
-    (jobNote ? `<span><b>Note for this job</b>${esc(jobNote)}</span>` : '') + extra;
-  $('#sketchMeta').innerHTML = meta();
-  img.hidden = true;
-
-  try {
-    const r = await authFetch(`/api/sketches/${sketchId}/image`);
-    // A sketch row can exist with no stored drawing — the endpoint 404s. Say so rather than leaving
-    // an empty frame, which reads as something failing to load.
-    if (r.status === 404) { $('#sketchMeta').innerHTML = meta('<span class="muted">No drawing stored for this sketch.</span>'); return; }
-    if (!r.ok) { $('#sketchMeta').innerHTML = meta(`<span class="muted">Drawing unavailable (${r.status}).</span>`); return; }
-    sketchObjectUrl = URL.createObjectURL(await r.blob());
-    img.alt = `Sketch ${sketchName || sketchId}`;
-    img.src = sketchObjectUrl;
-    link.href = sketchObjectUrl;
-    img.hidden = false;
-  } catch {
-    $('#sketchMeta').innerHTML = meta('<span class="muted">Drawing could not be loaded.</span>');
-  }
 }
 
 async function loadNotes(): Promise<void> {

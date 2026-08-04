@@ -16,6 +16,7 @@ import { initAuth, authFetch } from './auth.js';
 import { statusChip, lineLabel, loadLineNames } from './status-labels.js';
 import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount, fetchCounters, fetchStacker, fetchConveyor, fetchLineStatus, browseEdgeTags } from './edge.js';
 import type { CountersResult, StackerResult, LineStatusResult } from './edge.js';
+import { renderSketch } from './sketch.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
@@ -114,7 +115,20 @@ function scaffold(): string {
           <span id="runInd" class="dop-note" style="color:var(--rail-ink-2);margin-left:auto" title="Line run-state from the edge PLC feed">PLC: —</span>
           <span id="pieceInd" class="dop-note" style="color:var(--rail-ink-2)" title="Live stacker piece count for the skid in progress">Stacker: —</span>
         </div>
-        <div class="dop-lamps" id="tLamps" title="Health lamps — lit means healthy (the legacy DAS DB / OPC / PLC / auto lamps)"></div>
+        <!-- The shape being cut. Legacy showed the drawing on this screen (w_da_sheet.srw:909), and it is
+           what the operator checks the blank against. Collapsed by default: this console is dense and
+           the running controls must stay where the operator expects them, so the drawing is opened
+           when wanted rather than permanently occupying the panel. -->
+      <details id="sketchCard" class="card" style="margin-bottom:10px" hidden>
+        <summary style="cursor:pointer;padding:8px 10px"><b>Sketch</b> — the shape this job is cut to</summary>
+        <div class="body">
+          <div class="kv" id="sketchMeta"></div>
+          <a id="sketchLink" target="_blank" rel="noopener" title="Open the full-size drawing">
+            <img id="sketchImg" alt="" style="max-width:100%;height:auto;border:1px solid var(--rail-line);background:#fff" />
+          </a>
+        </div>
+      </details>
+      <div class="dop-lamps" id="tLamps" title="Health lamps — lit means healthy (the legacy DAS DB / OPC / PLC / auto lamps)"></div>
         <div id="dtBanner" style="display:none;background:#7f1d1d;color:#fff;border-radius:10px;padding:14px 18px;margin-bottom:12px"></div>
 
         <div class="card"><header><h2>Coil being run</h2><span class="sub" id="runCoilSub">scan a coil, or tap one below</span></header>
@@ -242,6 +256,11 @@ async function loadJob(): Promise<void> {
     job = id; lineNum = j.lineNum ?? null; runCoil = null;
     $('#jobHdr').innerHTML = `Job ${id} · ${esc(lineLabel(j.lineNum))} · ${statusChip('jobStatus', j.jobStatus)} · order ${esc(j.orderAbcNum ?? '')}/${esc(j.orderItemNum ?? '')}`;
     $('#workarea').classList.remove('disabled');
+    // Fire-and-forget: a 417 KB drawing must not hold up the coil/skid/scrap loads the operator is
+    // actually waiting on.
+    void renderSketch(
+      { card: $('#sketchCard'), meta: $('#sketchMeta'), img: $<HTMLImageElement>('#sketchImg'), link: $<HTMLAnchorElement>('#sketchLink') },
+      j.sketchId, undefined, j.sketchJobNote);
     await Promise.all([loadCoils(), loadSkids(), loadScrap(), loadOpBoard(), loadFaultCodes()]);
     $('#tDt').innerHTML = '<tr><td colspan="4" class="muted">No downtime logged this session.</td></tr>';
     clearAutoDowntime();
