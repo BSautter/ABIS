@@ -320,7 +320,7 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
     SHEET / SCRAP / REJECT_COIL. Shape dimensions resolve through `ShapeGeometry` instead of legacy's
     eight-way outer join — which also fixes REINFORCEMENT and LIFTGATE, omitted from legacy's ticket
     query and therefore printing no dimensions at all.
-  - [~] **Combi form — BASE DOCUMENT BUILT (#355).** `GET /documents/combi/{packingList}` renders the
+  - [x] **Combi form — DONE (#355 + closed out #357).** `GET /documents/combi/{packingList}` renders the
     header plus all three detail sections (sheets / accumulated scrap / rejected coil), every weight in
     **lb and kg**, with a Print combi button on the Shipping page. The sheet grain is the **production
     item**, not the skid — one skid contributes a row per item.
@@ -335,8 +335,28 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
     theoretical weight" exists in legacy in TWO places — the SQL `CASE` on 2802 and a whole separate
     document object. **Which one the plant actually uses is unresolved** and should be settled before
     the per-customer layout variants are built.
-    Still TODO: the 16 per-customer **layout** variants (base + overrides, the EDI-partner shape), and
-    confirming with the plant whether any customer has joined or left the theoretical-weight rule.
+    **The 16 layout variants do not need building — there are only 4 reachable objects, and the
+    per-customer dimension is two flags (2026-08-04).** My earlier sizing counted `.srd` files in a
+    folder rather than what the code selects. What legacy actually chooses at runtime:
+    | selection | when | status |
+    |-----------|------|--------|
+    | `_display_t` | `customer_id = 2802` (Toyota Tsusho) | **built** — theoretical weight, as config |
+    | `_display_pn` | `f_get_use_package_num_4shipment(...)` | **dormant** — see below |
+    | `_display` | everything else | **built** |
+    | `_input` | the on-screen form (`is_objectname`), not a print layout | n/a |
+    The remaining **11** (`alcan`, `alcoa`, `alcoa_pn`, `kaiser`, `novelis`, `novelis_cd`, `twb`,
+    `twb_cd`, `sm`, `input_twb`, `input_detail`) are **referenced nowhere in the vendored source** —
+    library artifacts, never selected.
+    **The package-number path is dormant on live `.230`:** the rule keys on `customer.use_package_num`
+    (legacy made *this* one a proper customer flag, unlike the hardcoded 2802) and it is **NULL for all
+    1,976 customers**, with **zero rows** in `sheet_skid_package`. So `_display_pn` is unreachable with
+    today's data. Its function `f_get_use_package_num_4shipment` is not vendored, so the flag's exact
+    semantics are inferred from the column, not read.
+    Also resolves half the earlier `_actual`/`_theo` question: **both objects select the SAME print
+    layout** (`_display`), so that distinction is about which weights are loaded, not presentation.
+    Still open for the plant: whether any customer has joined or left the theoretical-weight
+    arrangement since 2802 was hard-coded, and whether package numbers are ever intended to be turned
+    on (the schema supports it; nothing uses it).
   - [x] ~~**Combi form — SIZED 2026-07-25, own session.**~~ 16 layout variants in `legacy/src/rpabco`
     (alcan, alcoa, alcoa_pn, kaiser, novelis, novelis_cd, twb, twb_cd, sm, display, display_pn,
     display_t, input, input_twb, input_detail, base) but only **7 distinct queries — and 8 of the 16
