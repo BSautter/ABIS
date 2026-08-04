@@ -84,6 +84,11 @@ jobs:
           npm --prefix clientapp ci
           npm --prefix clientapp run gen
           npm --prefix clientapp run build
+      # Client unit tests (vitest + jsdom). The client had NO test harness until now: it was covered
+      # only by tsc and the API-level e2e, so browser logic — what gets written into a weight, which
+      # line a card belongs to, whether a drawing is fetched with auth — was verified by hand.
+      - name: Client unit tests
+        run: npm --prefix clientapp test
       - name: e2e — generated client against a live API
         env:
           ASPNETCORE_ENVIRONMENT: Development

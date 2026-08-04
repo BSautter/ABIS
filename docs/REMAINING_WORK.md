@@ -715,10 +715,18 @@ function `f_add_system_log_tran`, whose body is not vendored), and the Instron "
   Now refuses rather than warns (a warning on an already-filled box gets dismissed), converts gross to
   net when the tare is known, and leaves manual entry available in every branch. A bare reading with no
   status prefix still parses as stable with a null mode, so the existing plant path is unchanged.
-- [ ] **M** **The web client has no unit-test harness** — `api/clientapp` runs `tsc` and an API-level
-  e2e runner, and nothing else. Client logic that decides what gets written to a weight, a piece count
-  or a status is therefore verified by reading it. The scale fix above could not be given a regression
-  test for this reason. Worth adding a small runner (vitest) and starting with the DAS console.
+- [x] **M** **The web client now has a unit-test harness** — done (#359). vitest + jsdom,
+  `npm --prefix clientapp test`, wired into CI beside the build. **30 tests** over the logic that was
+  previously verified only by driving a browser by hand: `sketch.ts` (the `<img src>` 401 trap, the
+  404-vs-failure split, object-URL revocation, escaping), `status-labels.ts` (line identity, the plant
+  board order, decommissioned-vs-unlisted), and `edge.ts` (primary→fallback failover, the per-line
+  scale tag, null-is-unknown-never-zero, unreadable conveyor cells).
+- [ ] **M** **Next for the harness: the DAS console's weight rules.** `pullWeight` holds the guards
+  that decide what lands in `sheet_net_wt` — the conveyor cell 3/4 precondition and the legacy
+  10–39,000 lb band — but it is inline in a page module with import-time side effects, so it cannot be
+  imported by a test. Extracting the decision into a pure function would make the highest-value client
+  logic testable; it is a small refactor of shipped code and deserves its own change rather than being
+  bundled into the harness.
 
 - [x] **Omitted-NOT-NULL-column class: swept, clean, and now guarded in CI** — done (#337).
   Live `.230` has **955** NOT NULL columns; **190** of them are nullable in `SqliteFixture`, so CI's DDL

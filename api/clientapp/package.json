@@ -7,9 +7,13 @@
     "gen": "dotnet tool run nswag openapi2tsclient /input:../openapi.json /output:src/generated/abis-client.ts /template:Fetch /className:AbisClient",
     "build": "tsc -p tsconfig.json",
     "all": "npm run gen && npm run build",
-    "e2e": "node e2e/run.mjs"
+    "e2e": "node e2e/run.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
-    "typescript": "5.5.4"
+    "jsdom": "^25.0.1",
+    "typescript": "5.5.4",
+    "vitest": "^2.1.9"
   }
 }
