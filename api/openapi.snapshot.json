@@ -23837,6 +23837,19 @@
           "noteCount": {
             "type": "integer",
             "format": "int32"
+          },
+          "sketchId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "sketchName": {
+            "type": "string",
+            "nullable": true
+          },
+          "sketchJobNote": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false

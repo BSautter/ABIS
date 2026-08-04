@@ -32,6 +32,18 @@ function scaffold() {
           <header><h2>Folder summary</h2></header>
           <div class="body"><div class="kv" id="hdr"></div></div>
         </div></div>
+        <div class="stack"><div class="card" id="sketchCard" hidden>
+          <header><h2>Sketch</h2></header>
+          <div class="body">
+            <div class="kv" id="sketchMeta"></div>
+            <!-- The drawing is a 417 KB BMP served from /api/sketches/{id}/image. It is shown at the
+                 card's width and opens full size in a new tab, because the shop floor reads dimensions
+                 off it and the on-screen scale is not the point. -->
+            <a id="sketchLink" target="_blank" rel="noopener" title="Open the full-size drawing">
+              <img id="sketchImg" alt="" style="max-width:100%;height:auto;border:1px solid var(--rail-line);background:#fff" />
+            </a>
+          </div>
+        </div></div>
         <div class="stack"><div class="card">
           <header><h2>E-folder notes</h2></header>
           <div style="overflow-x:auto"><table class="tbl" style="min-width:420px">
@@ -68,6 +80,7 @@ async function loadFolder() {
       <span><b>Order / PO</b>${esc(f.orderAbcNum)} · ${esc(f.origCustomerPo)}</span>
       <span><b>Customer</b>${esc(f.customerShortName)}</span>
       <span><b>Contents</b>${esc(f.coilCount)} coil(s) · ${esc(f.skidCount)} skid(s) · ${esc(f.noteCount)} note(s)</span>`;
+        void renderSketch(f.sketchId, f.sketchName, f.sketchJobNote);
         await loadNotes();
     }
     catch (e) {
@@ -77,6 +90,59 @@ async function loadFolder() {
     }
     finally {
         setBusy(false);
+    }
+}
+// Show the job's drawing, or hide the card when it has none. A job without a sketch is ordinary —
+// showing an empty frame or a broken image would read as a fault rather than an absence.
+//
+// The image is FETCHED and rendered from a blob rather than pointed at with <img src>. It has to be:
+// /api/sketches/{id}/image sits behind the same auth as every other endpoint, and a browser cannot put
+// X-Api-Key or an Authorization bearer on an <img> request — a plain src attribute gets a 401 and
+// leaves a broken-image icon on a production screen. Verified: the endpoint answers 401 unauthenticated
+// and 200 image/bmp with the key.
+//
+// The HTTP cache still does its job here: the fetch is a normal GET, so the day-long Cache-Control on
+// the response means re-opening a folder does not re-download 417 KB.
+let sketchObjectUrl = null;
+async function renderSketch(sketchId, sketchName, jobNote) {
+    const card = $('#sketchCard');
+    // Release the previous drawing before replacing it; these are 417 KB each and the folder is
+    // re-loaded every time the operator types a different job number.
+    if (sketchObjectUrl) {
+        URL.revokeObjectURL(sketchObjectUrl);
+        sketchObjectUrl = null;
+    }
+    if (sketchId == null) {
+        card.hidden = true;
+        return;
+    }
+    card.hidden = false;
+    const img = $('#sketchImg');
+    const link = $('#sketchLink');
+    const meta = (extra = '') => `<span><b>Drawing</b>${esc(sketchName || `#${sketchId}`)}</span>` +
+        (jobNote ? `<span><b>Note for this job</b>${esc(jobNote)}</span>` : '') + extra;
+    $('#sketchMeta').innerHTML = meta();
+    img.hidden = true;
+    try {
+        const r = await authFetch(`/api/sketches/${sketchId}/image`);
+        // A sketch row can exist with no stored drawing — the endpoint 404s. Say so rather than leaving
+        // an empty frame, which reads as something failing to load.
+        if (r.status === 404) {
+            $('#sketchMeta').innerHTML = meta('<span class="muted">No drawing stored for this sketch.</span>');
+            return;
+        }
+        if (!r.ok) {
+            $('#sketchMeta').innerHTML = meta(`<span class="muted">Drawing unavailable (${r.status}).</span>`);
+            return;
+        }
+        sketchObjectUrl = URL.createObjectURL(await r.blob());
+        img.alt = `Sketch ${sketchName || sketchId}`;
+        img.src = sketchObjectUrl;
+        link.href = sketchObjectUrl;
+        img.hidden = false;
+    }
+    catch {
+        $('#sketchMeta').innerHTML = meta('<span class="muted">Drawing could not be loaded.</span>');
     }
 }
 async function loadNotes() {

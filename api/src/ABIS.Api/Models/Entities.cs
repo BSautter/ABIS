@@ -2708,6 +2708,14 @@ public sealed class ProductionFolder
     public int CoilCount { get; set; }
     public int SkidCount { get; set; }
     public int NoteCount { get; set; }
+    /// <summary>The job's sketch (<c>ab_job.sketch_id</c>), or null when it has none. The drawing
+    /// itself is fetched separately from <c>GET /sketches/{id}/image</c> — it is a 417 KB BMP, so it
+    /// does not belong inline in this JSON.</summary>
+    public long? SketchId { get; set; }
+    public string? SketchName { get; set; }
+    /// <summary>The job-specific note written against the sketch (<c>ab_job.sketch_job_note</c>) —
+    /// distinct from the sketch's own notes, which belong to the drawing rather than this job.</summary>
+    public string? SketchJobNote { get; set; }
 }
 
 /// <summary>A note on a job's e-folder (table <c>job_efolder_notes</c>, PK

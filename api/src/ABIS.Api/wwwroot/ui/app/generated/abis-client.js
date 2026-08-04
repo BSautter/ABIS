@@ -737,6 +737,57 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * The operations the scheduler is allowed to run — the valid values for a job's target_operation. Anything else is recorded 'unsupported' and never executes.
+     * @return OK
+     */
+    getScheduledOperations() {
+        let url_ = this.baseUrl + "/api/admin/jobs/operations";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetScheduledOperations(_response);
+        });
+    }
+    processGetScheduledOperations(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(item);
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Define an EDI transaction type + version (config only — transmits nothing).
      * @return Created
      */
@@ -3275,6 +3326,69 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Record a coil's ACTUAL weighed weight (abco_coil_net_wt); rejects values outside the legacy 100..99999 lb guard.
+     * @return OK
+     */
+    setCoilActualWeight(coilAbcNum, body) {
+        let url_ = this.baseUrl + "/api/coils/{coilAbcNum}/actual-weight";
+        if (coilAbcNum === undefined || coilAbcNum === null)
+            throw new globalThis.Error("The parameter 'coilAbcNum' must be defined.");
+        url_ = url_.replace("{coilAbcNum}", encodeURIComponent("" + coilAbcNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processSetCoilActualWeight(_response);
+        });
+    }
+    processSetCoilActualWeight(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = Coil.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * List customers (paged, sortable).
      * @param page (optional)
      * @param pageSize (optional)
@@ -3811,6 +3925,1228 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * The live line board (line_current_status): each line's current shift, job, coil and skid positions.
+     * @param lineNum (optional)
+     * @return OK
+     */
+    getLineBoard(lineNum) {
+        let url_ = this.baseUrl + "/api/das/line-board?";
+        if (lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' cannot be null.");
+        else if (lineNum !== undefined)
+            url_ += "lineNum=" + encodeURIComponent("" + lineNum) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetLineBoard(_response);
+        });
+    }
+    processGetLineBoard(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(LineBoardRow.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * One line's live board row; 404 when the line has no line_current_status row.
+     * @return OK
+     */
+    getLineBoardForLine(lineNum) {
+        let url_ = this.baseUrl + "/api/das/line-board/{lineNum}";
+        if (lineNum === undefined || lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' must be defined.");
+        url_ = url_.replace("{lineNum}", encodeURIComponent("" + lineNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetLineBoardForLine(_response);
+        });
+    }
+    processGetLineBoardForLine(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = LineBoardRow.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * A line's job queue (line_priority): running job first, then by priority. Ended jobs are hidden unless includeEnded=true.
+     * @param includeEnded (optional)
+     * @return OK
+     */
+    getLineQueue(lineNum, includeEnded) {
+        let url_ = this.baseUrl + "/api/das/lines/{lineNum}/queue?";
+        if (lineNum === undefined || lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' must be defined.");
+        url_ = url_.replace("{lineNum}", encodeURIComponent("" + lineNum));
+        if (includeEnded === null)
+            throw new globalThis.Error("The parameter 'includeEnded' cannot be null.");
+        else if (includeEnded !== undefined)
+            url_ += "includeEnded=" + encodeURIComponent("" + includeEnded) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetLineQueue(_response);
+        });
+    }
+    processGetLineQueue(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(LineQueueRow.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Add or edit one job in a line's queue (omitted fields keep their value; a new row lands at the end, status Waiting).
+     * @return OK
+     */
+    upsertLineQueueJob(lineNum, abJobNum, body) {
+        let url_ = this.baseUrl + "/api/das/lines/{lineNum}/queue/{abJobNum}";
+        if (lineNum === undefined || lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' must be defined.");
+        url_ = url_.replace("{lineNum}", encodeURIComponent("" + lineNum));
+        if (abJobNum === undefined || abJobNum === null)
+            throw new globalThis.Error("The parameter 'abJobNum' must be defined.");
+        url_ = url_.replace("{abJobNum}", encodeURIComponent("" + abJobNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processUpsertLineQueueJob(_response);
+        });
+    }
+    processUpsertLineQueueJob(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = LineQueueRow.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Remove a job from a line's queue; refuses (409) the job the line is currently running.
+     * @return No Content
+     */
+    removeLineQueueJob(lineNum, abJobNum) {
+        let url_ = this.baseUrl + "/api/das/lines/{lineNum}/queue/{abJobNum}";
+        if (lineNum === undefined || lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' must be defined.");
+        url_ = url_.replace("{lineNum}", encodeURIComponent("" + lineNum));
+        if (abJobNum === undefined || abJobNum === null)
+            throw new globalThis.Error("The parameter 'abJobNum' must be defined.");
+        url_ = url_.replace("{abJobNum}", encodeURIComponent("" + abJobNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processRemoveLineQueueJob(_response);
+        });
+    }
+    processRemoveLineQueueJob(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Re-sequence a line's queue: the listed jobs take priority 1..N; jobs left out follow in their existing order.
+     * @return OK
+     */
+    reorderLineQueue(lineNum, body) {
+        let url_ = this.baseUrl + "/api/das/lines/{lineNum}/queue/reorder";
+        if (lineNum === undefined || lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' must be defined.");
+        url_ = url_.replace("{lineNum}", encodeURIComponent("" + lineNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processReorderLineQueue(_response);
+        });
+    }
+    processReorderLineQueue(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(LineQueueRow.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Point a line at the job it is running (null clears it); re-sequences the line's LINE_PRIORITY queue.
+     * @return OK
+     */
+    setLineCurrentJob(lineNum, body) {
+        let url_ = this.baseUrl + "/api/das/lines/{lineNum}/current-job";
+        if (lineNum === undefined || lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' must be defined.");
+        url_ = url_.replace("{lineNum}", encodeURIComponent("" + lineNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processSetLineCurrentJob(_response);
+        });
+    }
+    processSetLineCurrentJob(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = LineBoardRow.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Load the coil on the mandrel (null drops it); loading marks the coil as on-line and zeroes the process rate.
+     * @return OK
+     */
+    setLineCurrentCoil(lineNum, body) {
+        let url_ = this.baseUrl + "/api/das/lines/{lineNum}/current-coil";
+        if (lineNum === undefined || lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' must be defined.");
+        url_ = url_.replace("{lineNum}", encodeURIComponent("" + lineNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processSetLineCurrentCoil(_response);
+        });
+    }
+    processSetLineCurrentCoil(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = LineBoardRow.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Bind an already-scheduled shift to the line's board (the DAS station starting its shift).
+     * @return OK
+     */
+    startLineShift(lineNum, body) {
+        let url_ = this.baseUrl + "/api/das/lines/{lineNum}/shift/start";
+        if (lineNum === undefined || lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' must be defined.");
+        url_ = url_.replace("{lineNum}", encodeURIComponent("" + lineNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processStartLineShift(_response);
+        });
+    }
+    processStartLineShift(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = LineBoardRow.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Close the line's open shift: stamps end_time + the shift's downtime total (seconds) and clears the board's shift.
+     * @return OK
+     */
+    endLineShift(lineNum) {
+        let url_ = this.baseUrl + "/api/das/lines/{lineNum}/shift/end";
+        if (lineNum === undefined || lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' must be defined.");
+        url_ = url_.replace("{lineNum}", encodeURIComponent("" + lineNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processEndLineShift(_response);
+        });
+    }
+    processEndLineShift(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = LineShiftEndResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * The coil runs recorded in a shift (shift_coil), in run order — the shift's production ledger.
+     * @return OK
+     */
+    getShiftCoilRuns(shiftNum) {
+        let url_ = this.baseUrl + "/api/das/shifts/{shiftNum}/coil-runs";
+        if (shiftNum === undefined || shiftNum === null)
+            throw new globalThis.Error("The parameter 'shiftNum' must be defined.");
+        url_ = url_.replace("{shiftNum}", encodeURIComponent("" + shiftNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetShiftCoilRuns(_response);
+        });
+    }
+    processGetShiftCoilRuns(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(ShiftCoilRun.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Resolve a scanned coil barcode against a job's coils: strips the 2S vendor header, validates, and returns the coil (or why it didn't resolve).
+     * @param barcode (optional)
+     * @return OK
+     */
+    scanCoil(barcode, abJobNum) {
+        let url_ = this.baseUrl + "/api/das/scan/coil?";
+        if (barcode === null)
+            throw new globalThis.Error("The parameter 'barcode' cannot be null.");
+        else if (barcode !== undefined)
+            url_ += "barcode=" + encodeURIComponent("" + barcode) + "&";
+        if (abJobNum === undefined || abJobNum === null)
+            throw new globalThis.Error("The parameter 'abJobNum' must be defined and cannot be null.");
+        else
+            url_ += "abJobNum=" + encodeURIComponent("" + abJobNum) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processScanCoil(_response);
+        });
+    }
+    processScanCoil(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = CoilScanResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Create the shift rows for a date from the SHIFT_SCHEDULE calendar (idempotent; defaults to today). Returns the shifts created — empty when none are scheduled or they already exist.
+     * @param onDate (optional)
+     * @return OK
+     */
+    createScheduledShifts(onDate) {
+        let url_ = this.baseUrl + "/api/das/shifts/create-scheduled?";
+        if (onDate === null)
+            throw new globalThis.Error("The parameter 'onDate' cannot be null.");
+        else if (onDate !== undefined)
+            url_ += "onDate=" + encodeURIComponent(onDate ? "" + onDate.toISOString() : "") + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCreateScheduledShifts(_response);
+        });
+    }
+    processCreateScheduledShifts(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(Shift.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Shifts with no end_time, longest-open first. staleOnly=true keeps those open >1 day; boardOnly=true keeps only shifts a line's board still points at (the actionable ones — prod has ~247 open, only ~3 on a board).
+     * @param staleOnly (optional)
+     * @param boardOnly (optional)
+     * @return OK
+     */
+    getOpenShifts(staleOnly, boardOnly) {
+        let url_ = this.baseUrl + "/api/das/shifts/open?";
+        if (staleOnly === null)
+            throw new globalThis.Error("The parameter 'staleOnly' cannot be null.");
+        else if (staleOnly !== undefined)
+            url_ += "staleOnly=" + encodeURIComponent("" + staleOnly) + "&";
+        if (boardOnly === null)
+            throw new globalThis.Error("The parameter 'boardOnly' cannot be null.");
+        else if (boardOnly !== undefined)
+            url_ += "boardOnly=" + encodeURIComponent("" + boardOnly) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetOpenShifts(_response);
+        });
+    }
+    processGetOpenShifts(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(OpenShift.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * End-coil recap: the run plus the skids, pieces, finished weight, scrap and yield that came off that coil on that job.
+     * @return OK
+     */
+    getCoilRunRecap(shiftNum, coilRunNum) {
+        let url_ = this.baseUrl + "/api/das/shifts/{shiftNum}/coil-runs/{coilRunNum}/recap";
+        if (shiftNum === undefined || shiftNum === null)
+            throw new globalThis.Error("The parameter 'shiftNum' must be defined.");
+        url_ = url_.replace("{shiftNum}", encodeURIComponent("" + shiftNum));
+        if (coilRunNum === undefined || coilRunNum === null)
+            throw new globalThis.Error("The parameter 'coilRunNum' must be defined.");
+        url_ = url_.replace("{coilRunNum}", encodeURIComponent("" + coilRunNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetCoilRunRecap(_response);
+        });
+    }
+    processGetCoilRunRecap(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = CoilRunRecap.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Start running a coil on a line: opens its shift_coil run and puts the coil on the board (idempotent per shift/job/coil).
+     * @return OK
+     */
+    startCoilRun(lineNum, body) {
+        let url_ = this.baseUrl + "/api/das/lines/{lineNum}/coil-run/start";
+        if (lineNum === undefined || lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' must be defined.");
+        url_ = url_.replace("{lineNum}", encodeURIComponent("" + lineNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processStartCoilRun(_response);
+        });
+    }
+    processStartCoilRun(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = CoilRunResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Finish the coil the line is running: stamps the run's end weight/status + process_wt, rolls the weight through process_coil + the coil, and finishes the job when every coil on it is spent.
+     * @return OK
+     */
+    endCoilRun(lineNum, body) {
+        let url_ = this.baseUrl + "/api/das/lines/{lineNum}/coil-run/end";
+        if (lineNum === undefined || lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' must be defined.");
+        url_ = url_.replace("{lineNum}", encodeURIComponent("" + lineNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processEndCoilRun(_response);
+        });
+    }
+    processEndCoilRun(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = CoilRunResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * A line's live metrics: shift efficiency % (legacy downtime formula), processed weight, and the loaded coil's finish-% and yield % (legacy 95% target).
+     * @return OK
+     */
+    getLineLiveMetrics(lineNum) {
+        let url_ = this.baseUrl + "/api/das/lines/{lineNum}/live";
+        if (lineNum === undefined || lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' must be defined.");
+        url_ = url_.replace("{lineNum}", encodeURIComponent("" + lineNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetLineLiveMetrics(_response);
+        });
+    }
+    processGetLineLiveMetrics(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = LineLiveMetrics.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Change the job the line is running WITHOUT dropping the coil: splits the coil's weight between the two jobs' runs.
+     * @return OK
+     */
+    changeLineJobMidCoil(lineNum, body) {
+        let url_ = this.baseUrl + "/api/das/lines/{lineNum}/change-job";
+        if (lineNum === undefined || lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' must be defined.");
+        url_ = url_.replace("{lineNum}", encodeURIComponent("" + lineNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processChangeLineJobMidCoil(_response);
+        });
+    }
+    processChangeLineJobMidCoil(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = ChangeJobResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Reverse a wrongly-loaded coil: drops it off the board, deletes its unproduced run and logs an error_evt. 409 once the run has processed weight.
+     * @return OK
+     */
+    reverseCoilRun(lineNum, body) {
+        let url_ = this.baseUrl + "/api/das/lines/{lineNum}/coil-run/reverse";
+        if (lineNum === undefined || lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' must be defined.");
+        url_ = url_.replace("{lineNum}", encodeURIComponent("" + lineNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processReverseCoilRun(_response);
+        });
+    }
+    processReverseCoilRun(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = CoilReverseResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * List dies/tooling (paged, sortable; filter by status).
      * @param page (optional)
      * @param pageSize (optional)
@@ -4243,6 +5579,59 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Printable packing ticket for ONE unit on a packing list (legacy rpabco/d_packaging_ticket_{sheet,scrap,rejcoil}_4skid) — the paper stapled to a single skid. itemType is SHEET, SCRAP or REJECT_COIL; refNum is the skid number, or the coil's ABC number for a rejected coil. Sheet tickets carry the blank's shape dimensions.
+     * @return OK
+     */
+    skidPackingTicketDocument(itemType, packingList, refNum) {
+        let url_ = this.baseUrl + "/api/documents/packing-ticket/{itemType}/{packingList}/{refNum}";
+        if (itemType === undefined || itemType === null)
+            throw new globalThis.Error("The parameter 'itemType' must be defined.");
+        url_ = url_.replace("{itemType}", encodeURIComponent("" + itemType));
+        if (packingList === undefined || packingList === null)
+            throw new globalThis.Error("The parameter 'packingList' must be defined.");
+        url_ = url_.replace("{packingList}", encodeURIComponent("" + packingList));
+        if (refNum === undefined || refNum === null)
+            throw new globalThis.Error("The parameter 'refNum' must be defined.");
+        url_ = url_.replace("{refNum}", encodeURIComponent("" + refNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processSkidPackingTicketDocument(_response);
+        });
+    }
+    processSkidPackingTicketDocument(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Printable sheet-skid tag (HTML with a Code 39 barcode).
      * @return OK
      */
@@ -4530,7 +5919,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Printable bill of lading for a shipment — ship-from / ship-to / carrier + the freight summary (handling units + total net/gross weight) + signature lines.
+     * Printable bill of lading (legacy rpabco/u_default_billoflading) — ship-from / ship-to / carrier, the per-job PO/part blocks, the three freight sections (sheet skids / accumulated scrap return / rejected coil return) with counts and weights, the multi-stop package note, and signature lines. 409 when the shipment carries nothing, since a blank BOL is worse than none.
      * @return OK
      */
     bolDocument(packingList) {
@@ -4567,6 +5956,14 @@ export class AbisClient {
         else if (status === 404) {
             return response.text().then((_responseText) => {
                 return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                let result409 = null;
+                let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result409 = ProblemDetails.fromJS(resultData409);
+                return throwException("Conflict", status, _responseText, _headers, result409);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -6070,6 +7467,173 @@ export class AbisClient {
         else if (status === 401) {
             return response.text().then((_responseText) => {
                 return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * What each PLC fault code means, for a line (plus the line-0 wildcards that apply to every line). Empty until the plant records its codes.
+     * @param lineNum (optional)
+     * @return OK
+     */
+    getPlcFaultCodes(lineNum) {
+        let url_ = this.baseUrl + "/api/lookups/plc-fault-codes?";
+        if (lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' cannot be null.");
+        else if (lineNum !== undefined)
+            url_ += "lineNum=" + encodeURIComponent("" + lineNum) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetPlcFaultCodes(_response);
+        });
+    }
+    processGetPlcFaultCodes(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(PlcFaultCode.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Record what a PLC fault code means (line 0 = applies to every line).
+     * @return OK
+     */
+    upsertPlcFaultCode(lineNum, faultCode, body) {
+        let url_ = this.baseUrl + "/api/lookups/plc-fault-codes/{lineNum}/{faultCode}";
+        if (lineNum === undefined || lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' must be defined.");
+        url_ = url_.replace("{lineNum}", encodeURIComponent("" + lineNum));
+        if (faultCode === undefined || faultCode === null)
+            throw new globalThis.Error("The parameter 'faultCode' must be defined.");
+        url_ = url_.replace("{faultCode}", encodeURIComponent("" + faultCode));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processUpsertPlcFaultCode(_response);
+        });
+    }
+    processUpsertPlcFaultCode(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = PlcFaultCode.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Remove a PLC fault-code entry.
+     * @return No Content
+     */
+    deletePlcFaultCode(lineNum, faultCode) {
+        let url_ = this.baseUrl + "/api/lookups/plc-fault-codes/{lineNum}/{faultCode}";
+        if (lineNum === undefined || lineNum === null)
+            throw new globalThis.Error("The parameter 'lineNum' must be defined.");
+        url_ = url_.replace("{lineNum}", encodeURIComponent("" + lineNum));
+        if (faultCode === undefined || faultCode === null)
+            throw new globalThis.Error("The parameter 'faultCode' must be defined.");
+        url_ = url_.replace("{faultCode}", encodeURIComponent("" + faultCode));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeletePlcFaultCode(_response);
+        });
+    }
+    processDeletePlcFaultCode(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -10906,6 +12470,126 @@ export class AbisClient {
         else if (status === 404) {
             return response.text().then((_responseText) => {
                 return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Resolve a barcode scanned on the handheld RF receiving gun (legacy coil_receiving_12.pl): strips the leading 'S' header, maps the fixed 000000 label to coil number 'NO BARCODE', returns any ABC numbers already minted for that customer coil plus the mill's advance notice. Outcome is Mint (none yet), AlreadyMinted (reprint OR mint another — legacy offers both) or Unreadable. Read-only: minting is a separate action.
+     * @param barcode (optional)
+     * @return OK
+     */
+    scanInboundCoil(barcode) {
+        let url_ = this.baseUrl + "/api/receiving/scan?";
+        if (barcode === null)
+            throw new globalThis.Error("The parameter 'barcode' cannot be null.");
+        else if (barcode !== undefined)
+            url_ += "barcode=" + encodeURIComponent("" + barcode) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processScanInboundCoil(_response);
+        });
+    }
+    processScanInboundCoil(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = InboundCoilScan.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Mint an ABC number for a scanned inbound coil and print its label (legacy handheld). The printer is checked BEFORE anything is minted — 503 and no mint when it is unreachable, because an ABC number with no printed label leaves a coil untagged on the dock. 409 when the coil is not on any inbound receiving list. `replacedAbcNum` reports a previous number this overwrote (legacy's update is unscoped), so a superseded label isn't silent.
+     * @return OK
+     */
+    mintInboundCoil(body) {
+        let url_ = this.baseUrl + "/api/receiving/scan/mint";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processMintInboundCoil(_response);
+        });
+    }
+    processMintInboundCoil(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = InboundCoilMintResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = ProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                let result409 = null;
+                let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result409 = ProblemDetails.fromJS(resultData409);
+                return throwException("Conflict", status, _responseText, _headers, result409);
+            });
+        }
+        else if (status === 503) {
+            return response.text().then((_responseText) => {
+                let result503 = null;
+                let resultData503 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result503 = ProblemDetails.fromJS(resultData503);
+                return throwException("Service Unavailable", status, _responseText, _headers, result503);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -15793,6 +17477,58 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Everything a printed bill of lading needs (legacy rpabco/u_default_billoflading): parties, the three sections (sheet skids / accumulated scrap return / rejected coil return) with counts and weights, the per-job PO/part blocks, the shipment total, and the whole BOL's multi-stop totals. Read-only. `empty` = nothing to ship (legacy refuses to print); `detailsPrintable` = false past 3 jobs, which the legacy form has no room for.
+     * @return OK
+     */
+    getBolDocument(packingList) {
+        let url_ = this.baseUrl + "/api/shipments/{packingList}/bol-document";
+        if (packingList === undefined || packingList === null)
+            throw new globalThis.Error("The parameter 'packingList' must be defined.");
+        url_ = url_.replace("{packingList}", encodeURIComponent("" + packingList));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetBolDocument(_response);
+        });
+    }
+    processGetBolDocument(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = BolDocument.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Close out a shipment / BOL — mark it shipped and stamp the sent + actual dates.
      * @return OK
      */
@@ -16267,6 +18003,53 @@ export class AbisClient {
         else if (status === 412) {
             return response.text().then((_responseText) => {
                 return throwException("Precondition Failed", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * The sketch's drawing (BMP). 404 when the sketch does not exist or has no image.
+     * @return OK
+     */
+    getSketchImage(sketchId) {
+        let url_ = this.baseUrl + "/api/sketches/{sketchId}/image";
+        if (sketchId === undefined || sketchId === null)
+            throw new globalThis.Error("The parameter 'sketchId' must be defined.");
+        url_ = url_.replace("{sketchId}", encodeURIComponent("" + sketchId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetSketchImage(_response);
+        });
+    }
+    processGetSketchImage(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -17811,6 +19594,310 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Create a warehoused skid (legacy warehouse module w_wh_business): resolves or MINTS the status-20 warehouse coil for the customer's (coil number, lot) — an empty shell with zero weight — then writes the sheet_skid, its production item and the link, and reads back the package number. Weight/piece mismatches come back as `warnings`, not refusals, matching legacy's "save it anyway?" prompt. 409 when the job has no order, or when the customer requires a cert label / cash date and no regular coil exists to back one.
+     * @return Created
+     */
+    createWarehouseSkid(body) {
+        let url_ = this.baseUrl + "/api/warehouse/skids";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCreateWarehouseSkid(_response);
+        });
+    }
+    processCreateWarehouseSkid(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                let result201 = null;
+                let resultData201 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result201 = WarehouseSkidResult.fromJS(resultData201);
+                return result201;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                let result409 = null;
+                let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result409 = ProblemDetails.fromJS(resultData409);
+                return throwException("Conflict", status, _responseText, _headers, result409);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Modify a warehoused skid (legacy warehouse module action 4): weights, pieces, date, status and warehouse provenance. Changing the customer coil number or lot RE-POINTS the skid at a different status-20 shell — minting one if needed — and collects the PREVIOUS shell when the move leaves nothing on it. Weight mismatches come back as `warnings`, not refusals.
+     * @return OK
+     */
+    modifyWarehouseSkid(sheetSkidNum, body) {
+        let url_ = this.baseUrl + "/api/warehouse/skids/{sheetSkidNum}";
+        if (sheetSkidNum === undefined || sheetSkidNum === null)
+            throw new globalThis.Error("The parameter 'sheetSkidNum' must be defined.");
+        url_ = url_.replace("{sheetSkidNum}", encodeURIComponent("" + sheetSkidNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processModifyWarehouseSkid(_response);
+        });
+    }
+    processModifyWarehouseSkid(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = WarehouseSkidModifyResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                let result409 = null;
+                let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result409 = ProblemDetails.fromJS(resultData409);
+                return throwException("Conflict", status, _responseText, _headers, result409);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Delete a warehoused skid: its sheet_skid_detail links, its production items and the skid, then GARBAGE-COLLECT the status-20 warehouse coil when nothing else references it (legacy warehouse module action 5) — the shell exists only while something hangs off it. `coilKeptReason` says why the coil survived. A coil that is NOT a status-20 shell is never collected, so a real coil can't be destroyed by a warehouse delete.
+     * @return OK
+     */
+    deleteWarehouseSkid(sheetSkidNum) {
+        let url_ = this.baseUrl + "/api/warehouse/skids/{sheetSkidNum}";
+        if (sheetSkidNum === undefined || sheetSkidNum === null)
+            throw new globalThis.Error("The parameter 'sheetSkidNum' must be defined.");
+        url_ = url_.replace("{sheetSkidNum}", encodeURIComponent("" + sheetSkidNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeleteWarehouseSkid(_response);
+        });
+    }
+    processDeleteWarehouseSkid(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = WarehouseSkidDeleteResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Add one production item to an existing warehoused skid (legacy warehouse module action 2). The item carries its OWN customer coil number + lot, so a skid can hold material from several coils — that pair resolves or MINTS its status-20 shell, with the same cert/cash-date refusal as the create path. Optionally restates the skid header (legacy re-weighs on add); a total that disagrees with the sum of the items comes back in `warnings`, never corrected.
+     * @return Created
+     */
+    addWarehouseSkidItem(sheetSkidNum, body) {
+        let url_ = this.baseUrl + "/api/warehouse/skids/{sheetSkidNum}/items";
+        if (sheetSkidNum === undefined || sheetSkidNum === null)
+            throw new globalThis.Error("The parameter 'sheetSkidNum' must be defined.");
+        url_ = url_.replace("{sheetSkidNum}", encodeURIComponent("" + sheetSkidNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processAddWarehouseSkidItem(_response);
+        });
+    }
+    processAddWarehouseSkidItem(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                let result201 = null;
+                let resultData201 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result201 = WarehouseSkidItemResult.fromJS(resultData201);
+                return result201;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                let result409 = null;
+                let resultData409 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result409 = ProblemDetails.fromJS(resultData409);
+                return throwException("Conflict", status, _responseText, _headers, result409);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Remove one production item from a warehoused skid (legacy warehouse module action 3), collecting its status-20 shell when nothing else references it. The SKID is left standing even when its last item goes — an empty skid is re-stockable, and cascading it away would destroy a pallet's record over a single corrected line. A coil that is not a status-20 shell is never collected.
+     * @return OK
+     */
+    deleteWarehouseSkidItem(sheetSkidNum, prodItemNum) {
+        let url_ = this.baseUrl + "/api/warehouse/skids/{sheetSkidNum}/items/{prodItemNum}";
+        if (sheetSkidNum === undefined || sheetSkidNum === null)
+            throw new globalThis.Error("The parameter 'sheetSkidNum' must be defined.");
+        url_ = url_.replace("{sheetSkidNum}", encodeURIComponent("" + sheetSkidNum));
+        if (prodItemNum === undefined || prodItemNum === null)
+            throw new globalThis.Error("The parameter 'prodItemNum' must be defined.");
+        url_ = url_.replace("{prodItemNum}", encodeURIComponent("" + prodItemNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDeleteWarehouseSkidItem(_response);
+        });
+    }
+    processDeleteWarehouseSkidItem(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = WarehouseItemDeleteResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Warehouse update of a sheet skid (location / ticket / status; 409 if the skid has shipped).
      * @return OK
      */
@@ -18103,6 +20190,230 @@ export class AvailableCustomerCoil {
         return data;
     }
 }
+export class BolDocument {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.packingList = _data["packingList"];
+            this.billOfLading = _data["billOfLading"];
+            this.shipDate = _data["shipDate"] ? new Date(_data["shipDate"].toString()) : undefined;
+            this.scac = _data["scac"];
+            this.carrierName = _data["carrierName"];
+            this.vehicleId = _data["vehicleId"];
+            this.shipperName = _data["shipperName"];
+            this.consigneeName = _data["consigneeName"];
+            this.consigneeCity = _data["consigneeCity"];
+            this.consigneeState = _data["consigneeState"];
+            this.consigneeZip = _data["consigneeZip"];
+            if (Array.isArray(_data["jobs"])) {
+                this.jobs = [];
+                for (let item of _data["jobs"])
+                    this.jobs.push(BolDocumentJob.fromJS(item));
+            }
+            this.sheet = _data["sheet"] ? BolDocumentSection.fromJS(_data["sheet"]) : undefined;
+            this.scrap = _data["scrap"] ? BolDocumentSection.fromJS(_data["scrap"]) : undefined;
+            this.rejectCoil = _data["rejectCoil"] ? BolDocumentSection.fromJS(_data["rejectCoil"]) : undefined;
+            this.totalWeight = _data["totalWeight"];
+            this.totalItems = _data["totalItems"];
+            this.empty = _data["empty"];
+            this.detailsPrintable = _data["detailsPrintable"];
+            this.bolTotals = _data["bolTotals"] ? BolTotals.fromJS(_data["bolTotals"]) : undefined;
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new BolDocument();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["packingList"] = this.packingList;
+        data["billOfLading"] = this.billOfLading;
+        data["shipDate"] = this.shipDate ? this.shipDate.toISOString() : undefined;
+        data["scac"] = this.scac;
+        data["carrierName"] = this.carrierName;
+        data["vehicleId"] = this.vehicleId;
+        data["shipperName"] = this.shipperName;
+        data["consigneeName"] = this.consigneeName;
+        data["consigneeCity"] = this.consigneeCity;
+        data["consigneeState"] = this.consigneeState;
+        data["consigneeZip"] = this.consigneeZip;
+        if (Array.isArray(this.jobs)) {
+            data["jobs"] = [];
+            for (let item of this.jobs)
+                data["jobs"].push(item ? item.toJSON() : undefined);
+        }
+        data["sheet"] = this.sheet ? this.sheet.toJSON() : undefined;
+        data["scrap"] = this.scrap ? this.scrap.toJSON() : undefined;
+        data["rejectCoil"] = this.rejectCoil ? this.rejectCoil.toJSON() : undefined;
+        data["totalWeight"] = this.totalWeight;
+        data["totalItems"] = this.totalItems;
+        data["empty"] = this.empty;
+        data["detailsPrintable"] = this.detailsPrintable;
+        data["bolTotals"] = this.bolTotals ? this.bolTotals.toJSON() : undefined;
+        return data;
+    }
+}
+export class BolDocumentJob {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.abJobNum = _data["abJobNum"];
+            this.origCustomerPo = _data["origCustomerPo"];
+            this.enduserPo = _data["enduserPo"];
+            this.partNum = _data["partNum"];
+            this.supplierCode = _data["supplierCode"];
+            this.units = _data["units"];
+            this.subTotalNetWeight = _data["subTotalNetWeight"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new BolDocumentJob();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["abJobNum"] = this.abJobNum;
+        data["origCustomerPo"] = this.origCustomerPo;
+        data["enduserPo"] = this.enduserPo;
+        data["partNum"] = this.partNum;
+        data["supplierCode"] = this.supplierCode;
+        data["units"] = this.units;
+        data["subTotalNetWeight"] = this.subTotalNetWeight;
+        return data;
+    }
+}
+export class BolDocumentSection {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.heading = _data["heading"];
+            this.units = _data["units"];
+            this.grossWeight = _data["grossWeight"];
+            this.netWeight = _data["netWeight"];
+            this.pieces = _data["pieces"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new BolDocumentSection();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["heading"] = this.heading;
+        data["units"] = this.units;
+        data["grossWeight"] = this.grossWeight;
+        data["netWeight"] = this.netWeight;
+        data["pieces"] = this.pieces;
+        return data;
+    }
+}
+export class BolTotals {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.packingList = _data["packingList"];
+            this.billOfLading = _data["billOfLading"];
+            this.stopCount = _data["stopCount"];
+            this.multiStop = _data["multiStop"];
+            this.sheet = _data["sheet"] ? BolTotalsGroup.fromJS(_data["sheet"]) : undefined;
+            this.scrap = _data["scrap"] ? BolTotalsGroup.fromJS(_data["scrap"]) : undefined;
+            this.rejectCoil = _data["rejectCoil"] ? BolTotalsGroup.fromJS(_data["rejectCoil"]) : undefined;
+            this.packageText = _data["packageText"];
+            this.packageTextStored = _data["packageTextStored"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new BolTotals();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["packingList"] = this.packingList;
+        data["billOfLading"] = this.billOfLading;
+        data["stopCount"] = this.stopCount;
+        data["multiStop"] = this.multiStop;
+        data["sheet"] = this.sheet ? this.sheet.toJSON() : undefined;
+        data["scrap"] = this.scrap ? this.scrap.toJSON() : undefined;
+        data["rejectCoil"] = this.rejectCoil ? this.rejectCoil.toJSON() : undefined;
+        data["packageText"] = this.packageText;
+        data["packageTextStored"] = this.packageTextStored;
+        return data;
+    }
+}
+export class BolTotalsGroup {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.count = _data["count"];
+            this.grossWeight = _data["grossWeight"];
+            if (Array.isArray(_data["items"])) {
+                this.items = [];
+                for (let item of _data["items"])
+                    this.items.push(item);
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new BolTotalsGroup();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["count"] = this.count;
+        data["grossWeight"] = this.grossWeight;
+        if (Array.isArray(this.items)) {
+            data["items"] = [];
+            for (let item of this.items)
+                data["items"].push(item);
+        }
+        return data;
+    }
+}
 export class BulkCoilStatusResult {
     constructor(data) {
         if (data) {
@@ -18287,6 +20598,68 @@ export class CarrierWrite {
         return data;
     }
 }
+export class ChangeJobResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.closedRun = _data["closedRun"] ? ShiftCoilRun.fromJS(_data["closedRun"]) : undefined;
+            this.openedRun = _data["openedRun"] ? ShiftCoilRun.fromJS(_data["openedRun"]) : undefined;
+            this.board = _data["board"] ? LineBoardRow.fromJS(_data["board"]) : undefined;
+            this.previousJobFinished = _data["previousJobFinished"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new ChangeJobResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["closedRun"] = this.closedRun ? this.closedRun.toJSON() : undefined;
+        data["openedRun"] = this.openedRun ? this.openedRun.toJSON() : undefined;
+        data["board"] = this.board ? this.board.toJSON() : undefined;
+        data["previousJobFinished"] = this.previousJobFinished;
+        return data;
+    }
+}
+export class ChangeJobWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.newJobNum = _data["newJobNum"];
+            this.remainingWeight = _data["remainingWeight"];
+            this.endStatus = _data["endStatus"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new ChangeJobWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["newJobNum"] = this.newJobNum;
+        data["remainingWeight"] = this.remainingWeight;
+        data["endStatus"] = this.endStatus;
+        return data;
+    }
+}
 export class ChangePasswordRequest {
     constructor(data) {
         if (data) {
@@ -18346,6 +20719,7 @@ export class Coil {
             this.netWt = _data["netWt"];
             this.netWtBalance = _data["netWtBalance"];
             this.piecesPerCase = _data["piecesPerCase"];
+            this.abcoCoilNetWt = _data["abcoCoilNetWt"];
         }
     }
     static fromJS(data) {
@@ -18376,6 +20750,33 @@ export class Coil {
         data["netWt"] = this.netWt;
         data["netWtBalance"] = this.netWtBalance;
         data["piecesPerCase"] = this.piecesPerCase;
+        data["abcoCoilNetWt"] = this.abcoCoilNetWt;
+        return data;
+    }
+}
+export class CoilActualWeightWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.weight = _data["weight"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CoilActualWeightWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["weight"] = this.weight;
         return data;
     }
 }
@@ -19116,6 +21517,260 @@ export class CoilQualityWrite {
         data["samplingRequired"] = this.samplingRequired;
         data["pccNumber"] = this.pccNumber;
         data["revisionLevel"] = this.revisionLevel;
+        return data;
+    }
+}
+export class CoilReverseResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.refused = _data["refused"];
+            this.reason = _data["reason"];
+            this.reversedRunNum = _data["reversedRunNum"];
+            this.errorEvtId = _data["errorEvtId"];
+            this.board = _data["board"] ? LineBoardRow.fromJS(_data["board"]) : undefined;
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CoilReverseResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["refused"] = this.refused;
+        data["reason"] = this.reason;
+        data["reversedRunNum"] = this.reversedRunNum;
+        data["errorEvtId"] = this.errorEvtId;
+        data["board"] = this.board ? this.board.toJSON() : undefined;
+        return data;
+    }
+}
+export class CoilReverseWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.errorUser = _data["errorUser"];
+            this.errorTypeId = _data["errorTypeId"];
+            this.note = _data["note"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CoilReverseWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["errorUser"] = this.errorUser;
+        data["errorTypeId"] = this.errorTypeId;
+        data["note"] = this.note;
+        return data;
+    }
+}
+export class CoilRunEndWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.endWeight = _data["endWeight"];
+            this.endStatus = _data["endStatus"];
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.abJobNum = _data["abJobNum"];
+            this.note = _data["note"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CoilRunEndWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["endWeight"] = this.endWeight;
+        data["endStatus"] = this.endStatus;
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["abJobNum"] = this.abJobNum;
+        data["note"] = this.note;
+        return data;
+    }
+}
+export class CoilRunRecap {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.run = _data["run"] ? ShiftCoilRun.fromJS(_data["run"]) : undefined;
+            this.skidCount = _data["skidCount"];
+            this.piecesProduced = _data["piecesProduced"];
+            this.netWeightProduced = _data["netWeightProduced"];
+            this.scrapWeight = _data["scrapWeight"];
+            this.yieldPct = _data["yieldPct"];
+            this.yieldBelowTarget = _data["yieldBelowTarget"];
+            this.yieldTargetPct = _data["yieldTargetPct"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CoilRunRecap();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["run"] = this.run ? this.run.toJSON() : undefined;
+        data["skidCount"] = this.skidCount;
+        data["piecesProduced"] = this.piecesProduced;
+        data["netWeightProduced"] = this.netWeightProduced;
+        data["scrapWeight"] = this.scrapWeight;
+        data["yieldPct"] = this.yieldPct;
+        data["yieldBelowTarget"] = this.yieldBelowTarget;
+        data["yieldTargetPct"] = this.yieldTargetPct;
+        return data;
+    }
+}
+export class CoilRunResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.run = _data["run"] ? ShiftCoilRun.fromJS(_data["run"]) : undefined;
+            this.board = _data["board"] ? LineBoardRow.fromJS(_data["board"]) : undefined;
+            this.jobFinished = _data["jobFinished"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CoilRunResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["run"] = this.run ? this.run.toJSON() : undefined;
+        data["board"] = this.board ? this.board.toJSON() : undefined;
+        data["jobFinished"] = this.jobFinished;
+        return data;
+    }
+}
+export class CoilRunStartWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.abJobNum = _data["abJobNum"];
+            this.beginWeight = _data["beginWeight"];
+            this.beginStatus = _data["beginStatus"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CoilRunStartWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["abJobNum"] = this.abJobNum;
+        data["beginWeight"] = this.beginWeight;
+        data["beginStatus"] = this.beginStatus;
+        return data;
+    }
+}
+export var CoilScanOutcome;
+(function (CoilScanOutcome) {
+    CoilScanOutcome["Resolved"] = "Resolved";
+    CoilScanOutcome["Unreadable"] = "Unreadable";
+    CoilScanOutcome["NotOnJob"] = "NotOnJob";
+})(CoilScanOutcome || (CoilScanOutcome = {}));
+export class CoilScanResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.barcode = _data["barcode"];
+            this.normalized = _data["normalized"];
+            this.headerStripped = _data["headerStripped"];
+            this.outcome = _data["outcome"];
+            this.reason = _data["reason"];
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.coilOrgNum = _data["coilOrgNum"];
+            this.coilGauge = _data["coilGauge"];
+            this.coilWidth = _data["coilWidth"];
+            this.coilAlloy2 = _data["coilAlloy2"];
+            this.netWtBalance = _data["netWtBalance"];
+            this.abcoCoilNetWt = _data["abcoCoilNetWt"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CoilScanResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["barcode"] = this.barcode;
+        data["normalized"] = this.normalized;
+        data["headerStripped"] = this.headerStripped;
+        data["outcome"] = this.outcome;
+        data["reason"] = this.reason;
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["coilOrgNum"] = this.coilOrgNum;
+        data["coilGauge"] = this.coilGauge;
+        data["coilWidth"] = this.coilWidth;
+        data["coilAlloy2"] = this.coilAlloy2;
+        data["netWtBalance"] = this.netWtBalance;
+        data["abcoCoilNetWt"] = this.abcoCoilNetWt;
         return data;
     }
 }
@@ -21621,6 +24276,176 @@ export class HttpValidationProblemDetails {
         return data;
     }
 }
+export class InboundCoilDetail {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.ediFileId = _data["ediFileId"];
+            this.bol = _data["bol"];
+            this.itemNum = _data["itemNum"];
+            this.coilNumber = _data["coilNumber"];
+            this.partNum = _data["partNum"];
+            this.netWeight = _data["netWeight"];
+            this.grossWeight = _data["grossWeight"];
+            this.alloy = _data["alloy"];
+            this.temper = _data["temper"];
+            this.coilGauge = _data["coilGauge"];
+            this.coilWidth = _data["coilWidth"];
+            this.lot = _data["lot"];
+            this.packId = _data["packId"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new InboundCoilDetail();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["ediFileId"] = this.ediFileId;
+        data["bol"] = this.bol;
+        data["itemNum"] = this.itemNum;
+        data["coilNumber"] = this.coilNumber;
+        data["partNum"] = this.partNum;
+        data["netWeight"] = this.netWeight;
+        data["grossWeight"] = this.grossWeight;
+        data["alloy"] = this.alloy;
+        data["temper"] = this.temper;
+        data["coilGauge"] = this.coilGauge;
+        data["coilWidth"] = this.coilWidth;
+        data["lot"] = this.lot;
+        data["packId"] = this.packId;
+        return data;
+    }
+}
+export class InboundCoilMintRequest {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.barcode = _data["barcode"];
+            this.deviceAddress = _data["deviceAddress"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new InboundCoilMintRequest();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["barcode"] = this.barcode;
+        data["deviceAddress"] = this.deviceAddress;
+        return data;
+    }
+}
+export class InboundCoilMintResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.coilNumber = _data["coilNumber"];
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.minted = _data["minted"];
+            this.labelPrinted = _data["labelPrinted"];
+            this.labelCopies = _data["labelCopies"];
+            this.reason = _data["reason"];
+            this.replacedAbcNum = _data["replacedAbcNum"];
+            this.rowsUpdated = _data["rowsUpdated"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new InboundCoilMintResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["coilNumber"] = this.coilNumber;
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["minted"] = this.minted;
+        data["labelPrinted"] = this.labelPrinted;
+        data["labelCopies"] = this.labelCopies;
+        data["reason"] = this.reason;
+        data["replacedAbcNum"] = this.replacedAbcNum;
+        data["rowsUpdated"] = this.rowsUpdated;
+        return data;
+    }
+}
+export class InboundCoilScan {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.rawBarcode = _data["rawBarcode"];
+            this.coilNumber = _data["coilNumber"];
+            this.headerStripped = _data["headerStripped"];
+            this.noBarcode = _data["noBarcode"];
+            this.outcome = _data["outcome"];
+            if (Array.isArray(_data["mintedAbcNums"])) {
+                this.mintedAbcNums = [];
+                for (let item of _data["mintedAbcNums"])
+                    this.mintedAbcNums.push(item);
+            }
+            this.detail = _data["detail"] ? InboundCoilDetail.fromJS(_data["detail"]) : undefined;
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new InboundCoilScan();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["rawBarcode"] = this.rawBarcode;
+        data["coilNumber"] = this.coilNumber;
+        data["headerStripped"] = this.headerStripped;
+        data["noBarcode"] = this.noBarcode;
+        data["outcome"] = this.outcome;
+        if (Array.isArray(this.mintedAbcNums)) {
+            data["mintedAbcNums"] = [];
+            for (let item of this.mintedAbcNums)
+                data["mintedAbcNums"].push(item);
+        }
+        data["detail"] = this.detail ? this.detail.toJSON() : undefined;
+        return data;
+    }
+}
+export var InboundScanOutcome;
+(function (InboundScanOutcome) {
+    InboundScanOutcome["Unreadable"] = "Unreadable";
+    InboundScanOutcome["Mint"] = "Mint";
+    InboundScanOutcome["AlreadyMinted"] = "AlreadyMinted";
+})(InboundScanOutcome || (InboundScanOutcome = {}));
 export class Invoice {
     constructor(data) {
         if (data) {
@@ -22089,6 +24914,176 @@ export class JobWrite {
         return data;
     }
 }
+export class LineBoardRow {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.lineNum = _data["lineNum"];
+            this.lineDesc = _data["lineDesc"];
+            this.lineLocation = _data["lineLocation"];
+            this.lineStatus = _data["lineStatus"];
+            this.coilProcessRate = _data["coilProcessRate"];
+            this.shiftNum = _data["shiftNum"];
+            this.shiftStartTime = _data["shiftStartTime"] ? new Date(_data["shiftStartTime"].toString()) : undefined;
+            this.shiftEndTime = _data["shiftEndTime"] ? new Date(_data["shiftEndTime"].toString()) : undefined;
+            this.shiftScheduleType = _data["shiftScheduleType"];
+            this.shiftOperatorInitial = _data["shiftOperatorInitial"];
+            this.abJobNum = _data["abJobNum"];
+            this.jobStatus = _data["jobStatus"];
+            this.orderAbcNum = _data["orderAbcNum"];
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.coilOrgNum = _data["coilOrgNum"];
+            this.coilStatus = _data["coilStatus"];
+            this.coilAlloy2 = _data["coilAlloy2"];
+            this.coilGauge = _data["coilGauge"];
+            this.coilWidth = _data["coilWidth"];
+            this.coilNetWtBalance = _data["coilNetWtBalance"];
+            this.scrapSkidNum = _data["scrapSkidNum"];
+            this.sheetSkidNum = _data["sheetSkidNum"];
+            if (Array.isArray(_data["skids"])) {
+                this.skids = [];
+                for (let item of _data["skids"])
+                    this.skids.push(LineBoardSkid.fromJS(item));
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new LineBoardRow();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["lineNum"] = this.lineNum;
+        data["lineDesc"] = this.lineDesc;
+        data["lineLocation"] = this.lineLocation;
+        data["lineStatus"] = this.lineStatus;
+        data["coilProcessRate"] = this.coilProcessRate;
+        data["shiftNum"] = this.shiftNum;
+        data["shiftStartTime"] = this.shiftStartTime ? this.shiftStartTime.toISOString() : undefined;
+        data["shiftEndTime"] = this.shiftEndTime ? this.shiftEndTime.toISOString() : undefined;
+        data["shiftScheduleType"] = this.shiftScheduleType;
+        data["shiftOperatorInitial"] = this.shiftOperatorInitial;
+        data["abJobNum"] = this.abJobNum;
+        data["jobStatus"] = this.jobStatus;
+        data["orderAbcNum"] = this.orderAbcNum;
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["coilOrgNum"] = this.coilOrgNum;
+        data["coilStatus"] = this.coilStatus;
+        data["coilAlloy2"] = this.coilAlloy2;
+        data["coilGauge"] = this.coilGauge;
+        data["coilWidth"] = this.coilWidth;
+        data["coilNetWtBalance"] = this.coilNetWtBalance;
+        data["scrapSkidNum"] = this.scrapSkidNum;
+        data["sheetSkidNum"] = this.sheetSkidNum;
+        if (Array.isArray(this.skids)) {
+            data["skids"] = [];
+            for (let item of this.skids)
+                data["skids"].push(item ? item.toJSON() : undefined);
+        }
+        return data;
+    }
+}
+export class LineBoardSkid {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.slot = _data["slot"];
+            this.sheetSkidNum = _data["sheetSkidNum"];
+            this.sheetSkidDisplayNum = _data["sheetSkidDisplayNum"];
+            this.abJobNum = _data["abJobNum"];
+            this.skidPieces = _data["skidPieces"];
+            this.sheetNetWt = _data["sheetNetWt"];
+            this.skidSheetStatus = _data["skidSheetStatus"];
+            this.skidLocation = _data["skidLocation"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new LineBoardSkid();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["slot"] = this.slot;
+        data["sheetSkidNum"] = this.sheetSkidNum;
+        data["sheetSkidDisplayNum"] = this.sheetSkidDisplayNum;
+        data["abJobNum"] = this.abJobNum;
+        data["skidPieces"] = this.skidPieces;
+        data["sheetNetWt"] = this.sheetNetWt;
+        data["skidSheetStatus"] = this.skidSheetStatus;
+        data["skidLocation"] = this.skidLocation;
+        return data;
+    }
+}
+export class LineCurrentCoilWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.coilAbcNum = _data["coilAbcNum"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new LineCurrentCoilWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["coilAbcNum"] = this.coilAbcNum;
+        return data;
+    }
+}
+export class LineCurrentJobWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.abJobNum = _data["abJobNum"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new LineCurrentJobWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["abJobNum"] = this.abJobNum;
+        return data;
+    }
+}
 export class LineDieShape {
     constructor(data) {
         if (data) {
@@ -22274,6 +25269,232 @@ export class LineErrorWrite {
         data["abJobNum"] = this.abJobNum;
         data["title"] = this.title;
         data["message"] = this.message;
+        return data;
+    }
+}
+export class LineLiveMetrics {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.lineNum = _data["lineNum"];
+            this.shiftNum = _data["shiftNum"];
+            this.shiftStartTime = _data["shiftStartTime"] ? new Date(_data["shiftStartTime"].toString()) : undefined;
+            this.elapsedSeconds = _data["elapsedSeconds"];
+            this.downtimeSeconds = _data["downtimeSeconds"];
+            this.downtimeOpen = _data["downtimeOpen"];
+            this.shiftOpen = _data["shiftOpen"];
+            this.shiftStale = _data["shiftStale"];
+            this.efficiencyPct = _data["efficiencyPct"];
+            this.shiftProcessedWeight = _data["shiftProcessedWeight"];
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.abJobNum = _data["abJobNum"];
+            this.coilBeginWeight = _data["coilBeginWeight"];
+            this.coilCurrentWeight = _data["coilCurrentWeight"];
+            this.coilProcessedWeight = _data["coilProcessedWeight"];
+            this.coilFinishPct = _data["coilFinishPct"];
+            this.coilScrapWeight = _data["coilScrapWeight"];
+            this.coilYieldPct = _data["coilYieldPct"];
+            this.yieldBelowTarget = _data["yieldBelowTarget"];
+            this.yieldTargetPct = _data["yieldTargetPct"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new LineLiveMetrics();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["lineNum"] = this.lineNum;
+        data["shiftNum"] = this.shiftNum;
+        data["shiftStartTime"] = this.shiftStartTime ? this.shiftStartTime.toISOString() : undefined;
+        data["elapsedSeconds"] = this.elapsedSeconds;
+        data["downtimeSeconds"] = this.downtimeSeconds;
+        data["downtimeOpen"] = this.downtimeOpen;
+        data["shiftOpen"] = this.shiftOpen;
+        data["shiftStale"] = this.shiftStale;
+        data["efficiencyPct"] = this.efficiencyPct;
+        data["shiftProcessedWeight"] = this.shiftProcessedWeight;
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["abJobNum"] = this.abJobNum;
+        data["coilBeginWeight"] = this.coilBeginWeight;
+        data["coilCurrentWeight"] = this.coilCurrentWeight;
+        data["coilProcessedWeight"] = this.coilProcessedWeight;
+        data["coilFinishPct"] = this.coilFinishPct;
+        data["coilScrapWeight"] = this.coilScrapWeight;
+        data["coilYieldPct"] = this.coilYieldPct;
+        data["yieldBelowTarget"] = this.yieldBelowTarget;
+        data["yieldTargetPct"] = this.yieldTargetPct;
+        return data;
+    }
+}
+export class LineQueueReorderWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            if (Array.isArray(_data["abJobNums"])) {
+                this.abJobNums = [];
+                for (let item of _data["abJobNums"])
+                    this.abJobNums.push(item);
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new LineQueueReorderWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        if (Array.isArray(this.abJobNums)) {
+            data["abJobNums"] = [];
+            for (let item of this.abJobNums)
+                data["abJobNums"].push(item);
+        }
+        return data;
+    }
+}
+export class LineQueueRow {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.lineNum = _data["lineNum"];
+            this.abJobNum = _data["abJobNum"];
+            this.priorityNum = _data["priorityNum"];
+            this.coilRequired = _data["coilRequired"];
+            this.note = _data["note"];
+            this.status = _data["status"];
+            this.jobStatus = _data["jobStatus"];
+            this.orderAbcNum = _data["orderAbcNum"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new LineQueueRow();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["lineNum"] = this.lineNum;
+        data["abJobNum"] = this.abJobNum;
+        data["priorityNum"] = this.priorityNum;
+        data["coilRequired"] = this.coilRequired;
+        data["note"] = this.note;
+        data["status"] = this.status;
+        data["jobStatus"] = this.jobStatus;
+        data["orderAbcNum"] = this.orderAbcNum;
+        return data;
+    }
+}
+export class LineQueueWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.priorityNum = _data["priorityNum"];
+            this.coilRequired = _data["coilRequired"];
+            this.note = _data["note"];
+            this.status = _data["status"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new LineQueueWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["priorityNum"] = this.priorityNum;
+        data["coilRequired"] = this.coilRequired;
+        data["note"] = this.note;
+        data["status"] = this.status;
+        return data;
+    }
+}
+export class LineShiftEndResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.shiftNum = _data["shiftNum"];
+            this.dtTotalSeconds = _data["dtTotalSeconds"];
+            this.board = _data["board"] ? LineBoardRow.fromJS(_data["board"]) : undefined;
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new LineShiftEndResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["shiftNum"] = this.shiftNum;
+        data["dtTotalSeconds"] = this.dtTotalSeconds;
+        data["board"] = this.board ? this.board.toJSON() : undefined;
+        return data;
+    }
+}
+export class LineShiftStartWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.shiftNum = _data["shiftNum"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new LineShiftStartWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["shiftNum"] = this.shiftNum;
         return data;
     }
 }
@@ -22734,6 +25955,50 @@ export class OpcLogDetail {
         data["quality"] = this.quality;
         data["timeStamp"] = this.timeStamp ? this.timeStamp.toISOString() : undefined;
         data["description"] = this.description;
+        return data;
+    }
+}
+export class OpenShift {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.shiftNum = _data["shiftNum"];
+            this.lineNum = _data["lineNum"];
+            this.lineDesc = _data["lineDesc"];
+            this.startTime = _data["startTime"] ? new Date(_data["startTime"].toString()) : undefined;
+            this.scheduleType = _data["scheduleType"];
+            this.operatorInitial = _data["operatorInitial"];
+            this.hoursOpen = _data["hoursOpen"];
+            this.stale = _data["stale"];
+            this.onLineBoard = _data["onLineBoard"];
+            this.coilRuns = _data["coilRuns"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new OpenShift();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["shiftNum"] = this.shiftNum;
+        data["lineNum"] = this.lineNum;
+        data["lineDesc"] = this.lineDesc;
+        data["startTime"] = this.startTime ? this.startTime.toISOString() : undefined;
+        data["scheduleType"] = this.scheduleType;
+        data["operatorInitial"] = this.operatorInitial;
+        data["hoursOpen"] = this.hoursOpen;
+        data["stale"] = this.stale;
+        data["onLineBoard"] = this.onLineBoard;
+        data["coilRuns"] = this.coilRuns;
         return data;
     }
 }
@@ -24011,6 +27276,70 @@ export class PieceWeightResult {
         return data;
     }
 }
+export class PlcFaultCode {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.lineNum = _data["lineNum"];
+            this.faultCode = _data["faultCode"];
+            this.description = _data["description"];
+            this.notes = _data["notes"];
+            this.updatedUtc = _data["updatedUtc"] ? new Date(_data["updatedUtc"].toString()) : undefined;
+            this.updatedBy = _data["updatedBy"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new PlcFaultCode();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["lineNum"] = this.lineNum;
+        data["faultCode"] = this.faultCode;
+        data["description"] = this.description;
+        data["notes"] = this.notes;
+        data["updatedUtc"] = this.updatedUtc ? this.updatedUtc.toISOString() : undefined;
+        data["updatedBy"] = this.updatedBy;
+        return data;
+    }
+}
+export class PlcFaultCodeWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.description = _data["description"];
+            this.notes = _data["notes"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new PlcFaultCodeWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["description"] = this.description;
+        data["notes"] = this.notes;
+        return data;
+    }
+}
 export class PmAction {
     constructor(data) {
         if (data) {
@@ -24387,6 +27716,48 @@ export class PmWrite {
         return data;
     }
 }
+export class ProblemDetails {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            for (var property in _data) {
+                if (_data.hasOwnProperty(property))
+                    this[property] = _data[property];
+            }
+            this.type = _data["type"];
+            this.title = _data["title"];
+            this.status = _data["status"];
+            this.detail = _data["detail"];
+            this.instance = _data["instance"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new ProblemDetails();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        for (var property in this) {
+            if (this.hasOwnProperty(property))
+                data[property] = this[property];
+        }
+        data["type"] = this.type;
+        data["title"] = this.title;
+        data["status"] = this.status;
+        data["detail"] = this.detail;
+        data["instance"] = this.instance;
+        return data;
+    }
+}
 export class ProcessCoil {
     constructor(data) {
         if (data) {
@@ -24517,6 +27888,9 @@ export class ProductionFolder {
             this.coilCount = _data["coilCount"];
             this.skidCount = _data["skidCount"];
             this.noteCount = _data["noteCount"];
+            this.sketchId = _data["sketchId"];
+            this.sketchName = _data["sketchName"];
+            this.sketchJobNote = _data["sketchJobNote"];
         }
     }
     static fromJS(data) {
@@ -24536,6 +27910,9 @@ export class ProductionFolder {
         data["coilCount"] = this.coilCount;
         data["skidCount"] = this.skidCount;
         data["noteCount"] = this.noteCount;
+        data["sketchId"] = this.sketchId;
+        data["sketchName"] = this.sketchName;
+        data["sketchJobNote"] = this.sketchJobNote;
         return data;
     }
 }
@@ -26812,6 +30189,56 @@ export class Shift {
         return data;
     }
 }
+export class ShiftCoilRun {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.shiftNum = _data["shiftNum"];
+            this.coilRunNum = _data["coilRunNum"];
+            this.abJobNum = _data["abJobNum"];
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.coilBeginStatus = _data["coilBeginStatus"];
+            this.coilEndStatus = _data["coilEndStatus"];
+            this.coilBeginWt = _data["coilBeginWt"];
+            this.coilEndWt = _data["coilEndWt"];
+            this.coilBeginTime = _data["coilBeginTime"] ? new Date(_data["coilBeginTime"].toString()) : undefined;
+            this.coilEndTime = _data["coilEndTime"] ? new Date(_data["coilEndTime"].toString()) : undefined;
+            this.processWt = _data["processWt"];
+            this.note = _data["note"];
+            this.coilOrgNum = _data["coilOrgNum"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new ShiftCoilRun();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["shiftNum"] = this.shiftNum;
+        data["coilRunNum"] = this.coilRunNum;
+        data["abJobNum"] = this.abJobNum;
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["coilBeginStatus"] = this.coilBeginStatus;
+        data["coilEndStatus"] = this.coilEndStatus;
+        data["coilBeginWt"] = this.coilBeginWt;
+        data["coilEndWt"] = this.coilEndWt;
+        data["coilBeginTime"] = this.coilBeginTime ? this.coilBeginTime.toISOString() : undefined;
+        data["coilEndTime"] = this.coilEndTime ? this.coilEndTime.toISOString() : undefined;
+        data["processWt"] = this.processWt;
+        data["note"] = this.note;
+        data["coilOrgNum"] = this.coilOrgNum;
+        return data;
+    }
+}
 export class ShiftPagedResult {
     constructor(data) {
         if (data) {
@@ -28071,6 +31498,318 @@ export class UptimeRow {
         data["downtimeHours"] = this.downtimeHours;
         data["uptimeHours"] = this.uptimeHours;
         data["uptimePct"] = this.uptimePct;
+        return data;
+    }
+}
+export class WarehouseItemDeleteResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.deleted = _data["deleted"];
+            this.prodItemNum = _data["prodItemNum"];
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.coilRemoved = _data["coilRemoved"];
+            this.coilKeptReason = _data["coilKeptReason"];
+            this.remainingItems = _data["remainingItems"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new WarehouseItemDeleteResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["deleted"] = this.deleted;
+        data["prodItemNum"] = this.prodItemNum;
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["coilRemoved"] = this.coilRemoved;
+        data["coilKeptReason"] = this.coilKeptReason;
+        data["remainingItems"] = this.remainingItems;
+        return data;
+    }
+}
+export class WarehouseSkidDeleteResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.deleted = _data["deleted"];
+            this.sheetSkidNum = _data["sheetSkidNum"];
+            this.itemsRemoved = _data["itemsRemoved"];
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.coilRemoved = _data["coilRemoved"];
+            this.coilKeptReason = _data["coilKeptReason"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new WarehouseSkidDeleteResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["deleted"] = this.deleted;
+        data["sheetSkidNum"] = this.sheetSkidNum;
+        data["itemsRemoved"] = this.itemsRemoved;
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["coilRemoved"] = this.coilRemoved;
+        data["coilKeptReason"] = this.coilKeptReason;
+        return data;
+    }
+}
+export class WarehouseSkidItemResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.skidFound = _data["skidFound"];
+            this.sheetSkidNum = _data["sheetSkidNum"];
+            this.prodItemNum = _data["prodItemNum"];
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.coilMinted = _data["coilMinted"];
+            if (Array.isArray(_data["warnings"])) {
+                this.warnings = [];
+                for (let item of _data["warnings"])
+                    this.warnings.push(item);
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new WarehouseSkidItemResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["skidFound"] = this.skidFound;
+        data["sheetSkidNum"] = this.sheetSkidNum;
+        data["prodItemNum"] = this.prodItemNum;
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["coilMinted"] = this.coilMinted;
+        if (Array.isArray(this.warnings)) {
+            data["warnings"] = [];
+            for (let item of this.warnings)
+                data["warnings"].push(item);
+        }
+        return data;
+    }
+}
+export class WarehouseSkidItemWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.coilOrgNum = _data["coilOrgNum"];
+            this.lotNum = _data["lotNum"];
+            this.prodItemPieces = _data["prodItemPieces"];
+            this.prodItemNetWt = _data["prodItemNetWt"];
+            this.prodItemTheoreticalWt = _data["prodItemTheoreticalWt"];
+            this.prodItemStatus = _data["prodItemStatus"];
+            this.prodItemPlacement = _data["prodItemPlacement"];
+            this.sheetNetWt = _data["sheetNetWt"];
+            this.sheetTareWt = _data["sheetTareWt"];
+            this.skidPieces = _data["skidPieces"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new WarehouseSkidItemWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["coilOrgNum"] = this.coilOrgNum;
+        data["lotNum"] = this.lotNum;
+        data["prodItemPieces"] = this.prodItemPieces;
+        data["prodItemNetWt"] = this.prodItemNetWt;
+        data["prodItemTheoreticalWt"] = this.prodItemTheoreticalWt;
+        data["prodItemStatus"] = this.prodItemStatus;
+        data["prodItemPlacement"] = this.prodItemPlacement;
+        data["sheetNetWt"] = this.sheetNetWt;
+        data["sheetTareWt"] = this.sheetTareWt;
+        data["skidPieces"] = this.skidPieces;
+        return data;
+    }
+}
+export class WarehouseSkidModifyResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.found = _data["found"];
+            this.sheetSkidNum = _data["sheetSkidNum"];
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.coilChanged = _data["coilChanged"];
+            this.coilMinted = _data["coilMinted"];
+            this.previousCoilRemoved = _data["previousCoilRemoved"];
+            if (Array.isArray(_data["warnings"])) {
+                this.warnings = [];
+                for (let item of _data["warnings"])
+                    this.warnings.push(item);
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new WarehouseSkidModifyResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["found"] = this.found;
+        data["sheetSkidNum"] = this.sheetSkidNum;
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["coilChanged"] = this.coilChanged;
+        data["coilMinted"] = this.coilMinted;
+        data["previousCoilRemoved"] = this.previousCoilRemoved;
+        if (Array.isArray(this.warnings)) {
+            data["warnings"] = [];
+            for (let item of this.warnings)
+                data["warnings"].push(item);
+        }
+        return data;
+    }
+}
+export class WarehouseSkidResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.sheetSkidNum = _data["sheetSkidNum"];
+            this.prodItemNum = _data["prodItemNum"];
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.coilMinted = _data["coilMinted"];
+            this.refOrderAbcNum = _data["refOrderAbcNum"];
+            this.refOrderAbcItem = _data["refOrderAbcItem"];
+            this.packageNum = _data["packageNum"];
+            if (Array.isArray(_data["warnings"])) {
+                this.warnings = [];
+                for (let item of _data["warnings"])
+                    this.warnings.push(item);
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new WarehouseSkidResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["sheetSkidNum"] = this.sheetSkidNum;
+        data["prodItemNum"] = this.prodItemNum;
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["coilMinted"] = this.coilMinted;
+        data["refOrderAbcNum"] = this.refOrderAbcNum;
+        data["refOrderAbcItem"] = this.refOrderAbcItem;
+        data["packageNum"] = this.packageNum;
+        if (Array.isArray(this.warnings)) {
+            data["warnings"] = [];
+            for (let item of this.warnings)
+                data["warnings"].push(item);
+        }
+        return data;
+    }
+}
+export class WarehouseSkidWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.abJobNum = _data["abJobNum"];
+            this.coilOrgNum = _data["coilOrgNum"];
+            this.lotNum = _data["lotNum"];
+            this.sheetNetWt = _data["sheetNetWt"];
+            this.sheetTareWt = _data["sheetTareWt"];
+            this.skidPieces = _data["skidPieces"];
+            this.sheetTheoreticalWt = _data["sheetTheoreticalWt"];
+            this.skidSheetStatus = _data["skidSheetStatus"];
+            this.skidDate = _data["skidDate"] ? new Date(_data["skidDate"].toString()) : undefined;
+            this.skidFromIfWhed = _data["skidFromIfWhed"];
+            this.skidTicketIfWhed = _data["skidTicketIfWhed"];
+            this.skidTypeIfWhed = _data["skidTypeIfWhed"];
+            this.prodItemPieces = _data["prodItemPieces"];
+            this.prodItemNetWt = _data["prodItemNetWt"];
+            this.prodItemTheoreticalWt = _data["prodItemTheoreticalWt"];
+            this.prodItemStatus = _data["prodItemStatus"];
+            this.prodItemPlacement = _data["prodItemPlacement"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new WarehouseSkidWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["abJobNum"] = this.abJobNum;
+        data["coilOrgNum"] = this.coilOrgNum;
+        data["lotNum"] = this.lotNum;
+        data["sheetNetWt"] = this.sheetNetWt;
+        data["sheetTareWt"] = this.sheetTareWt;
+        data["skidPieces"] = this.skidPieces;
+        data["sheetTheoreticalWt"] = this.sheetTheoreticalWt;
+        data["skidSheetStatus"] = this.skidSheetStatus;
+        data["skidDate"] = this.skidDate ? this.skidDate.toISOString() : undefined;
+        data["skidFromIfWhed"] = this.skidFromIfWhed;
+        data["skidTicketIfWhed"] = this.skidTicketIfWhed;
+        data["skidTypeIfWhed"] = this.skidTypeIfWhed;
+        data["prodItemPieces"] = this.prodItemPieces;
+        data["prodItemNetWt"] = this.prodItemNetWt;
+        data["prodItemTheoreticalWt"] = this.prodItemTheoreticalWt;
+        data["prodItemStatus"] = this.prodItemStatus;
+        data["prodItemPlacement"] = this.prodItemPlacement;
         return data;
     }
 }

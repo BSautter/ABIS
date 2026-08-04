@@ -7408,10 +7408,15 @@ public sealed class AbisRepository : IAbisRepository
                    j.order_abc_num AS OrderAbcNum, o.orig_customer_po AS OrigCustomerPo, c.customer_short_name AS CustomerShortName,
                    (SELECT COUNT(*) FROM process_coil pc WHERE pc.ab_job_num = j.ab_job_num) AS CoilCount,
                    (SELECT COUNT(*) FROM sheet_skid ss WHERE ss.ab_job_num = j.ab_job_num AND (ss.skid_sheet_status IS NULL OR ss.skid_sheet_status <> 6)) AS SkidCount,
-                   (SELECT COUNT(*) FROM job_efolder_notes n WHERE n.ab_job_num = j.ab_job_num) AS NoteCount
+                   (SELECT COUNT(*) FROM job_efolder_notes n WHERE n.ab_job_num = j.ab_job_num) AS NoteCount,
+                   -- The sketch the job is cut to. Legacy's production folder showed the drawing on
+                   -- this screen (w_production_folder.srw:226 SELECTBLOB sketch_view), so the folder
+                   -- carries the id and name; the 417 KB bitmap is fetched separately by the client.
+                   j.sketch_id AS SketchId, sk.sketch_name AS SketchName, j.sketch_job_note AS SketchJobNote
             FROM ab_job j
             LEFT JOIN customer_order o ON o.order_abc_num = j.order_abc_num
             LEFT JOIN customer c ON c.customer_id = o.orig_customer_id
+            LEFT JOIN sketch sk ON sk.sketch_id = j.sketch_id
             WHERE j.ab_job_num = :id
             """, new { id = abJobNum }, cancellationToken: ct));
     }
