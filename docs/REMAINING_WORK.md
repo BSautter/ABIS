@@ -721,12 +721,16 @@ function `f_add_system_log_tran`, whose body is not vendored), and the Instron "
   404-vs-failure split, object-URL revocation, escaping), `status-labels.ts` (line identity, the plant
   board order, decommissioned-vs-unlisted), and `edge.ts` (primary→fallback failover, the per-line
   scale tag, null-is-unknown-never-zero, unreadable conveyor cells).
-- [ ] **M** **Next for the harness: the DAS console's weight rules.** `pullWeight` holds the guards
-  that decide what lands in `sheet_net_wt` — the conveyor cell 3/4 precondition and the legacy
-  10–39,000 lb band — but it is inline in a page module with import-time side effects, so it cannot be
-  imported by a test. Extracting the decision into a pure function would make the highest-value client
-  logic testable; it is a small refactor of shipped code and deserves its own change rather than being
-  bundled into the harness.
+- [x] **M** **The DAS console's weight rules are now testable — done (#362).** The guards deciding
+  what lands in `sheet_net_wt` moved out of `pullWeight` into `clientapp/src/skid-weight.ts` as a pure
+  decision, with **12 tests**. `pullWeight` keeps only the fetching and the DOM.
+  Each rule is a way the button could otherwise record a number the scale never gave: the conveyor
+  cell 3/4 precondition (an idle BL 110 reads `ScaleSkidWt = 0` with every cell clear — verified live,
+  and without the guard that 0 becomes a skid's net weight), an unreadable cell counting as *not* on
+  the scale, null staying unknown rather than becoming zero, the per-line scale tag so one line cannot
+  read another's, and legacy's `10–39,000 lb` band at both bounds.
+  The refusal ORDER is pinned too: with no stack *and* no reading, the operator is told "no stack yet"
+  rather than "the scale did not answer", which would send them hunting a fault.
 
 - [x] **Omitted-NOT-NULL-column class: swept, clean, and now guarded in CI** — done (#337).
   Live `.230` has **955** NOT NULL columns; **190** of them are nullable in `SqliteFixture`, so CI's DDL

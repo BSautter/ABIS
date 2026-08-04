@@ -17,6 +17,7 @@ import { statusChip, lineLabel, loadLineNames } from './status-labels.js';
 import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount, fetchCounters, fetchStacker, fetchConveyor, fetchLineStatus, browseEdgeTags } from './edge.js';
 import type { CountersResult, StackerResult, LineStatusResult } from './edge.js';
 import { renderSketch } from './sketch.js';
+import { decideConveyorWeight } from './skid-weight.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 const client = (): AbisClient => new AbisClient('', { fetch: authFetch });
@@ -557,36 +558,25 @@ async function pullWeight(): Promise<void> {
   if (bases.length === 0) { setErr('Set the edge URL to pull a live weight (e.g. http://edge-host:8090).'); return; }
   if (lineNum == null) { setErr('Load a job first — the conveyor scale is per line.'); return; }
 
-  const conveyor = await fetchConveyor(bases, lineNum);
-  if (!conveyor.reachable) { setErr('Edge unreachable on every host — weigh the skid and enter the weight manually.'); return; }
-  if (!conveyor.configured) {
-    setErr(`${lineLabel(lineNum)} has no conveyor scale — weigh the skid and enter the weight manually.`); return;
-  }
-  // occupied === true only: null is an unreadable sensor, and treating unknown as "on the scale" is
-  // how you record the weight of an empty belt.
-  if (![3, 4].some((c) => conveyor.cells.get(c)?.occupied === true)) {
-    setErr('No stack on Conveyor 1 yet — the scale reads nothing until the stack reaches it.'); return;
-  }
-
-  // Bind the scale to THIS line explicitly. The edge's /stacker defaults resolve to stacker110, so a
-  // console left on the defaults would happily hand BL110's scale weight to another line's skid. The
-  // deployed edge makes that concrete: it still answers /conveyor?line=4 (BL78, no stacker at all)
-  // with 12 cells, because it predates the per-line conveyor fix. Requiring the tag removes the
-  // dependence on which edge build happens to be out there.
   const scaleTag = v('#scaleTag');
-  if (!scaleTag) {
-    setErr('Set this line’s conveyor scale tag in the ⚖ Scale bar above (e.g. stacker110.ScaleSkidWt, or use 🔎) before pulling — otherwise the edge would answer with another line’s scale.'); return;
-  }
-  const s = await fetchStacker(bases, scaleTag);
-  if (!s.reachable || s.scaleWeight == null) {
-    setErr('The conveyor scale did not answer — weigh the skid and enter the weight manually.'); return;
-  }
-  if (s.scaleWeight < 10 || s.scaleWeight > 39000) {
-    setErr(`The conveyor scale reads ${s.scaleWeight.toLocaleString()} lb, outside the 10–39,000 lb range a skid can be — check the scale.`); return;
-  }
-  setV('#skNet', s.scaleWeight);
-  setOk(`Pulled ${s.scaleWeight.toLocaleString()} lb net from the conveyor scale${s.via}.`);
+  const conveyor = await fetchConveyor(bases, lineNum);
+  // Skip the scale read when the answer cannot depend on it — no edge, no cell map, or no tag bound to
+  // this line. The cell check deliberately is NOT repeated here: duplicating a rule outside
+  // decideConveyorWeight is how the two copies drift, and the cost of being wrong is one extra HTTP
+  // call on a path that is about to refuse anyway.
+  const stacker = conveyor.reachable && conveyor.configured && scaleTag
+    ? await fetchStacker(bases, scaleTag)
+    : { reachable: false, scaleWeight: null, via: '' };
+
+  // The rules themselves live in skid-weight.ts so they can be tested: this decides what is written
+  // to sheet_net_wt, which invoicing and the 856 ASN are built from.
+  const decision = decideConveyorWeight({ lineName: lineLabel(lineNum), scaleTag, conveyor, stacker });
+  if (!decision.ok) { setErr(decision.reason); return; }
+
+  setV('#skNet', decision.netLb);
+  setOk(`Pulled ${decision.netLb.toLocaleString()} lb net from the conveyor scale${decision.via}.`);
 }
+
 
 async function saveSkid(): Promise<void> {
   if (job == null) return;
