@@ -20,6 +20,47 @@ const num = (n: number | undefined): string => (n == null ? '' : n.toLocaleStrin
 const dShow = (d: Date | undefined): string => (d == null ? '' : d.toLocaleString());
 const chip = (s: unknown): string => `<span class="chip mut">${esc(s ?? '—')}</span>`;
 
+let editing: number | null = null;
+
+// Open the correction panel for a skid. Fields start EMPTY rather than pre-filled with the current
+// values: this endpoint treats an omitted field as "leave alone", so a blank box means untouched.
+// Pre-filling would re-submit every value, turning a one-field correction into a full restatement.
+function openCorrection(skidNum: number): void {
+  editing = skidNum;
+  $('#eNum').textContent = String(skidNum);
+  ['#eNet', '#eTare', '#ePieces', '#eTheo', '#eStatus', '#eOnhold'].forEach((i) => { $<HTMLInputElement>(i).value = ''; });
+  $('#editMsg').textContent = '';
+  $('#editCard').hidden = false;
+  $('#editCard').scrollIntoView({ block: 'nearest' });
+}
+
+async function saveCorrection(): Promise<void> {
+  if (editing == null) return;
+  const num_ = (sel: string): number | undefined => {
+    const raw = $<HTMLInputElement>(sel).value.trim();
+    return raw === '' ? undefined : Number(raw);
+  };
+  const body = {
+    sheetNetWt: num_('#eNet'), sheetTareWt: num_('#eTare'), skidPieces: num_('#ePieces'),
+    sheetTheoreticalWt: num_('#eTheo'), skidSheetStatus: num_('#eStatus'), onholdReasonCode: num_('#eOnhold'),
+  };
+  if (Object.values(body).every((x) => x === undefined)) { $('#editMsg').textContent = 'Nothing to change.'; return; }
+  try {
+    const r = await authFetch(`/api/sheet-skids/${editing}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    if (!r.ok) { $('#editMsg').textContent = `Save failed (${r.status}).`; return; }
+    const res = await r.json() as { warnings?: string[] };
+    // Warnings mean the skid was saved AND its totals disagree with its items. Saying only "saved"
+    // would hide that; refusing would throw away a weight the operator actually measured.
+    $('#editMsg').textContent = res.warnings?.length
+      ? `✓ Saved. ${res.warnings.join(' ')}`
+      : '✓ Saved.';
+    $('#editCard').hidden = res.warnings?.length ? false : true;
+    await loadSheet();
+  } catch (e) { $('#editMsg').textContent = `Save failed: ${(e as Error).message}`; }
+}
+
 function scaffold(): string {
   const tab = (id: string, label: string) => `<button id="tab-${id}" type="button">${label}</button>`;
   return `
@@ -45,6 +86,25 @@ function scaffold(): string {
           <div class="fld"><label>Pieces</label><input id="sPieces" inputmode="numeric" style="width:90px" /></div>
         </div>
         <div class="frow" style="margin-top:10px;align-items:center"><button class="btn sm" id="btnSheet" type="button">Create sheet skid</button><span id="ok" class="ok-note"></span></div>
+      </div></div>
+
+      <!-- Correcting a skid's own figures (legacy w_office_skid_entry's "modify"). Separate from the
+           create form because it is a correction tool: blank fields are left alone, so a mis-keyed
+           weight can be fixed without restating everything else. -->
+      <div class="card" id="editCard" style="margin-top:16px" hidden><header><h2>Correct skid <span id="eNum" class="mono"></span></h2></header><div class="body">
+        <div class="frow">
+          <div class="fld"><label>Net wt</label><input id="eNet" type="number" step="0.01" style="width:110px" placeholder="unchanged" /></div>
+          <div class="fld"><label>Tare wt</label><input id="eTare" type="number" step="0.01" style="width:110px" placeholder="unchanged" /></div>
+          <div class="fld"><label>Pieces</label><input id="ePieces" inputmode="numeric" style="width:90px" placeholder="unchanged" /></div>
+          <div class="fld"><label>Theoretical wt</label><input id="eTheo" type="number" step="0.01" style="width:120px" placeholder="unchanged" /></div>
+          <div class="fld"><label>Status</label><input id="eStatus" inputmode="numeric" style="width:80px" placeholder="unchanged" /></div>
+          <div class="fld"><label>On-hold reason</label><input id="eOnhold" inputmode="numeric" style="width:110px" placeholder="unchanged" /></div>
+        </div>
+        <div class="frow" style="margin-top:10px;align-items:center">
+          <button class="btn sm" id="btnEditSave" type="button">Save correction</button>
+          <button class="btn sm ghost" id="btnEditCancel" type="button">Cancel</button>
+          <span id="editMsg" class="ok-note"></span>
+        </div>
       </div></div>
     </div>
 
@@ -89,7 +149,8 @@ async function loadSheet(): Promise<void> {
       <td class="mono">${esc(x.sheetSkidNum)}</td><td class="mono">${esc(x.abJobNum)}</td><td>${esc(x.sheetSkidDisplayNum)}</td>
       <td class="num">${esc(num(x.sheetNetWt))}</td><td class="num">${esc(num(x.sheetTareWt))}</td><td class="num">${esc(x.skidPieces)}</td>
       <td class="mono">${esc(dShow(x.skidDate))}</td>
-      <td><button class="btn xs ghost" type="button" data-make-scrap="${esc(x.sheetSkidNum)}">Make scrap</button></td></tr>`).join('') : '<tr><td colspan="8" class="muted">No sheet skids.</td></tr>';
+      <td><button class="btn xs ghost" type="button" data-edit-skid="${esc(x.sheetSkidNum)}">Edit</button>
+          <button class="btn xs ghost" type="button" data-make-scrap="${esc(x.sheetSkidNum)}">Make scrap</button></td></tr>`).join('') : '<tr><td colspan="8" class="muted">No sheet skids.</td></tr>';
     $('#cSheet').textContent = `${(page.totalCount ?? 0).toLocaleString()} total`;
   } catch (e) { setErr(`Sheet skids load failed: ${(e as Error).message}`); }
 }
@@ -192,7 +253,11 @@ function showTab(name: string): void {
   ['sheet', 'scrap', 'partials'].forEach((t) => $(`#tab-${t}`).addEventListener('click', () => showTab(t)));
   $('#btnSheet').addEventListener('click', () => void createSheet());
   $('#btnScrap').addEventListener('click', () => void createScrap());
+  $('#btnEditSave').addEventListener('click', () => void saveCorrection());
+  $('#btnEditCancel').addEventListener('click', () => { $('#editCard').hidden = true; });
   $('#tSheet').addEventListener('click', (e) => {
+    const ed = (e.target as HTMLElement).getAttribute('data-edit-skid');
+    if (ed) { openCorrection(Number(ed)); return; }
     const n = (e.target as HTMLElement).closest<HTMLElement>('[data-make-scrap]')?.dataset.makeScrap;
     if (n) void makeScrap(Number(n));
   });

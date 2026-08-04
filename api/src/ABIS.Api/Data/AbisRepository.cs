@@ -203,7 +203,8 @@ public sealed class AbisRepository : IAbisRepository
         sheet_skid_num AS SheetSkidNum, ab_job_num AS AbJobNum, sheet_skid_display_num AS SheetSkidDisplayNum,
         sheet_net_wt AS SheetNetWt, sheet_tare_wt AS SheetTareWt, skid_pieces AS SkidPieces, skid_date AS SkidDate,
         skid_location AS SkidLocation, skid_sheet_status AS SkidSheetStatus,
-        skid_ticket_if_whed AS SkidTicketIfWhed, skid_from_if_whed AS SkidFromIfWhed
+        skid_ticket_if_whed AS SkidTicketIfWhed, skid_from_if_whed AS SkidFromIfWhed,
+        sheet_theoretical_wt AS SheetTheoreticalWt, onhold_reason_code AS OnholdReasonCode
         """;
 
     private const string ScrapSkidCols = """
@@ -3961,6 +3962,74 @@ public sealed class AbisRepository : IAbisRepository
             """,
             p, cancellationToken: ct));
         return n == 0 ? null : await GetSheetSkidAsync(sheetSkidNum, ct);
+    }
+
+    /// <summary>Correct a sheet skid's own figures — legacy <c>w_office_skid_entry</c> CASE 4
+    /// ("modify"), which updates the header's weights, pieces, date, status, theoretical weight and
+    /// on-hold reason.
+    /// <para>Every field is optional and applied with COALESCE, so omitting one leaves it alone. That
+    /// is not only convenience: <c>sheet_net_wt</c> and <c>sheet_tare_wt</c> are <b>NOT NULL</b> on
+    /// Oracle, so a partial update that wrote a null into either would raise ORA-01400 rather than
+    /// clearing the field. COALESCE means a null can never reach them.</para>
+    /// <para>Legacy's CASE 4 also updates the selected <c>production_sheet_item</c> in the same
+    /// transaction. That is deliberately NOT done here: this endpoint corrects the SKID, and the item
+    /// paths already exist separately. Editing both from one call would make it impossible to fix a
+    /// mis-keyed skid weight without also restating an item.</para>
+    /// <para>Totals are reconciled against the items but <b>never corrected</b>, matching how the
+    /// warehouse paths behave: a weighed skid legitimately differs from the sum of its items, which is
+    /// why legacy asks rather than silently reconciling. A skid with no items produces no warning —
+    /// there is nothing to disagree with.</para></summary>
+    public async Task<SheetSkidModifyResult> ModifySheetSkidAsync(long sheetSkidNum, SheetSkidModify body, CancellationToken ct)
+    {
+        var result = new SheetSkidModifyResult();
+        await using var conn = await OpenAsync(ct);
+
+        var p = new DynamicParameters();
+        p.Add("net", body.SheetNetWt);
+        p.Add("tare", body.SheetTareWt);
+        p.Add("pieces", body.SkidPieces, DbType.Int32);
+        p.Add("sdate", body.SkidDate, DbType.DateTime);
+        p.Add("status", body.SkidSheetStatus, DbType.Int32);
+        p.Add("theo", body.SheetTheoreticalWt);
+        p.Add("onhold", body.OnholdReasonCode, DbType.Int32);
+        p.Add("id", sheetSkidNum);
+
+        var n = await conn.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE sheet_skid SET
+                sheet_net_wt = COALESCE(:net, sheet_net_wt),
+                sheet_tare_wt = COALESCE(:tare, sheet_tare_wt),
+                skid_pieces = COALESCE(:pieces, skid_pieces),
+                skid_date = COALESCE(:sdate, skid_date),
+                skid_sheet_status = COALESCE(:status, skid_sheet_status),
+                sheet_theoretical_wt = COALESCE(:theo, sheet_theoretical_wt),
+                onhold_reason_code = COALESCE(:onhold, onhold_reason_code)
+            WHERE sheet_skid_num = :id
+            """, p, cancellationToken: ct));
+        if (n == 0) return result;   // no such skid
+
+        result.Found = true;
+        result.Skid = await GetSheetSkidAsync(sheetSkidNum, ct);
+
+        // Compare what the skid now claims against what its items add up to.
+        var totals = await conn.QuerySingleAsync<(decimal Net, int Pieces, int Items)>(new CommandDefinition(
+            """
+            SELECT COALESCE(SUM(psi.prod_item_net_wt), 0.0) AS Net,
+                   COALESCE(SUM(psi.prod_item_pieces), 0) AS Pieces,
+                   COUNT(*) AS Items
+            FROM sheet_skid_detail ssd
+            JOIN production_sheet_item psi ON psi.prod_item_num = ssd.prod_item_num
+            WHERE ssd.sheet_skid_num = :id
+            """, new { id = sheetSkidNum }, cancellationToken: ct));
+
+        if (totals.Items > 0 && result.Skid is { } skid)
+        {
+            if (skid.SkidPieces is { } sp && sp != totals.Pieces)
+                result.Warnings.Add($"Skid pieces ({sp}) do not add up to its items' pieces ({totals.Pieces}).");
+            if (skid.SheetNetWt is { } sn && sn != totals.Net)
+                result.Warnings.Add($"Skid net weight ({sn}) does not add up to its items' net weight ({totals.Net}).");
+        }
+        return result;
     }
 
     public async Task<ScrapSkid?> GetScrapSkidAsync(long scrapSkidNum, CancellationToken ct)

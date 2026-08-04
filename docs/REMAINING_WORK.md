@@ -428,7 +428,19 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   corrected line. A coil that is not a status-20 shell is never collected, anywhere in this module.
 - [x] **H** Coil-ownership transfer mint semantics — done (#224): mints a NEW `coil_abc_num` (status 2, from-cust set) + original → status 13; cert carries the new id
 - [x] **H** Bulk "Change status → Ready for transfer" (status 12) — done (#240 `POST /coils/ready-for-transfer` with eligibility guards; #241 picker `readyOnly` filter + coil-ownership mark-ready UI)
-- [~] **H** Scrap-skid + sheet-skid guarded DELETE done (#243). **Return-scrap done** (#XXX): POST /scrap-skids/{n}/return faithfully ports the live F_CONVERT_BACK_TO_SHEET proc — copies the scrapped mirror rows (scraped_sheet_skid/production_sheet_item/process_partial_skid/detail) back to the live tables, deletes the mirrors + scrap_skid(+detail) + credits back the linked return_scrap_item rows. Still TODO: sheet-skid modify + weight/piece reconciliation.
+- [~] **H** Scrap-skid + sheet-skid guarded DELETE done (#243). **Return-scrap done** (#XXX): POST /scrap-skids/{n}/return faithfully ports the live F_CONVERT_BACK_TO_SHEET proc — copies the scrapped mirror rows (scraped_sheet_skid/production_sheet_item/process_partial_skid/detail) back to the live tables, deletes the mirrors + scrap_skid(+detail) + credits back the linked return_scrap_item rows. **Sheet-skid modify + weight/piece reconciliation — done (#354)**: `PATCH /sheet-skids/{n}`
+  ports legacy `w_office_skid_entry` CASE 4, setting the seven columns that UPDATE writes — net wt,
+  tare, pieces, date, status, theoretical wt, on-hold reason. Two of those (`sheet_theoretical_wt`,
+  `onhold_reason_code`) were absent from the model entirely. Correction panel on the Skids page.
+  Every field is optional, applied with COALESCE. That is not just convenience: `sheet_net_wt` and
+  `sheet_tare_wt` are **NOT NULL** on Oracle, so a partial update writing a null would raise
+  `ORA-01400` rather than clearing the field.
+  Totals are reconciled against the skid's items but **never corrected**, matching the warehouse paths:
+  a weighed skid legitimately differs from the arithmetic, which is why legacy asks rather than
+  silently reconciling. A skid with no items raises no warning.
+  **Deliberately not ported:** legacy's CASE 4 also updates the selected `production_sheet_item` in the
+  same transaction. Doing both from one call would make it impossible to fix a mis-keyed skid weight
+  without also restating an item, and the item paths already exist separately.
 - [~] **H** Guarded coil delete — done (DELETE /coils/{n}, refuses coils applied to a job or done/shipped/transferred); change-coil-customer-on-BOL cascade still TODO
 - [x] **H** Mint carries full coil attributes — already done in #224: the ownership-transfer mint does a `SELECT *` schema read and copies every coil column (cash_date / part_num / material_num / mid_num / damaged_code / …) to the minted coil
 - [x] **H** Coil-quality capture + flaw mapping (#246 GET/PUT /coils/{n}/quality + POST/DELETE .../quality/flaws) + a **Coil quality** capture page (#247). Inbound status-on-receipt is already handled: MintBolCoilsAsync sets `coil.date_received` at receipt and status 11 (QA-hold) when `receiving_bol_coil.damaged_fault=1` (the damage code lives on receiving_bol_coil, not the coil). Remaining tail: QR/barcode capture feeding the flaw map (needs the handheld/barcode integration).

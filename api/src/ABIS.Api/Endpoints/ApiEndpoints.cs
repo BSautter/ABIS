@@ -2696,6 +2696,19 @@ public static class ApiEndpoints
 
         // Warehouse-side update of a finished sheet skid (the legacy w_wh_* windows):
         // location / warehouse ticket / status. Partial — only non-null fields apply.
+        // Correct a skid's own figures — legacy w_office_skid_entry's "modify". Distinct from the
+        // /warehouse patch below, which moves a skid around the warehouse; this fixes what the skid
+        // says about itself. Every field is optional, so a mis-keyed weight can be corrected without
+        // restating anything else.
+        api.MapPatch("/sheet-skids/{sheetSkidNum:long}", async (long sheetSkidNum, SheetSkidModify body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var r = await repo.ModifySheetSkidAsync(sheetSkidNum, body, ct);
+                return r.Found ? Results.Ok(r) : Results.NotFound();
+            })
+           .WithName("ModifySheetSkid").WithTags("Skids")
+           .WithSummary("Correct a sheet skid's weights/pieces/date/status (partial; totals disagreeing with its items are returned as warnings, never corrected).")
+           .Produces<SheetSkidModifyResult>().Produces(StatusCodes.Status404NotFound);
+
         api.MapPatch("/sheet-skids/{sheetSkidNum:long}/warehouse", async (long sheetSkidNum, SheetSkidWarehousePatch body, IAbisRepository repo, CancellationToken ct) =>
             {
                 if (Validate(body) is { } problems)

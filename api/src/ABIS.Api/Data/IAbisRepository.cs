@@ -98,6 +98,10 @@ public interface IAbisRepository
     // ---- Skids ----------------------------------------------------------
     Task<PagedResult<SheetSkid>> GetSheetSkidsAsync(int page, int pageSize, string? orderBy, CancellationToken ct);
     Task<SheetSkid?> GetSheetSkidAsync(long sheetSkidNum, CancellationToken ct);
+
+    /// <summary>Correct a sheet skid's weights, pieces, date, status, theoretical weight or on-hold
+    /// reason (legacy modify). Totals that disagree with the skid's items come back as warnings.</summary>
+    Task<SheetSkidModifyResult> ModifySheetSkidAsync(long sheetSkidNum, SheetSkidModify body, CancellationToken ct);
     Task<SheetSkid> CreateSheetSkidAsync(SheetSkidWrite body, CancellationToken ct);
     Task<SheetSkid?> UpdateSheetSkidWarehouseAsync(long sheetSkidNum, SheetSkidWarehousePatch patch, CancellationToken ct);
     Task<IReadOnlyList<InvoiceCoil>> GetInvoiceCoilsAsync(long abJobNum, CancellationToken ct);

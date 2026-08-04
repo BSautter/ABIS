@@ -18335,6 +18335,61 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Correct a sheet skid's weights/pieces/date/status (partial; totals disagreeing with its items are returned as warnings, never corrected).
+     * @return OK
+     */
+    modifySheetSkid(sheetSkidNum, body) {
+        let url_ = this.baseUrl + "/api/sheet-skids/{sheetSkidNum}";
+        if (sheetSkidNum === undefined || sheetSkidNum === null)
+            throw new globalThis.Error("The parameter 'sheetSkidNum' must be defined.");
+        url_ = url_.replace("{sheetSkidNum}", encodeURIComponent("" + sheetSkidNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PATCH",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processModifySheetSkid(_response);
+        });
+    }
+    processModifySheetSkid(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = SheetSkidModifyResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * List scrap skids (paged, sortable).
      * @param page (optional)
      * @param pageSize (optional)
@@ -30011,6 +30066,8 @@ export class SheetSkid {
             this.skidSheetStatus = _data["skidSheetStatus"];
             this.skidTicketIfWhed = _data["skidTicketIfWhed"];
             this.skidFromIfWhed = _data["skidFromIfWhed"];
+            this.sheetTheoreticalWt = _data["sheetTheoreticalWt"];
+            this.onholdReasonCode = _data["onholdReasonCode"];
         }
     }
     static fromJS(data) {
@@ -30032,6 +30089,8 @@ export class SheetSkid {
         data["skidSheetStatus"] = this.skidSheetStatus;
         data["skidTicketIfWhed"] = this.skidTicketIfWhed;
         data["skidFromIfWhed"] = this.skidFromIfWhed;
+        data["sheetTheoreticalWt"] = this.sheetTheoreticalWt;
+        data["onholdReasonCode"] = this.onholdReasonCode;
         return data;
     }
 }
@@ -30082,6 +30141,82 @@ export class SheetSkidDimensionCheck {
         data["inSpec"] = this.inSpec;
         data["checkedBy"] = this.checkedBy;
         data["note"] = this.note;
+        return data;
+    }
+}
+export class SheetSkidModify {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.sheetNetWt = _data["sheetNetWt"];
+            this.sheetTareWt = _data["sheetTareWt"];
+            this.skidPieces = _data["skidPieces"];
+            this.skidDate = _data["skidDate"] ? new Date(_data["skidDate"].toString()) : undefined;
+            this.skidSheetStatus = _data["skidSheetStatus"];
+            this.sheetTheoreticalWt = _data["sheetTheoreticalWt"];
+            this.onholdReasonCode = _data["onholdReasonCode"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new SheetSkidModify();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["sheetNetWt"] = this.sheetNetWt;
+        data["sheetTareWt"] = this.sheetTareWt;
+        data["skidPieces"] = this.skidPieces;
+        data["skidDate"] = this.skidDate ? this.skidDate.toISOString() : undefined;
+        data["skidSheetStatus"] = this.skidSheetStatus;
+        data["sheetTheoreticalWt"] = this.sheetTheoreticalWt;
+        data["onholdReasonCode"] = this.onholdReasonCode;
+        return data;
+    }
+}
+export class SheetSkidModifyResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.found = _data["found"];
+            this.skid = _data["skid"] ? SheetSkid.fromJS(_data["skid"]) : undefined;
+            if (Array.isArray(_data["warnings"])) {
+                this.warnings = [];
+                for (let item of _data["warnings"])
+                    this.warnings.push(item);
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new SheetSkidModifyResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["found"] = this.found;
+        data["skid"] = this.skid ? this.skid.toJSON() : undefined;
+        if (Array.isArray(this.warnings)) {
+            data["warnings"] = [];
+            for (let item of this.warnings)
+                data["warnings"].push(item);
+        }
         return data;
     }
 }

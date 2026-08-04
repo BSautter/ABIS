@@ -14180,6 +14180,52 @@
             "description": "Unauthorized"
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "Skids"
+        ],
+        "summary": "Correct a sheet skid's weights/pieces/date/status (partial; totals disagreeing with its items are returned as warnings, never corrected).",
+        "operationId": "ModifySheetSkid",
+        "parameters": [
+          {
+            "name": "sheetSkidNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SheetSkidModify"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SheetSkidModifyResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
       }
     },
     "/api/scrap-skids": {
@@ -25985,6 +26031,16 @@
           "skidFromIfWhed": {
             "type": "string",
             "nullable": true
+          },
+          "sheetTheoreticalWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "onholdReasonCode": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -26051,6 +26107,66 @@
           },
           "note": {
             "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "SheetSkidModify": {
+        "type": "object",
+        "properties": {
+          "sheetNetWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "sheetTareWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "skidPieces": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "skidDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "skidSheetStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "sheetTheoreticalWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "onholdReasonCode": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "SheetSkidModifyResult": {
+        "type": "object",
+        "properties": {
+          "found": {
+            "type": "boolean"
+          },
+          "skid": {
+            "$ref": "#/components/schemas/SheetSkid"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "nullable": true
           }
         },

@@ -317,7 +317,8 @@ public static class SqliteFixture
                 sheet_net_wt REAL NOT NULL, sheet_tare_wt REAL NOT NULL, skid_pieces INTEGER, skid_date TEXT,
                 skid_location TEXT, skid_sheet_status INTEGER, skid_ticket_if_whed TEXT, skid_from_if_whed TEXT,
                 skid_edi856_date TEXT, sheet_theoretical_wt REAL, ref_order_abc_num INTEGER, skid_type_if_whed TEXT,
-                ref_order_abc_item INTEGER, skid_sheet_status_held_by_qc INTEGER);
+                ref_order_abc_item INTEGER, skid_sheet_status_held_by_qc INTEGER,
+                onhold_reason_code INTEGER);
 
             CREATE TABLE scrap_skid (
                 scrap_skid_num INTEGER PRIMARY KEY, scrap_ab_job_num TEXT, scrap_alloy2 TEXT, scrap_temper TEXT,
