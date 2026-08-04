@@ -790,12 +790,20 @@ function `f_add_system_log_tran`, whose body is not vendored), and the Instron "
   `authFetch` is the single choke point for all client HTTP (every page builds
   `new AbisClient('', { fetch: authFetch })`), so capture-and-replay wired there turns it on app-wide.
   A write with no stored validator sends nothing and behaves exactly as before.
-- [ ] **L** The check-then-act window in `WithIfMatch` itself (read and update run on separate
-  connections) is now reachable, since clients send `If-Match`. Closing it properly needs
-  `SELECT … FOR UPDATE` with one transaction spanning both halves, across ~12 entities on the busiest
-  write paths. Worth doing deliberately, not as a drive-by — and note the legacy PowerBuilder app is a
-  concurrent writer on the same tables, so only a DB-level lock helps; an in-process one would be false
-  comfort.
+- [x] **L→M** **`WithIfMatch`'s check-then-act window — closed (#360).** Read, compare and update are
+  now one indivisible step per resource, keyed on the request path, so all **17 call sites across 16
+  entities** are covered without touching any of them.
+  **The earlier note here was wrong on the key point.** It said an in-process lock would be "false
+  comfort" because legacy writes the same tables. Legacy *does* (12 write sites against `coil`, 9
+  against `shipment`) — but **legacy never sends `If-Match`**. It overwrites unconditionally, so even a
+  DB-level row lock would only *order* those writes, not prevent the loss. `If-Match` is a contract
+  between ABIS clients, and that is the race that was reachable and is now closed.
+  Measured before fixing: with the guard removed, 8 concurrent saves holding the same validator all
+  succeeded — **4, then 5, then 8 winners across three runs**, each silently overwriting the last.
+  **Two limits, in `ResourceLock`'s own docs and worth knowing:** it is per process (ABIS is a single
+  systemd service, so it covers the deployment today — but scaling out silently breaks it, and would
+  need a DB-level compare-and-swap first), and it does not defend against the legacy app, which nothing
+  does.
 - [x] **L** Invoice **tare** bucket — done (#260): `GetInvoiceComputationAsync` tare now excludes voided skids (`skid_sheet_status <> 6`) so it matches `SkidCount`.
 - [x] **L** Stacker board — done (#260): `job_status NOT IN (0,3)` → `IN (1,2,4)` (matches its comment; robust to NULL/new codes).
 - [x] **L** On-hand-coil + skid-count `IS NULL` guards — done (#260): `OnHandCoilPredicate` + every `skid_sheet_status <> 6` now guard NULL (`IS NULL OR …`).

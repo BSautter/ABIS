@@ -32,6 +32,10 @@ var dbOptions = builder.Configuration.GetSection(DatabaseOptions.SectionName).Ge
                 ?? new DatabaseOptions();
 builder.Services.AddSingleton(dbOptions);
 builder.Services.AddSingleton<IDbConnectionFactory, DbConnectionFactory>();
+// Serialises the read-compare-write of an If-Match request per resource, so two callers holding the
+// same validator cannot both pass the check. Singleton by necessity — a per-request instance would
+// lock nothing. See Middleware/ResourceLock for its two limits.
+builder.Services.AddSingleton<Abis.Api.Middleware.ResourceLock>();
 builder.Services.AddScoped<IAbisRepository, AbisRepository>();
 
 // Shop-floor label printer for the handheld receiving guns. The default does NOT print and reports

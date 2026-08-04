@@ -3921,16 +3921,32 @@ public static class ApiEndpoints
         HttpContext ctx, IOptions<JsonOptions> json,
         Func<Task<T?>> getCurrent, Func<Task<T?>> update) where T : class
     {
+        var ifMatch = ctx.Request.Headers.IfMatch.ToString();
+
+        // With no precondition there is nothing to protect — the write is last-one-wins by definition,
+        // so taking the lock would only add contention.
+        if (string.IsNullOrEmpty(ifMatch))
+        {
+            if (await getCurrent() is null) return Results.NotFound();
+            var u = await update();
+            return u is null ? Results.NotFound() : Results.Ok(u);
+        }
+
+        // Read, compare and write are one indivisible step for this resource. Without that, two callers
+        // holding the SAME current validator could both pass the comparison and the second would
+        // overwrite the first — precisely the loss If-Match exists to prevent, in the microseconds
+        // between the check and the write. Keyed on the request path, which IS the resource identity,
+        // so every endpoint using this helper is covered without changing any of them.
+        // See ResourceLock for the two limits: single process, and no defence against the legacy app.
+        var locks = ctx.RequestServices.GetRequiredService<ResourceLock>();
+        await using var _ = await locks.AcquireAsync(ctx.Request.Path.Value ?? "", ctx.RequestAborted);
+
         var current = await getCurrent();
         if (current is null) return Results.NotFound();
 
-        var ifMatch = ctx.Request.Headers.IfMatch.ToString();
-        if (!string.IsNullOrEmpty(ifMatch))
-        {
-            var tag = ETagMiddleware.ForEntity(current, json.Value.SerializerOptions);
-            var ok = ifMatch.Split(',').Any(t => { var v = t.Trim(); return v == tag || v == "*"; });
-            if (!ok) return Results.StatusCode(StatusCodes.Status412PreconditionFailed);
-        }
+        var tag = ETagMiddleware.ForEntity(current, json.Value.SerializerOptions);
+        var ok = ifMatch.Split(',').Any(t => { var v = t.Trim(); return v == tag || v == "*"; });
+        if (!ok) return Results.StatusCode(StatusCodes.Status412PreconditionFailed);
 
         var updated = await update();
         return updated is null ? Results.NotFound() : Results.Ok(updated);
