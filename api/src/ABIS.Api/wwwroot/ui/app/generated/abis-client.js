@@ -5726,6 +5726,50 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Printable die/tool report (all dies, optionally filtered by status).
+     * @param status (optional)
+     * @return OK
+     */
+    dieReportDoc(status) {
+        let url_ = this.baseUrl + "/api/documents/die-report?";
+        if (status === null)
+            throw new globalThis.Error("The parameter 'status' cannot be null.");
+        else if (status !== undefined)
+            url_ += "status=" + encodeURIComponent("" + status) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processDieReportDoc(_response);
+        });
+    }
+    processDieReportDoc(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Printable coil ABC label (HTML with a Code 39 barcode) — the coil-receiving scanner tag.
      * @return OK
      */

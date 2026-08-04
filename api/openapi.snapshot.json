@@ -4573,6 +4573,33 @@
         }
       }
     },
+    "/api/documents/die-report": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Printable die/tool report (all dies, optionally filtered by status).",
+        "operationId": "DieReportDoc",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/documents/coil-label/{coilAbcNum}": {
       "get": {
         "tags": [

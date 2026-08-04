@@ -2592,6 +2592,18 @@ public static class ApiEndpoints
            .WithSummary("Printable scrap-skid tag (HTML with a Code 39 barcode).")
            .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
 
+        // The die/tool report (legacy w_report_die_tool → d_die_print). Optional ?status= mirrors the
+        // status filter that window offered. Every die is listed — there are 134 on the live database,
+        // so it is one printable page rather than something that needs paging.
+        api.MapGet("/documents/die-report", async (IAbisRepository repo, CancellationToken ct, int? status = null) =>
+            {
+                var page = await repo.GetDiesAsync(1, 5000, status, null, ct);
+                return Results.Content(HtmlDocuments.DieReport(page.Items, status), "text/html; charset=utf-8");
+            })
+           .WithName("DieReportDoc").WithTags("Documents")
+           .WithSummary("Printable die/tool report (all dies, optionally filtered by status).")
+           .Produces(StatusCodes.Status200OK, contentType: "text/html");
+
         api.MapGet("/documents/coil-label/{coilAbcNum:long}", async (long coilAbcNum, IAbisRepository repo, CancellationToken ct) =>
                 await repo.GetCoilAsync(coilAbcNum, ct) is { } coil
                     ? Results.Content(HtmlDocuments.CoilLabel(coil), "text/html; charset=utf-8")

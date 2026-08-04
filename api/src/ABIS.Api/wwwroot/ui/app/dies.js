@@ -29,6 +29,10 @@ function scaffold() {
       <form id="searchForm" class="frow">
         <div class="fld"><label>Status</label><input id="fStatus" inputmode="numeric" style="width:100px" placeholder="any" /></div>
         <button class="btn sm" type="submit">Search</button>
+        <!-- Legacy printed this from its own report window (w_report_die_tool → d_die_print), filtered
+             by status. The Status box above is that filter, so the printed page reflects whatever the
+             operator is looking at rather than silently printing everything. -->
+        <button class="btn sm ghost" id="btnPrintDies" type="button" title="Printable die/tool report for the current status filter">🖨 Print report</button>
       </form>
       <div id="err" class="err" style="margin-top:8px"></div>
     </div></div>
@@ -251,11 +255,30 @@ async function save() {
         setBusy(false);
     }
 }
+// Print the die/tool report. Fetched with auth and opened as a blob URL: a plain window.open would
+// not carry the API key or bearer token, and the document endpoint sits behind the same auth as
+// everything else under /api.
+async function printReport() {
+    const status = v('#fStatus');
+    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+    try {
+        const r = await authFetch(`/api/documents/die-report${qs}`);
+        if (!r.ok) {
+            setErr(`Print failed (${r.status}).`);
+            return;
+        }
+        window.open(URL.createObjectURL(await r.blob()), '_blank');
+    }
+    catch (e) {
+        setErr(`Print failed: ${e.message}`);
+    }
+}
 (async () => {
     const main = await initShell({ active: 'dies' });
     main.innerHTML = scaffold();
     $('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); void search(); });
     $('#btnNew').addEventListener('click', newDie);
+    $('#btnPrintDies').addEventListener('click', () => void printReport());
     $('#btnSave').addEventListener('click', () => void save());
     $('#btnAddMap').addEventListener('click', () => void addShapeMap());
     $('#btnFilterMap').addEventListener('click', () => void renderShapeMap());

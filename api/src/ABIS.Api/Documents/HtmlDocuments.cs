@@ -591,6 +591,68 @@ public static class HtmlDocuments
     /// readable at a glance on a loading dock. Whole pounds because the source columns are decimal(0).</summary>
     private static string Lbs(decimal? v) => v is null ? "—" : $"{decimal.Truncate(v.Value):#,##0} lbs";
     private static string Num(decimal? v) => v?.ToString("0.####") ?? "—";
+    /// <summary>The die/tool report (legacy <c>d_die_print</c>, opened from <c>w_report_die_tool</c>).
+    /// <para>Columns are the legacy ones exactly, including the two a comment in the DataWindow records
+    /// as added in 2022 — <c>engineered_scrap_y_n</c> and <c>num_of_parts_per_hit</c>.</para>
+    /// <para>Legacy let the operator tick statuses and built a filter (<c>status = 0 OR status = 1</c>
+    /// …). This takes one optional status, which is what the die list endpoint already supports; the
+    /// heading states which filter is in force so a printed page is never ambiguous about what it
+    /// excludes. Status renders as words, not the raw code — a printed <c>2</c> means nothing away from
+    /// the screen.</para></summary>
+    public static string DieReport(IReadOnlyList<Die> dies, int? status)
+    {
+        var rows = string.Concat(dies.Select(d => $"""
+              <tr>
+                <td>{d.DieId}</td>
+                <td>{Esc(d.DieName) ?? "—"}</td>
+                <td>{Esc(d.ToolNum) ?? "—"}</td>
+                <td>{Esc(d.PartName) ?? "—"}</td>
+                <td>{Esc(DieStatus(d.Status))}</td>
+                <td>{Esc(d.Owner) ?? "—"}</td>
+                <td>{Esc(d.Location) ?? "—"}</td>
+                <td class="n">{Wt(d.GrossWeight)}</td>
+                <td class="n">{Opt(d.NumOfPartsPerHit)}</td>
+                <td>{Esc(d.EngineeredScrapYN) ?? "—"}</td>
+                <td>{Esc(d.Description) ?? "—"}</td>
+              </tr>
+            """));
+
+        var scope = status is null ? "All statuses" : $"Status: {DieStatus(status)}";
+        var body = dies.Count == 0
+            ? $"""
+              <table class="kv"><tr><th>Filter</th><td>{Esc(scope)}</td></tr></table>
+              <p class="dim">No dies match this filter.</p>
+              """
+            : $"""
+              <table class="kv">
+                <tr><th>Filter</th><td>{Esc(scope)}</td></tr>
+                <tr><th>Dies listed</th><td>{dies.Count}</td></tr>
+              </table>
+              <table class="items">
+                <thead><tr>
+                  <th>Die</th><th>Name</th><th>Tool #</th><th>Part</th><th>Status</th><th>Owner</th>
+                  <th>Location</th><th class="n">Gross wt</th><th class="n">Parts/hit</th>
+                  <th>Eng. scrap</th><th>Description</th>
+                </tr></thead>
+                <tbody>{rows}</tbody>
+              </table>
+              """;
+        return InvoicePage("Die / Tool Report", body);
+    }
+
+    /// <summary>die.status — 0 Obsolete / 1 Active / 2 Gone, the same legend the UI chips use. An
+    /// unknown code is shown as itself rather than guessed at.</summary>
+    private static string DieStatus(int? s) => s switch
+    {
+        0 => "Obsolete",
+        1 => "Active",
+        2 => "Gone",
+        null => "—",
+        // Unknown code: show it as itself. The column is headed "Status", so the bare number reads
+        // correctly there, and the filter line becomes "Status: 99" rather than "Status: Status 99".
+        _ => s.ToString()!,
+    };
+
     private static string Dt(DateTime? d) => d?.ToString("yyyy-MM-dd") ?? "—";
     private static string Opt(object? v) => v?.ToString() ?? "—";
     private static string? Esc(string? s) => s is null ? null : s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");

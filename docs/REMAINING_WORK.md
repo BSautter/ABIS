@@ -375,7 +375,15 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   trap above is not rediscovered per screen. It also revokes the previous object URL, which matters
   most on the kiosk: a console left open all shift would otherwise hold 417 KB for every job looked at.
   **Sketches are parity-complete.** What is left is upload, which is new capability, not parity.
-- [~] **H** Die → shape mapping — done (#254): `GET/POST /line-die-shapes` + `DELETE /line-die-shapes/{shape}/{line}/{die}` over `LINE_DIE_4SHEET_TYPE` (composite PK), so scheduling can resolve the eligible line/die for a shape (filter by sheetType/lineNum/dieId; add guards line/die-exist + dup). Dies page gained a mapping panel. Still TODO: **die label/report print**.
+- [~] **H** Die → shape mapping — done (#254): `GET/POST /line-die-shapes` + `DELETE /line-die-shapes/{shape}/{line}/{die}` over `LINE_DIE_4SHEET_TYPE` (composite PK), so scheduling can resolve the eligible line/die for a shape (filter by sheetType/lineNum/dieId; add guards line/die-exist + dup). Dies page gained a mapping panel. **Die report print — done (#353)**: `GET /documents/die-report`
+  renders the legacy `d_die_print` report (opened from `w_report_die_tool`) with its columns exactly,
+  including the two a DataWindow comment records as added in 2022 — `engineered_scrap_y_n` and
+  `num_of_parts_per_hit` — plus a 🖨 button on the Dies page that carries the page's status filter
+  through, as that window's filter did. Status prints as words; a printed `2` means nothing away from
+  the screen. All 134 live dies fit one page, so it is not paged.
+  **Note on the entry's wording:** this was listed as "die label/report print", but there is no per-die
+  *label* in legacy — `d_die_print` is a list report of every die. Nothing else in `die_tool/` prints a
+  single die.
 - [x] **M** Shipment header EDI-trigger fields — done (#259): the shipment read now carries `edi_req`/`edi_triggered`/`edi_file_id_856`/`edi_file_id_desadv` + the 856/desadv/des-856 dates, and `POST /shipments/{pl}/edi-trigger` (docType 856|desadv + optional file id) stamps them (bookkeeping only — never transmits). Surfacing on the shipping UI is a follow-up.
 - [~] **M** **View archived EDI payload — done (#270)**: the EDI monitor's Transaction-detail card has a "View X12 payload" button that fetches the stored X12 (`GET /edi/transactions/{id}/payload`) into a scrollable pre + Copy. Still TODO (both deliberately deferred): manual EDI **send/resend** from UI (blocked by the no-transmit guardrail — legacy owns the VAN); X12 map maintenance.
 - [~] **L** **Shipment status-change history — done (#264)**: `GET /shipments/{pl}/history` reads `SHIPMENT_TRACK` (before/after shipment+vehicle status + customer/ship-to + who/when, newest first); **UI done (#271)**: a newest-first status-history table on the Shipment detail card (pre→cur transitions). **carrier DUNS/street/zip/country fields — done (#261)**: added `carrier_street`/`carrier_zip`/`carrier_country`/`carrier_duns_number` to the carrier read+write + Carriers form inputs.
