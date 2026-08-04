@@ -441,7 +441,28 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [ ] **M** OPC-log collector + item-selection config (viewer is read-only; edge is the producer); source/host/device tree
 - [ ] **M** Step-up re-auth popup; in-DB job control (DBMS_SCHEDULER enable/disable/run-now)
 
-## D. Bug / robustness leftovers (from the sweep — verified, low severity)
+## D. Bug / robustness leftovers — **SWEEP CLOSED 2026-08-04**
+
+> **The correctness sweep is closed.** Every cluster was worked to a verdict; what remains below is
+> documented, mostly **L**, and several classes are now guarded in CI so they cannot regress silently
+> (`OracleBindNameTests`, `OracleNotNullInsertTests`, `WriteEndpointGateTests`, `MaxIdTableTests`).
+>
+> **Do not mine this list further.** Its severity labels proved unreliable — two findings examined in
+> depth were already handled (the RBAC "vulnerability" was guarded on both write paths; the
+> omitted-NOT-NULL class was already clean), and one whole property it suggested (multi-statement
+> writes without a transaction) dissolved on inspection into upserts and ternaries.
+>
+> **What actually found bugs was a method, not a list:** diff the port against the legacy PowerBuilder,
+> then check the claim against live `.230`. Everything expensive came out that way — the 856 ASN
+> overstating weight on ~91k multi-item skids, production throughput reporting rejected remnant instead
+> of throughput, invoice offal omitting rebanded (the larger term), and the DAS Pull button weighing
+> skids on the scrap scale against a mock device.
+>
+> **Carry that forward as a habit, not a backlog:** whenever a money path or a plant-floor path is
+> built or touched, read the legacy source for it first and verify the result against live data. It is
+> cheap at the time and expensive afterwards — there is **no user-feedback loop before 1.0**, so
+> anything wrong ships into alpha and is found by a customer or an invoice.
+
 
 - [x] **MAX+1 id minting: swept, no corruption risk, and now guarded** — done (#346).
   Most tables mint ids from an Oracle sequence (atomic). The **14** in `Database:MaxIdTables` use
