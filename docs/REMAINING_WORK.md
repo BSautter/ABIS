@@ -519,7 +519,11 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [x] **C** 863 mechanical test-result WRITE (`PST_TEST_RESULT`) — done (#225 API + #226 Quality "Test results" page); the read-only list can finally populate
 - [x] **C** Coil QA-hold workflow (status 11) + `COIL_TRACK_QA` audit + search/browse console — done (#227: qa-hold/qa-release/qa-history endpoints + Quality "QA hold" console)
 - [x] **C** Dimension-check tolerance validation vs part-shape spec (nominal ± tol) — the real QC gate. **DONE via WinSPC.** WinSPC (the plant SPC system of record) owns the measured value + LSL/target/USL + pass/fail per characteristic, tied to ABIS by the "Job #"/"Coil #" tag. Phase 1: #229 read-only connector + #230 Dimensional QC page + #233 trend chart. Phase 2: #234 — `POST /coil-eval/skids/{n}/dimension-checks` validates the submitted measurements against WinSPC's authoritative LSL/USL and sets `in_spec` from that (falls back to the supplied flag when WinSPC has no data/disabled). Validated against live data (job 124346). The legacy `d_skid_dim_check` rule stays un-reconstructable but is moot. Live-wiring: abis_ro read-only SQL login on RSEDAM-PC (192.168.10.143,1433) + WinSpc:Enabled on ABIS.
-- [ ] **H** Instron `.ASC` test-file import & parse (up to 9 samples)
+- [ ] **H** Instron `.ASC` test-file import & parse (up to 9 samples). **Audited 2026-08-04: the
+  "9 samples" is grounded** (`for i = 1 to 9`, five times in the source) — but the parser lives inside
+  **`w_edi_863.srw`**, the EDI 863 window, and nowhere else. It is not a standalone quality import, so
+  it is coupled to 863 — which is already deferred as data-blocked in §A. Listing it separately
+  **double-counts the work**; do them together or not at all.
 - [~] **H** Recovery report suite (remaining ~6 templates); **customer-report SETUP write — done (#257)**: `PUT/DELETE /quality/recovery-customers/{id}` (recovery_report_customer: name + allProducts/autoOnly/commOnly) + `PUT/DELETE /quality/customer-defects/{cid}/{scrapTypeId}` (cust_scrap_type_needed; PUT 404s on an unknown scrap type, returns the enriched row). API + tests; **setup UI done (#272)**: the Quality/Recovery page's Recovery-customers tab gained an add/edit form + per-row Delete, and the Customer-defects tab an add/update form (scrap type from catalog + ABC-Mill + autoparts flags) + per-row Remove.
 - [~] **M** Recovery depth — **add/remove coil-job done** (`PUT` upsert #—prior + **`DELETE /recovery/jobs/{job}/coils/{coil}` #267** removes only the `recovery_job_coil` overlay row, 204/404). Still TODO: autoparts filter, pull-from-DAS-vs-office, email/print/export.
 - [x] **M** Dimension-check edit/delete; job-level dim-QC green/red board; good-material in-spec rollup; PC# auto-increment — done (#236 edit/delete + PC# auto-increment; #237 QC board page + GET /coil-eval/jobs/{n}/qc-board with good/out-of-spec roll-ups + WinSPC verdict)
@@ -545,8 +549,35 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 - [~] **M** Uptime reports + downtime pivots — done (#252): `/reporting/uptime` (groupBy line|shift|day; worked-shift uptime = (shift length − dt_total s)/3600 + scheduled/downtime hrs + uptime %, faithful to `w_report_uptime`) and `/reporting/downtime-pivot` (groupBy cause|job|**part** (#268)|line|shift|day|month|year — the by-part pivot walks ab_job→order_item→part_num, labelled by enduser_part_num). Remaining tail: a dedicated dt-vs-production ratio (uptime % already carries downtime-as-%-of-scheduled).
 - [x] **M** Native Excel export — done (#252): dependency-free OOXML `.xlsx` writer (`clientapp/src/xlsx.ts`, STORED zip + CRC32 + inline strings; numbers stay numeric), "Export Excel" on every report next to Export CSV. openpyxl-validated.
 - [~] **C/H** Feature-gate the write tags still auth-only. Done for every tag that maps 1:1 to a nav-gated feature (safe — the user who can reach the page already holds it; kiosks/edge use the API key and bypass): **Jobs**→Production Control, **Shipments**/**Stacker**→Warehouse, **CoilOwnership**→Inventory(Coil), **TestResults**/**Recovery**→Quality Control, **ProdFolder**→Production Control, **Downtime**→Downtime report (added to `FeatureByTag`). Still **deferred:** Dies / Sketches / Sales / Accounting / Trucks / Carriers / DAS / ScanLog / OpcLog — their nav pages have NO feature gate, so there's no authoritative feature name to gate the API on without risking a lockout; needs live `security_application` verification.
-- [ ] **M** OPC-log collector + item-selection config (viewer is read-only; edge is the producer); source/host/device tree
-- [ ] **M** Step-up re-auth popup; in-DB job control (DBMS_SCHEDULER enable/disable/run-now)
+- [ ] **NOT PARITY — there is no data to view (audited 2026-08-04).** The legacy OPC-log module reads a
+  table literally named **`opc_log`** (`d_opc_current_log`: `WHERE opc_log.active_status = 1`), and that
+  table **does not exist** on live `.230` — not as a table, view or synonym, in any schema visible to
+  the ABIS user. So a "viewer" would have nothing to read. The modern edge already serves live tag
+  values from `/tags`, which is what the viewer existed to show. Building a collector is **new
+  capability**, not a parity gap; decide it deliberately like quoting and sketch upload.
+  ~~OPC-log collector + item-selection config; source/host/device tree~~
+- [ ] **M** Step-up re-auth popup. **The in-DB job control half is misdirected (audited 2026-08-04):**
+  live `.230` has **0 `DBMS_SCHEDULER` jobs**, so enable/disable/run-now would control nothing. The
+  plant's scheduling is the **crontab on the DB host**, already inventoried in
+  [[abis-230-cron-inventory]] and already surfaced read-only by the server-console cron card. Retarget
+  or drop; do not build DBMS_SCHEDULER controls.
+
+### §C audit, 2026-08-04 — how these entries went wrong
+
+Three entries in a row (die "label" print, sketch "job/part linkage", the combi "16 layout variants")
+described something legacy does not have. A mechanical check of every legacy identifier the backlog
+cites found **32 of 32 real** (only `w_sheetpro`, already explained in `QUOTE_PRICING.md`) — so the
+citations were never the problem. **The names were right and the scope was assumed.** A viewer was
+assumed to have data, a report was assumed to be a label, files in a folder were assumed to be
+reachable layouts.
+
+The audit above found three more of the same shape. What catches them is cheap and worth doing before
+building anything from this list: **check that the thing has data and that the code selects it**, not
+just that it exists.
+
+Verified sound in the same pass, so they are not re-checked: `BARCODE_STRING` (6,162 rows),
+`PARTS`/`PARTS_SUPPLIERS` (762 each), `SYSTEM_LOG` (148,126 — the audit target; the backlog names the
+function `f_add_system_log_tran`, whose body is not vendored), and the Instron "9 samples".
 
 ## D. Bug / robustness leftovers — **SWEEP CLOSED 2026-08-04**
 
