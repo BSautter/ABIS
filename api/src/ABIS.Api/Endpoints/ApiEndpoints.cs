@@ -2646,6 +2646,21 @@ public static class ApiEndpoints
            .WithSummary("Printable packing list / ticket for a shipment — the header + every line item it carries (sheet / scrap / reject-coil) with weight + piece totals.")
            .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
 
+        // The combi form — packing list and weight certificate in one (legacy d_report_abco_combi_form
+        // plus its three nested detail reports). Which customers are billed on theoretical weight is
+        // configuration, not an id in the SQL: legacy hard-coded 2802 into four DataWindow queries.
+        api.MapGet("/documents/combi/{packingList:long}", async (long packingList, IAbisRepository repo,
+                IConfiguration cfg, CancellationToken ct) =>
+            {
+                var theo = cfg.GetSection("Documents:TheoreticalWeightCustomers").Get<long[]>() ?? Array.Empty<long>();
+                return await repo.GetCombiDocumentAsync(packingList, theo, ct) is { } doc
+                    ? Results.Content(HtmlDocuments.CombiForm(doc), "text/html; charset=utf-8")
+                    : Results.NotFound();
+            })
+           .WithName("CombiFormDoc").WithTags("Documents")
+           .WithSummary("Printable combi form (packing list + weight certificate, weights in lb and kg).")
+           .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
+
         api.MapGet("/documents/bol/{packingList:long}", async (long packingList, IAbisRepository repo, CancellationToken ct) =>
             {
                 var shipment = await repo.GetShipmentAsync(packingList, ct);

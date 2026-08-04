@@ -4032,6 +4032,117 @@ public sealed class AbisRepository : IAbisRepository
         return result;
     }
 
+    /// <summary>Pounds → kilograms for the combi form, using the factor the legacy combi DETAIL
+    /// reports use.
+    /// <para>It is <c>0.45359</c>, not the exact 0.45359237 and not the <c>0.453592</c> that
+    /// <c>u_default_combi_1999*</c> uses elsewhere in the same feature. Legacy is internally
+    /// inconsistent here, and this is a weight CERTIFICATE — matching the document the customer has
+    /// been receiving matters more than being arithmetically ideal, so the detail reports' figure is
+    /// the one carried over.</para></summary>
+    private const decimal LbToKg = 0.45359m;
+
+    private static CombiWeight? Weight(decimal? lb) =>
+        lb is null ? null : new CombiWeight(lb.Value, Math.Round(lb.Value * LbToKg, 2));
+
+    /// <summary>The combi form for a packing list — legacy <c>d_report_abco_combi_form</c> and its
+    /// three nested detail reports (<c>d_report_combi_sheet</c> / <c>_scrap</c> / <c>_rejcoil</c>).
+    /// Null when there is no such shipment.
+    /// <para>The sheet grain is the <b>production item</b>, not the skid: one skid can contribute
+    /// several rows, each with its own coil lot and pieces.</para>
+    /// <para><b>Theoretical-weight customers.</b> Legacy hard-codes <c>customer_id = 2802</c>
+    /// (TOYOTA TSUSHO AMERICA — 50 shipments on live) into four of its sheet-detail queries, printing
+    /// <c>prod_item_theoretical_wt</c> in the column labelled net. That is a real commercial rule
+    /// buried in a DataWindow. It is carried over as configuration
+    /// (<c>Documents:TheoreticalWeightCustomers</c>) rather than an id literal, because a customer
+    /// joining or leaving that arrangement is a business change, not a code change — and the document
+    /// states which basis it used, since a weight certificate that silently swapped basis would be
+    /// indefensible.</para></summary>
+    public async Task<CombiDocument?> GetCombiDocumentAsync(long packingList, IReadOnlyCollection<long> theoreticalWeightCustomers, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+
+        var doc = await conn.QuerySingleOrDefaultAsync<CombiDocument>(new CommandDefinition(
+            """
+            SELECT s.packing_list AS PackingList, s.bill_of_lading AS BillOfLading,
+                   s.customer_id AS CustomerId, c.customer_full_name AS CustomerName,
+                   s.shipment_actualed_date_time AS ShipDate, s.vehicle_id AS VehicleId
+            FROM shipment s
+            LEFT JOIN customer c ON c.customer_id = s.customer_id
+            WHERE s.packing_list = :pl
+            """, new { pl = packingList }, cancellationToken: ct));
+        if (doc is null) return null;
+
+        doc.BilledOnTheoreticalWeight = doc.CustomerId is { } cid && theoreticalWeightCustomers.Contains(cid);
+
+        var sheets = await conn.QueryAsync<(long PackingItem, long? Ticket, string? Display, string? Lot, string? Org,
+                                            int? Pieces, decimal? Net, decimal? Theo, decimal? Tare)>(new CommandDefinition(
+            """
+            SELECT spi.sh_packing_item AS PackingItem, spi.sheet_packaging_ticket AS Ticket,
+                   ss.sheet_skid_display_num AS Display, c.lot_num AS Lot, c.coil_org_num AS Org,
+                   psi.prod_item_pieces AS Pieces, psi.prod_item_net_wt AS Net,
+                   psi.prod_item_theoretical_wt AS Theo, ss.sheet_tare_wt AS Tare
+            FROM sheet_packing_item spi
+            JOIN sheet_skid ss ON ss.sheet_skid_num = spi.sheet_skid_num
+            JOIN sheet_skid_detail ssd ON ssd.sheet_skid_num = ss.sheet_skid_num
+            JOIN production_sheet_item psi ON psi.prod_item_num = ssd.prod_item_num
+            LEFT JOIN coil c ON c.coil_abc_num = psi.coil_abc_num
+            WHERE spi.packing_list = :pl
+            ORDER BY spi.sh_packing_item, psi.prod_item_num
+            """, new { pl = packingList }, cancellationToken: ct));
+
+        foreach (var r in sheets)
+        {
+            // The substitution legacy makes in SQL: for these customers the "net" column carries the
+            // theoretical figure. Done here rather than in the query so the rule is visible and the
+            // customer id never reaches the SQL text.
+            var net = doc.BilledOnTheoreticalWeight ? r.Theo : r.Net;
+            doc.Sheets.Add(new CombiSheetRow
+            {
+                PackingItem = r.PackingItem, PackagingTicket = r.Ticket, SkidDisplayNum = r.Display,
+                LotNum = r.Lot, CoilOrgNum = r.Org, Pieces = r.Pieces,
+                Net = Weight(net), Theoretical = Weight(r.Theo), Tare = Weight(r.Tare),
+                Gross = Weight(net is null && r.Tare is null ? null : (net ?? 0m) + (r.Tare ?? 0m)),
+            });
+        }
+
+        var scrap = await conn.QueryAsync<(long PackingItem, long? Ticket, string? Alloy, decimal? Net, decimal? Tare)>(new CommandDefinition(
+            """
+            SELECT spi.sc_packing_item AS PackingItem, spi.scrap_packaging_ticket AS Ticket,
+                   sk.scrap_alloy2 AS Alloy, sk.scrap_net_wt AS Net, sk.scrap_tare_wt AS Tare
+            FROM scrap_packing_item spi
+            JOIN scrap_skid sk ON sk.scrap_skid_num = spi.scrap_skid_num
+            WHERE spi.packing_list = :pl
+            ORDER BY spi.sc_packing_item
+            """, new { pl = packingList }, cancellationToken: ct));
+        foreach (var r in scrap)
+            doc.Scrap.Add(new CombiScrapRow
+            {
+                PackingItem = r.PackingItem, PackagingTicket = r.Ticket, Alloy = r.Alloy,
+                Net = Weight(r.Net), Tare = Weight(r.Tare),
+                Gross = Weight(r.Net is null && r.Tare is null ? null : (r.Net ?? 0m) + (r.Tare ?? 0m)),
+            });
+
+        var rej = await conn.QueryAsync<(long PackingItem, long? Ticket, string? Lot, string? Org, string? Alloy,
+                                         string? Temper, decimal? Gauge, decimal? Width, decimal? Net)>(new CommandDefinition(
+            """
+            SELECT rpi.rej_coil_packing_item AS PackingItem, rpi.rej_coil_packaging_ticket AS Ticket,
+                   c.lot_num AS Lot, c.coil_org_num AS Org, c.coil_alloy2 AS Alloy, c.coil_temper AS Temper,
+                   c.coil_gauge AS Gauge, c.coil_width AS Width, c.net_wt_balance AS Net
+            FROM reject_coil_packing_item rpi
+            JOIN coil c ON c.coil_abc_num = rpi.coil_abc_num
+            WHERE rpi.packing_list = :pl
+            ORDER BY rpi.rej_coil_packing_item
+            """, new { pl = packingList }, cancellationToken: ct));
+        foreach (var r in rej)
+            doc.RejectCoils.Add(new CombiRejectCoilRow
+            {
+                PackingItem = r.PackingItem, PackagingTicket = r.Ticket, LotNum = r.Lot, CoilOrgNum = r.Org,
+                Alloy = r.Alloy, Temper = r.Temper, Gauge = r.Gauge, Width = r.Width, Net = Weight(r.Net),
+            });
+
+        return doc;
+    }
+
     public async Task<ScrapSkid?> GetScrapSkidAsync(long scrapSkidNum, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);

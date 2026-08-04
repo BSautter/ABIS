@@ -653,6 +653,74 @@ public static class HtmlDocuments
         _ => s.ToString()!,
     };
 
+    /// <summary>The combi form — a packing list and a weight certificate in one, which is what the
+    /// name means and why every weight prints in pounds AND kilograms.
+    /// <para>When the customer is billed on theoretical weight the net column carries that figure, and
+    /// the form SAYS SO. Legacy substitutes it silently in the query; a certificate that swapped its
+    /// weight basis without saying which it used would be indefensible to a customer reading it.</para></summary>
+    public static string CombiForm(CombiDocument d)
+    {
+        static string W(CombiWeight? w) => w is null ? "—" : $"{w.Lb:0.#}<span class=\"dim\"> / {w.Kg:0.##} kg</span>";
+
+        var sheets = d.Sheets.Count == 0 ? "" : $"""
+              <h2>Sheets</h2>
+              <table class="items">
+                <thead><tr><th>Item</th><th>Ticket</th><th>Skid</th><th>Lot</th><th>Coil</th>
+                  <th class="n">Pieces</th><th class="n">Net (lb/kg)</th><th class="n">Tare</th><th class="n">Gross</th></tr></thead>
+                <tbody>{string.Concat(d.Sheets.Select(r => $"""
+                  <tr><td>{r.PackingItem}</td><td>{Opt(r.PackagingTicket)}</td><td>{Esc(r.SkidDisplayNum) ?? "—"}</td>
+                    <td>{Esc(r.LotNum) ?? "—"}</td><td>{Esc(r.CoilOrgNum) ?? "—"}</td>
+                    <td class="n">{Opt(r.Pieces)}</td><td class="n">{W(r.Net)}</td>
+                    <td class="n">{W(r.Tare)}</td><td class="n">{W(r.Gross)}</td></tr>
+                """))}</tbody>
+              </table>
+              """;
+
+        var scrap = d.Scrap.Count == 0 ? "" : $"""
+              <h2>Accumulated scrap return</h2>
+              <table class="items">
+                <thead><tr><th>Item</th><th>Ticket</th><th>Alloy</th>
+                  <th class="n">Net (lb/kg)</th><th class="n">Tare</th><th class="n">Gross</th></tr></thead>
+                <tbody>{string.Concat(d.Scrap.Select(r => $"""
+                  <tr><td>{r.PackingItem}</td><td>{Opt(r.PackagingTicket)}</td><td>{Esc(r.Alloy) ?? "—"}</td>
+                    <td class="n">{W(r.Net)}</td><td class="n">{W(r.Tare)}</td><td class="n">{W(r.Gross)}</td></tr>
+                """))}</tbody>
+              </table>
+              """;
+
+        var rej = d.RejectCoils.Count == 0 ? "" : $"""
+              <h2>Rejected coil return</h2>
+              <table class="items">
+                <thead><tr><th>Item</th><th>Ticket</th><th>Lot</th><th>Coil</th><th>Alloy</th><th>Temper</th>
+                  <th class="n">Gauge</th><th class="n">Width</th><th class="n">Net (lb/kg)</th></tr></thead>
+                <tbody>{string.Concat(d.RejectCoils.Select(r => $"""
+                  <tr><td>{r.PackingItem}</td><td>{Opt(r.PackagingTicket)}</td><td>{Esc(r.LotNum) ?? "—"}</td>
+                    <td>{Esc(r.CoilOrgNum) ?? "—"}</td><td>{Esc(r.Alloy) ?? "—"}</td><td>{Esc(r.Temper) ?? "—"}</td>
+                    <td class="n">{Opt(r.Gauge)}</td><td class="n">{Opt(r.Width)}</td><td class="n">{W(r.Net)}</td></tr>
+                """))}</tbody>
+              </table>
+              """;
+
+        var basis = d.BilledOnTheoreticalWeight
+            ? "<tr><th>Weight basis</th><td><b>THEORETICAL</b> — the net column carries the theoretical weight for this customer.</td></tr>"
+            : "";
+        var nothing = d.Sheets.Count + d.Scrap.Count + d.RejectCoils.Count == 0
+            ? "<p class=\"dim\">Nothing is on this packing list yet.</p>" : "";
+
+        var body = $"""
+              <table class="kv">
+                <tr><th>Packing list</th><td>{d.PackingList}</td></tr>
+                <tr><th>BOL</th><td>{Opt(d.BillOfLading)}</td></tr>
+                <tr><th>Customer</th><td>{Esc(d.CustomerName) ?? Opt(d.CustomerId)}</td></tr>
+                <tr><th>Shipped</th><td>{Dt(d.ShipDate)}</td></tr>
+                <tr><th>Vehicle</th><td>{Esc(d.VehicleId) ?? "—"}</td></tr>
+                {basis}
+              </table>
+              {nothing}{sheets}{scrap}{rej}
+              """;
+        return InvoicePage($"Combi Form — {d.PackingList}", body);
+    }
+
     private static string Dt(DateTime? d) => d?.ToString("yyyy-MM-dd") ?? "—";
     private static string Opt(object? v) => v?.ToString() ?? "—";
     private static string? Esc(string? s) => s is null ? null : s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");

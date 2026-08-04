@@ -4731,6 +4731,37 @@
         }
       }
     },
+    "/api/documents/combi/{packingList}": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Printable combi form (packing list + weight certificate, weights in lb and kg).",
+        "operationId": "CombiFormDoc",
+        "parameters": [
+          {
+            "name": "packingList",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/documents/bol/{packingList}": {
       "get": {
         "tags": [

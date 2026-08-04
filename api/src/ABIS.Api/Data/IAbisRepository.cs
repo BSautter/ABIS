@@ -102,6 +102,11 @@ public interface IAbisRepository
     /// <summary>Correct a sheet skid's weights, pieces, date, status, theoretical weight or on-hold
     /// reason (legacy modify). Totals that disagree with the skid's items come back as warnings.</summary>
     Task<SheetSkidModifyResult> ModifySheetSkidAsync(long sheetSkidNum, SheetSkidModify body, CancellationToken ct);
+
+    /// <summary>The combi form (packing list + weight certificate) for a shipment, or null when there
+    /// is no such packing list. Customers in <paramref name="theoreticalWeightCustomers"/> have their
+    /// net column filled from the theoretical weight, as legacy does for customer 2802.</summary>
+    Task<CombiDocument?> GetCombiDocumentAsync(long packingList, IReadOnlyCollection<long> theoreticalWeightCustomers, CancellationToken ct);
     Task<SheetSkid> CreateSheetSkidAsync(SheetSkidWrite body, CancellationToken ct);
     Task<SheetSkid?> UpdateSheetSkidWarehouseAsync(long sheetSkidNum, SheetSkidWarehousePatch patch, CancellationToken ct);
     Task<IReadOnlyList<InvoiceCoil>> GetInvoiceCoilsAsync(long abJobNum, CancellationToken ct);

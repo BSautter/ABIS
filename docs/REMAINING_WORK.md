@@ -320,7 +320,24 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
     SHEET / SCRAP / REJECT_COIL. Shape dimensions resolve through `ShapeGeometry` instead of legacy's
     eight-way outer join — which also fixes REINFORCEMENT and LIFTGATE, omitted from legacy's ticket
     query and therefore printing no dimensions at all.
-  - [ ] **Combi form — SIZED 2026-07-25, own session.** 16 layout variants in `legacy/src/rpabco`
+  - [~] **Combi form — BASE DOCUMENT BUILT (#355).** `GET /documents/combi/{packingList}` renders the
+    header plus all three detail sections (sheets / accumulated scrap / rejected coil), every weight in
+    **lb and kg**, with a Print combi button on the Shipping page. The sheet grain is the **production
+    item**, not the skid — one skid contributes a row per item.
+    **The customer rule is carried, as configuration not a literal:** `Documents:TheoreticalWeightCustomers`
+    (seeded `[2802]`). The rendered form STATES when the theoretical basis was used — legacy substitutes
+    it silently, and a weight certificate that swapped basis without saying so would be indefensible.
+    **Two facts found during the build that the sizing note did not have:**
+    (a) the lb→kg factor in the combi DETAIL reports is **`0.45359`**, while `u_default_combi_1999*`
+    in the same feature uses **`0.453592`** — legacy is internally inconsistent, and the detail
+    reports' figure is the one the customer has been receiving, so that is what was carried;
+    (b) there are `u_default_combi_1999_actual` and `_theo` **variant objects**, so "bill on
+    theoretical weight" exists in legacy in TWO places — the SQL `CASE` on 2802 and a whole separate
+    document object. **Which one the plant actually uses is unresolved** and should be settled before
+    the per-customer layout variants are built.
+    Still TODO: the 16 per-customer **layout** variants (base + overrides, the EDI-partner shape), and
+    confirming with the plant whether any customer has joined or left the theoretical-weight rule.
+  - [x] ~~**Combi form — SIZED 2026-07-25, own session.**~~ 16 layout variants in `legacy/src/rpabco`
     (alcan, alcoa, alcoa_pn, kaiser, novelis, novelis_cd, twb, twb_cd, sm, display, display_pn,
     display_t, input, input_twb, input_detail, base) but only **7 distinct queries — and 8 of the 16
     share one**. So this is the EDI-partner shape: one base document + per-customer layout overrides,

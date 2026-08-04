@@ -3285,6 +3285,71 @@ public sealed class SheetSkidModifyResult
     public List<string> Warnings { get; set; } = new();
 }
 
+/// <summary>One weight, in both units — the combi form is a packing list and a weight certificate at
+/// once, which is what "combi" means, and every figure on it is printed twice.</summary>
+public sealed record CombiWeight(decimal Lb, decimal Kg);
+
+/// <summary>A sheet line on the combi form. The grain is the <b>production item</b>, not the skid —
+/// one skid can contribute several.</summary>
+public sealed class CombiSheetRow
+{
+    public long PackingItem { get; set; }
+    public long? PackagingTicket { get; set; }
+    public string? SkidDisplayNum { get; set; }
+    public string? LotNum { get; set; }
+    public string? CoilOrgNum { get; set; }
+    public int? Pieces { get; set; }
+    /// <summary>The weight the form prints as "net". For a customer billed on theoretical weight this
+    /// is the THEORETICAL figure — legacy substitutes it in the query rather than adding a column, so
+    /// the form is unaware.</summary>
+    public CombiWeight? Net { get; set; }
+    public CombiWeight? Theoretical { get; set; }
+    public CombiWeight? Tare { get; set; }
+    public CombiWeight? Gross { get; set; }
+}
+
+public sealed class CombiScrapRow
+{
+    public long PackingItem { get; set; }
+    public long? PackagingTicket { get; set; }
+    public string? Alloy { get; set; }
+    public CombiWeight? Net { get; set; }
+    public CombiWeight? Tare { get; set; }
+    public CombiWeight? Gross { get; set; }
+}
+
+public sealed class CombiRejectCoilRow
+{
+    public long PackingItem { get; set; }
+    public long? PackagingTicket { get; set; }
+    public string? LotNum { get; set; }
+    public string? CoilOrgNum { get; set; }
+    public string? Alloy { get; set; }
+    public string? Temper { get; set; }
+    public decimal? Gauge { get; set; }
+    public decimal? Width { get; set; }
+    public CombiWeight? Net { get; set; }
+}
+
+/// <summary>The combi form for a packing list (legacy <c>d_report_abco_combi_form</c> + its three
+/// nested detail reports).</summary>
+public sealed class CombiDocument
+{
+    public long PackingList { get; set; }
+    public long? BillOfLading { get; set; }
+    public long? CustomerId { get; set; }
+    public string? CustomerName { get; set; }
+    public DateTime? ShipDate { get; set; }
+    public string? VehicleId { get; set; }
+    /// <summary>True when this customer is billed on THEORETICAL weight, so the "net" column carries
+    /// the theoretical figure. Stated on the document because a weight certificate that silently
+    /// swapped its basis would be indefensible.</summary>
+    public bool BilledOnTheoreticalWeight { get; set; }
+    public List<CombiSheetRow> Sheets { get; set; } = new();
+    public List<CombiScrapRow> Scrap { get; set; } = new();
+    public List<CombiRejectCoilRow> RejectCoils { get; set; } = new();
+}
+
 public sealed class WarehouseSkidModifyResult
 {
     public bool Found { get; set; }

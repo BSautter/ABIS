@@ -92,6 +92,8 @@ async function loadShipment(id: number): Promise<void> {
         <span id="itemOk" class="ok-note"></span>
         <button class="btn sm ghost" id="btnPrintPacking" type="button" style="margin-left:auto">Print packing list</button>
         <button class="btn sm ghost" id="btnPrintBol" type="button">Print BOL</button>
+        <!-- Packing list and weight certificate in one — every weight in lb AND kg. -->
+        <button class="btn sm ghost" id="btnPrintCombi" type="button" title="Combi form — packing list + weight certificate (lb and kg)">Print combi</button>
       </div>
       <div style="overflow-x:auto"><table class="tbl" style="min-width:560px">
         <thead><tr><th>Type</th><th>Skid</th><th>Part</th><th>PO</th><th>Coil</th><th style="text-align:right">Net</th><th style="text-align:right">Gross</th><th style="text-align:right">Pcs</th><th></th></tr></thead>
@@ -116,6 +118,7 @@ async function loadShipment(id: number): Promise<void> {
     $('#btnAddItem').addEventListener('click', () => void addPackItem());
     $('#btnPrintPacking').addEventListener('click', () => void printDoc(`/api/documents/packing-list/${id}`, 'Packing list'));
     $('#btnPrintBol').addEventListener('click', () => void printDoc(`/api/documents/bol/${id}`, 'BOL'));
+    $('#btnPrintCombi').addEventListener('click', () => void printDoc(`/api/documents/combi/${id}`, 'Combi form'));
     await Promise.all([loadPackingItems(id), loadHistory(id)]);
   } catch (e) { setErr(`Load failed: ${(e as Error).message}`); }
   finally { setBusy(false); }

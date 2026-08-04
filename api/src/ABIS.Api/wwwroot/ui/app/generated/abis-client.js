@@ -5963,6 +5963,53 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Printable combi form (packing list + weight certificate, weights in lb and kg).
+     * @return OK
+     */
+    combiFormDoc(packingList) {
+        let url_ = this.baseUrl + "/api/documents/combi/{packingList}";
+        if (packingList === undefined || packingList === null)
+            throw new globalThis.Error("The parameter 'packingList' must be defined.");
+        url_ = url_.replace("{packingList}", encodeURIComponent("" + packingList));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCombiFormDoc(_response);
+        });
+    }
+    processCombiFormDoc(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Printable bill of lading (legacy rpabco/u_default_billoflading) — ship-from / ship-to / carrier, the per-job PO/part blocks, the three freight sections (sheet skids / accumulated scrap return / rejected coil return) with counts and weights, the multi-stop package note, and signature lines. 409 when the shipment carries nothing, since a blank BOL is worse than none.
      * @return OK
      */
