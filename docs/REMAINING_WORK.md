@@ -259,6 +259,19 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
 ## C. Buildable feature gaps (no blocker)
 
 ### C1. Commercial — order entry / parts / quoting / customers / accounting
+- [ ] **SHELVED 2026-08-04 — do not build until sales decides they want it in ABIS.** Quoting is done
+  **in an Excel sheet today** (plant, 2026-08-04), outside ABIS entirely. Whether it should move into
+  ABIS at all is a sales decision that has not been made, so porting the model now risks building the
+  largest remaining Critical for nobody.
+  **Unresolved tension to settle first:** the plant confirmed on 2026-07-25 that **SheetPro is still
+  used**, which does not sit easily with quoting being done in Excel. Either the PB tools still do the
+  *calculation* while Excel is the *document*, or SheetPro is vestigial and the spreadsheet replaced
+  it. That decides what a port would even target — `w_quotation_new.srw`, or the spreadsheet.
+  **If it is ever picked up, it is blocked on two things that cannot be inferred:** the real burdened
+  labour rate and productive-minutes allowance (hard-coded `40` and `45` — a rate frozen at $40/hr
+  quotes every job wrong and nothing in the output shows it), and two or three worked quotes with
+  inputs and accepted outputs. The decode is done and keeps: `docs/QUOTE_PRICING.md`.
+  Original entry follows.
 - [~] **C** Quote pricing/cost model (CirclePro $/lb + job cost + ROS; SheetPro rectangular) — quotation emits
   yield-% only, "not a quote". **DECODED, not yet ported — see `docs/QUOTE_PRICING.md`.** Key finding:
   `w_circlepro.srw` is **transliterated BASIC** (`wf_line_240`, `wf_sub_2380` … are the original BASIC LINE
