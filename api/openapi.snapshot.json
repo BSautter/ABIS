@@ -13944,6 +13944,37 @@
         }
       }
     },
+    "/api/sketches/{sketchId}/image": {
+      "get": {
+        "tags": [
+          "Sketches"
+        ],
+        "summary": "The sketch's drawing (BMP). 404 when the sketch does not exist or has no image.",
+        "operationId": "GetSketchImage",
+        "parameters": [
+          {
+            "name": "sketchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/sheet-skids": {
       "get": {
         "tags": [

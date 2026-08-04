@@ -460,6 +460,10 @@ public interface IAbisRepository
     Task<IReadOnlyList<TruckAppointment>> LookupTruckAppointmentsAsync(string reference, CancellationToken ct);
     Task<PagedResult<Sketch>> GetSketchesAsync(int page, int pageSize, int? status, string? orderBy, CancellationToken ct);
     Task<Sketch?> GetSketchAsync(long sketchId, CancellationToken ct);
+
+    /// <summary>The sketch's BMP drawing (LONG RAW), or null when there is no such sketch or it has
+    /// no image.</summary>
+    Task<byte[]?> GetSketchImageAsync(long sketchId, CancellationToken ct);
     Task<Sketch> CreateSketchAsync(SketchWrite body, CancellationToken ct);
     Task<Sketch?> UpdateSketchAsync(long sketchId, SketchWrite body, CancellationToken ct);
 

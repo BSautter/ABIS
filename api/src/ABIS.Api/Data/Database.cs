@@ -116,6 +116,15 @@ public sealed class DbConnectionFactory : IDbConnectionFactory
     /// </remarks>
     static DbConnectionFactory() => OracleConfiguration.BindByName = true;
 
+    // NOTE on LONG RAW: sketch.sketch_view holds a BMP — 417,078 bytes for every one of the 128
+    // sketches on live .230 — and ODP.NET truncates a LONG to InitialLONGFetchSize SILENTLY when it is
+    // too small. A truncated BMP still has a valid header, so it would render as a partial drawing
+    // rather than fail. There is no global switch for it: InitialLONGFetchSize lives on OracleCommand,
+    // not OracleConfiguration, and this repository builds its commands through Dapper. The driver
+    // default already returns the whole value — verified against live .230, where the size declared
+    // inside the BMP header matches the byte count exactly — so what guards it is a test that checks
+    // that same self-describing property rather than a setting. See SketchImageTests.
+
     public DbConnectionFactory(DatabaseOptions options) => _options = options;
 
     public SqlDialect Dialect => _options.Dialect;

@@ -337,7 +337,18 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
     `_cd`, `_cd_twb`, `_pn`) and **nowhere else** — so it is one consistent rule, not a scatter of
     special cases. Model it as a per-customer "invoice on theoretical weight" flag rather than an id
     literal, and confirm with the plant whether any customer has since joined or left it.
-- [ ] **H** Sketch image storage (`sketch_view` LONG RAW) + display + job/part linkage + DAS/e-folder render
+- [~] **H** Sketch image storage (`sketch_view` LONG RAW) — **read path done (#349)**:
+  `GET /sketches/{id}/image` serves the stored BMP untouched, 404 when the sketch has no image.
+  Live facts discovered on `.230`: **128 sketches, every one carrying an image**, uncompressed BMP,
+  417,078 bytes each (one is 211,006), linked from `ab_job.sketch_id`. Legacy read it the same way
+  (`SELECTBLOB sketch_view` → a `.bmp` file for a picture control, `w_da_sheet.srw:909`).
+  Two constraints worth knowing before touching this: **LONG RAW cannot be aggregated or wrapped in a
+  function** (`COUNT(sketch_view)` raises `ORA-00997`; `IS NOT NULL` is fine), and ODP.NET truncates a
+  LONG **silently** — guarded by `SketchImageTests` asserting the BMP's self-declared length matches
+  its byte count, a property the live images satisfy at both sizes.
+  **Correction to this entry: there is no part linkage to build.** `sketch_id` exists only on `ab_job`
+  — `part_num` and `order_item` have no sketch column on the live schema.
+  Still TODO: display on the job / DAS e-folder, and image **upload** (legacy imported BMPs).
 - [~] **H** Die → shape mapping — done (#254): `GET/POST /line-die-shapes` + `DELETE /line-die-shapes/{shape}/{line}/{die}` over `LINE_DIE_4SHEET_TYPE` (composite PK), so scheduling can resolve the eligible line/die for a shape (filter by sheetType/lineNum/dieId; add guards line/die-exist + dup). Dies page gained a mapping panel. Still TODO: **die label/report print**.
 - [x] **M** Shipment header EDI-trigger fields — done (#259): the shipment read now carries `edi_req`/`edi_triggered`/`edi_file_id_856`/`edi_file_id_desadv` + the 856/desadv/des-856 dates, and `POST /shipments/{pl}/edi-trigger` (docType 856|desadv + optional file id) stamps them (bookkeeping only — never transmits). Surfacing on the shipping UI is a follow-up.
 - [~] **M** **View archived EDI payload — done (#270)**: the EDI monitor's Transaction-detail card has a "View X12 payload" button that fetches the stored X12 (`GET /edi/transactions/{id}/payload`) into a scrollable pre + Copy. Still TODO (both deliberately deferred): manual EDI **send/resend** from UI (blocked by the no-transmit guardrail — legacy owns the VAN); X12 map maintenance.

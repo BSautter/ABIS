@@ -516,6 +516,10 @@ public static class SqliteFixture
 
             CREATE TABLE sketch (
                 sketch_id INTEGER PRIMARY KEY, sketch_name TEXT, sketch_notes TEXT,
+                -- sketch_view is LONG RAW on Oracle (a BMP; every live one is 417,078 bytes). BLOB is
+                -- the SQLite equivalent — the point of seeding it is that the read path returns whole,
+                -- self-consistent bytes, which SketchImageTests checks via the BMP's own header.
+                sketch_view BLOB,
                 sketch_sys_note TEXT, sketch_status INTEGER);
 
             CREATE TABLE line (
@@ -1314,6 +1318,13 @@ public static class SqliteFixture
                 new { SketchId = 2L, SketchName = "PANEL-B rev2", SketchNotes = "Panel blank", SketchSysNote = "", SketchStatus = (int?)1 },
                 new { SketchId = 3L, SketchName = "BRKT-C rev1", SketchNotes = "Old revision", SketchSysNote = "", SketchStatus = (int?)0 }
             });
+
+        // Sketch 1 gets a real drawing; sketch 2 deliberately gets none, so the endpoint's "exists but
+        // has no image" branch is covered as well as the happy path. A genuine 2x2 24-bit BMP, not
+        // arbitrary bytes: its header declares its own total length, which is the property the live
+        // 417,078-byte images have and the only way to prove a LONG RAW read came back whole.
+        conn.Execute("UPDATE sketch SET sketch_view = :img WHERE sketch_id = 1",
+            new { img = new byte[] { 66,77,70,0,0,0,0,0,0,0,54,0,0,0,40,0,0,0,2,0,0,0,2,0,0,0,1,0,24,0,0,0,0,0,16,0,0,0,19,11,0,0,19,11,0,0,0,0,0,0,0,0,0,0,255,0,0,0,255,0,0,0,0,0,255,255,255,255,0,0 } });
 
         conn.Execute("""
             INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num, line_num, job_status, material_yield,

@@ -2394,6 +2394,23 @@ public static class ApiEndpoints
            .WithSummary("Get one sketch header by id (no image).")
            .Produces<Sketch>().Produces(StatusCodes.Status404NotFound);
 
+        // The sketch drawing itself. Served as image/bmp because that is genuinely what is stored —
+        // sketch_view is a LONG RAW holding an uncompressed BMP (every live one is 417,078 bytes), and
+        // legacy wrote it straight out to a .bmp for a picture control. Browsers render BMP natively,
+        // so it is passed through untouched rather than re-encoded: a conversion would be the only
+        // step in the chain that could silently alter a drawing the shop floor works from.
+        // They are immutable in practice and large, so they carry a long cache lifetime.
+        api.MapGet("/sketches/{sketchId:long}/image", async (long sketchId, IAbisRepository repo, HttpContext ctx, CancellationToken ct) =>
+            {
+                var bytes = await repo.GetSketchImageAsync(sketchId, ct);
+                if (bytes is null || bytes.Length == 0) return Results.NotFound();
+                ctx.Response.Headers.CacheControl = "private, max-age=86400";
+                return Results.File(bytes, "image/bmp", $"sketch-{sketchId}.bmp");
+            })
+           .WithName("GetSketchImage").WithTags("Sketches")
+           .WithSummary("The sketch's drawing (BMP). 404 when the sketch does not exist or has no image.")
+           .Produces(StatusCodes.Status200OK, contentType: "image/bmp").Produces(StatusCodes.Status404NotFound);
+
         api.MapPost("/sketches", async (SketchWrite body, IAbisRepository repo, CancellationToken ct) =>
             {
                 if (Validate(body) is { } problems)

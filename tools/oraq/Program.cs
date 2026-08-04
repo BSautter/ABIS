@@ -77,7 +77,16 @@ try
         for (var i = 0; i < cols.Length; i++)
         {
             var v = r.IsDBNull(i) ? null : r.GetValue(i);
-            row[i] = v switch { null => "", DateTime d => d.ToString("yyyy-MM-dd HH:mm:ss"), _ => v.ToString() ?? "" };
+            row[i] = v switch
+            {
+                null => "",
+                DateTime d => d.ToString("yyyy-MM-dd HH:mm:ss"),
+                // Binary columns (LONG RAW / RAW / BLOB) render as length + leading bytes rather than
+                // "System.Byte[]". The length is the point: ODP.NET truncates a LONG silently when
+                // InitialLONGFetchSize is too small, and the only way to notice is to look at it.
+                byte[] b => $"byte[{b.Length}] {BitConverter.ToString(b, 0, Math.Min(8, b.Length))}",
+                _ => v.ToString() ?? ""
+            };
         }
         rows.Add(row);
     }

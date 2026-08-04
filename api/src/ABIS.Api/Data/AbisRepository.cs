@@ -9493,6 +9493,22 @@ public sealed class AbisRepository : IAbisRepository
             $"SELECT {SketchCols} FROM sketch WHERE sketch_id = :id", new { id = sketchId }, cancellationToken: ct));
     }
 
+    /// <summary>The sketch's drawing, or null when the sketch does not exist or carries no image.
+    /// <para><c>sketch_view</c> is a <b>LONG RAW</b> holding a BMP — every one of the 128 sketches on
+    /// live <c>.230</c> is 417,078 bytes. LONG RAW is severely restricted in SQL: it cannot be
+    /// aggregated or wrapped in a function (<c>COUNT(sketch_view)</c> raises ORA-00997), so this reads
+    /// the column bare and lets the driver hand back the bytes. <c>IS NOT NULL</c> is permitted, which
+    /// is why the emptiness check can live in the WHERE clause.</para>
+    /// <para>Legacy read it exactly this way — <c>SELECTBLOB sketch_view INTO :lb_pic FROM sketch</c>
+    /// (<c>w_da_sheet.srw:909</c>) — then wrote it to a .bmp file for a picture control.</para></summary>
+    public async Task<byte[]?> GetSketchImageAsync(long sketchId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.ExecuteScalarAsync<byte[]?>(new CommandDefinition(
+            "SELECT sketch_view FROM sketch WHERE sketch_id = :id AND sketch_view IS NOT NULL",
+            new { id = sketchId }, cancellationToken: ct));
+    }
+
     public async Task<Sketch> CreateSketchAsync(SketchWrite body, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
