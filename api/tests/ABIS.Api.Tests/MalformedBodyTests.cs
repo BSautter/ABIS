@@ -23,10 +23,12 @@ namespace Abis.Api.Tests;
 /// 105 back to 500 with no test going red and no line of code looking wrong. So the guard sweeps the
 /// route table rather than naming endpoints, and a new endpoint is covered the day it is added.</para>
 ///
-/// <para><b>What this does NOT prove.</b> 15 of the 124 answer 404 before the body is examined — the
-/// DAS line operations, which correctly refuse when the line has no shift or coil run in progress.
-/// Their binding is covered by the sweep; their write paths are not. That is a limit of probing with
-/// seed data, stated here rather than papered over.</para>
+/// <para><b>What this does NOT prove.</b> 4 of the 124 answer 404 before the body is examined, and all
+/// four are correct: an empty body names no coil, no shipment item, and no customer/route pair, so
+/// there is nothing to find. Their binding is covered by the sweep; their handler logic is not.
+/// <i>(An earlier version of this note blamed the DAS line operations for 15 such 404s. That was
+/// wrong — the sweep was probing line 4, which the fixture does not seed. Line 110 is seeded and
+/// running, and the DAS writes now have their own coverage in <c>DasWriteLifecycleTests</c>.)</i></para>
 /// </summary>
 public sealed class MalformedBodyTests(ITestOutputHelper output)
 {
@@ -66,10 +68,12 @@ public sealed class MalformedBodyTests(ITestOutputHelper output)
         ["orderAbcNum"] = "9001", ["orderItemNum"] = "7001", ["abJobNum"] = "1001", ["job"] = "1001",
         ["coilAbcNum"] = "5001", ["coil"] = "5001", ["coilId"] = "1",
         ["customerId"] = "4001", ["cust"] = "4001", ["contactId"] = "1",
-        ["lineNum"] = "4", ["packingList"] = "8801", ["carrierId"] = "1201",
+        ["lineNum"] = "110", ["packingList"] = "8801", ["carrierId"] = "1201",
         ["sheetSkidNum"] = "3001", ["skidNum"] = "3001", ["scrapSkidNum"] = "8001",
         ["dieId"] = "1", ["partNumId"] = "6001", ["shiftNum"] = "1", ["instanceNum"] = "9101",
         ["userId"] = "9001", ["groupId"] = "10", ["applicationId"] = "1", ["receivingBolId"] = "5500",
+        // Composite keys whose second half is a string, not an id.
+        ["customerEdiName"] = "ORDER_STATUS", ["ediTypeId"] = "856", ["ediVersion"] = "2002FORD",
     };
 
     private static string Fill(string route) =>
@@ -132,10 +136,13 @@ public sealed class MalformedBodyTests(ITestOutputHelper output)
             total++;
             var r = await Send(c, method, "/" + Fill(route).TrimStart('/'), "{}");
             if (r.StatusCode != HttpStatusCode.NotFound) reached++;
+            else output.WriteLine($"404: {method} {route}");
         }
 
         output.WriteLine($"{reached}/{total} write endpoints reached a handler decision");
-        Assert.True(reached >= total * 3 / 4,
+        // 120/124 today. The floor is a ratio rather than that number so adding endpoints does not
+        // fail the build, but losing a tenth of the sweep's reach does.
+        Assert.True(reached >= total * 9 / 10,
             $"only {reached}/{total} endpoints got past routing — the seeded ids have drifted, so the " +
             "sweep is no longer proving what it claims.");
     }

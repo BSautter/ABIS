@@ -758,10 +758,19 @@ function `f_add_system_log_tran`, whose body is not vendored), and the Instron "
   **105 of them answered a malformed body with a 500**, because minimal-API binding raises a
   `BadHttpRequestException` carrying its own 400 and nothing read it. Fixed with one exception handler
   and guarded by a sweep of the route table, so a new endpoint is covered the day it is added.
-- [ ] **S** **The 15 endpoints the sweep cannot reach.** The DAS line operations (shift start/end, coil
-  run, change-job, queue) answer 404 before the body is examined, correctly, because seed data has no
-  shift or coil run in progress. Their binding is covered; their write paths are not. Closing this
-  needs a seeded in-progress shift, which is worth doing when the DAS write paths are next touched.
+- [x] **The DAS write paths now have coverage — done (#365).** The item above was misdiagnosed twice
+  over. No seeded shift was needed: line 110 is *already* seeded running (shift 7701, job 1001, coil
+  5001). The sweep was probing **line 4, which the fixture does not seed at all**, so all 15 endpoints
+  404'd at `LineExistsAsync` and never reached a shift check. Correcting the id took the sweep to
+  120/124.
+  <br>That left the real gap, which the wrong diagnosis had been hiding: **every DAS write path had
+  zero tests** — shift start/end, coil-run start/end, change-job, reverse, current-job, current-coil,
+  queue. The line board had read tests and nothing exercised the mutations that fill it. 22 tests now
+  hold the legacy rules a refactor would quietly drop: the cross-shift carry at both ends, `process_wt`
+  floored so a heavy re-weigh cannot record a negative pass, `current_wt IS NULL` meaning "never run"
+  rather than "spent", `dt_total` in seconds, and `end_time` on the plant clock rather than UTC.
+  <br>The remaining 4 unreached endpoints answer 404 correctly: an empty body names no coil, no
+  shipment item and no customer/route pair, so there is nothing to find.
 
 - [x] **M** **Effective privilege now follows the signed-in identity** — done (#336). The sweep claimed
   the RBAC gate "unions grants across duplicate logins". Partly wrong: **both** modern write paths
