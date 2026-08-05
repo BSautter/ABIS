@@ -749,12 +749,19 @@ function `f_add_system_log_tran`, whose body is not vendored), and the Instron "
   `ab_job.order_abc_num` is NOT NULL *and* carries a composite FK to `order_item`; the guard's other
   path (job absent) is the reachable one and is what it now tests. `Unknown_packing_list_or_no_bill_of_lading`
   seeded `bill_of_lading = NULL`, also NOT NULL on Oracle — that half is removed.
-- [ ] **M** **Follow-up the above exposed: writes accept payloads Oracle rejects.** `PUT /orders/{id}`
-  and `PUT /orders/{id}/items/{n}` are full replaces, so a body omitting `orig_customer_po` or
-  `sheet_type` writes NULL into a NOT NULL column — `ORA-01400` in production, a 500 rather than a
-  clean 400. `POST /jobs` likewise accepts a job with no `orderItemNum`, which is NOT NULL and half of
-  the FK. Validate the fields Oracle requires and return 400. Nothing that works today stops working:
-  these payloads already fail on Oracle.
+- [x] **A bad request body is answered as a bad request — done (#364).** The follow-up recorded above
+  was wrong about *where* the hole was, and checking rather than building on it is what found the real
+  one. `orig_customer_po`, `sheet_type` and both job refs are already required at the endpoints
+  (`Validate(CustomerOrderWrite)`, `Validate(OrderItemWrite)`, `Validate(JobWrite)`); the tests that
+  failed in #363 were repository-level, calling `UpdateOrderAsync` directly and bypassing that layer.
+  Sweeping all 124 write endpoints instead of trusting the guess found a much larger defect:
+  **105 of them answered a malformed body with a 500**, because minimal-API binding raises a
+  `BadHttpRequestException` carrying its own 400 and nothing read it. Fixed with one exception handler
+  and guarded by a sweep of the route table, so a new endpoint is covered the day it is added.
+- [ ] **S** **The 15 endpoints the sweep cannot reach.** The DAS line operations (shift start/end, coil
+  run, change-job, queue) answer 404 before the body is examined, correctly, because seed data has no
+  shift or coil run in progress. Their binding is covered; their write paths are not. Closing this
+  needs a seeded in-progress shift, which is worth doing when the DAS write paths are next touched.
 
 - [x] **M** **Effective privilege now follows the signed-in identity** — done (#336). The sweep claimed
   the RBAC gate "unions grants across duplicate logins". Partly wrong: **both** modern write paths

@@ -180,6 +180,10 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
+// Binding failures carry their own 400; without a handler that reads it, UseExceptionHandler treats
+// them as server faults and a malformed body comes back as an opaque 500. See the handler's remarks.
+builder.Services.AddExceptionHandler<Abis.Api.Middleware.BadRequestExceptionHandler>();
+
 builder.Services.AddProblemDetails(options =>
     options.CustomizeProblemDetails = ctx =>
     {
