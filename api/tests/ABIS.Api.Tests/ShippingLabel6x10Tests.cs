@@ -201,4 +201,93 @@ public sealed class ShippingLabel6x10Tests
         Assert.EndsWith("^XZ", z);
         Assert.Contains("^PW1800", z);
     }
+
+    // ---- Found by the first test print --------------------------------------------
+
+    [Fact]
+    public void Barcode_data_carries_its_AIAG_data_identifier()
+    {
+        // Legacy encodes *<identifier><value>* (u_default_barcode.sru:793-800). The identifier tells a
+        // customer's receiving scanner WHICH field it just read; without it every barcode is an
+        // anonymous string and the ASN cannot reconcile. The first test print had bare values.
+        var z = ShippingLabel6x10.Build(Sample());
+
+        Assert.Contains("^FDPPN-3003-A^FS", z);      // P  = part number
+        Assert.Contains("^FDVABCO^FS", z);           // V  = supplier
+        Assert.Contains("^FDS3001^FS", z);           // S  = serial
+        Assert.Contains("^FD1TLOT-99^FS", z);        // 1T = heat/lot
+        Assert.Contains("^FD2Q4210^FS", z);          // 2Q = actual weight
+        Assert.Contains("^FD1Q4395^FS", z);          // 1Q = gross weight
+        Assert.Contains("^FDQ250^FS", z);            // Q  = pieces
+    }
+
+    [Fact]
+    public void The_identifier_is_in_the_barcode_data_not_the_printed_caption()
+    {
+        // It belongs to the scanner, not the reader. The human-readable value beside the barcode is
+        // still the plain one.
+        var z = ShippingLabel6x10.Build(Sample());
+        Assert.Contains("^FDPN-3003-A^FS", z);   // the text field, unprefixed
+        Assert.Contains("^FDPPN-3003-A^FS", z);  // the barcode field, prefixed
+    }
+
+    [Fact]
+    public void No_asterisks_are_added_around_barcode_data()
+    {
+        // Legacy spells out Code 39's start/stop characters because it draws with a TrueType font.
+        // ^B3 adds them itself - repeating them would encode literal asterisks into the symbol.
+        var z = ShippingLabel6x10.Build(Sample());
+        Assert.DoesNotContain("^FD*", z);
+        Assert.DoesNotContain("*^FS", z);
+    }
+
+    [Fact]
+    public void The_pieces_block_sits_below_the_gross_weight_block_not_on_top_of_it()
+    {
+        // THE defect the first test print found. The DataWindow carries two variants under the same
+        // control names — t_9 is either "7-GROSS WT" or "7-LGTH./THEO.WT" — and I mixed the gross
+        // caption with the THEO variant's pieces coordinates. "8-PIECES" landed on "7-GROSS WT" and
+        // the pieces number sat across the gross barcode.
+        //
+        // Asserted as ordering rather than by scanning for overlaps: a geometric collision check
+        // flags every legitimate caption-then-value pair on a shared row (the alloy line prints
+        // "3003", "-", "H14" within 60 dots), so it cries wolf. Ordering is the property that broke.
+        var z = ShippingLabel6x10.Build(Sample());
+
+        int Y(string field) => int.Parse(Regex.Match(z, @"\^FO\d+,(\d+)[^^]*\^[^^]*\^FH_\^FD"
+            + Regex.Escape(field) + @"\^FS").Groups[1].Value);
+
+        var grossCaption = Y("7-GROSS WT");
+        var piecesCaption = Y("8-PIECES");
+        var grossBarcode = int.Parse(Regex.Match(z, @"\^FO\d+,(\d+)\^BY[^^]*\^B3[^^]*\^FH_\^FD1Q").Groups[1].Value);
+        var piecesBarcode = int.Parse(Regex.Match(z, @"\^FO\d+,(\d+)\^BY[^^]*\^B3[^^]*\^FH_\^FDQ250").Groups[1].Value);
+
+        Assert.True(piecesCaption > grossBarcode,
+            $"8-PIECES (y={piecesCaption}) must sit below the gross barcode (y={grossBarcode}), not across it");
+        Assert.True(piecesBarcode > piecesCaption,
+            $"the pieces barcode (y={piecesBarcode}) must sit below its caption (y={piecesCaption})");
+        Assert.True(grossCaption < grossBarcode,
+            "the gross caption must sit above its own barcode");
+    }
+
+    [Fact]
+    public void No_barcode_runs_its_interpretation_line_into_the_field_below()
+    {
+        // Found by the SECOND test print: the pieces barcode printed over the address line.
+        //
+        // Legacy stacks two 250-unit rows per barcode (bar_X_t_up above bar_X_t) because it draws with
+        // a font. A native ^B3 is ONE control whose interpretation line prints BELOW it, so it must be
+        // anchored at the _up row to occupy the same block. Anchoring at the lower row overflows by a
+        // text height — invisible unless something sits directly beneath, which only pieces does.
+        var z = ShippingLabel6x10.Build(Sample());
+
+        var piecesBarcodeY = int.Parse(Regex.Match(z, @"\^FO\d+,(\d+)\^BY[^^]*\^B3[^^]*\^FH_\^FDQ250").Groups[1].Value);
+        var barcodeHeight = int.Parse(Regex.Match(z, @"\^FO\d+,\d+\^BY[^^]*\^B3N,N,(\d+),Y,N[^^]*\^FH_\^FDQ250").Groups[1].Value);
+        var addressY = int.Parse(Regex.Match(z, @"\^FO\d+,(\d+)[^^]*\^[^^]*\^FH_\^FDAleris").Groups[1].Value);
+
+        // barcode + its interpretation line (roughly one 10pt row) must finish above the address.
+        var bottom = piecesBarcodeY + barcodeHeight + 42;
+        Assert.True(bottom < addressY,
+            $"the pieces barcode ends at y={bottom} but the address starts at y={addressY}");
+    }
 }

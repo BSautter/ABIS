@@ -96,13 +96,31 @@ public static class ShippingLabel6x10
     private static string Text(int x, int y, int points, string? value) =>
         $"^FO{D(x)},{D(y)}^A0N,{Pt(points)},{Pt(points)}^FH_^FD{Fd(value)}^FS";
 
+    /// <summary>AIAG/ANSI MH10 data identifiers, prefixed to the barcode DATA (not the printed text).
+    /// <para>Legacy encodes <c>*&lt;identifier&gt;&lt;value&gt;*</c> — <c>u_default_barcode.sru:793-800</c>
+    /// sets <c>is_1="P"</c> … <c>is_8="Q"</c>. A customer's receiving scanner parses that prefix to know
+    /// WHICH field it just read; without it every barcode is an anonymous string and the ASN will not
+    /// reconcile. The asterisks are Code 39 start/stop characters that the TrueType font needed
+    /// spelled out — <c>^B3</c> adds them itself, so they must NOT be repeated here.</para></summary>
+    public static class Aiag
+    {
+        public const string PartNumber = "P";       // is_1
+        public const string Supplier = "V";         // is_2
+        public const string Serial = "S";           // is_3
+        public const string CustomerOrder = "A";    // is_4
+        public const string Heat = "1T";            // is_5
+        public const string ActualWeight = "2Q";    // is_6
+        public const string GrossWeight = "1Q";     // is_7
+        public const string Pieces = "Q";           // is_8
+    }
+
     /// <summary>A Code 39 barcode with its interpretation line, filling the two stacked control rows
     /// legacy used. <paramref name="heightUnits"/> is the barcode itself; the text sits under it.</summary>
-    private static string Barcode(int x, int y, int heightUnits, string? value)
+    private static string Barcode(int x, int y, int heightUnits, string identifier, string? value)
     {
         var v = Fd(value);
         if (v.Length == 0) return "";     // no data = no barcode, rather than an empty symbol
-        return $"^FO{D(x)},{D(y)}^BY2,3.0,{D(heightUnits)}^B3N,N,{D(heightUnits)},Y,N^FH_^FD{v}^FS";
+        return $"^FO{D(x)},{D(y)}^BY2,3.0,{D(heightUnits)}^B3N,N,{D(heightUnits)},Y,N^FH_^FD{identifier}{v}^FS";
     }
 
     private static string Num(decimal? v, string format) =>
@@ -131,45 +149,57 @@ public static class ShippingLabel6x10
         // --- the numbered AIAG fields, each caption + value + barcode -------------------
         z.Append(Text(58, 2291, 10, "1-PRODUCT IDENT."));
         z.Append(Text(1350, 2283, 22, d.PartNum));
-        z.Append(Barcode(416, 2591, 250, d.PartNum));
+        z.Append(Barcode(416, 2591, 250, Aiag.PartNumber, d.PartNum));
 
         z.Append(Text(58, 3141, 10, "2-SUPPLIER NO."));
         z.Append(Text(1158, 3141, 22, d.SupplierCode));
-        z.Append(Barcode(416, 3425, 250, d.SupplierCode));
+        z.Append(Barcode(416, 3425, 250, Aiag.Supplier, d.SupplierCode));
 
         z.Append(Text(58, 3975, 10, "3-SERIAL NO."));
         z.Append(Text(1041, 3975, 22, d.Serial));
-        z.Append(Barcode(408, 4258, 250, d.Serial));
+        z.Append(Barcode(408, 4258, 250, Aiag.Serial, d.Serial));
 
         z.Append(Text(58, 4808, 10, "4-CSTMR. ORD. NO"));
         z.Append(Text(1391, 4808, 22, d.CustomerOrder));
-        z.Append(Barcode(375, 5100, 250, d.CustomerOrder));
+        z.Append(Barcode(375, 5100, 250, Aiag.CustomerOrder, d.CustomerOrder));
 
         z.Append(Text(58, 5658, 10, "5-HEAT/PROCESS NO."));
         z.Append(Text(1575, 5658, 22, d.Heat));
-        z.Append(Barcode(458, 5950, 250, d.Heat));
+        z.Append(Barcode(458, 5950, 250, Aiag.Heat, d.Heat));
 
         // --- weights, size, alloy ------------------------------------------------------
         z.Append(Text(58, 6508, 10, "6-ACTUAL WT."));
         z.Append(Text(1033, 6500, 22, Num(d.ActualWeight, "######")));
-        z.Append(Barcode(508, 6808, 250, Num(d.ActualWeight, "######")));
+        z.Append(Barcode(508, 6808, 250, Aiag.ActualWeight, Num(d.ActualWeight, "######")));
 
         z.Append(Text(2833, 6516, 10, "7-SIZE"));
         z.Append(Text(3383, 6516, 14, dims));
 
         z.Append(Text(58, 7375, 10, "7-GROSS WT"));
         z.Append(Text(1266, 7366, 22, Num(d.GrossWeight, "######")));
-        z.Append(Barcode(483, 7725, 250, Num(d.GrossWeight, "######")));
+        z.Append(Barcode(483, 7725, 250, Aiag.GrossWeight, Num(d.GrossWeight, "######")));
 
         z.Append(Text(2091, 7391, 10, "9-ALLOY"));
         z.Append(Text(2958, 7550, 16, d.Alloy));
         z.Append(Text(3766, 7533, 18, "-"));
         z.Append(Text(3958, 7541, 16, d.Temper));
 
-        // --- pieces: the largest field on the label, and the one the floor reads ---------
-        z.Append(Text(33, 7408, 10, "8-PIECES"));
-        z.Append(Text(166, 7758, 48, d.Pieces?.ToString(CultureInfo.InvariantCulture)));
-        z.Append(Barcode(216, 8558, 250, d.Pieces?.ToString(CultureInfo.InvariantCulture)));
+        // --- pieces ----------------------------------------------------------------------
+        // The DataWindow carries TWO variants under the same control names, and the first test print
+        // proved it by overprinting "8-PIECES" on "7-GROSS WT". t_9 is either "7-GROSS WT" or
+        // "7-LGTH./THEO.WT", and each reading has its own pieces block:
+        //     gross      -> t_12 @ 58,8266   pieces_t @ 983,8266   bar @ 441,8816
+        //     theo/lgth  -> t_12 @ 33,7408   pieces_t @ 166,7758   bar @ 216,8558  (pieces oversized)
+        // This is the GROSS variant, so the gross coordinates are the consistent set. Mixing them is
+        // what collided.
+        z.Append(Text(58, 8266, 10, "8-PIECES"));
+        z.Append(Text(983, 8266, 22, d.Pieces?.ToString(CultureInfo.InvariantCulture)));
+        // 8566 is bar_pieces_t_up, NOT bar_pieces_t at 8816. Legacy stacks two 250-unit font rows
+        // (_up above, the barcode below) so the pair spans 8566-9066 and stops just short of the
+        // address at 9083. A native ^B3 is one control whose interpretation line prints BELOW it, so
+        // anchoring at the lower row pushed that text into the address — which is what the second test
+        // print showed. Every other barcode here already anchors at its _up row; this one did not.
+        z.Append(Barcode(441, 8566, 250, Aiag.Pieces, d.Pieces?.ToString(CultureInfo.InvariantCulture)));
 
         z.Append(Text(2116, 7883, 10, "10-DLOC:"));
         z.Append(Text(3258, 7950, 16, d.Dock));
