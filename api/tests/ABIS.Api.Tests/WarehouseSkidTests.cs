@@ -52,10 +52,10 @@ public sealed class WarehouseSkidTests : IDisposable
     private void Seed(string certLabelReq = "N", string cashDateReq = "N", bool withRealCoil = true)
     {
         Exec($"""
-            INSERT INTO customer (customer_id, customer_full_name, coil_cert_label_req, cash_date_required)
-                 VALUES (8100, 'Warehouse Customer', '{certLabelReq}', '{cashDateReq}');
-            INSERT INTO customer_order (order_abc_num, orig_customer_id) VALUES (4700, 8100);
-            INSERT INTO order_item (order_abc_num, order_item_num, enduser_part_num) VALUES (4700, 2, 'PART-WH');
+            INSERT INTO customer (customer_id, customer_full_name, customer_short_name, coil_cert_label_req, cash_date_required)
+                 VALUES (8100, 'Warehouse Customer', 'WH CUST', '{certLabelReq}', '{cashDateReq}');
+            INSERT INTO customer_order (order_abc_num, orig_customer_id, orig_customer_po) VALUES (4700, 8100, 'PO-WH');
+            INSERT INTO order_item (order_abc_num, order_item_num, enduser_part_num, sheet_type) VALUES (4700, 2, 'PART-WH', 'RECTANGLE');
             INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num) VALUES (3600, 4700, 2);
             """);
         if (withRealCoil)
@@ -214,7 +214,11 @@ public sealed class WarehouseSkidTests : IDisposable
     public async Task Refuses_a_job_with_no_order_behind_it()
     {
         Seed();
-        Exec("INSERT INTO ab_job (ab_job_num) VALUES (3610);");   // no order
+        // Job 3610 is deliberately NOT seeded. The guard fires the same way for a job that does not
+        // exist and for one with no order — and only the first is reachable: on Oracle
+        // ab_job.order_abc_num is NOT NULL *and* carries an FK to order_item, so a job with no order
+        // behind it cannot exist. This test used to seed exactly that impossible row, which the lax
+        // SQLite fixture allowed.
         var b = Body(); b.AbJobNum = 3610;
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(

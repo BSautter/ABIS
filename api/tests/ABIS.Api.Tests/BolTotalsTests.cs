@@ -225,8 +225,11 @@ public sealed class BolTotalsRepositoryTests : IDisposable
     {
         Assert.Null(await _repo.GetBolTotalsAsync(999999, CancellationToken.None));
 
-        Exec("INSERT INTO shipment (packing_list, bill_of_lading) VALUES (9200, NULL);");
-        Assert.Null(await _repo.GetBolTotalsAsync(9200, CancellationToken.None));
+        // The "shipment with no BOL" half of this test is gone: shipment.bill_of_lading is NOT NULL on
+        // Oracle, so that row cannot exist in production. It only ever passed because the SQLite
+        // fixture was laxer than the real schema — the guard in GetBolTotalsAsync is still there and
+        // still correct, it simply cannot be reached by a NULL, and asserting an impossible state
+        // would keep a test green over behaviour nobody can produce.
     }
 
     [Fact]

@@ -39,8 +39,8 @@ public sealed class PackingTicketTests : IDisposable
     private void SeedSheet(string usePackageNum = "N")
     {
         Exec($"""
-            INSERT INTO customer (customer_id, customer_full_name, use_package_num)
-                 VALUES (7200, 'Consignee Motors', '{usePackageNum}');
+            INSERT INTO customer (customer_id, customer_full_name, customer_short_name, use_package_num)
+                 VALUES (7200, 'Consignee Motors', 'CONSIGNEE', '{usePackageNum}');
             INSERT INTO shipment (packing_list, bill_of_lading, customer_id, des_sh_cust_id, shipment_athorization_code)
                  VALUES (9600, 5600, 7200, 7200, 'AUTH-42');
             INSERT INTO customer_order (order_abc_num, orig_customer_id, orig_customer_po, enduser_po)

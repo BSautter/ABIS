@@ -483,7 +483,7 @@ public sealed class RepositoryTests : IDisposable
 
         // Update flips flags; maint date is set.
         var updated = await _repo.UpdateCustomerAsync(4002,
-            new CustomerWrite { CustomerName = "BETA FAB", EdiReq = "Y", Create861AtReceiving = "Y", PlantCode = "PLT-02" },
+            new CustomerWrite { CustomerName = "BETA FAB", CustomerShortName = "SHORT", EdiReq = "Y", Create861AtReceiving = "Y", PlantCode = "PLT-02" },
             CancellationToken.None);
         Assert.Equal("Y", updated!.EdiReq);
         Assert.Equal("PLT-02", updated.PlantCode);
@@ -498,7 +498,7 @@ public sealed class RepositoryTests : IDisposable
         Assert.Equal("ACME METALS LLC", updated!.CustomerName);
 
         Assert.Null(await _repo.UpdateCustomerAsync(999999,
-            new CustomerWrite { CustomerName = "NOPE" }, CancellationToken.None));
+            new CustomerWrite { CustomerName = "NOPE", CustomerShortName = "SHORT" }, CancellationToken.None));
     }
 
     [Fact]
@@ -550,7 +550,7 @@ public sealed class RepositoryTests : IDisposable
     public async Task UpdateOrder_changes_and_unknown_returns_null()
     {
         var updated = await _repo.UpdateOrderAsync(9001,
-            new CustomerOrderWrite { OrigCustomerId = 4001, EnduserPo = "EU-CHANGED" }, CancellationToken.None);
+            new CustomerOrderWrite { OrigCustomerId = 4001, OrigCustomerPo = "PO-KEEP", EnduserPo = "EU-CHANGED" }, CancellationToken.None);
         Assert.Equal("EU-CHANGED", updated!.EnduserPo);
         Assert.Null(await _repo.UpdateOrderAsync(999999, new CustomerOrderWrite(), CancellationToken.None));
     }
@@ -561,7 +561,7 @@ public sealed class RepositoryTests : IDisposable
         // order 9001 already has line numbers 7001, 7002 -> next is 7003 (scoped to
         // the order; the composite key keeps it distinct from (9002, 7003)).
         var created = await _repo.CreateOrderItemAsync(9001,
-            new OrderItemWrite { EnduserPartNum = "PN-NEW", Alloy2 = "6061", UnitPrice = 2.0m }, CancellationToken.None);
+            new OrderItemWrite { EnduserPartNum = "PN-NEW", Alloy2 = "6061", UnitPrice = 2.0m, SheetType = "RECTANGLE" }, CancellationToken.None);
         Assert.Equal(7003, created.OrderItemNum);   // MAX(order_item_num) for order 9001 + 1
         Assert.Equal(9001, created.OrderAbcNum);
         Assert.Equal("PN-NEW", created.EnduserPartNum);
@@ -572,11 +572,11 @@ public sealed class RepositoryTests : IDisposable
     public async Task UpdateOrderItem_changes_and_unknown_returns_null()
     {
         var updated = await _repo.UpdateOrderItemAsync(9001, 7001,
-            new OrderItemWrite { EnduserPartNum = "PN-3003-A", UnitPrice = 9.99m }, CancellationToken.None);
+            new OrderItemWrite { EnduserPartNum = "PN-3003-A", UnitPrice = 9.99m, SheetType = "RECTANGLE" }, CancellationToken.None);
         Assert.Equal(9.99m, updated!.UnitPrice);
         // unknown line number within a known order -> null
         Assert.Null(await _repo.UpdateOrderItemAsync(9001, 999999,
-            new OrderItemWrite { EnduserPartNum = "X" }, CancellationToken.None));
+            new OrderItemWrite { EnduserPartNum = "X", SheetType = "RECTANGLE" }, CancellationToken.None));
     }
 
     [Fact]
@@ -596,7 +596,7 @@ public sealed class RepositoryTests : IDisposable
     public async Task CreateJob_assigns_next_id_and_sets_create_date()
     {
         var created = await _repo.CreateJobAsync(
-            new JobWrite { OrderAbcNum = 9001, LineNum = 110, JobStatus = 0, JobNotes = "new job" }, CancellationToken.None);
+            new JobWrite { OrderAbcNum = 9001, OrderItemNum = 7001, LineNum = 110, JobStatus = 0, JobNotes = "new job" }, CancellationToken.None);
         Assert.Equal(1005, created.AbJobNum);   // MAX(1004) + 1
         Assert.NotNull(created.CreateDate);
         Assert.Equal("new job", created.JobNotes);
@@ -673,8 +673,8 @@ public sealed class RepositoryTests : IDisposable
             Order = new CustomerOrderWrite { OrigCustomerId = 4001, OrigCustomerPo = "PO-COMBO" },
             Items =
             [
-                new OrderItemWrite { EnduserPartNum = "PN-A", Alloy2 = "3003" },
-                new OrderItemWrite { EnduserPartNum = "PN-B", Alloy2 = "5052" }
+                new OrderItemWrite { EnduserPartNum = "PN-A", Alloy2 = "3003", SheetType = "RECTANGLE" },
+                new OrderItemWrite { EnduserPartNum = "PN-B", Alloy2 = "5052", SheetType = "RECTANGLE" }
             ]
         }, CancellationToken.None);
 
@@ -1008,7 +1008,7 @@ public sealed class RepositoryTests : IDisposable
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
                 INSERT INTO customer_order (order_abc_num, orig_customer_id, orig_customer_po, enduser_po) VALUES (7700, 1153, 'CPO-77', 'EPO-77');
-                INSERT INTO order_item (order_item_num, order_abc_num, enduser_part_num, cust_prod_line_id, finished_goods_material_num, item_status) VALUES (1, 7700, 'NPART', 'PL-77', 'FG-77', 1);
+                INSERT INTO order_item (order_item_num, order_abc_num, enduser_part_num, cust_prod_line_id, finished_goods_material_num, item_status, sheet_type) VALUES (1, 7700, 'NPART', 'PL-77', 'FG-77', 1, 'RECTANGLE');
                 INSERT INTO coil (coil_abc_num, coil_org_num, coil_gauge, coil_status, customer_id, lot_num, net_wt, net_wt_balance, consumed_coil_num) VALUES (7701, 'NC-7701', 0.04, 13, 1153, 'NLOT', 25000, 0, 'CC-7701');
                 INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num, job_status) VALUES (7702, 7700, 1, 0);
                 INSERT INTO production_sheet_item (prod_item_num, coil_abc_num, ab_job_num, prod_item_status, prod_item_pieces, prod_item_net_wt) VALUES (7703, 7701, 7702, 1, 100, 20000);
@@ -1209,27 +1209,27 @@ public sealed class RepositoryTests : IDisposable
                 INSERT INTO line (line_num, line_desc) VALUES (992, 'TEST LINE B');
 
                 -- Straight run: all 10,000 consumed.
-                INSERT INTO ab_job (ab_job_num, line_num, job_status, material_yield, time_date_started) VALUES (9101, 991, 0, 0.95, '2026-03-01 06:00:00');
+                INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num, line_num, job_status, material_yield, time_date_started) VALUES (9101, 9001, 7001, 991, 0, 0.95, '2026-03-01 06:00:00');
                 INSERT INTO coil (coil_abc_num, coil_org_num, lot_num, net_wt, net_wt_balance) VALUES (9001, '9900001', 'L9001', 10000, 0);
                 INSERT INTO process_coil (ab_job_num, coil_abc_num, process_coil_status, process_end_wt, process_quantity) VALUES (9101, 9001, 1, 0, 10000);
 
                 -- Applied but never used (status 2): counted into coilnet, then subtracted back out.
-                INSERT INTO ab_job (ab_job_num, line_num, job_status, material_yield, time_date_started) VALUES (9102, 991, 0, 0.95, '2026-03-01 07:00:00');
+                INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num, line_num, job_status, material_yield, time_date_started) VALUES (9102, 9001, 7001, 991, 0, 0.95, '2026-03-01 07:00:00');
                 INSERT INTO coil (coil_abc_num, coil_org_num, lot_num, net_wt, net_wt_balance) VALUES (9002, '9900002', 'L9002', 3000, 3000);
                 INSERT INTO process_coil (ab_job_num, coil_abc_num, process_coil_status, process_end_wt, process_quantity) VALUES (9102, 9002, 2, 0, 3000);
 
                 -- Rejected (3). Billed weight = MAX(end_wt 1200, largest prior pass 500) = 1200,
                 -- so 8000 - 1200 = 6800 was actually processed. The prior pass lives on line B, which
                 -- also proves the correlated MAX is not filtered by job.
-                INSERT INTO ab_job (ab_job_num, line_num, job_status, material_yield, time_date_started) VALUES (9103, 991, 0, 0.95, '2026-03-01 08:00:00');
+                INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num, line_num, job_status, material_yield, time_date_started) VALUES (9103, 9001, 7001, 991, 0, 0.95, '2026-03-01 08:00:00');
                 INSERT INTO coil (coil_abc_num, coil_org_num, lot_num, net_wt, net_wt_balance) VALUES (9003, '9900003', 'L9003', 8000, 1200);
                 INSERT INTO process_coil (ab_job_num, coil_abc_num, process_coil_status, process_end_wt, process_quantity) VALUES (9103, 9003, 3, 1200, 8000);
-                INSERT INTO ab_job (ab_job_num, line_num, job_status, material_yield, time_date_started) VALUES (9105, 992, 0, 0.95, '2026-03-01 05:00:00');
+                INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num, line_num, job_status, material_yield, time_date_started) VALUES (9105, 9001, 7001, 992, 0, 0.95, '2026-03-01 05:00:00');
                 INSERT INTO process_coil (ab_job_num, coil_abc_num, process_coil_status, process_end_wt, process_quantity) VALUES (9105, 9003, 1, 0, 500);
 
                 -- Rebanded (7) with a NULL end weight: the rule falls back to coil.net_wt_balance (900),
                 -- so 5000 - 900 = 4100. This is the branch that made process_end_wt NULL on 51% of live rows.
-                INSERT INTO ab_job (ab_job_num, line_num, job_status, material_yield, time_date_started) VALUES (9104, 991, 0, 0.95, '2026-03-01 09:00:00');
+                INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num, line_num, job_status, material_yield, time_date_started) VALUES (9104, 9001, 7001, 991, 0, 0.95, '2026-03-01 09:00:00');
                 INSERT INTO coil (coil_abc_num, coil_org_num, lot_num, net_wt, net_wt_balance) VALUES (9004, '9900004', 'L9004', 5000, 900);
                 INSERT INTO process_coil (ab_job_num, coil_abc_num, process_coil_status, process_end_wt, process_quantity) VALUES (9104, 9004, 7, NULL, 5000);
                 """;
@@ -1266,7 +1266,7 @@ public sealed class RepositoryTests : IDisposable
                 INSERT INTO carrier (carrier_id, scac, carrier_full_name, carrier_type_code, status) VALUES (1250, 'AGGP', 'AGGRESSIVE', 'TL', 1);
                 INSERT INTO shipment (packing_list, bill_of_lading, carrier_id, customer_id, des_sh_cust_id, vehicle_id, shipment_status, shipment_actualed_date_time) VALUES (8850, 138850, 1250, 1153, 7800, '1706', 1, '2026-01-05 07:51:00');
                 INSERT INTO customer_order (order_abc_num, orig_customer_id, orig_customer_po) VALUES (7800, 1153, '4390398984');
-                INSERT INTO order_item (order_item_num, order_abc_num, enduser_part_num, item_status) VALUES (1, 7800, '55369455-1', 1);
+                INSERT INTO order_item (order_item_num, order_abc_num, enduser_part_num, item_status, sheet_type) VALUES (1, 7800, '55369455-1', 1, 'RECTANGLE');
                 INSERT INTO coil (coil_abc_num, coil_org_num, coil_gauge, coil_width, coil_status, customer_id, lot_num, net_wt, net_wt_balance, coil_alloy2, coil_temper) VALUES (7801, '1865493', 0.0374, 54, 13, 1153, '1638411201', 4180, 0, '5052', 'T4');
                 INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num, job_status) VALUES (7802, 7800, 1, 0);
                 INSERT INTO production_sheet_item (prod_item_num, coil_abc_num, ab_job_num, prod_item_status, prod_item_pieces, prod_item_net_wt) VALUES (7803, 7801, 7802, 1, 300, 4180);
@@ -1460,7 +1460,7 @@ public sealed class RepositoryTests : IDisposable
                 INSERT INTO customer (customer_id, customer_full_name, customer_short_name, customer_city, customer_state, customer_type, edi_req, customer_duns_number_string) VALUES (9100, 'PACK CO', 'PACK', 'Detroit', 'MI', 1, 'Y', '111222333');
                 INSERT INTO shipment (packing_list, bill_of_lading, customer_id, shipment_status) VALUES (91000, 191000, 9100, 2);
                 INSERT INTO customer_order (order_abc_num, orig_customer_id, orig_customer_po, enduser_po) VALUES (9110, 9100, 'PO-91', 'EPO-91');
-                INSERT INTO order_item (order_item_num, order_abc_num, enduser_part_num, item_status) VALUES (1, 9110, 'PPART', 1);
+                INSERT INTO order_item (order_item_num, order_abc_num, enduser_part_num, item_status, sheet_type) VALUES (1, 9110, 'PPART', 1, 'RECTANGLE');
                 INSERT INTO coil (coil_abc_num, coil_org_num, coil_gauge, coil_status, customer_id, lot_num, net_wt, net_wt_balance) VALUES (9120, 'PCOIL-1', 0.05, 2, 9100, 'PLOT', 30000, 0);
                 INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num, job_status) VALUES (9130, 9110, 1, 0);
                 INSERT INTO production_sheet_item (prod_item_num, coil_abc_num, ab_job_num, prod_item_status, prod_item_pieces, prod_item_net_wt) VALUES (9140, 9120, 9130, 1, 100, 20000);
@@ -1681,7 +1681,7 @@ public sealed class RepositoryTests : IDisposable
                 INSERT INTO scrap_skid (scrap_skid_num, scrap_ab_job_num, scrap_net_wt, scrap_tare_wt) VALUES (77500, '27704', 2000, 100);
                 INSERT INTO scraped_sheet_skid (sheet_skid_num, ab_job_num, sheet_net_wt, sheet_tare_wt, skid_pieces, skid_sheet_status, ref_order_abc_num, ref_order_abc_item, scrap_skid_num) VALUES (88800, 27704, 2000, 100, 150, 0, 5513, 1, 77500);
                 INSERT INTO scraped_production_sheet_item (prod_item_num, coil_abc_num, ab_job_num, prod_item_status, prod_item_pieces, prod_item_net_wt, scrap_skid_num) VALUES (99900, 4990, 27704, 1, 150, 2000, 77500);
-                INSERT INTO scraped_process_partial_skid (ab_job_num, sheet_skid_num, partial_sheet_net_wt, partial_skid_pieces, scrap_skid_num) VALUES (27704, 88800, 500, 40, 77500);
+                INSERT INTO scraped_process_partial_skid (ab_job_num, sheet_skid_num, partial_sheet_net_wt, partial_skid_pieces, scrap_skid_num, partial_skid_ab_job_num) VALUES (27704, 88800, 500, 40, 77500, 27704);
                 INSERT INTO scraped_sheet_skid_detail (prod_item_num, sheet_skid_num, scrap_skid_num) VALUES (99900, 88800, 77500);
                 INSERT INTO scrap_skid_detail (scrap_skid_num, return_scrap_item_num) VALUES (77500, 12345);
                 INSERT INTO return_scrap_item (return_scrap_item_num, ab_job_num, return_item_net_wt) VALUES (12345, 27704, 500);

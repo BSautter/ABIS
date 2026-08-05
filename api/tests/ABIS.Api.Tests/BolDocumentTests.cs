@@ -46,10 +46,10 @@ public sealed class BolDocumentTests : IDisposable
             INSERT INTO shipment (packing_list, bill_of_lading, customer_id, des_sh_cust_id, vehicle_id)
                  VALUES (9500, 5500, 7100, 7100, 'TRL-77');
 
-            INSERT INTO customer_order (order_abc_num, orig_customer_po, enduser_po)
-                 VALUES (4400, 'PO-ORIG-1', 'PO-END-1');
-            INSERT INTO order_item (order_abc_num, order_item_num, enduser_part_num, supplier_code)
-                 VALUES (4400, 1, 'PART-XYZ', 'SUP-9');
+            INSERT INTO customer_order (order_abc_num, orig_customer_id, orig_customer_po, enduser_po)
+                 VALUES (4400, 7100, 'PO-ORIG-1', 'PO-END-1');
+            INSERT INTO order_item (order_abc_num, order_item_num, enduser_part_num, supplier_code, sheet_type)
+                 VALUES (4400, 1, 'PART-XYZ', 'SUP-9', 'RECTANGLE');
             INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num) VALUES (3300, 4400, 1);
 
             INSERT INTO sheet_skid (sheet_skid_num, sheet_skid_display_num, ab_job_num,
@@ -124,10 +124,10 @@ public sealed class BolDocumentTests : IDisposable
         // the skid at a DIFFERENT order from the job's proves which one the form actually prints.
         Exec("""
             INSERT INTO shipment (packing_list, bill_of_lading) VALUES (9510, 5510);
-            INSERT INTO customer_order (order_abc_num, orig_customer_po, enduser_po)
-                 VALUES (4410, 'PO-JOB-ORDER', 'END-JOB'), (4411, 'PO-REF-ORDER', 'END-REF');
-            INSERT INTO order_item (order_abc_num, order_item_num, enduser_part_num, supplier_code)
-                 VALUES (4410, 1, 'PART-JOB', 'SUP-JOB'), (4411, 1, 'PART-REF', 'SUP-REF');
+            INSERT INTO customer_order (order_abc_num, orig_customer_id, orig_customer_po, enduser_po)
+                 VALUES (4410, 7100, 'PO-JOB-ORDER', 'END-JOB'), (4411, 7100, 'PO-REF-ORDER', 'END-REF');
+            INSERT INTO order_item (order_abc_num, order_item_num, enduser_part_num, supplier_code, sheet_type)
+                 VALUES (4410, 1, 'PART-JOB', 'SUP-JOB', 'RECTANGLE'), (4411, 1, 'PART-REF', 'SUP-REF', 'RECTANGLE');
             INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num) VALUES (3310, 4410, 1);
             INSERT INTO sheet_skid (sheet_skid_num, sheet_skid_display_num, ab_job_num,
                                     sheet_net_wt, sheet_tare_wt, ref_order_abc_num, ref_order_abc_item)
@@ -148,7 +148,7 @@ public sealed class BolDocumentTests : IDisposable
     {
         Exec("""
             INSERT INTO shipment (packing_list, bill_of_lading) VALUES (9520, 5520);
-            INSERT INTO ab_job (ab_job_num) VALUES (3320), (3321);
+            INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num) VALUES (3320, 4400, 1), (3321, 4400, 1);
             INSERT INTO sheet_skid (sheet_skid_num, sheet_skid_display_num, ab_job_num, sheet_net_wt, sheet_tare_wt)
                  VALUES (8920, 'A', 3320, 100, 5), (8921, 'B', 3320, 200, 5), (8922, 'C', 3321, 300, 5);
             INSERT INTO sheet_packing_item (sh_packing_item, packing_list, sheet_skid_num, sheet_packaging_ticket)
@@ -171,7 +171,7 @@ public sealed class BolDocumentTests : IDisposable
         // rather than an error, because the TOTALS are still correct — only the layout can't hold it.
         Exec("""
             INSERT INTO shipment (packing_list, bill_of_lading) VALUES (9530, 5530);
-            INSERT INTO ab_job (ab_job_num) VALUES (3330), (3331), (3332), (3333);
+            INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num) VALUES (3330, 4400, 1), (3331, 4400, 1), (3332, 4400, 1), (3333, 4400, 1);
             INSERT INTO sheet_skid (sheet_skid_num, sheet_skid_display_num, ab_job_num, sheet_net_wt, sheet_tare_wt)
                  VALUES (8930, 'A', 3330, 100, 1), (8931, 'B', 3331, 100, 1),
                         (8932, 'C', 3332, 100, 1), (8933, 'D', 3333, 100, 1);
@@ -192,7 +192,7 @@ public sealed class BolDocumentTests : IDisposable
     {
         Exec("""
             INSERT INTO shipment (packing_list, bill_of_lading) VALUES (9540, 5540);
-            INSERT INTO ab_job (ab_job_num) VALUES (3340), (3341), (3342);
+            INSERT INTO ab_job (ab_job_num, order_abc_num, order_item_num) VALUES (3340, 4400, 1), (3341, 4400, 1), (3342, 4400, 1);
             INSERT INTO sheet_skid (sheet_skid_num, sheet_skid_display_num, ab_job_num, sheet_net_wt, sheet_tare_wt)
                  VALUES (8940, 'A', 3340, 100, 1), (8941, 'B', 3341, 100, 1), (8942, 'C', 3342, 100, 1);
             INSERT INTO sheet_packing_item (sh_packing_item, packing_list, sheet_skid_num, sheet_packaging_ticket)

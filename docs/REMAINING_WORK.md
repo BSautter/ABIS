@@ -741,13 +741,20 @@ function `f_add_system_log_tran`, whose body is not vendored), and the Instron "
   a table whose every write is a guaranteed `ORA-01400` — does not exist. `OracleNotNullInsertTests`
   now locks that in against a committed schema snapshot (`oracle-not-null.tsv`), with no exemption list
   because there is nothing to exempt.
-- [ ] **L** **Residual of the above, NOT covered by the guard:** a column that IS in the INSERT but
-  receives a null at runtime. The guard is static, so it cannot see this; it fails only that one
-  request, as a 500 carrying an Oracle error rather than a clean 400. Tightening `SqliteFixture` to
-  match Oracle's 190 columns surfaces it — I measured this: **60 tests fail**, but the great majority
-  are tests seeding their own rows sloppily (41 alone are `customer.customer_short_name` from
-  test-local inserts), not app defects. Worth doing as its own pass for the API-validation wins;
-  deliberately not bundled, since it is mostly mechanical test-data churn.
+- [x] **CI's schema now matches Oracle's NOT NULL — done (#363).** All **190** columns that are NOT
+  NULL on live are NOT NULL in `SqliteFixture`, so a write CI accepts is a write Oracle accepts. The
+  60 failures this surfaced were mostly sloppy test seeds, as measured — but not only:
+  **Two tests were asserting states production forbids**, and only passed because the fixture was
+  laxer than the real schema. `Refuses_a_job_with_no_order_behind_it` seeded a job with no order, but
+  `ab_job.order_abc_num` is NOT NULL *and* carries a composite FK to `order_item`; the guard's other
+  path (job absent) is the reachable one and is what it now tests. `Unknown_packing_list_or_no_bill_of_lading`
+  seeded `bill_of_lading = NULL`, also NOT NULL on Oracle — that half is removed.
+- [ ] **M** **Follow-up the above exposed: writes accept payloads Oracle rejects.** `PUT /orders/{id}`
+  and `PUT /orders/{id}/items/{n}` are full replaces, so a body omitting `orig_customer_po` or
+  `sheet_type` writes NULL into a NOT NULL column — `ORA-01400` in production, a 500 rather than a
+  clean 400. `POST /jobs` likewise accepts a job with no `orderItemNum`, which is NOT NULL and half of
+  the FK. Validate the fields Oracle requires and return 400. Nothing that works today stops working:
+  these payloads already fail on Oracle.
 
 - [x] **M** **Effective privilege now follows the signed-in identity** — done (#336). The sweep claimed
   the RBAC gate "unions grants across duplicate logins". Partly wrong: **both** modern write paths

@@ -134,7 +134,7 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS error_type;
 
             CREATE TABLE ab_job (
-                ab_job_num INTEGER PRIMARY KEY, order_abc_num INTEGER, order_item_num INTEGER,
+                ab_job_num INTEGER PRIMARY KEY, order_abc_num INTEGER NOT NULL, order_item_num INTEGER NOT NULL,
                 line_num INTEGER, job_status INTEGER, material_yield REAL, number_of_men_used INTEGER,
                 sketch_id INTEGER, create_date TEXT, due_date TEXT, time_date_started TEXT,
                 time_date_finished TEXT, job_notes TEXT, sketch_job_note TEXT);
@@ -166,7 +166,7 @@ public static class SqliteFixture
             -- Partial-skid suffix ledger (legacy split_skid) — the Constellium 870 reads a skid's letter from here.
             -- Empty in the fixture; the modern engine reads but never writes it (REF*SE suffix falls back to none).
             CREATE TABLE split_skid (
-                ab_job_num INTEGER, coil_abc_num INTEGER, sheet_skid_num INTEGER, sheet_skid_display_num TEXT,
+                ab_job_num INTEGER NOT NULL, coil_abc_num INTEGER NOT NULL, sheet_skid_num INTEGER NOT NULL, sheet_skid_display_num TEXT,
                 coil_org_num TEXT, prod_item_net_wt REAL, prod_item_pieces INTEGER, suffix TEXT);
 
             -- Inbound coil detail off a receiving BOL (legacy inbound_coil) — the Constellium 870 takes the F-level
@@ -175,7 +175,7 @@ public static class SqliteFixture
                 -- The mill's advance notice of a coil (from its inbound EDI). The handheld receiving
                 -- gun shows these details after a scan so the operator can eyeball the coil against
                 -- what the mill said it shipped.
-                edi_file_id INTEGER, bol TEXT, item_num INTEGER,
+                edi_file_id INTEGER NOT NULL, bol TEXT NOT NULL, item_num INTEGER NOT NULL,
                 coil_number TEXT, part_num TEXT,
                 net_weight REAL, gross_weight REAL, alloy TEXT, temper TEXT,
                 coil_gauge REAL, coil_width REAL, lot TEXT, pack_id TEXT);
@@ -183,31 +183,31 @@ public static class SqliteFixture
             -- Per-inbound-coil receiving state: which customer coil number maps to which minted ABC
             -- number (0/NULL = not yet minted), plus the damage flags and the scanned QR payload.
             CREATE TABLE inbound_coil_status (
-                edi_file_id INTEGER, bol TEXT, item_num INTEGER,
+                edi_file_id INTEGER NOT NULL, bol TEXT NOT NULL, item_num INTEGER NOT NULL,
                 damaged_code INTEGER, damaged_fault INTEGER, status INTEGER,
                 coil_number TEXT, coil_abc_num INTEGER, barcode_string TEXT,
                 PRIMARY KEY (edi_file_id, bol, item_num));
 
             CREATE TABLE process_coil (
-                ab_job_num INTEGER, coil_abc_num INTEGER, process_coil_status INTEGER,
-                process_date TEXT, process_end_wt REAL, process_quantity REAL,
+                ab_job_num INTEGER NOT NULL, coil_abc_num INTEGER NOT NULL, process_coil_status INTEGER,
+                process_date TEXT, process_end_wt REAL, process_quantity REAL NOT NULL,
                 -- Written by the DAS as a coil run closes: the coil's status on the line and the
                 -- weight it has left. current_wt = 0 on every coil of a job = the job is finished.
                 shift_process_status INTEGER, current_wt REAL,
                 PRIMARY KEY (ab_job_num, coil_abc_num));
 
             CREATE TABLE customer_order (
-                order_abc_num INTEGER PRIMARY KEY, orig_customer_id INTEGER, enduser_id INTEGER,
-                orig_customer_po TEXT, enduser_po TEXT, order_type INTEGER, reference TEXT, term TEXT,
+                order_abc_num INTEGER PRIMARY KEY, orig_customer_id INTEGER NOT NULL, enduser_id INTEGER,
+                orig_customer_po TEXT NOT NULL, enduser_po TEXT, order_type INTEGER, reference TEXT, term TEXT,
                 scrap_handing_type TEXT, created_date TEXT, order_contact_id INTEGER, cust_order_note TEXT,
                 cust_order_line_note INTEGER, sheet_handling_type INTEGER, sales_order TEXT,
                 tier1_customer_id INTEGER, cert_label_customer_code INTEGER, edi_code TEXT);
 
             CREATE TABLE order_item (
-                order_item_num INTEGER, order_abc_num INTEGER, enduser_part_num TEXT, item_status INTEGER,
+                order_item_num INTEGER NOT NULL, order_abc_num INTEGER NOT NULL, enduser_part_num TEXT, item_status INTEGER,
                 item_active TEXT, item_due_date TEXT, item_created_dttm TEXT,
                 quantity INTEGER, quantity_plus INTEGER, quantity_minus INTEGER,
-                sheet_type TEXT, alloy INTEGER, alloy2 TEXT, temper TEXT, gauge REAL, gauge_p REAL, gauge_m REAL,
+                sheet_type TEXT NOT NULL, alloy INTEGER, alloy2 TEXT, temper TEXT, gauge REAL, gauge_p REAL, gauge_m REAL,
                 surface TEXT, flatness TEXT, material_end_use TEXT, theoretical_unit_wt REAL, spec TEXT, designation TEXT,
                 incoming_coil_width REAL, trimmed_coil_width REAL, trim_type_code INTEGER, trimming_required TEXT,
                 trimmed_width_overridden TEXT, trimmed_width_override_user TEXT, sh_tolerance_plus TEXT, sh_toleranc_minus TEXT,
@@ -223,34 +223,34 @@ public static class SqliteFixture
 
             -- Per-item blank geometry: one table per shape, keyed by the order_item composite
             -- key (see Data/ShapeGeometry). Decimals are REAL (SQLite affinity gotcha).
-            CREATE TABLE rectangle (order_item_num INTEGER, order_abc_num INTEGER,
+            CREATE TABLE rectangle (order_item_num INTEGER NOT NULL, order_abc_num INTEGER NOT NULL,
                 rt_length REAL, rt_length_plus REAL, rt_length_minus REAL, rt_width REAL, rt_width_plus REAL, rt_width_minus REAL,
                 rt_die1 TEXT, rt_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
-            CREATE TABLE circle (order_item_num INTEGER, order_abc_num INTEGER,
+            CREATE TABLE circle (order_item_num INTEGER NOT NULL, order_abc_num INTEGER NOT NULL,
                 c_diameter REAL, c_diameter_plus REAL, c_diameter_minus REAL, c_die1 TEXT, c_die2 TEXT,
                 PRIMARY KEY (order_abc_num, order_item_num));
-            CREATE TABLE chevron (order_item_num INTEGER, order_abc_num INTEGER,
+            CREATE TABLE chevron (order_item_num INTEGER NOT NULL, order_abc_num INTEGER NOT NULL,
                 ch_length REAL, ch_length_plus REAL, ch_length_minus REAL, ch_width REAL, ch_width_plus REAL, ch_width_minus REAL,
                 ch_die TEXT, PRIMARY KEY (order_abc_num, order_item_num));
-            CREATE TABLE fender (order_item_num INTEGER, order_abc_num INTEGER,
+            CREATE TABLE fender (order_item_num INTEGER NOT NULL, order_abc_num INTEGER NOT NULL,
                 fe_side REAL, fe_side_plus REAL, fe_side_minus REAL, fe_die1 TEXT, fe_die2 TEXT,
                 fe_length REAL, fe_length_plus REAL, fe_length_minus REAL, PRIMARY KEY (order_abc_num, order_item_num));
-            CREATE TABLE parallelogram (order_item_num INTEGER, order_abc_num INTEGER,
+            CREATE TABLE parallelogram (order_item_num INTEGER NOT NULL, order_abc_num INTEGER NOT NULL,
                 p_length REAL, p_length_plus REAL, p_length_minus REAL, p_width REAL, p_width_plus REAL, p_width_minus REAL,
                 p_angle1 REAL, p_angle2 REAL, p_die1 TEXT, p_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
-            CREATE TABLE trapezoid (order_item_num INTEGER, order_abc_num INTEGER,
+            CREATE TABLE trapezoid (order_item_num INTEGER NOT NULL, order_abc_num INTEGER NOT NULL,
                 tr_long_length REAL, tr_long_plus REAL, tr_long_minus REAL, tr_short_length REAL, tr_short_plus REAL, tr_short_minus REAL,
                 tr_width REAL, tr_width_plus REAL, tr_width_minus REAL, tr_die1 TEXT, tr_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
-            CREATE TABLE left_trapezoid (order_item_num INTEGER, order_abc_num INTEGER,
+            CREATE TABLE left_trapezoid (order_item_num INTEGER NOT NULL, order_abc_num INTEGER NOT NULL,
                 ltr_long_length REAL, ltr_long_plus REAL, ltr_long_minus REAL, ltr_short_length REAL, ltr_short_plus REAL, ltr_short_minus REAL,
                 ltr_width REAL, ltr_width_plus REAL, ltr_width_minus REAL, ltr_die1 TEXT, ltr_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
-            CREATE TABLE right_trapezoid (order_item_num INTEGER, order_abc_num INTEGER,
+            CREATE TABLE right_trapezoid (order_item_num INTEGER NOT NULL, order_abc_num INTEGER NOT NULL,
                 rtr_long_length REAL, rtr_long_plus REAL, rtr_long_minus REAL, rtr_short_length REAL, rtr_short_plus REAL, rtr_short_minus REAL,
                 rtr_width REAL, rtr_width_plus REAL, rtr_width_minus REAL, rtr_die1 TEXT, rtr_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
-            CREATE TABLE reinforcement (order_item_num INTEGER, order_abc_num INTEGER,
+            CREATE TABLE reinforcement (order_item_num INTEGER NOT NULL, order_abc_num INTEGER NOT NULL,
                 re_width REAL, re_width_plus REAL, re_width_minus REAL, re_length REAL, re_length_plus REAL, re_length_minus REAL,
                 re_die1 TEXT, re_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
-            CREATE TABLE liftgate_shape (order_item_num INTEGER, order_abc_num INTEGER,
+            CREATE TABLE liftgate_shape (order_item_num INTEGER NOT NULL, order_abc_num INTEGER NOT NULL,
                 li_width REAL, li_width_plus REAL, li_width_minus REAL, li_length REAL, li_length_plus REAL, li_length_minus REAL,
                 li_die1 TEXT, li_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
 
@@ -280,13 +280,13 @@ public static class SqliteFixture
             -- (coil_abc_num, position, created_date, source_id) per oracle_ddl.sql;
             -- coil_abc_num ties a result to its coil, source_id to the capture source.
             CREATE TABLE pst_test_result (
-                coil_abc_num INTEGER, position TEXT, created_date TEXT, source_id INTEGER,
+                coil_abc_num INTEGER NOT NULL, position TEXT NOT NULL, created_date TEXT NOT NULL, source_id INTEGER NOT NULL,
                 test_type INTEGER, yts_val REAL, uts_val REAL, elong_val REAL, n_val REAL, r_val REAL,
                 thickness REAL, width REAL,
                 PRIMARY KEY (coil_abc_num, position, created_date, source_id));
 
             CREATE TABLE coil_track_qa (
-                coil_abc_num INTEGER, coil_track_date TEXT, coil_pre_status INTEGER, coil_cur_status INTEGER,
+                coil_abc_num INTEGER NOT NULL, coil_track_date TEXT NOT NULL, coil_pre_status INTEGER NOT NULL, coil_cur_status INTEGER NOT NULL,
                 coil_modified_by TEXT NOT NULL, note TEXT NOT NULL,
                 PRIMARY KEY (coil_abc_num, coil_track_date));
 
@@ -297,12 +297,12 @@ public static class SqliteFixture
                 sampling_required TEXT, pcc_number TEXT, revision_level TEXT);
 
             CREATE TABLE coil_quality_flaw_mapping (
-                coil_abc_num INTEGER, coil_org_num TEXT NOT NULL, starting_position REAL, ending_position REAL,
-                flaw_code TEXT, starting_position_uom TEXT, ending_position_uom TEXT, handling_code TEXT,
+                coil_abc_num INTEGER NOT NULL, coil_org_num TEXT NOT NULL, starting_position REAL NOT NULL, ending_position REAL NOT NULL,
+                flaw_code TEXT NOT NULL, starting_position_uom TEXT, ending_position_uom TEXT, handling_code TEXT,
                 PRIMARY KEY (coil_abc_num, starting_position, ending_position, flaw_code));
 
             CREATE TABLE customer (
-                customer_id INTEGER PRIMARY KEY, customer_full_name TEXT, customer_short_name TEXT, customer_type INTEGER,
+                customer_id INTEGER PRIMARY KEY, customer_full_name TEXT NOT NULL, customer_short_name TEXT NOT NULL, customer_type INTEGER,
                 customer_street TEXT, customer_city TEXT, customer_state TEXT, customer_zip TEXT, customer_country TEXT,
                 customer_phone_number TEXT, customer_fax_number TEXT, customer_create_date TEXT, customer_maint_date TEXT,
                 customer_notes TEXT, parent_id INTEGER, customer_external_id TEXT,
@@ -332,8 +332,8 @@ public static class SqliteFixture
             -- Finished production items rolled onto a job (legacy production_sheet_item): the
             -- invoice's "processed weight" bucket = SUM(prod_item_net_wt). Decimals are REAL.
             CREATE TABLE production_sheet_item (
-                prod_item_num INTEGER PRIMARY KEY, coil_abc_num INTEGER, ab_job_num INTEGER,
-                prod_item_status INTEGER, prod_item_pieces INTEGER, prod_item_net_wt REAL,
+                prod_item_num INTEGER PRIMARY KEY, coil_abc_num INTEGER, ab_job_num INTEGER NOT NULL,
+                prod_item_status INTEGER, prod_item_pieces INTEGER, prod_item_net_wt REAL NOT NULL,
                 prod_item_theoretical_wt REAL, prod_item_date TEXT, prod_item_note TEXT, shift_num INTEGER,
                 prod_item_edi870_date TEXT, prod_item_placement TEXT);
 
@@ -348,7 +348,7 @@ public static class SqliteFixture
             -- computed at report time, not stored. "timestamp" mirrors the Oracle column name
             -- (a reserved word there — always quoted in SQL).
             CREATE TABLE invoice (
-                ab_job_num INTEGER, invoice_num TEXT, timestamp TEXT, notes TEXT,
+                ab_job_num INTEGER NOT NULL, invoice_num TEXT NOT NULL, timestamp TEXT NOT NULL, notes TEXT,
                 PRIMARY KEY (ab_job_num, invoice_num));
 
             -- In-progress mechanical test results (heap table in Oracle — no PK). The
@@ -359,29 +359,29 @@ public static class SqliteFixture
                 yts REAL, uts REAL, elongation REAL, n REAL, r REAL, thickness REAL, width REAL);
 
             CREATE TABLE process_partial_skid (
-                sheet_skid_num INTEGER, ab_job_num INTEGER, partial_skid_ab_job_num TEXT,
+                sheet_skid_num INTEGER NOT NULL, ab_job_num INTEGER NOT NULL, partial_skid_ab_job_num TEXT NOT NULL,
                 partial_sheet_net_wt REAL, partial_skid_pieces INTEGER, partial_skid_location TEXT, partial_skid_date TEXT,
                 partial_sheet_theoretical_wt REAL);
 
             -- Scrap mirror + link tables for the return-scrap (un-scrap) flow (legacy F_CONVERT_BACK_TO_SHEET).
             -- When a skid is scrapped, its live rows are moved to these scraped_* mirrors; return-scrap copies them back.
             CREATE TABLE scraped_sheet_skid (
-                sheet_skid_num INTEGER, ab_job_num INTEGER, sheet_net_wt REAL, sheet_tare_wt REAL, skid_edi856_date TEXT,
+                sheet_skid_num INTEGER NOT NULL, ab_job_num INTEGER, sheet_net_wt REAL NOT NULL, sheet_tare_wt REAL NOT NULL, skid_edi856_date TEXT,
                 skid_location TEXT, skid_date TEXT, skid_sheet_status INTEGER, skid_pieces INTEGER, sheet_theoretical_wt REAL,
                 skid_from_if_whed TEXT, skid_ticket_if_whed TEXT, ref_order_abc_num INTEGER, skid_type_if_whed TEXT,
-                ref_order_abc_item INTEGER, skid_sheet_status_held_by_qc INTEGER, scrap_skid_num INTEGER);
+                ref_order_abc_item INTEGER, skid_sheet_status_held_by_qc INTEGER, scrap_skid_num INTEGER NOT NULL);
             CREATE TABLE scraped_production_sheet_item (
-                prod_item_num INTEGER, coil_abc_num INTEGER, ab_job_num INTEGER, prod_item_status INTEGER,
-                prod_item_pieces INTEGER, prod_item_net_wt REAL, prod_item_theoretical_wt REAL, prod_item_edi870_date TEXT,
-                prod_item_date TEXT, prod_item_note TEXT, prod_item_placement TEXT, scrap_skid_num INTEGER);
+                prod_item_num INTEGER NOT NULL, coil_abc_num INTEGER, ab_job_num INTEGER NOT NULL, prod_item_status INTEGER,
+                prod_item_pieces INTEGER, prod_item_net_wt REAL NOT NULL, prod_item_theoretical_wt REAL, prod_item_edi870_date TEXT,
+                prod_item_date TEXT, prod_item_note TEXT, prod_item_placement TEXT, scrap_skid_num INTEGER NOT NULL);
             CREATE TABLE scraped_process_partial_skid (
-                ab_job_num INTEGER, sheet_skid_num INTEGER, partial_skid_ab_job_num TEXT, partial_sheet_net_wt REAL,
+                ab_job_num INTEGER NOT NULL, sheet_skid_num INTEGER NOT NULL, partial_skid_ab_job_num TEXT NOT NULL, partial_sheet_net_wt REAL,
                 partial_skid_location TEXT, partial_skid_date TEXT, partial_skid_pieces INTEGER,
-                partial_sheet_theoretical_wt REAL, scrap_skid_num INTEGER);
+                partial_sheet_theoretical_wt REAL, scrap_skid_num INTEGER NOT NULL);
             CREATE TABLE scraped_sheet_skid_detail (
-                prod_item_num INTEGER, sheet_skid_num INTEGER, scrap_skid_num INTEGER);
+                prod_item_num INTEGER NOT NULL, sheet_skid_num INTEGER NOT NULL, scrap_skid_num INTEGER NOT NULL);
             CREATE TABLE scrap_skid_detail (
-                scrap_skid_num INTEGER, return_scrap_item_num INTEGER);
+                scrap_skid_num INTEGER NOT NULL, return_scrap_item_num INTEGER NOT NULL);
 
             CREATE TABLE opc_action_log (
                 opc_log_id INTEGER PRIMARY KEY, time_stamp TEXT, source TEXT, success INTEGER, notes TEXT);
@@ -432,7 +432,7 @@ public static class SqliteFixture
                 sheet_skid_num INTEGER PRIMARY KEY, package_num TEXT);
 
             CREATE TABLE shipment (
-                packing_list INTEGER PRIMARY KEY, bill_of_lading INTEGER, carrier_id INTEGER,
+                packing_list INTEGER PRIMARY KEY, bill_of_lading INTEGER NOT NULL, carrier_id INTEGER,
                 customer_id INTEGER, des_sh_cust_id INTEGER, vehicle_id TEXT, vehicle_status INTEGER,
                 shipment_status INTEGER, shipment_scheduled_date_time TEXT, date_sent TEXT,
                 shipment_actualed_date_time TEXT, shipment_notes TEXT,
@@ -451,20 +451,20 @@ public static class SqliteFixture
             -- change, with the before/after status + who/when.
             CREATE TABLE shipment_track (
                 log_date TEXT NOT NULL, packing_list_no INTEGER NOT NULL,
-                pre_shipment_status INTEGER, cur_shipment_status INTEGER,
-                pre_vehicle_status INTEGER, cur_vehicle_status INTEGER,
-                pre_cust_id INTEGER, cur_cust_id INTEGER,
-                pre_ship_to_id INTEGER, cur_ship_to_id INTEGER, modified_by TEXT);
+                pre_shipment_status INTEGER NOT NULL, cur_shipment_status INTEGER NOT NULL,
+                pre_vehicle_status INTEGER NOT NULL, cur_vehicle_status INTEGER NOT NULL,
+                pre_cust_id INTEGER NOT NULL, cur_cust_id INTEGER NOT NULL,
+                pre_ship_to_id INTEGER NOT NULL, cur_ship_to_id INTEGER NOT NULL, modified_by TEXT NOT NULL);
 
             CREATE TABLE receiving_bol (
-                receiving_bol_id INTEGER PRIMARY KEY, bol TEXT, customer_id INTEGER,
+                receiving_bol_id INTEGER PRIMARY KEY, bol TEXT NOT NULL, customer_id INTEGER NOT NULL,
                 created_by TEXT, created_date TEXT, received_date TEXT, status INTEGER);
 
             -- Receiving BOL line items (legacy coil_receiving.pbl). coil_id is a 1..n
             -- sequence within the BOL; coil_org_num is NOT NULL. cash_date is a string in
             -- the real schema (VARCHAR2(24)). Column names authoritative (oracle_ddl.sql).
             CREATE TABLE receiving_bol_coil (
-                receiving_bol_id INTEGER, coil_id INTEGER, coil_org_num TEXT, coil_abc_num INTEGER,
+                receiving_bol_id INTEGER NOT NULL, coil_id INTEGER NOT NULL, coil_org_num TEXT NOT NULL, coil_abc_num INTEGER,
                 status INTEGER, damaged_fault INTEGER, damaged_code INTEGER, temper TEXT,
                 net_weight INTEGER, gross_weight INTEGER, lineal_feed REAL, coil_width REAL, coil_gauge REAL,
                 lot TEXT, pack_id TEXT, alloy TEXT, part_num TEXT, supplier_sales_num TEXT,
@@ -472,13 +472,13 @@ public static class SqliteFixture
                 PRIMARY KEY (receiving_bol_id, coil_id));
 
             CREATE TABLE scan_log (
-                scan_id INTEGER PRIMARY KEY, scan_datetime TEXT, ab_job_num INTEGER,
-                scan_station TEXT, note TEXT);
+                scan_id INTEGER PRIMARY KEY, scan_datetime TEXT NOT NULL, ab_job_num INTEGER NOT NULL,
+                scan_station TEXT NOT NULL, note TEXT NOT NULL);
 
             CREATE TABLE maint_log (
                 maint_log_id INTEGER PRIMARY KEY, maint_log_status TEXT, groupdepartment_id INTEGER,
-                systemequipment TEXT, subsystemequipment TEXT, itemdevice TEXT, probdatetime TEXT,
-                prob_details TEXT, actions TEXT, author TEXT, reportedby TEXT, entereddatetime TEXT,
+                systemequipment TEXT, subsystemequipment TEXT, itemdevice TEXT, probdatetime TEXT NOT NULL,
+                prob_details TEXT NOT NULL, actions TEXT, author TEXT NOT NULL, reportedby TEXT, entereddatetime TEXT NOT NULL,
                 assignedto TEXT, completeddatetime TEXT, completedby TEXT, laborhours REAL, prob_cost REAL);
 
             CREATE TABLE carrier (
@@ -493,7 +493,7 @@ public static class SqliteFixture
             -- Coils run within a shift (legacy shift_coil): process_wt is the weight processed;
             -- shift_num ties it to the shift (and thus its line + date). Column names mirror Oracle.
             CREATE TABLE shift_coil (
-                shift_num INTEGER, coil_run_num INTEGER, coil_abc_num INTEGER, ab_job_num INTEGER,
+                shift_num INTEGER NOT NULL, coil_run_num INTEGER NOT NULL, coil_abc_num INTEGER NOT NULL, ab_job_num INTEGER NOT NULL,
                 coil_begin_wt REAL, coil_end_wt REAL, coil_begin_time TEXT, coil_end_time TEXT,
                 coil_begin_status INTEGER, coil_end_status INTEGER, process_wt REAL, note TEXT,
                 PRIMARY KEY (shift_num, coil_run_num));
@@ -505,14 +505,14 @@ public static class SqliteFixture
             -- Segmented downtime within an instance (legacy dt_instance_detail): instance_item is
             -- the cause/category code, duration is seconds (legacy reports SUM(duration)/60 minutes).
             CREATE TABLE dt_instance_detail (
-                id INTEGER PRIMARY KEY, instance_num INTEGER, instance_item INTEGER, duration REAL, note TEXT);
+                id INTEGER PRIMARY KEY, instance_num INTEGER NOT NULL, instance_item INTEGER NOT NULL, duration REAL, note TEXT);
 
             -- Per-alloy density (lb/in^3) for the piece-weight calculator (legacy METAL_DENSITY).
             CREATE TABLE metal_density (
                 metal_alloy TEXT PRIMARY KEY, metal_density REAL);
 
             CREATE TABLE customer_contact (
-                contact_id INTEGER PRIMARY KEY, customer_id INTEGER, first_name TEXT, last_name TEXT,
+                contact_id INTEGER PRIMARY KEY, customer_id INTEGER NOT NULL, first_name TEXT, last_name TEXT,
                 department TEXT, city TEXT, state TEXT, phone1 TEXT, email1 TEXT);
 
             CREATE TABLE sketch (
@@ -573,7 +573,7 @@ public static class SqliteFixture
                 PRIMARY KEY (line_num, ab_job_num));
 
             CREATE TABLE groupdepartment (
-                groupdepartment_id INTEGER PRIMARY KEY, groupdepartment TEXT, depttype TEXT);
+                groupdepartment_id INTEGER PRIMARY KEY, groupdepartment TEXT NOT NULL, depttype TEXT);
 
             -- ---- Preventive maintenance (legacy w_maint_pm / d_pm_list) ----------------------
             -- The 4-level equipment hierarchy a PM hangs off:
@@ -607,7 +607,7 @@ public static class SqliteFixture
                 lastupdate TEXT, lastreaddate TEXT, nextduedate TEXT, numoverdue REAL, numoverdueresetdate TEXT,
                 pm_repeat REAL, nextduereading REAL, completedreading REAL, lastreading REAL,
                 lowrepeat REAL, midrepeat REAL, hignrepeat REAL, pmreference TEXT, pm_cost REAL,
-                author TEXT, scribe TEXT, addedpmhours REAL, pm_entered TEXT, hasimage INTEGER DEFAULT 0,
+                author TEXT, scribe TEXT, addedpmhours REAL, pm_entered TEXT NOT NULL, hasimage INTEGER NOT NULL DEFAULT 0,
                 image_path TEXT, sptext TEXT, spyesno INTEGER, spnumber REAL, spdatetime TEXT,
                 display_style INTEGER, pm_action_header TEXT, pm_action_tailer TEXT);
 
@@ -626,49 +626,49 @@ public static class SqliteFixture
                 labor_hours REAL, comp_cost REAL);
 
             CREATE TABLE dt_cause (
-                id INTEGER PRIMARY KEY, cause_name TEXT, note TEXT);
+                id INTEGER PRIMARY KEY, cause_name TEXT NOT NULL, note TEXT);
 
             CREATE TABLE transportation_method (
                 trans_method_code TEXT PRIMARY KEY, trans_desc TEXT);
 
             CREATE TABLE equipment_type (
-                equipment_type_code TEXT PRIMARY KEY, equipment_type_desc TEXT, equipment_type_note TEXT);
+                equipment_type_code TEXT PRIMARY KEY, equipment_type_desc TEXT NOT NULL, equipment_type_note TEXT);
 
             CREATE TABLE customer_type (
                 customer_type TEXT PRIMARY KEY, customer_type_description TEXT);
 
             CREATE TABLE outbound_edi_transaction (
-                edi_file_id INTEGER PRIMARY KEY, duns_from TEXT, duns_to TEXT,
-                interchange_control_number INTEGER, group_control_number INTEGER, transaction_time TEXT,
-                customer_sent_to TEXT, edi_file_name TEXT, fa_receive_status INTEGER, customer_id INTEGER,
+                edi_file_id INTEGER PRIMARY KEY, duns_from TEXT NOT NULL, duns_to TEXT NOT NULL,
+                interchange_control_number INTEGER NOT NULL, group_control_number INTEGER NOT NULL, transaction_time TEXT NOT NULL,
+                customer_sent_to TEXT, edi_file_name TEXT NOT NULL, fa_receive_status INTEGER, customer_id INTEGER,
                 set_control_num INTEGER, transaction_type_id TEXT, fa_received_time TEXT, fa_received_file_name TEXT);
 
             CREATE TABLE edi_log (
-                edi_log_timestamp TEXT, customer_id INTEGER, customer_edi_name TEXT, edi_log_contents TEXT,
+                edi_log_timestamp TEXT NOT NULL, customer_id INTEGER NOT NULL, customer_edi_name TEXT NOT NULL, edi_log_contents TEXT,
                 edi_log_flag INTEGER, edi_file_id INTEGER, isa_seq INTEGER, gs_seq INTEGER, edi_text TEXT,
                 PRIMARY KEY (edi_log_timestamp, customer_id, customer_edi_name));
 
             -- ABIS-owned generated-EDI payload store (mirrors AbisSchema.abis_edi_payload). Holds the X12
             -- payload the modern engine builds (generation only — never transmitted).
             CREATE TABLE abis_edi_payload (
-                edi_file_id INTEGER, transaction_type TEXT, receiving_bol_id INTEGER, customer_id INTEGER,
-                edi_file_name TEXT, payload TEXT, created_utc TEXT,
+                edi_file_id INTEGER NOT NULL, transaction_type TEXT NOT NULL, receiving_bol_id INTEGER, customer_id INTEGER,
+                edi_file_name TEXT, payload TEXT NOT NULL, created_utc TEXT,
                 PRIMARY KEY (edi_file_id, transaction_type));
 
             -- ABIS-owned 870 "sent" markers (mirrors AbisSchema.abis_edi_870_mark): mark_type 'ITEM'→prod_item_num,
             -- 'SCRAP'→ab_job_num. Excludes already-reported items/jobs from the 870 batch (report-once).
             CREATE TABLE abis_edi_870_mark (
-                mark_type TEXT, ref_id INTEGER, edi_file_id INTEGER, customer_id INTEGER, sent_utc TEXT,
+                mark_type TEXT NOT NULL, ref_id INTEGER NOT NULL, edi_file_id INTEGER, customer_id INTEGER, sent_utc TEXT,
                 PRIMARY KEY (mark_type, ref_id));
             CREATE TABLE abis_edi_856_mark (
-                packing_list INTEGER, edi_file_id INTEGER, customer_id INTEGER, sent_utc TEXT,
+                packing_list INTEGER NOT NULL, edi_file_id INTEGER NOT NULL, customer_id INTEGER, sent_utc TEXT,
                 PRIMARY KEY (packing_list, edi_file_id));
 
             -- 846 AISI status→code maps (mirror AbisSchema.abis_x12_*): coil/skid/scrap status → table67 class / table70 status.
-            CREATE TABLE abis_x12_coil (abis_coil_status INTEGER PRIMARY KEY, table67_material_class TEXT, table70_material_status_op TEXT, table68_material_status_qa TEXT);
-            CREATE TABLE abis_x12_skid (abis_skid_status INTEGER PRIMARY KEY, table67_material_class TEXT, table70_material_status_op TEXT, table68_material_status_qa TEXT);
-            CREATE TABLE abis_scrap_status_x12 (abis_scrap_status INTEGER PRIMARY KEY, table70_material_status_op TEXT);
-            CREATE TABLE abis_scrap_type_x12 (abis_scrap_type INTEGER PRIMARY KEY, table67_material_class TEXT);
+            CREATE TABLE abis_x12_coil (abis_coil_status INTEGER PRIMARY KEY, table67_material_class TEXT NOT NULL, table70_material_status_op TEXT NOT NULL, table68_material_status_qa TEXT);
+            CREATE TABLE abis_x12_skid (abis_skid_status INTEGER PRIMARY KEY, table67_material_class TEXT NOT NULL, table70_material_status_op TEXT NOT NULL, table68_material_status_qa TEXT);
+            CREATE TABLE abis_scrap_status_x12 (abis_scrap_status INTEGER PRIMARY KEY, table70_material_status_op TEXT NOT NULL);
+            CREATE TABLE abis_scrap_type_x12 (abis_scrap_type INTEGER PRIMARY KEY, table67_material_class TEXT NOT NULL);
             INSERT INTO abis_x12_coil (abis_coil_status, table67_material_class, table70_material_status_op) VALUES
                 (1,'01','7'),(3,'02','E'),(4,'01','E'),(6,'90','M'),(7,'14','K'),(8,'14','K'),(11,'01','E'),(12,'01','0'),(14,'06','S');
             INSERT INTO abis_x12_skid (abis_skid_status, table67_material_class, table70_material_status_op) VALUES
@@ -680,7 +680,7 @@ public static class SqliteFixture
             -- (customer, transaction set), so each customer's 861/870/846/… can differ. Envelope + enablement
             -- are data; `variant` selects the generator body path. Generation config only — never transmits.
             CREATE TABLE abis_edi_partner (
-                customer_id INTEGER, transaction_set TEXT, enabled INTEGER, variant TEXT,
+                customer_id INTEGER NOT NULL, transaction_set TEXT NOT NULL, enabled INTEGER NOT NULL, variant TEXT,
                 receiver_qualifier TEXT, receiver_id TEXT, component_separator TEXT, segment_suffix TEXT,
                 envelope_version TEXT, gs_functional_code TEXT, gs_sender_code TEXT, gs_receiver_code TEXT,
                 file_prefix TEXT, item_reference TEXT,
@@ -688,22 +688,22 @@ public static class SqliteFixture
                 PRIMARY KEY (customer_id, transaction_set));
 
             CREATE TABLE edi_type (
-                edi_type_id INTEGER, edi_version TEXT, edi_type_description TEXT,
+                edi_type_id INTEGER NOT NULL, edi_version TEXT NOT NULL, edi_type_description TEXT,
                 PRIMARY KEY (edi_type_id, edi_version));
 
             CREATE TABLE customer_edi (
-                customer_edi_name TEXT, customer_id INTEGER, edi_type_id INTEGER, edi_version TEXT,
+                customer_edi_name TEXT NOT NULL, customer_id INTEGER NOT NULL, edi_type_id INTEGER, edi_version TEXT,
                 customer_edi_desc TEXT, PRIMARY KEY (customer_edi_name, customer_id));
 
             -- Quality / Recovery (legacy w_recovery): the customer-defect setup. Column
             -- names are authoritative (from the legacy DataWindow dbnames); Y/N flags.
             CREATE TABLE scrap_type (
-                scrap_type_id INTEGER PRIMARY KEY, scrap_code TEXT, scrap_defect TEXT);
+                scrap_type_id INTEGER PRIMARY KEY, scrap_code TEXT NOT NULL, scrap_defect TEXT NOT NULL);
             CREATE TABLE product_type (
-                product_type_id INTEGER PRIMARY KEY, product_type TEXT);
+                product_type_id INTEGER PRIMARY KEY, product_type TEXT NOT NULL);
             CREATE TABLE recovery_report_customer (
-                customer_id INTEGER PRIMARY KEY, customer_name TEXT,
-                all_products TEXT, auto_only TEXT, comm_only TEXT);
+                customer_id INTEGER PRIMARY KEY, customer_name TEXT NOT NULL,
+                all_products TEXT NOT NULL, auto_only TEXT NOT NULL, comm_only TEXT NOT NULL);
             -- Recovery worksheet: per (coil, job) reband/reject/special flags + product type
             -- (legacy recovery_job_coil; PK (coil_abc_num, ab_job_num) FK to process_coil).
             CREATE TABLE recovery_job_coil (
@@ -715,36 +715,36 @@ public static class SqliteFixture
             -- The recovery ship-weight = SUM(prod_item_net_wt) over items whose skid is in a
             -- shipping status (f_get_coil_ship_wt joins psi -> ssd -> sheet_skid).
             CREATE TABLE sheet_skid_detail (
-                sheet_skid_num INTEGER, prod_item_num INTEGER,
+                sheet_skid_num INTEGER NOT NULL, prod_item_num INTEGER NOT NULL,
                 PRIMARY KEY (sheet_skid_num, prod_item_num));
             -- Links a shipment (packing_list) to the skids it carries — the legacy 856 ASN's skid source.
             CREATE TABLE sheet_packing_item (
-                sh_packing_item INTEGER, packing_list INTEGER, sheet_skid_num INTEGER, sheet_packaging_ticket INTEGER,
+                sh_packing_item INTEGER NOT NULL, packing_list INTEGER NOT NULL, sheet_skid_num INTEGER NOT NULL, sheet_packaging_ticket INTEGER NOT NULL,
                 PRIMARY KEY (sh_packing_item, packing_list));
             -- Links a shipment (packing_list) to the scrap skids it carries (the SCRAP packing-line-item type).
             CREATE TABLE scrap_packing_item (
-                sc_packing_item INTEGER, packing_list INTEGER, scrap_skid_num INTEGER, scrap_packaging_ticket INTEGER,
+                sc_packing_item INTEGER NOT NULL, packing_list INTEGER NOT NULL, scrap_skid_num INTEGER NOT NULL, scrap_packaging_ticket INTEGER NOT NULL,
                 PRIMARY KEY (sc_packing_item, packing_list));
             -- Rejected coils (the REJECT_COIL packing-line-item type) + the link to a packing list.
             CREATE TABLE reject_coil (
                 coil_abc_num INTEGER PRIMARY KEY, ab_job_num INTEGER, reject_coil_location TEXT,
                 reject_coil_quantity REAL, reject_coil_status INTEGER, reject_coil_date TEXT);
             CREATE TABLE reject_coil_packing_item (
-                rej_coil_packing_item INTEGER, packing_list INTEGER, rej_coil_packaging_ticket INTEGER, coil_abc_num INTEGER,
+                rej_coil_packing_item INTEGER NOT NULL, packing_list INTEGER NOT NULL, rej_coil_packaging_ticket INTEGER NOT NULL, coil_abc_num INTEGER,
                 PRIMARY KEY (rej_coil_packing_item, packing_list));
             -- Per (coil, job) scrap the recovery clerk booked (legacy recovery_scrap_worksheet); the
             -- recovery scrap-weight = SUM(scrap_item_net_wt). Falls back to quality_scrap_worksheet
             -- (the quality clerk's booking) when the recovery worksheet has none.
             CREATE TABLE recovery_scrap_worksheet (
                 coil_abc_num INTEGER NOT NULL, ab_job_num INTEGER NOT NULL, scrap_type_id INTEGER NOT NULL,
-                scrap_item_piece INTEGER, scrap_item_net_wt REAL, scrap_item_notes TEXT,
+                scrap_item_piece INTEGER NOT NULL, scrap_item_net_wt REAL NOT NULL, scrap_item_notes TEXT,
                 PRIMARY KEY (coil_abc_num, ab_job_num, scrap_type_id));
             CREATE TABLE quality_scrap_worksheet (
                 coil_abc_num INTEGER NOT NULL, ab_job_num INTEGER NOT NULL, scrap_type_id INTEGER NOT NULL,
                 scrap_item_piece INTEGER, scrap_item_net_wt REAL, scrap_item_notes TEXT,
                 PRIMARY KEY (coil_abc_num, ab_job_num, scrap_type_id));
             CREATE TABLE cust_scrap_type_needed (
-                customer_id INTEGER, scrap_type_id INTEGER,
+                customer_id INTEGER NOT NULL, scrap_type_id INTEGER NOT NULL,
                 abc_or_mill TEXT, autoparts TEXT, non_autoparts TEXT,
                 PRIMARY KEY (customer_id, scrap_type_id));
 
@@ -766,7 +766,7 @@ public static class SqliteFixture
             -- quote (the legacy tables have no surrogate key — event_id / probability_id
             -- are added for the modern write path).
             CREATE TABLE sales_quote (
-                quote_id INTEGER, quote_revision_id INTEGER, customer_id INTEGER, contact_id INTEGER,
+                quote_id INTEGER NOT NULL, quote_revision_id INTEGER NOT NULL, customer_id INTEGER, contact_id INTEGER,
                 enduser_id INTEGER, end_use TEXT, part_shape TEXT, material TEXT, alloy TEXT, temper TEXT,
                 gauge REAL, width REAL, length REAL, line_num INTEGER, line_speed REAL,
                 num_of_coil INTEGER, num_of_skid INTEGER, total_lb_processed REAL, total_rev_per_hr REAL,
@@ -786,7 +786,7 @@ public static class SqliteFixture
             -- from customer_id_orig to customer_id_new. Column names are authoritative
             -- (legacy d_coil_ownership_transfer / _certificate dbnames).
             CREATE TABLE coil_ownership_transfer (
-                certificate_num INTEGER PRIMARY KEY, coil_abc_num_orig INTEGER, coil_abc_num_new INTEGER,
+                certificate_num INTEGER PRIMARY KEY, coil_abc_num_orig INTEGER NOT NULL, coil_abc_num_new INTEGER,
                 coil_org_num TEXT, customer_id_orig INTEGER, customer_id_new INTEGER,
                 transfer_datetime TEXT, transfer_performed_by TEXT, authorization_note TEXT, notes TEXT);
 
@@ -838,39 +838,39 @@ public static class SqliteFixture
             CREATE TABLE security_application (
                 application_id INTEGER PRIMARY KEY, application_name TEXT, application_notes TEXT);
             CREATE TABLE security_user_group (
-                user_id INTEGER, user_group_id INTEGER, PRIMARY KEY (user_id, user_group_id));
+                user_id INTEGER NOT NULL, user_group_id INTEGER NOT NULL, PRIMARY KEY (user_id, user_group_id));
             CREATE TABLE security_user_application (
-                user_id INTEGER, application_id INTEGER, user_application_privilege INTEGER,
+                user_id INTEGER NOT NULL, application_id INTEGER NOT NULL, user_application_privilege INTEGER,
                 PRIMARY KEY (user_id, application_id));
             CREATE TABLE security_group_application (
-                application_id INTEGER, user_group_id INTEGER, group_application_privilege INTEGER,
+                application_id INTEGER NOT NULL, user_group_id INTEGER NOT NULL, group_application_privilege INTEGER,
                 PRIMARY KEY (application_id, user_group_id));
 
             -- Coil evaluation / QC (legacy coil_eval w_qc_sheet). Dimensional checks per
             -- skid piece + scrap items found during evaluation. Column names authoritative
             -- (oracle_ddl.sql). quality_coil_eval_scrap has a composite natural key.
             CREATE TABLE sheet_skid_dimension_check (
-                dimension_check_num INTEGER PRIMARY KEY, sheet_skid_num INTEGER, pc_number INTEGER,
+                dimension_check_num INTEGER PRIMARY KEY, sheet_skid_num INTEGER NOT NULL, pc_number INTEGER NOT NULL,
                 gauge REAL, width REAL, length_oper REAL, length_drive REAL, square REAL, head_dimension REAL,
-                all_cut_edge INTEGER, in_spec INTEGER, checked_by TEXT, note TEXT);
+                all_cut_edge INTEGER, in_spec INTEGER NOT NULL, checked_by TEXT, note TEXT);
             CREATE TABLE quality_coil_eval_scrap (
-                coil_abc_num INTEGER, ab_job_num INTEGER, scrap_item_type INTEGER,
+                coil_abc_num INTEGER NOT NULL, ab_job_num INTEGER NOT NULL, scrap_item_type INTEGER NOT NULL,
                 scrap_item_piece INTEGER, scrap_item_net_wt INTEGER, scrap_item_note TEXT,
-                scrap_item_od INTEGER, scrap_item_mill INTEGER, data_source TEXT,
+                scrap_item_od INTEGER NOT NULL, scrap_item_mill INTEGER NOT NULL, data_source TEXT,
                 PRIMARY KEY (coil_abc_num, ab_job_num, scrap_item_type, scrap_item_od, scrap_item_mill));
 
             -- Production folder (legacy prod-folder w_production_folder): e-folder notes on
             -- a job. PK (ab_job_num, user_id, timestamp). Column names authoritative.
             CREATE TABLE job_efolder_notes (
-                ab_job_num INTEGER, user_id INTEGER, timestamp TEXT, notes TEXT,
+                ab_job_num INTEGER NOT NULL, user_id INTEGER NOT NULL, timestamp TEXT NOT NULL, notes TEXT,
                 PRIMARY KEY (ab_job_num, user_id, timestamp));
 
             -- Stacker line error log (legacy stacker_110 w_report_line_error). error_evt is
             -- the fault log; error_type is the catalog. Column names authoritative.
             CREATE TABLE error_type (
-                error_type_id INTEGER PRIMARY KEY, error_type TEXT);
+                error_type_id INTEGER PRIMARY KEY, error_type TEXT NOT NULL);
             CREATE TABLE error_evt (
-                error_evt_id INTEGER PRIMARY KEY, evt_time TEXT, error_type_id INTEGER, error_user TEXT,
+                error_evt_id INTEGER PRIMARY KEY, evt_time TEXT NOT NULL, error_type_id INTEGER NOT NULL, error_user TEXT NOT NULL,
                 error_comment TEXT, line_id INTEGER, shift_id INTEGER, coil_abc_num INTEGER, ab_job_num INTEGER,
                 sheet_skid_num INTEGER, scrap_skid_num INTEGER, dt_instance_num INTEGER, opc_item TEXT,
                 title TEXT, message TEXT);
