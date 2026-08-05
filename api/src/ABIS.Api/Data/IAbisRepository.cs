@@ -99,6 +99,13 @@ public interface IAbisRepository
     Task<PagedResult<SheetSkid>> GetSheetSkidsAsync(int page, int pageSize, string? orderBy, CancellationToken ct);
     Task<SheetSkid?> GetSheetSkidAsync(long sheetSkidNum, CancellationToken ct);
 
+    /// <summary>Everything the 4x6 sheet-skid TAG prints, plus the line it belongs to (which decides
+    /// which printer it goes to). Null when the skid does not exist.</summary>
+    Task<SkidTagPrintData?> GetSheetSkidTagDataAsync(long sheetSkidNum, CancellationToken ct);
+
+    /// <summary>Everything the 4x6 scrap TAG prints, including its per-coil detail rows, plus the line.</summary>
+    Task<ScrapTagPrintData?> GetScrapSkidTagDataAsync(long scrapSkidNum, CancellationToken ct);
+
     /// <summary>Correct a sheet skid's weights, pieces, date, status, theoretical weight or on-hold
     /// reason (legacy modify). Totals that disagree with the skid's items come back as warnings.</summary>
     Task<SheetSkidModifyResult> ModifySheetSkidAsync(long sheetSkidNum, SheetSkidModify body, CancellationToken ct);

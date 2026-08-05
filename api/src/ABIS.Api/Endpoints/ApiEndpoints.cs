@@ -2629,6 +2629,76 @@ public static class ApiEndpoints
            .WithSummary("Printable scrap-skid tag (HTML with a Code 39 barcode).")
            .Produces(StatusCodes.Status200OK, contentType: "text/html").Produces(StatusCodes.Status404NotFound);
 
+        // ---- ZPL tag printing, routed BY LINE ---------------------------------------
+        // Tagged "Skids", not "Documents": the RBAC gate keys on an endpoint's FIRST tag, and these are
+        // skid operations, so Inventory(Skid) is both the semantically right feature and one 38 of the
+        // 46 users on live already hold. Leaving them under Documents would have left them ungated —
+        // WriteEndpointGateTests caught exactly that.
+        // These print to the Zebra at the line that made the skid. That is per-line rather than a
+        // single queue because a tag is a physical object someone picks up: printing BL84's skid tag at
+        // BL78 means walking the plant to fetch it, and BL110 has TWO printers (skid + offload) so even
+        // one line is not one destination.
+        //
+        // The HTML tags above stay: they serve the DAS browser-print path (#129) and a desk printer.
+        // These are for the shop-floor Zebras, exactly as the ZPL/HTML split works for coil labels.
+        api.MapPost("/documents/sheet-skid/{sheetSkidNum:long}/print", async (long sheetSkidNum,
+                IAbisRepository repo, ICoilLabelPrinter printer, CancellationToken ct, string? purpose = null) =>
+            {
+                if (await repo.GetSheetSkidTagDataAsync(sheetSkidNum, ct) is not { } d)
+                    return Results.NotFound(new { message = $"Sheet skid {sheetSkidNum} not found." });
+                if (d.LineNum is not { } line)
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "No line to print at",
+                        detail: $"Sheet skid {sheetSkidNum} has no job/line, so there is no printer to send its tag to.");
+
+                var zpl = SkidTag4x6.SheetSkid(new SkidTagData
+                {
+                    SkidNum = d.SheetSkidNum, SkidDisplayNum = d.SheetSkidDisplayNum,
+                    Date = d.SkidDate, Customer = d.Customer ?? "", EndUser = d.EndUser ?? "",
+                    JobNum = d.AbJobNum, Alloy = d.Alloy ?? "", Temper = d.Temper ?? "",
+                    Gauge = Dec(d.Gauge), Width = Dec(d.Width), Length = Dec(d.Length),
+                    TareWt = d.TareWt, NetWt = d.NetWt, Pieces = d.Pieces,
+                    LotNum = d.LotNum ?? "", CoilNum = d.CoilOrgNum ?? "",
+                });
+                var r = await printer.PrintForLineAsync(line, purpose, zpl, 1, ct);
+                return r.Printed
+                    ? Results.Ok(new { printed = true, printer = r.Printer, lineNum = line })
+                    : Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Not printed", detail: r.Reason);
+            })
+           .WithName("PrintSheetSkidTag").WithTags("Skids")
+           .WithSummary("Print the 4x6 sheet-skid tag as ZPL at the line that made it. purpose selects a line's alternate printer (BL110 has skid + offload); 409 when the skid has no line, 503 when its printer is unreachable.")
+           .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status404NotFound)
+           .Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status503ServiceUnavailable);
+
+        api.MapPost("/documents/scrap-skid/{scrapSkidNum:long}/print", async (long scrapSkidNum,
+                IAbisRepository repo, ICoilLabelPrinter printer, CancellationToken ct, string? purpose = null) =>
+            {
+                if (await repo.GetScrapSkidTagDataAsync(scrapSkidNum, ct) is not { } d)
+                    return Results.NotFound(new { message = $"Scrap skid {scrapSkidNum} not found." });
+                if (d.LineNum is not { } line)
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "No line to print at",
+                        detail: $"Scrap skid {scrapSkidNum} has no job/line, so there is no printer to send its tag to.");
+
+                var zpl = SkidTag4x6.ScrapSkid(new ScrapTagData
+                {
+                    ScrapSkidNum = d.ScrapSkidNum, Date = d.ScrapDate, Customer = d.Customer ?? "",
+                    TareWt = d.TareWt, NetWt = d.NetWt,
+                    Coils = d.Coils.Select(c => new ScrapTagCoil
+                    {
+                        JobNum = c.AbJobNum, LotNum = c.LotNum ?? "", CoilNum = c.CoilOrgNum ?? "",
+                        Pieces = c.Pieces, NetWt = c.NetWt,
+                        Alloy = c.Alloy ?? "", Temper = c.Temper ?? "", Gauge = Dec(c.Gauge),
+                    }).ToList(),
+                });
+                var r = await printer.PrintForLineAsync(line, purpose, zpl, 1, ct);
+                return r.Printed
+                    ? Results.Ok(new { printed = true, printer = r.Printer, lineNum = line })
+                    : Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Not printed", detail: r.Reason);
+            })
+           .WithName("PrintScrapSkidTag").WithTags("Skids")
+           .WithSummary("Print the 4x6 scrap tag as ZPL at the line that made it, with one row per contributing coil.")
+           .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status404NotFound)
+           .Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status503ServiceUnavailable);
+
         // The die/tool report (legacy w_report_die_tool → d_die_print). Optional ?status= mirrors the
         // status filter that window offered. Every die is listed — there are 134 on the live database,
         // so it is one printable page rather than something that needs paging.
@@ -4254,6 +4324,9 @@ public static class ApiEndpoints
     }
 
     /// <summary>Returns a ProblemDetails error dictionary, or null when valid.</summary>
+    /// <summary>Dimensions print as text on the tag; trailing zeros are how the legacy tag reads.</summary>
+    private static string Dec(decimal? v) => v?.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) ?? "";
+
     private static Dictionary<string, string[]>? Validate(WarehouseSkidWrite body)
     {
         var e = new Dictionary<string, string[]>();

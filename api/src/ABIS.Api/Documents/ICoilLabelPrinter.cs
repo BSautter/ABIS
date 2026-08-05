@@ -27,6 +27,12 @@ public interface ICoilLabelPrinter
 
     /// <summary>Send a raw ZPL payload, <paramref name="copies"/> times.</summary>
     Task<LabelPrintResult> PrintAsync(string? deviceAddress, string zpl, int copies, CancellationToken ct);
+
+    /// <summary>Send to the printer for a PRODUCTION LINE rather than a scanner.
+    /// <para>Skid and scrap tags come off a line, not a gun, and a line is not always one printer —
+    /// BL110 has a skid printer and an offload printer. <paramref name="purpose"/> picks between them;
+    /// null means the line's default.</para></summary>
+    Task<LabelPrintResult> PrintForLineAsync(long lineNum, string? purpose, string zpl, int copies, CancellationToken ct);
 }
 
 /// <summary>
@@ -52,6 +58,13 @@ public sealed class NoOpCoilLabelPrinter(ILogger<NoOpCoilLabelPrinter> log) : IC
     {
         log.LogInformation("Would print {Copies} label(s) for device {Device} ({Bytes} bytes of ZPL) — no printer configured.",
             copies, deviceAddress ?? "(none)", zpl.Length);
+        return Task.FromResult(new LabelPrintResult(false, null, "No label printer is configured."));
+    }
+
+    public Task<LabelPrintResult> PrintForLineAsync(long lineNum, string? purpose, string zpl, int copies, CancellationToken ct)
+    {
+        log.LogInformation("Would print {Copies} label(s) for line {Line}{Purpose} ({Bytes} bytes of ZPL) — no printer configured.",
+            copies, lineNum, purpose is null ? "" : $" ({purpose})", zpl.Length);
         return Task.FromResult(new LabelPrintResult(false, null, "No label printer is configured."));
     }
 }

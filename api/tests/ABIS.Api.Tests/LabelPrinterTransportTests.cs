@@ -229,4 +229,108 @@ public sealed class LabelPrinterTransportTests
 
         Assert.True(await p.IsReachableAsync(null, CancellationToken.None));
     }
+
+    // ---- Per-line routing (skid + scrap tags) ------------------------------------------
+
+    [Fact]
+    public void A_line_routes_to_its_own_printer()
+    {
+        // A tag is a physical object someone picks up. Printing BL84's skid tag at BL78 means walking
+        // the plant to fetch it.
+        var p = Printer(new LabelPrinterOptions
+        {
+            Printers = { ["bl78"] = "192.168.9.14", ["bl84"] = "192.168.9.15" },
+            LineRouting = { ["4"] = "bl78", ["7"] = "bl84" },
+        });
+
+        Assert.Equal(("192.168.9.14", 9100), p.ResolveLine(4));
+        Assert.Equal(("192.168.9.15", 9100), p.ResolveLine(7));
+    }
+
+    [Fact]
+    public void A_line_with_two_printers_sends_each_purpose_to_the_right_one()
+    {
+        // BL110 has a skid printer AND an offload printer. One line is not one destination, and a skid
+        // tag landing at the offload station is a tag nobody at the line ever sees.
+        var p = Printer(new LabelPrinterOptions
+        {
+            Printers = { ["skid"] = "192.168.9.9", ["offload"] = "192.168.9.11" },
+            LineRouting = { ["6"] = "skid", ["6:offload"] = "offload" },
+        });
+
+        Assert.Equal(("192.168.9.9", 9100), p.ResolveLine(6));               // the line's default
+        Assert.Equal(("192.168.9.11", 9100), p.ResolveLine(6, "offload"));   // the alternate
+    }
+
+    [Fact]
+    public void An_unknown_purpose_falls_back_to_the_lines_own_printer()
+    {
+        // Better to print at the right LINE on the wrong station than not at all — the operator can see
+        // it either way. Only a completely unrouted line prints nowhere.
+        var p = Printer(new LabelPrinterOptions
+        {
+            Printers = { ["skid"] = "10.0.0.1" },
+            LineRouting = { ["6"] = "skid" },
+        });
+        Assert.Equal(("10.0.0.1", 9100), p.ResolveLine(6, "no-such-purpose"));
+    }
+
+    [Fact]
+    public void An_unrouted_line_prints_nowhere_rather_than_somewhere_arbitrary()
+    {
+        // The safety property. A skid tag at the wrong line is worse than no tag: it gets attached to
+        // the wrong skid. With no DefaultPrinter, an unconfigured line resolves to nothing.
+        var p = Printer(new LabelPrinterOptions
+        {
+            Printers = { ["bl78"] = "192.168.9.14" },
+            LineRouting = { ["4"] = "bl78" },
+        });
+        Assert.Null(p.ResolveLine(99));
+    }
+
+    [Fact]
+    public async Task Printing_for_an_unrouted_line_names_the_line_in_the_failure()
+    {
+        // "no printer configured" is useless without knowing WHICH line, since the fix is a config entry
+        // for that specific one.
+        var p = Printer(new LabelPrinterOptions());
+        var r = await p.PrintForLineAsync(42, null, "^XA^XZ", 1, CancellationToken.None);
+
+        Assert.False(r.Printed);
+        Assert.Contains("42", r.Reason);
+    }
+
+    [Fact]
+    public async Task A_line_tag_reaches_the_wire_intact()
+    {
+        using var fake = new FakePrinter();
+        var p = Printer(new LabelPrinterOptions
+        {
+            Printers = { ["line"] = $"127.0.0.1:{fake.Port}" },
+            LineRouting = { ["6"] = "line" },
+        });
+
+        var zpl = SkidTag4x6.SheetSkid(new SkidTagData { SkidNum = 4242 });
+        var r = await p.PrintForLineAsync(6, null, zpl, 1, CancellationToken.None);
+        Assert.True(r.Printed, r.Reason);
+        Assert.Equal(zpl, await fake.TextAsync());
+    }
+
+    [Fact]
+    public void Line_routing_and_device_routing_stay_independent()
+    {
+        // The guns and the lines are different fleets. A line entry must not capture a scanner, or a
+        // receiving label would come out at a press.
+        var p = Printer(new LabelPrinterOptions
+        {
+            Printers = { ["gun"] = "192.168.10.12", ["line"] = "192.168.9.14" },
+            DeviceRouting = { ["192.168.10.8"] = "gun" },
+            LineRouting = { ["4"] = "line" },
+        });
+
+        Assert.Equal(("192.168.10.12", 9100), p.Resolve("192.168.10.8"));
+        Assert.Equal(("192.168.9.14", 9100), p.ResolveLine(4));
+        Assert.Null(p.Resolve("4"));            // a line number is not a device address
+        Assert.Null(p.ResolveLine(192));        // and vice versa
+    }
 }

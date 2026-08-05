@@ -9811,4 +9811,110 @@ public sealed class AbisRepository : IAbisRepository
         p.AddDynamicParams(b);
         return p;
     }
+
+    /// <summary>The coil identity printed on a skid tag. A named type rather than a ValueTuple because
+    /// Dapper maps tuples POSITIONALLY — reordering the two columns would silently swap lot and coil
+    /// number, and both are opaque strings so nothing downstream would notice.</summary>
+    private sealed class CoilIdentity
+    {
+        public string? LotNum { get; set; }
+        public string? CoilOrgNum { get; set; }
+    }
+
+    /// <summary>The 4x6 sheet-skid tag's data.
+    /// <para>The coil identity (lot + org number) and the piece count come from the legacy ticket's own
+    /// retrieve — <c>production_sheet_item</c> ⋈ <c>sheet_skid_detail</c> ⋈ <c>coil</c>
+    /// (<c>d_skid_ticket_new.srd</c>). A skid can carry items from more than one coil; the tag shows one,
+    /// so this takes the FIRST by prod_item_num, which is what the DataWindow's detail band shows at the
+    /// top. The rest — customer, material, dimensions — is the header the legacy window filled in code.</para>
+    /// <para><c>line_num</c> rides along because it selects the PRINTER, not because the tag shows it.</para></summary>
+    public async Task<SkidTagPrintData?> GetSheetSkidTagDataAsync(long sheetSkidNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var head = await conn.QuerySingleOrDefaultAsync<SkidTagPrintData>(new CommandDefinition(
+            """
+            SELECT s.sheet_skid_num       AS SheetSkidNum,
+                   s.sheet_skid_display_num AS SheetSkidDisplayNum,
+                   s.ab_job_num           AS AbJobNum,
+                   j.line_num             AS LineNum,
+                   c.customer_short_name  AS Customer,
+                   eu.customer_short_name AS EndUser,
+                   i.alloy2               AS Alloy,
+                   i.temper               AS Temper,
+                   i.gauge                AS Gauge,
+                   i.trimmed_coil_width   AS Width,
+                   s.sheet_net_wt         AS NetWt,
+                   s.sheet_tare_wt        AS TareWt,
+                   s.skid_pieces          AS Pieces,
+                   s.skid_date            AS SkidDate
+              FROM sheet_skid s
+              LEFT JOIN ab_job j          ON j.ab_job_num = s.ab_job_num
+              LEFT JOIN order_item i      ON i.order_abc_num = j.order_abc_num AND i.order_item_num = j.order_item_num
+              LEFT JOIN customer_order o  ON o.order_abc_num = j.order_abc_num
+              LEFT JOIN customer c        ON c.customer_id = o.orig_customer_id
+              LEFT JOIN customer eu       ON eu.customer_id = o.enduser_id
+             WHERE s.sheet_skid_num = :skid
+            """, new { skid = sheetSkidNum }, cancellationToken: ct));
+        if (head is null) return null;
+
+        // The coil identity, from the legacy ticket's own retrieve.
+        // FIRST, not Single: a skid carries several detail items and a job several coils, so this query
+        // returns a row per pairing. QuerySingleOrDefault threw "Sequence contains more than one
+        // element" on the seeded fixture — the tag shows one coil identity, the topmost, which is what
+        // the legacy detail band shows first.
+        var coil = await conn.QueryFirstOrDefaultAsync<CoilIdentity>(new CommandDefinition(
+            """
+            SELECT c.lot_num AS LotNum, c.coil_org_num AS CoilOrgNum
+              FROM sheet_skid_detail d
+              JOIN production_sheet_item p ON p.prod_item_num = d.prod_item_num
+              LEFT JOIN process_coil pc    ON pc.ab_job_num = p.ab_job_num
+              LEFT JOIN coil c             ON c.coil_abc_num = pc.coil_abc_num
+             WHERE d.sheet_skid_num = :skid
+             ORDER BY d.prod_item_num
+            """, new { skid = sheetSkidNum }, cancellationToken: ct));
+        head.LotNum = coil?.LotNum;
+        head.CoilOrgNum = coil?.CoilOrgNum;
+        return head;
+    }
+
+    /// <summary>The 4x6 scrap tag's data, including the per-coil rows the legacy detail band shows
+    /// (<c>return_scrap_item</c> ⋈ <c>scrap_skid_detail</c> ⋈ <c>coil</c>, from
+    /// <c>d_scrap_skid_ticket_new.srd</c>).</summary>
+    public async Task<ScrapTagPrintData?> GetScrapSkidTagDataAsync(long scrapSkidNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var head = await conn.QuerySingleOrDefaultAsync<ScrapTagPrintData>(new CommandDefinition(
+            """
+            SELECT s.scrap_skid_num AS ScrapSkidNum,
+                   j.line_num       AS LineNum,
+                   c.customer_short_name AS Customer,
+                   s.scrap_net_wt   AS NetWt,
+                   s.scrap_tare_wt  AS TareWt,
+                   s.scrap_date     AS ScrapDate
+              FROM scrap_skid s
+              LEFT JOIN ab_job j         ON j.ab_job_num = s.scrap_ab_job_num
+              LEFT JOIN customer_order o ON o.order_abc_num = j.order_abc_num
+              LEFT JOIN customer c       ON c.customer_id = o.orig_customer_id
+             WHERE s.scrap_skid_num = :skid
+            """, new { skid = scrapSkidNum }, cancellationToken: ct));
+        if (head is null) return null;
+
+        head.Coils = (await conn.QueryAsync<ScrapTagCoilRow>(new CommandDefinition(
+            """
+            SELECT r.ab_job_num          AS AbJobNum,
+                   c.lot_num             AS LotNum,
+                   c.coil_org_num        AS CoilOrgNum,
+                   r.scrap_item_pieces   AS Pieces,
+                   r.return_item_net_wt  AS NetWt,
+                   c.coil_alloy2         AS Alloy,
+                   c.coil_temper         AS Temper,
+                   c.coil_gauge          AS Gauge
+              FROM scrap_skid_detail d
+              JOIN return_scrap_item r ON r.return_scrap_item_num = d.return_scrap_item_num
+              LEFT JOIN coil c         ON c.coil_abc_num = r.coil_abc_num
+             WHERE d.scrap_skid_num = :skid
+             ORDER BY r.return_scrap_item_num
+            """, new { skid = scrapSkidNum }, cancellationToken: ct))).AsList();
+        return head;
+    }
 }

@@ -17,6 +17,14 @@ public sealed class LabelPrinterOptions
     /// rather than across the plant (legacy routed <c>192.168.10.8/9/10</c> → <c>.12/.13/.14</c>).</summary>
     public Dictionary<string, string> DeviceRouting { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Production line → printer name, for the tags that come off a line rather than a gun.
+    /// <para>Keys are <c>"&lt;lineNum&gt;"</c> or <c>"&lt;lineNum&gt;:&lt;purpose&gt;"</c>. Lookup tries the
+    /// purpose-specific key first and falls back to the plain line — because a line is NOT always one
+    /// printer: <b>BL110 has two</b>, a skid printer and an offload printer, and a skid tag going to the
+    /// offload station is a tag nobody at the line ever sees.</para>
+    /// <para>Example: <c>{"4": "bl78", "7": "bl84", "6": "bl110-skid", "6:offload": "bl110-offload"}</c></para></summary>
+    public Dictionary<string, string> LineRouting { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Used when a device has no routing entry. Without one, an unrouted device prints
     /// nowhere — which is safe (nothing mints) but useless, so most deployments set it.</summary>
     public string? DefaultPrinter { get; set; }
@@ -65,6 +73,26 @@ public sealed class TcpCoilLabelPrinter(IOptions<LabelPrinterOptions> options, I
         var name = deviceAddress is not null && _o.DeviceRouting.TryGetValue(deviceAddress, out var routed)
             ? routed
             : _o.DefaultPrinter;
+        return ResolveName(name);
+    }
+
+    /// <summary>Resolve a LINE (and optional purpose) to (host, port). Tries <c>line:purpose</c> before
+    /// the bare line, so BL110's offload printer wins for offload tags while everything else still lands
+    /// on the line's own printer. Falls back to <see cref="LabelPrinterOptions.DefaultPrinter"/>, which
+    /// is usually null in production — an unrouted line must print NOWHERE rather than somewhere
+    /// arbitrary, because a skid tag at the wrong line is worse than no tag.</summary>
+    internal (string Host, int Port)? ResolveLine(long lineNum, string? purpose = null)
+    {
+        string? name = null;
+        if (purpose is { Length: > 0 } && _o.LineRouting.TryGetValue($"{lineNum}:{purpose}", out var byPurpose))
+            name = byPurpose;
+        else if (_o.LineRouting.TryGetValue(lineNum.ToString(System.Globalization.CultureInfo.InvariantCulture), out var byLine))
+            name = byLine;
+        return ResolveName(name ?? _o.DefaultPrinter);
+    }
+
+    private (string Host, int Port)? ResolveName(string? name)
+    {
         if (name is null) return null;
 
         // A routing entry may name a configured printer, or be a literal host[:port] itself.
@@ -104,11 +132,16 @@ public sealed class TcpCoilLabelPrinter(IOptions<LabelPrinterOptions> options, I
         }
     }
 
-    public async Task<LabelPrintResult> PrintAsync(string? deviceAddress, string zpl, int copies, CancellationToken ct)
+    public Task<LabelPrintResult> PrintAsync(string? deviceAddress, string zpl, int copies, CancellationToken ct)
     {
         if (Resolve(deviceAddress) is not { } t)
-            return new LabelPrintResult(false, null, $"No printer is configured for device '{deviceAddress ?? "(none)"}'.");
+            return Task.FromResult(new LabelPrintResult(false, null, $"No printer is configured for device '{deviceAddress ?? "(none)"}'."));
+        return SendAsync(t, zpl, copies, $"device {deviceAddress ?? "(none)"}", ct);
+    }
 
+    /// <summary>The one socket write both routing paths share.</summary>
+    private async Task<LabelPrintResult> SendAsync((string Host, int Port) t, string zpl, int copies, string who, CancellationToken ct)
+    {
         var target = $"{t.Host}:{t.Port}";
         try
         {
@@ -123,14 +156,29 @@ public sealed class TcpCoilLabelPrinter(IOptions<LabelPrinterOptions> options, I
                 await stream.WriteAsync(bytes, timeout.Token);
             await stream.FlushAsync(timeout.Token);
 
-            log.LogInformation("Printed {Copies} label(s) to {Target} for device {Device} ({Bytes} bytes).",
-                copies, target, deviceAddress ?? "(none)", bytes.Length);
+            log.LogInformation("Printed {Copies} label(s) to {Target} for {Who} ({Bytes} bytes).",
+                copies, target, who, bytes.Length);
             return new LabelPrintResult(true, target, null);
         }
         catch (Exception ex)
         {
-            log.LogError(ex, "Failed printing to {Target} for device {Device}.", target, deviceAddress ?? "(none)");
+            log.LogError(ex, "Failed printing to {Target} for {Who}.", target, who);
             return new LabelPrintResult(false, target, $"Printer {target} did not accept the label: {ex.Message}");
         }
+    }
+
+    public Task<LabelPrintResult> PrintForLineAsync(long lineNum, string? purpose, string zpl, int copies, CancellationToken ct)
+    {
+        var target = ResolveLine(lineNum, purpose);
+        if (target is null)
+        {
+            // Deliberately a soft failure naming the line: an unrouted line must print NOWHERE, and the
+            // caller needs to say WHICH line has no printer or the fix is a guessing game.
+            log.LogWarning("No printer configured for line {Line}{Purpose} — nothing printed.",
+                lineNum, purpose is null ? "" : $" ({purpose})");
+            return Task.FromResult(new LabelPrintResult(false, null,
+                $"No printer is configured for line {lineNum}{(purpose is null ? "" : $" ({purpose})")}."));
+        }
+        return SendAsync(target.Value, zpl, copies, $"line {lineNum}{(purpose is null ? "" : $" ({purpose})")}", ct);
     }
 }

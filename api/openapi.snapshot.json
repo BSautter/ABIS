@@ -14259,6 +14259,94 @@
         }
       }
     },
+    "/api/documents/sheet-skid/{sheetSkidNum}/print": {
+      "post": {
+        "tags": [
+          "Skids"
+        ],
+        "summary": "Print the 4x6 sheet-skid tag as ZPL at the line that made it. purpose selects a line's alternate printer (BL110 has skid + offload); 409 when the skid has no line, 503 when its printer is unreachable.",
+        "operationId": "PrintSheetSkidTag",
+        "parameters": [
+          {
+            "name": "sheetSkidNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "purpose",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/documents/scrap-skid/{scrapSkidNum}/print": {
+      "post": {
+        "tags": [
+          "Skids"
+        ],
+        "summary": "Print the 4x6 scrap tag as ZPL at the line that made it, with one row per contributing coil.",
+        "operationId": "PrintScrapSkidTag",
+        "parameters": [
+          {
+            "name": "scrapSkidNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "purpose",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/scrap-skids": {
       "get": {
         "tags": [

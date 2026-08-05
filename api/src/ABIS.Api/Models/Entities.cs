@@ -3398,3 +3398,53 @@ public sealed class WarehouseItemDeleteResult
     /// standing rather than cascading, so an operator can re-stock it.</summary>
     public int RemainingItems { get; set; }
 }
+/// <summary>A sheet-skid tag's data, assembled for printing: the skid, the job it came off, the line
+/// that made it (which selects the printer), and the material description from the order line.</summary>
+public sealed class SkidTagPrintData
+{
+    public long SheetSkidNum { get; set; }
+    public string? SheetSkidDisplayNum { get; set; }
+    public long? AbJobNum { get; set; }
+    /// <summary>The line the job ran on. Null means the tag cannot be routed to a printer.</summary>
+    public long? LineNum { get; set; }
+    public string? Customer { get; set; }
+    public string? EndUser { get; set; }
+    public string? Alloy { get; set; }
+    public string? Temper { get; set; }
+    public decimal? Gauge { get; set; }
+    public decimal? Width { get; set; }
+    public decimal? Length { get; set; }
+    public decimal? NetWt { get; set; }
+    public decimal? TareWt { get; set; }
+    public int? Pieces { get; set; }
+    public DateTime? SkidDate { get; set; }
+    public string? LotNum { get; set; }
+    public string? CoilOrgNum { get; set; }
+    public string? OperatorInitial { get; set; }
+}
+
+/// <summary>A scrap tag's data. The coil rows are the legacy detail band.</summary>
+public sealed class ScrapTagPrintData
+{
+    public long ScrapSkidNum { get; set; }
+    public long? LineNum { get; set; }
+    public string? Customer { get; set; }
+    public decimal? NetWt { get; set; }
+    public decimal? TareWt { get; set; }
+    public DateTime? ScrapDate { get; set; }
+    public string? OperatorInitial { get; set; }
+    public IReadOnlyList<ScrapTagCoilRow> Coils { get; set; } = [];
+}
+
+/// <summary>One contributing coil on a scrap tag.</summary>
+public sealed class ScrapTagCoilRow
+{
+    public long? AbJobNum { get; set; }
+    public string? LotNum { get; set; }
+    public string? CoilOrgNum { get; set; }
+    public int? Pieces { get; set; }
+    public decimal? NetWt { get; set; }
+    public string? Alloy { get; set; }
+    public string? Temper { get; set; }
+    public decimal? Gauge { get; set; }
+}

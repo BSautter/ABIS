@@ -42,9 +42,13 @@
   `S`, so a scrap code beginning with `S` would survive that strip as a plausible sheet-skid number and
   resolve to the wrong record. Guarded by a test asserting the scrap prefix does not start with the
   sheet prefix.
-  <br>**NOT YET PRINTED** and **not yet wired to an endpoint** — the HTML tags (#129) still serve the
-  DAS browser-print path. Wiring is per-line routing: BL78 192.168.9.14, BL84 192.168.9.15, BL110 has
-  TWO (skid 192.168.9.9, offload 192.168.9.11, and .9.9 did not answer when probed).
+  <br>**WIRED (#378)** — `POST /documents/sheet-skid/{n}/print` and `/scrap-skid/{n}/print`, routed to
+  the printer at the line that made the skid. `LabelPrinters:LineRouting` maps `"<line>"` and
+  `"<line>:<purpose>"`, so BL110's skid and offload printers are both addressable. An unrouted line
+  prints NOWHERE by design. Gated on `Inventory(Skid)`.
+  <br>**STILL NOT PRINTED.** Both tags need a test print before use, and the config needs real
+  `LineRouting` entries — the line_num values are internal CODES, so resolve them from the LINE table
+  rather than assuming BL78 = 78. `192.168.9.9` (BL110 skid) did not answer when probed.
 
 - [x] **C** `LINE_CURRENT_STATUS` live line board (job/coil/shift, 19 skid locations, 2 stacker skids) — done
   (#281): `GET /das/line-board` (+ `/{lineNum}`, 404 when the line has no board row) reads the one-row-per-line
