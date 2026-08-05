@@ -176,6 +176,38 @@ If you would rather .230 keep its **own** user list across refreshes, add
 `exclude=TABLE:"LIKE 'SECURITY%'"` to the parfile in `refresh-nonprod.sh`. That removes the wipe
 entirely, at the cost of non-prod no longer mirroring prod's users for RBAC testing.
 
+
+## Part 4 — restore the IT group's full grants (REQUIRED after every refresh)
+
+Same cause as Part 3, different table. `SECURITY_GROUP_APPLICATION` is a DBO table and does not match
+the `'ABIS%'` exclude, so **prod's copy replaces it** and the IT group reverts to whatever prod has.
+
+The plant's instruction (2026-08-05) is that **IT holds full read/write/modify on every component of
+ABIS**. On .230 that meant adding five features it lacked — `Line Employees`, `Maintenance_logs`,
+`Part Number`, `Scheduler Admin`, `Server Admin` — all at privilege 1 (Write).
+
+The symptom if you skip this is a 403 on a screen that looks available, which reads like a bug in the
+page rather than a missing grant.
+
+**`refresh-nonprod.sh` now does this for you** — it runs the script against the database it is already
+connected to, with no opt-in, because unlike Part 3 this needs no call to the app host. Run it by hand
+only if you refreshed some other way:
+
+```sh
+sqlplus dbo/<pw>@192.168.1.230:1521/abc11 @tools/grant_it_group.sql
+```
+
+It is deliberately NOT done at app startup. The sequence self-heal can run on every boot because a
+sequence behind its max is always wrong; a grant is policy. If the plant later narrows what IT holds,
+an app that re-widened it on every restart would silently overrule them.
+
+Idempotent: it raises anything below Write, adds anything missing, removes nothing, and touches no
+other group. It resolves the group by NAME rather than id (the id is whatever prod has after a
+refresh) and fails loudly if IT does not end up holding every feature.
+
+> **Prod (.9) is read-only** — do not run it there. Production security is owned by legacy ABIS and
+> changing it is a plant decision made through that application.
+
 ## Notes
 - The two `ORA-39083` FKs left disabled after a bulk refresh (`AB_JOB→SKETCH_JPG`, a Quest tool FK)
   re-validate once Part 2 loads `SKETCH_JPG`; re-enable if desired (`ALTER TABLE ab_job ENABLE

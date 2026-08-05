@@ -99,6 +99,29 @@ fi
 # (Alternative, if you would rather .230 keep its OWN user list across refreshes: add
 #  exclude=TABLE:"LIKE 'SECURITY%'" to the parfile above. That trades prod-realistic RBAC data
 #  for a stable non-prod login. Left off by default so .230 keeps mirroring prod.)
+# --- restore the IT group's full grants (automatic) -----------------------------------------
+# Same cause as the admin restore below, different table: SECURITY_GROUP_APPLICATION is a DBO table
+# and does not match the 'ABIS%' exclude, so prod's copy replaces it and the IT group reverts.
+#
+# This one needs no opt-in, unlike the admin restore. That is an API call to the app host and can
+# only be a suggestion from here; this is plain SQL against the database this script is already
+# connected to, so it just runs. The symptom it prevents is a 403 on a screen that looks available,
+# which reads like a bug in the page rather than a missing grant.
+#
+# NOT done at app startup, deliberately. The sequence self-heal can run on every boot because a
+# sequence behind its max is always wrong. A GRANT is policy: if the plant later decides to narrow
+# what IT holds, an app that re-widened it on every restart would silently overrule them and fight
+# the admin screens. Repairing it where the damage is caused keeps that decision the plant's.
+IT_GRANTS_SQL="$(dirname "$0")/../tools/grant_it_group.sql"
+if [ -f "$IT_GRANTS_SQL" ]; then
+  echo "-- restoring the IT group's full grants ($IT_GRANTS_SQL)"
+  if ! sqlplus -s "$ORA_LOCAL" @"$IT_GRANTS_SQL"; then
+    echo "WARNING: the IT grant restore FAILED — IT will hit 403s until tools/grant_it_group.sql is re-run" >&2
+  fi
+else
+  echo "WARNING: $IT_GRANTS_SQL not found — run it by hand or IT loses its grants" >&2
+fi
+
 ADMIN_LOGIN="${ABIS_ADMIN_LOGIN:-}"
 BOOTSTRAP="${BOOTSTRAP_ADMIN:-}"
 if [ -n "$ADMIN_LOGIN" ] && [ -x "$BOOTSTRAP" ]; then

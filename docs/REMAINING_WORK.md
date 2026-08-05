@@ -7,48 +7,16 @@
 
 **Legend:** `[ ]` open · `[~]` partial · severity **C**ritical / **H**igh / **M**edium / **L**ow.
 
-- [ ] **H — NEEDS A PLANT DECISION, blocks two modules at alpha.** Two features the API gates on are
-  held by **one user each** on live: `Part Number` (the Parts subsystem — part master + routings) and
-  `Maintenance_logs` (the maintenance module). Every other mapped feature sits at 31–45 of 46 users.
-  The gate itself is correct — `JwtUserWorkflowTests` proves a holder passes and a non-holder is
-  refused — so signing in will not help those users; they get a 403 from a screen that looks available.
-  <br>`Maintenance_logs` has a known cause: the plant runs KeepTrak, so the legacy ABIS maintenance
-  module went unused and the grant was never spread. ABIS is meant to REPLACE KeepTrak, so on day one
-  of that migration maintenance is unusable by everyone but one person.
-  <br>**Ask the plant who should hold each, then widen the grants** (Admin → Security). Recorded in
-  `GrantCoverageTests.AcceptedThinGrants`; the guard fails if a NEW subsystem is mapped to a feature
-  nobody holds, and also if these two get widened and the entry is left behind.
-
-## Version roadmap to 1.0.0 (agreed 2026-07-11)
-The target for **1.0.0 is full legacy-ABIS parity, cutover-ready**. Honest distance from v0.4.x: the platform
-is production-mature (auth/RBAC, ~37 pages, all domain CRUD, the 4 subsystems, doc/print engine, live edge/OPC
-auto-downtime, native deploy + AD login + server console) — ~75–80% to parity **by breadth**, but the
-remaining ~20–25% holds the two heaviest programs (EDI engine + the live-DAS spine), so it's more work than the
-percentage suggests.
-
-| Milestone | Definition |
-|-----------|------------|
-| **0.5.0** | **EDI engine — generation + 997** complete, **never transmits** (§A). ✅ **CLOSED at v0.5.5 (2026-07-22)**; two items deferred data-blocked (863 gen, inbound-856 ingest — see §A). |
-| **0.6.x** | Buildable feature-gap batches (§C: commercial → coils/receiving → quality → reporting → maintenance). ✅ **CLOSED at v0.6.16 (2026-07-24)** — §C is cleared; what remained was the DAS spine, blocked items, and small tails. |
-| **0.7.0** | **The live-DAS workflow core** (§B) — ✅ **CUT 2026-07-24**. A line can be scheduled, staffed, run, corrected and closed out entirely in ABIS: line board, Operation Panel, coil-run ledger w/ cross-shift carry, LINE_PRIORITY queue, change-job mid-coil + reverse, live efficiency/yield on the recovered legacy formulas, end-coil recap, stale-shift monitor, PLC counters + dual-station stacker. **Read AND write paths validated on live Oracle**; the edge serves 5 typed endpoints from both OPC boxes. |
-| **0.8.x** | The rest of §B (stacker physical board, scan-to-load, shift-lifecycle automation, auto-status controls) + the remaining §C tails. |
-| **0.9.x** | Feature-complete parity + a hardening / verification pass |
-| **1.0.0** | Cutover-ready. **NOTE (user, 2026-07-24): 1.0.0 is the STARTING POINT for alpha/beta testing** — the point where new ABIS can replace old ABIS and users first exercise it. It is not "finished"; it is "ready to begin being tested". **There is therefore NO user-feedback loop before 1.0** — correctness up to that point must come from legacy-source fidelity, live-data validation on .230 / the plant PLCs, and automated tests. |
-
-## Suggested next 5 (highest value, buildable now)
-1. ~~**Packing-list line items** (C2)~~ — ✅ **DONE** (#217 sheet, #219 scrap + generalized API, #220 reject-coil; warehouse deferred). Shipments now carry line items and feed the 856.
-2. **863 mechanical test-result WRITE** (C5) — the test-result list cannot populate without it.
-3. **Coil-ownership transfer mint semantics** (C3) — today it mutates `customer_id` in place (wrong audit trail).
-4. **Dimension-check tolerance validation** (C5) — the actual QC gate; today `in_spec` = whatever the client sends.
-5. **BOL / combi-form / packing-ticket printing** (C2) — the shipping-document engine (nothing physical comes out).
-
----
-
-## A. EDI engine → 0.5.0 ✅ CLOSED at v0.5.5 (2026-07-22) — BUILT fully + integrated, NEVER transmits
-Directive 2026-07-11: build ALL of EDI generation/ingestion/ack, stopping at an explicit no-op transmit seam.
-The VAN SFTP stays the single legacy owner (`GXS.ksh`). Design in `docs/EDI_ENGINE.md`; see `[[abis-edi-engine-build]]`,
-`[[abis-no-live-firing-guardrail]]`, `[[abis-230-cron-inventory]]`. **Foundation shipped: #183 (X12Writer +
-`IEdiTransport`→`NoOpEdiTransport`, no SFTP anywhere), #184 (email → cmattinson override).**
+- [x] **IT holds every feature — done (#372), applied on .230 2026-08-05.** Per the plant's instruction
+  the IT group (5 members) now has Write on all **39** features; it was missing five — `Line Employees`,
+  `Maintenance_logs`, `Part Number`, `Scheduler Admin`, `Server Admin`. Applied through the app's own
+  grant endpoint, and re-applied automatically by `refresh-nonprod.sh` because a Data Pump refresh
+  replaces `SECURITY_GROUP_APPLICATION` from prod.
+- [x] **Who else holds Parts / Maintenance — settled 2026-08-05: IT assigns as needed.** The plant's
+  call: five holders is enough to administer, and IT can grant `Part Number` / `Maintenance_logs` to
+  testers and to the people who need them as testing widens. No code change — it is done from
+  Admin → Security, which is exactly what that screen is for. Recorded so the next session does not
+  re-raise it as an open blocker.
 - [x] **C** EDI outbound generation (861 / 870 / 846 / 856) — **DONE + tested + verified live on codi-ABIS**.
   All 17 live-partner profiles on the `abis_edi_partner` backbone map to a built variant: **861** Novelis(1153/1459/2582)/
   Commonwealth(1980)/Constellium(2776)/Arconic(2784); **870** Novelis(1153/1459/2950)/Aleris(1980)/Constellium(2776,

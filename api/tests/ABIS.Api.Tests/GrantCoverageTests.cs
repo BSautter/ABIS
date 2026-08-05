@@ -34,18 +34,17 @@ public sealed class GrantCoverageTests(ITestOutputHelper output)
     /// it means. Listed so the fact is visible and decided, not so it can be waved through: every entry
     /// here is a screen the plant cannot currently use, and needs a grant change before that module
     /// goes live.</summary>
-    private static readonly Dictionary<string, string> AcceptedThinGrants = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["Part Number"] =
-            "1 holder. The legacy part-master screen was barely used, so the grant was never spread. The " +
-            "modern Parts subsystem (part master + routings) is gated on it, which means exactly one " +
-            "person can create or edit a part. NEEDS A PLANT GRANT DECISION before Parts goes live.",
-        ["Maintenance_logs"] =
-            "1 holder, and the reason is known: the plant runs KeepTrak for maintenance and PMs, so the " +
-            "legacy ABIS maintenance module went unused and its grant was never spread. ABIS is meant to " +
-            "REPLACE KeepTrak, so on day one of that migration the maintenance module is unusable by " +
-            "everyone but one person. NEEDS A PLANT GRANT DECISION before maintenance goes live.",
-    };
+    /// <summary>Features mapped in <c>FeatureByTag</c> that are BELOW the floor on live, each with what
+    /// it means. Listed so the fact is visible and decided, not so it can be waved through.
+    /// <para><b>Currently empty, and that is a result, not an oversight.</b> Both entries that lived here
+    /// — <c>Part Number</c> and <c>Maintenance_logs</c>, one holder each — were resolved on 2026-08-05
+    /// when the plant granted the IT group Write on all 39 features. They now sit at 5.</para>
+    /// <para>Note what 5 does and does not mean: it is the IT group and nobody else. Enough to
+    /// administer and to pilot; NOT enough for the people who would use Parts or Maintenance daily.
+    /// That is tracked in REMAINING_WORK, not here, because it is a question of WHICH people hold a
+    /// grant rather than whether anyone does — and this guard only answers the second one.</para></summary>
+    private static readonly Dictionary<string, string> AcceptedThinGrants = new(StringComparer.OrdinalIgnoreCase);
+
 
     private static string RepoRoot()
     {
