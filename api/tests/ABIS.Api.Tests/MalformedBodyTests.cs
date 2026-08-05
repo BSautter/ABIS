@@ -191,4 +191,46 @@ public sealed class MalformedBodyTests(ITestOutputHelper output)
         var r = await Send(c, "POST", "/api/no-such-endpoint", "{}");
         Assert.Equal(HttpStatusCode.NotFound, r.StatusCode);
     }
+
+    /// <summary>The useful 400 must reach PRODUCTION, not just the test environment.
+    /// <para>This was the gap the fix originally shipped with, and verifying a deploy is what exposed
+    /// it. <c>RouteHandlerOptions.ThrowOnBadRequest</c> defaults to <b>true in Development and false
+    /// everywhere else</b>, so in Production the framework answered a malformed body with a bare
+    /// <c>"Bad Request"</c> and never threw — the exception handler never ran, and the field-naming
+    /// detail never reached a real user. Every test above runs Development, so they all passed while
+    /// the thing they describe did not happen on the deployed server.</para>
+    /// <para>Which is the point of this one: it runs the app the way the plant runs it.</para></summary>
+    [Fact]
+    public async Task The_useful_message_reaches_production_and_not_only_development()
+    {
+        using var f = new ProductionFactory();
+        var c = f.CreateClient();
+        c.DefaultRequestHeaders.Add("X-Api-Key", "test-key");
+
+        var r = await Send(c, "POST", "/auth/login", "{\"a\":");
+        Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
+
+        var problem = JsonDocument.Parse(await r.Content.ReadAsStringAsync()).RootElement;
+        Assert.Equal("Malformed request body", problem.GetProperty("title").GetString());
+        Assert.Contains("$.a", problem.GetProperty("detail").GetString()!);
+    }
+
+    private sealed class ProductionFactory : WebApplicationFactory<Program>
+    {
+        private readonly string _db = Path.Combine(Path.GetTempPath(), $"abis_prodbody_{Guid.NewGuid():N}.db");
+        protected override void ConfigureWebHost(IWebHostBuilder b)
+        {
+            b.UseEnvironment("Production");   // the whole point of this factory
+            b.UseSetting("Database:Provider", "Sqlite");
+            b.UseSetting("Database:ConnectionString", $"Data Source={_db}");
+            b.UseSetting("Database:Seed", "true");
+            b.UseSetting("ApiKeys:Enabled", "true");
+            b.UseSetting("ApiKeys:Keys:0", "test-key");
+        }
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            try { if (File.Exists(_db)) File.Delete(_db); } catch { /* best effort */ }
+        }
+    }
 }

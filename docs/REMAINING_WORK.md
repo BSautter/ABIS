@@ -749,7 +749,15 @@ function `f_add_system_log_tran`, whose body is not vendored), and the Instron "
   `ab_job.order_abc_num` is NOT NULL *and* carries a composite FK to `order_item`; the guard's other
   path (job absent) is the reachable one and is what it now tests. `Unknown_packing_list_or_no_bill_of_lading`
   seeded `bill_of_lading = NULL`, also NOT NULL on Oracle — that half is removed.
-- [x] **A bad request body is answered as a bad request — done (#364).** The follow-up recorded above
+- [x] **A bad request body is answered as a bad request — done (#364), and made to reach PRODUCTION
+  (#370).** #364's finding was real but its *scope* was overstated, and verifying a deploy is what
+  exposed that: `RouteHandlerOptions.ThrowOnBadRequest` defaults to **true in Development and false
+  everywhere else**, so the 105 endpoints answering 500 were doing so only in the test/dev
+  environment. In Production the framework already returned a bare 400 and never threw, so the
+  handler never ran. Every test passed while the improvement did not exist on the deployed server.
+  #370 turns the flag on in all environments and guards it with a test that runs the app in
+  **Production**, which is the environment the original tests never exercised.
+- [x] **The original #364 change.** The follow-up recorded above
   was wrong about *where* the hole was, and checking rather than building on it is what found the real
   one. `orig_customer_po`, `sheet_type` and both job refs are already required at the endpoints
   (`Validate(CustomerOrderWrite)`, `Validate(OrderItemWrite)`, `Validate(JobWrite)`); the tests that

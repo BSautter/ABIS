@@ -184,6 +184,13 @@ builder.Services.AddSwaggerGen(c =>
 // them as server faults and a malformed body comes back as an opaque 500. See the handler's remarks.
 builder.Services.AddExceptionHandler<Abis.Api.Middleware.BadRequestExceptionHandler>();
 
+// ThrowOnBadRequest defaults to TRUE in Development and FALSE everywhere else, which made the handler
+// above a development-only improvement: in Production the framework already answered a malformed body
+// with a bare 400 and never threw, so the field-naming detail never reached a real user. Turning it on
+// for every environment is what makes dev and prod agree — and prod is the one that matters here,
+// because it is where someone is looking at the response trying to work out what they sent wrong.
+builder.Services.Configure<RouteHandlerOptions>(o => o.ThrowOnBadRequest = true);
+
 builder.Services.AddProblemDetails(options =>
     options.CustomizeProblemDetails = ctx =>
     {
