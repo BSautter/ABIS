@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Live-validates the ABIS API READ paths for the modules built AFTER the original
   Oracle validation (which covered dies/sketches/shipments/orders/etc via

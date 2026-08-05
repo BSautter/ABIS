@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   keeptrak-inspect.ps1 — READ-ONLY schema/inventory dump of a KeepTrak (Microsoft Access) database.
 

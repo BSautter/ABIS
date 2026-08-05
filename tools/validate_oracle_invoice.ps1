@@ -1,4 +1,4 @@
-<#
+﻿<#
   validate_oracle_invoice.ps1 — validate the greenfield INVOICE billing against live non-prod
   Oracle (192.168.1.230:1521/abc11, schema DBO). READ-ONLY: every query goes through tools/oraq,
   which refuses anything but a single SELECT/WITH.

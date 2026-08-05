@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   READ-ONLY discovery of the value-sets the deferred parity guards need before they can be
   hard-enforced (coil/skid/job status enums, die enums, cash-date flag, date-column types).

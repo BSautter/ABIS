@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Live-validates the ABIS API write + lookup endpoints against the real Oracle DB.
 

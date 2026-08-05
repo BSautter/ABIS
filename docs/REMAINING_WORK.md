@@ -758,6 +758,15 @@ function `f_add_system_log_tran`, whose body is not vendored), and the Instron "
   **105 of them answered a malformed body with a 500**, because minimal-API binding raises a
   `BadHttpRequestException` carrying its own 400 and nothing read it. Fixed with one exception handler
   and guarded by a sweep of the route table, so a new endpoint is covered the day it is added.
+- [ ] **M** **Run `tools/validate_das_writes.ps1` against .230.** The 22 DAS tests run on SQLite; this
+  exercises the same paths on real Oracle, where the live-only failures are (ORA-02289 missing
+  sequence, ORA-01745 reserved-word bind, ORA-01861 DATE-as-string, ORA-01400, ORA-00001 from a
+  sequence behind its max). It needs a credential, so an operator runs it — see the script's header.
+  It refuses any host but 192.168.1.230, creates its own shift on an idle line, snapshots and restores
+  `LINE_CURRENT_STATUS` pass or fail, and deletes what it made.
+  <br>Note the sequence-drift blocker recorded earlier is **stale**: `ResyncSequencesAsync` self-heals
+  on startup (default on) and covers both `error_evt` and `dt_instance`, so no manual
+  `resync_sequences.sql` step is needed first. The script re-checks it rather than assuming.
 - [x] **The DAS write paths now have coverage — done (#365).** The item above was misdiagnosed twice
   over. No seeded shift was needed: line 110 is *already* seeded running (shift 7701, job 1001, coil
   5001). The sweep was probing **line 4, which the fixture does not seed at all**, so all 15 endpoints

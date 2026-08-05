@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Poll the ABIS edge /run-state and print running / stopped / unknown, so you can watch
   it flip as the line starts and stops.
