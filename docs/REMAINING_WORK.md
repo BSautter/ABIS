@@ -7,6 +7,18 @@
 
 **Legend:** `[ ]` open · `[~]` partial · severity **C**ritical / **H**igh / **M**edium / **L**ow.
 
+- [ ] **H — NEEDS A PLANT DECISION, blocks two modules at alpha.** Two features the API gates on are
+  held by **one user each** on live: `Part Number` (the Parts subsystem — part master + routings) and
+  `Maintenance_logs` (the maintenance module). Every other mapped feature sits at 31–45 of 46 users.
+  The gate itself is correct — `JwtUserWorkflowTests` proves a holder passes and a non-holder is
+  refused — so signing in will not help those users; they get a 403 from a screen that looks available.
+  <br>`Maintenance_logs` has a known cause: the plant runs KeepTrak, so the legacy ABIS maintenance
+  module went unused and the grant was never spread. ABIS is meant to REPLACE KeepTrak, so on day one
+  of that migration maintenance is unusable by everyone but one person.
+  <br>**Ask the plant who should hold each, then widen the grants** (Admin → Security). Recorded in
+  `GrantCoverageTests.AcceptedThinGrants`; the guard fails if a NEW subsystem is mapped to a feature
+  nobody holds, and also if these two get widened and the entry is left behind.
+
 ## Version roadmap to 1.0.0 (agreed 2026-07-11)
 The target for **1.0.0 is full legacy-ABIS parity, cutover-ready**. Honest distance from v0.4.x: the platform
 is production-mature (auth/RBAC, ~37 pages, all domain CRUD, the 4 subsystems, doc/print engine, live edge/OPC

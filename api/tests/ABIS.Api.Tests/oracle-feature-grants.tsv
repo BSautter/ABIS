@@ -1,0 +1,42 @@
+# Effective users per SECURITY_APPLICATION feature on the live non-prod Oracle (.230), captured 2026-08-05.
+# Effective = a direct security_user_application grant OR one inherited via security_user_group -> security_group_application.
+# Source: the UNION of those two, counted DISTINCT by user. 39 features; 46 users on the system.
+Carrier Information	31
+Customer Information	37
+Daily Production	33
+Downtime report	31
+EDI	28
+End User Change	11
+Inventory(Coil)	39
+Inventory(ReCap)	35
+Inventory(Skid)	38
+Line Employees	5
+Line-BL110	45
+Line-BL84	45
+Maintenance_logs	1
+New Pallet Ticket	22
+Office Entry	43
+Order Entry	43
+Part Number	1
+Production Control	43
+Production Line Schedule	46
+Production Sketch	34
+Quality Control	45
+Quotation(Circle)	25
+Quotation(Sheet)	25
+Scheduler Admin	1
+Scrap Handling	37
+Server Admin	1
+Shift Control	10
+Shift Scheduler	26
+Shipment(Control)	39
+Shipment(Loading)	27
+Shipment(Receiving)	36
+Shipment(Rehash)	23
+Surveillance	11
+System Log	20
+Table yield_strength	17
+User Control	7
+User Group Control	20
+User Password	45
+Warehouse	39
