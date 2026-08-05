@@ -1575,6 +1575,11 @@ public static class SqliteFixture
                 // the live LINE table carries it alongside the seven real lines, and jobs never put on
                 // a line point at it. Seeded so the floor board's exclusion of it stays exercised.
                 new { LineNum = 0L, LineDesc = "NONE", LineLocation = (string?)null },
+                // BL 60 (line_num 3) is the plant's DECOMMISSIONED line, and 3 is its real code on the
+                // live LINE table — verified on .230, where the codes run 0..7. Seeded so the
+                // retired-line guard is exercised against the number production actually uses rather
+                // than one invented for the fixture.
+                new { LineNum = 3L, LineDesc = "BL 60", LineLocation = (string?)null },
                 new { LineNum = 110L, LineDesc = "Cut-to-length 1", LineLocation = "Bay A" },
                 new { LineNum = 120L, LineDesc = "Cut-to-length 2", LineLocation = "Bay B" }
             });

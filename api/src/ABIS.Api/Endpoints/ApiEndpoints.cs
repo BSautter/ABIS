@@ -321,10 +321,14 @@ public static class ApiEndpoints
            .WithSummary("List a job's in-process partial skids.")
            .Produces<IEnumerable<PartialSkid>>();
 
-        api.MapPost("/jobs", async (JobWrite body, IAbisRepository repo, CancellationToken ct) =>
+        api.MapPost("/jobs", async (JobWrite body, IAbisRepository repo, IConfiguration cfg, CancellationToken ct) =>
             {
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
+                // A new job is the clearest case of "new work": scheduling one onto a line that is not
+                // on the floor puts it in a queue nobody is standing at.
+                if (IsRetiredLine(cfg, body.LineNum))
+                    return RetiredLineProblem("lineNum", body.LineNum!.Value);
                 // The order line must exist — ab_job FKs to order_item. Return a clean 400 rather
                 // than letting the insert fail as ORA-02291 → 500 (live-only: SQLite doesn't
                 // enforce the FK). Validate() has already guaranteed both refs are present.
@@ -1473,10 +1477,13 @@ public static class ApiEndpoints
            .WithSummary("A line's job queue (line_priority): running job first, then by priority. Ended jobs are hidden unless includeEnded=true.")
            .Produces<IReadOnlyList<LineQueueRow>>().Produces(StatusCodes.Status404NotFound);
 
-        api.MapPut("/das/lines/{lineNum:long}/queue/{abJobNum:long}", async (long lineNum, long abJobNum, LineQueueWrite body, IAbisRepository repo, CancellationToken ct) =>
+        api.MapPut("/das/lines/{lineNum:long}/queue/{abJobNum:long}", async (long lineNum, long abJobNum, LineQueueWrite body, IAbisRepository repo, IConfiguration cfg, CancellationToken ct) =>
             {
                 if (!await repo.LineExistsAsync(lineNum, ct))
                     return Results.NotFound();
+                if (IsRetiredLine(cfg, lineNum))
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Line decommissioned",
+                        detail: $"Line {lineNum} has been decommissioned and cannot take new work. It can still be wound down: ending its shift, closing a run and reversing remain available.");
                 if (await repo.GetJobAsync(abJobNum, ct) is null)
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["abJobNum"] = [$"Job {abJobNum} does not exist."] });
                 return await repo.UpsertLineQueueJobAsync(lineNum, abJobNum, body, ct) is { } row
@@ -1498,10 +1505,13 @@ public static class ApiEndpoints
            .WithSummary("Remove a job from a line's queue; refuses (409) the job the line is currently running.")
            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
 
-        api.MapPost("/das/lines/{lineNum:long}/queue/reorder", async (long lineNum, LineQueueReorderWrite body, IAbisRepository repo, CancellationToken ct) =>
+        api.MapPost("/das/lines/{lineNum:long}/queue/reorder", async (long lineNum, LineQueueReorderWrite body, IAbisRepository repo, IConfiguration cfg, CancellationToken ct) =>
             {
                 if (!await repo.LineExistsAsync(lineNum, ct))
                     return Results.NotFound();
+                if (IsRetiredLine(cfg, lineNum))
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Line decommissioned",
+                        detail: $"Line {lineNum} has been decommissioned and cannot take new work. It can still be wound down: ending its shift, closing a run and reversing remain available.");
                 if (body.AbJobNums is not { Count: > 0 } jobs)
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["abJobNums"] = ["abJobNums must list at least one job."] });
                 return Results.Ok(await repo.ReorderLineQueueAsync(lineNum, jobs, ct));
@@ -1514,10 +1524,13 @@ public static class ApiEndpoints
         // These are what the DAS station does as it runs: point the line at a job, load or drop the
         // coil on the mandrel, and open / close the line's shift. Each mirrors the legacy UPDATE
         // exactly; nothing here transmits or fires anything downstream.
-        api.MapPost("/das/lines/{lineNum:long}/current-job", async (long lineNum, LineCurrentJobWrite body, IAbisRepository repo, CancellationToken ct) =>
+        api.MapPost("/das/lines/{lineNum:long}/current-job", async (long lineNum, LineCurrentJobWrite body, IAbisRepository repo, IConfiguration cfg, CancellationToken ct) =>
             {
                 if (!await repo.LineExistsAsync(lineNum, ct))
                     return Results.NotFound();
+                if (IsRetiredLine(cfg, lineNum))
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Line decommissioned",
+                        detail: $"Line {lineNum} has been decommissioned and cannot take new work. It can still be wound down: ending its shift, closing a run and reversing remain available.");
                 // A job the plant does not have cannot be "what the line is running".
                 if (body.AbJobNum is { } job && await repo.GetJobAsync(job, ct) is null)
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["abJobNum"] = [$"Job {job} does not exist."] });
@@ -1528,10 +1541,13 @@ public static class ApiEndpoints
            .WithSummary("Point a line at the job it is running (null clears it); re-sequences the line's LINE_PRIORITY queue.")
            .Produces<LineBoardRow>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
 
-        api.MapPost("/das/lines/{lineNum:long}/current-coil", async (long lineNum, LineCurrentCoilWrite body, IAbisRepository repo, CancellationToken ct) =>
+        api.MapPost("/das/lines/{lineNum:long}/current-coil", async (long lineNum, LineCurrentCoilWrite body, IAbisRepository repo, IConfiguration cfg, CancellationToken ct) =>
             {
                 if (!await repo.LineExistsAsync(lineNum, ct))
                     return Results.NotFound();
+                if (IsRetiredLine(cfg, lineNum))
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Line decommissioned",
+                        detail: $"Line {lineNum} has been decommissioned and cannot take new work. It can still be wound down: ending its shift, closing a run and reversing remain available.");
                 if (body.CoilAbcNum is { } coil && await repo.GetCoilAsync(coil, ct) is null)
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["coilAbcNum"] = [$"Coil {coil} does not exist."] });
                 return await repo.SetLineCurrentCoilAsync(lineNum, body.CoilAbcNum, ct) is { } board
@@ -1541,10 +1557,13 @@ public static class ApiEndpoints
            .WithSummary("Load the coil on the mandrel (null drops it); loading marks the coil as on-line and zeroes the process rate.")
            .Produces<LineBoardRow>().Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
 
-        api.MapPost("/das/lines/{lineNum:long}/shift/start", async (long lineNum, LineShiftStartWrite body, IAbisRepository repo, CancellationToken ct) =>
+        api.MapPost("/das/lines/{lineNum:long}/shift/start", async (long lineNum, LineShiftStartWrite body, IAbisRepository repo, IConfiguration cfg, CancellationToken ct) =>
             {
                 if (!await repo.LineExistsAsync(lineNum, ct))
                     return Results.NotFound();
+                if (IsRetiredLine(cfg, lineNum))
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Line decommissioned",
+                        detail: $"Line {lineNum} has been decommissioned and cannot take new work. It can still be wound down: ending its shift, closing a run and reversing remain available.");
                 if (body.ShiftNum is not { } shiftNum)
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["shiftNum"] = ["shiftNum is required."] });
                 if (await repo.GetShiftAsync(shiftNum, ct) is not { } shift)
@@ -1673,10 +1692,13 @@ public static class ApiEndpoints
            .WithSummary("End-coil recap: the run plus the skids, pieces, finished weight, scrap and yield that came off that coil on that job.")
            .Produces<CoilRunRecap>().Produces(StatusCodes.Status404NotFound);
 
-        api.MapPost("/das/lines/{lineNum:long}/coil-run/start", async (long lineNum, CoilRunStartWrite body, IAbisRepository repo, CancellationToken ct) =>
+        api.MapPost("/das/lines/{lineNum:long}/coil-run/start", async (long lineNum, CoilRunStartWrite body, IAbisRepository repo, IConfiguration cfg, CancellationToken ct) =>
             {
                 if (!await repo.LineExistsAsync(lineNum, ct))
                     return Results.NotFound();
+                if (IsRetiredLine(cfg, lineNum))
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Line decommissioned",
+                        detail: $"Line {lineNum} has been decommissioned and cannot take new work. It can still be wound down: ending its shift, closing a run and reversing remain available.");
                 if (body.CoilAbcNum is not { } coil)
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["coilAbcNum"] = ["coilAbcNum is required."] });
                 if (await repo.GetCoilAsync(coil, ct) is null)
@@ -1726,10 +1748,13 @@ public static class ApiEndpoints
            .WithSummary("A line's live metrics: shift efficiency % (legacy downtime formula), processed weight, and the loaded coil's finish-% and yield % (legacy 95% target).")
            .Produces<LineLiveMetrics>().Produces(StatusCodes.Status404NotFound);
 
-        api.MapPost("/das/lines/{lineNum:long}/change-job", async (long lineNum, ChangeJobWrite body, IAbisRepository repo, CancellationToken ct) =>
+        api.MapPost("/das/lines/{lineNum:long}/change-job", async (long lineNum, ChangeJobWrite body, IAbisRepository repo, IConfiguration cfg, CancellationToken ct) =>
             {
                 if (!await repo.LineExistsAsync(lineNum, ct))
                     return Results.NotFound();
+                if (IsRetiredLine(cfg, lineNum))
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Line decommissioned",
+                        detail: $"Line {lineNum} has been decommissioned and cannot take new work. It can still be wound down: ending its shift, closing a run and reversing remain available.");
                 if (body.NewJobNum is not { } newJob)
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["newJobNum"] = ["newJobNum is required."] });
                 if (body.RemainingWeight is not { } remaining || remaining < 0)
@@ -2209,10 +2234,12 @@ public static class ApiEndpoints
            .WithSummary("Get one shift by id.")
            .Produces<Shift>().Produces(StatusCodes.Status404NotFound);
 
-        api.MapPost("/shifts", async (ShiftWrite body, IAbisRepository repo, CancellationToken ct) =>
+        api.MapPost("/shifts", async (ShiftWrite body, IAbisRepository repo, IConfiguration cfg, CancellationToken ct) =>
             {
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
+                if (IsRetiredLine(cfg, body.LineNum))
+                    return RetiredLineProblem("lineNum", body.LineNum!.Value);
                 // One shift per (line, schedule_type, day): a scheduled shift already exists is a
                 // conflict — use the update instead (w_daily_production_modify_schedule:543).
                 if (body is { LineNum: { } line, ScheduleType: { } sched, StartTime: { } start }
@@ -2226,10 +2253,14 @@ public static class ApiEndpoints
            .WithSummary("Create a production shift (one per line + schedule type + day).")
            .Produces<Shift>(StatusCodes.Status201Created).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
 
-        api.MapPut("/shifts/{shiftNum:long}", async (long shiftNum, ShiftWrite body, IAbisRepository repo, HttpContext ctx, IOptions<JsonOptions> json, CancellationToken ct) =>
+        api.MapPut("/shifts/{shiftNum:long}", async (long shiftNum, ShiftWrite body, IAbisRepository repo, IConfiguration cfg, HttpContext ctx, IOptions<JsonOptions> json, CancellationToken ct) =>
             {
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
+                // A full replace resends the stored line, so rejecting every retired line here would
+                // make a historical BL 60 shift uneditable. Only a CHANGE onto a retired line is refused.
+                if (IsRetiredLine(cfg, body.LineNum) && (await repo.GetShiftAsync(shiftNum, ct))?.LineNum != body.LineNum)
+                    return RetiredLineProblem("lineNum", body.LineNum!.Value);
                 return await WithIfMatch(ctx, json, () => repo.GetShiftAsync(shiftNum, ct), () => repo.UpdateShiftAsync(shiftNum, body, ct));
             })
            .WithName("UpdateShift").WithTags("Shifts")
@@ -2256,10 +2287,12 @@ public static class ApiEndpoints
            .WithSummary("Get one downtime instance by id.")
            .Produces<DowntimeInstance>().Produces(StatusCodes.Status404NotFound);
 
-        api.MapPost("/downtime", async (DowntimeInstanceWrite body, IAbisRepository repo, CancellationToken ct) =>
+        api.MapPost("/downtime", async (DowntimeInstanceWrite body, IAbisRepository repo, IConfiguration cfg, CancellationToken ct) =>
             {
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
+                if (IsRetiredLine(cfg, body.LineNum))
+                    return RetiredLineProblem("lineNum", body.LineNum!.Value);
                 var created = await repo.CreateDowntimeInstanceAsync(body, ct);
                 return Results.Created($"/api/downtime/{created.InstanceNum}", created);
             })
@@ -2267,10 +2300,14 @@ public static class ApiEndpoints
            .WithSummary("Log a downtime instance.")
            .Produces<DowntimeInstance>(StatusCodes.Status201Created).ProducesValidationProblem();
 
-        api.MapPut("/downtime/{instanceNum:long}", async (long instanceNum, DowntimeInstanceWrite body, IAbisRepository repo, HttpContext ctx, IOptions<JsonOptions> json, CancellationToken ct) =>
+        api.MapPut("/downtime/{instanceNum:long}", async (long instanceNum, DowntimeInstanceWrite body, IAbisRepository repo, IConfiguration cfg, HttpContext ctx, IOptions<JsonOptions> json, CancellationToken ct) =>
             {
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
+                // Same rule as the shift PUT: only a CHANGE onto a retired line is refused, so a
+                // historical BL 60 instance can still have its note or times corrected.
+                if (IsRetiredLine(cfg, body.LineNum) && (await repo.GetDowntimeInstanceAsync(instanceNum, ct))?.LineNum != body.LineNum)
+                    return RetiredLineProblem("lineNum", body.LineNum!.Value);
                 return await WithIfMatch(ctx, json, () => repo.GetDowntimeInstanceAsync(instanceNum, ct), () => repo.UpdateDowntimeInstanceAsync(instanceNum, body, ct));
             })
            .WithName("UpdateDowntimeInstance").WithTags("Downtime")
@@ -4647,6 +4684,25 @@ public static class ApiEndpoints
         Max(e, "shipmentNotes", body.ShipmentNotes, 255);
         return e.Count == 0 ? null : e;
     }
+
+    /// <summary>Lines that no longer exist on the floor (<c>Board:DecommissionedLines</c>).
+    /// <para>BL 60 (line_num 3) was removed in 2026-08. Hiding it from the floor board was the easy
+    /// half; this is the other one. Nothing stopped new work being booked to it — the downtime form's
+    /// line field is a free-text number, and neither the shift nor the downtime nor the job write
+    /// validated <c>line_num</c> at all, so "3" (or "999") was accepted without question.</para>
+    /// <para>History is untouched on purpose. BL 60 carries <b>1,163 jobs</b> on the live database and
+    /// every one of them must keep saying it ran on BL 60 — restating the past to tidy the present
+    /// would be worse than the gap this closes.</para></summary>
+    private static bool IsRetiredLine(IConfiguration cfg, long? lineNum) =>
+        lineNum is { } n && (cfg.GetSection("Board:DecommissionedLines").Get<long[]>() ?? []).Contains(n);
+
+    /// <summary>The 400 for booking new work on a line that is gone.</summary>
+    private static IResult RetiredLineProblem(string field, long lineNum) =>
+        Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            [field] = [$"Line {lineNum} has been decommissioned and cannot take new work. " +
+                       "Its existing records keep it and stay readable."],
+        });
 
     private static Dictionary<string, string[]>? Validate(ShiftWrite body)
     {

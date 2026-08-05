@@ -858,10 +858,18 @@ function `f_add_system_log_tran`, whose body is not vendored), and the Instron "
   `/lookups/lines` still returns **every** line, unfiltered — it answers "what does this `line_num`
   mean", which a job that ran on BL 60 still needs. Same split as `line_num = 0`: identity display
   keeps it, floor enumeration drops it.
-- [ ] **POST-1.0** **Fully decommission BL 60.** The floor board is only the visible half. A retired
-  line should also stop being *offerable* for new work — line pickers, downtime entry, the DAS
-  console's line resolution, and anywhere a job can still be assigned to it. Its history stays
-  untouched throughout. Deferred deliberately (user, 2026-08-04): wider than a sort order.
+- [x] **BL 60 fully decommissioned — done (#369).** Hiding it from the floor board was the easy half;
+  nothing stopped new work being booked to it. The downtime form's line field is a free-text number,
+  and the shift, downtime and job writes validated `line_num` not at all — "3" was accepted, and so
+  was "999". Now a retired line refuses new work: no job, shift or downtime instance, and the DAS
+  operations that assign work answer 409.
+  <br>**Deliberately not blocked:** winding down. `shift/end`, `coil-run/end`, `reverse` and queue
+  removal stay available, because BL 60 left **9 open shift rows and a queued job** behind on live and
+  that state has to be clearable from the app. **History is untouched** — 1,163 jobs on live keep
+  saying they ran on BL 60, the lookup still returns the line, and an existing record on it can still
+  be edited (only a *change onto* a retired line is refused, since PUT is a full replace).
+  <br>Verified `line_num 3 = BL 60` against the live LINE table before relying on it, and seeded it
+  into the fixture so the guard is tested against the number production uses.
 
 ## E. Config / turn-on / deploy (user-gated, not code)
 - [ ] Redeploy codi-ABIS to **v0.4.18** (dashboard piece count + the client bug fixes)

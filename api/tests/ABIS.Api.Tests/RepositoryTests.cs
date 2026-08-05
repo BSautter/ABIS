@@ -2996,14 +2996,14 @@ public sealed class RepositoryTests : IDisposable
     public async Task GetLines_returns_seeded_lines()
     {
         var lines = await _repo.GetLinesAsync(CancellationToken.None);
-        Assert.Equal(3, lines.Count);
+        // Named rather than counted: 0 (NONE), 3 (BL 60, decommissioned), 110 and 120.
+        Assert.Equal(new[] { 0L, 3L, 110L, 120L }, lines.Select(l => l.LineNum).OrderBy(n => n).ToArray());
         // The lookup deliberately INCLUDES the "no line assigned" sentinel: the UI needs it in the
         // line-name map so an unassigned job's row can read "NONE" rather than a bare 0. Only the floor
         // board filters it out, because there is no BL 0 to walk up to.
-        Assert.Equal(0, lines[0].LineNum);
-        Assert.Equal("NONE", lines[0].LineDesc);
-        Assert.Equal(110, lines[1].LineNum);
-        Assert.Equal("Cut-to-length 1", lines[1].LineDesc);
+        Assert.Equal("NONE", lines.Single(l => l.LineNum == 0).LineDesc);
+        Assert.Equal("Cut-to-length 1", lines.Single(l => l.LineNum == 110).LineDesc);
+        Assert.Equal("BL 60", lines.Single(l => l.LineNum == 3).LineDesc);
     }
 
     [Fact]

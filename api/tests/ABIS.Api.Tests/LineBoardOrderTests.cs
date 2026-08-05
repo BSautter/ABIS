@@ -88,7 +88,10 @@ public class LineBoardOrderTests
         Assert.True(byNum[110].GetProperty("decommissioned").GetBoolean());
         Assert.False(byNum[120].GetProperty("decommissioned").GetBoolean());
         Assert.False(byNum[0].GetProperty("decommissioned").GetBoolean());
-        Assert.Equal(3, byNum.Count);   // every line, none filtered out
+        // Every line, none filtered out — asserted as the SET rather than a count, so a line going
+        // missing names itself instead of showing up as an off-by-one. 3 is BL 60, the plant's real
+        // decommissioned line; this test marks 110 instead, to prove the flag follows configuration.
+        Assert.Equal(new[] { 0L, 3L, 110L, 120L }, byNum.Keys.OrderBy(k => k).ToArray());
     }
 
     [Fact]
