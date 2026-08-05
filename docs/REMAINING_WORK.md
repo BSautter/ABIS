@@ -758,17 +758,16 @@ function `f_add_system_log_tran`, whose body is not vendored), and the Instron "
   **105 of them answered a malformed body with a 500**, because minimal-API binding raises a
   `BadHttpRequestException` carrying its own 400 and nothing read it. Fixed with one exception handler
   and guarded by a sweep of the route table, so a new endpoint is covered the day it is added.
-- [ ] **M** **Run `tools/validate_das_writes.ps1` against .230.** The 22 DAS tests run on SQLite; this
-  exercises the same paths on real Oracle, where the live-only failures are (ORA-02289 missing
-  sequence, ORA-01745 reserved-word bind, ORA-01861 DATE-as-string, ORA-01400, ORA-00001 from a
-  sequence behind its max). It needs a credential, so an operator runs it — see the script's header.
-  It refuses any host but 192.168.1.230, creates its own shift on an idle line, snapshots and restores
-  `LINE_CURRENT_STATUS` pass or fail, and deletes what it made.
-  <br>Note the sequence-drift blocker recorded earlier is **stale**: `ResyncSequencesAsync` self-heals
-  on startup (default on) and covers both `error_evt` and `dt_instance`, so no manual
-  `resync_sequences.sql` step is needed first. The script re-checks it rather than assuming, resolving
-  the sequence NAMES from `Database:Sequences` the way the app does — `error_evt` is `ERROR_EVT_SEQ`,
-  not `ERROR_EVT_ID_SEQ`, and `dt_instance` is `DT_INSTANCE_SEQ`, not `INSTANCE_NUM_SEQ`.
+- [x] **DAS writes validated against live Oracle — done (#368), RUN and PASSED on .230 2026-08-05.**
+  All 15 checks green: the three id sequences ahead of their table max, coil-run idempotence,
+  `process_wt` = begin − end and floored at 0, the coil roll-through, reverse refusing a produced run,
+  one job Running, the rate reset, `coil_status_from_line` surviving a drop, `dt_total` = 900 seconds,
+  and `end_time` on the plant clock. Ran on line 1 against finished job 124342 / coil 234212; the board
+  and coil were snapshotted and restored, and the sandbox verified clean afterwards.
+  <br>It is a **.NET 8 console tool**, not the PowerShell script first written for it: these boxes have
+  Windows PowerShell 5.1 (.NET Framework), which cannot `Add-Type` the .NET 8 ODP.NET at all. Re-run it
+  any time after a Data Pump refresh — that is exactly when sequence drift appears.
+
 - [x] **The DAS write paths now have coverage — done (#365).** The item above was misdiagnosed twice
   over. No seeded shift was needed: line 110 is *already* seeded running (shift 7701, job 1001, coil
   5001). The sweep was probing **line 4, which the fixture does not seed at all**, so all 15 endpoints

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>dasvalidate</AssemblyName>
+    <RootNamespace>DasValidate</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Same managed ODP.NET the API uses (validated against the live non-prod 11g). -->
+    <PackageReference Include="Oracle.ManagedDataAccess.Core" Version="23.5.1" />
+  </ItemGroup>
+
+</Project>
