@@ -43,7 +43,18 @@ builder.Services.AddScoped<IAbisRepository, AbisRepository>();
 // drawing COIL_ABC_NUM_SEQ.NEXTVAL), an unwired deployment mints nothing rather than burning ABC
 // numbers for labels that were never printed. Wiring a real Zebra transport is a deliberate act, the
 // same seam discipline as the EDI no-transmit transport.
-builder.Services.AddSingleton<Abis.Api.Documents.ICoilLabelPrinter, Abis.Api.Documents.NoOpCoilLabelPrinter>();
+// Label printing stays OFF until printers are configured, exactly like the EDI transport seam: with
+// no LabelPrinters:Printers entries the NoOp implementation reports unreachable, and because minting
+// checks reachability first, an unconfigured deployment mints nothing rather than burning ABC numbers
+// on labels that were never printed.
+builder.Services.Configure<Abis.Api.Documents.LabelPrinterOptions>(
+    builder.Configuration.GetSection(Abis.Api.Documents.LabelPrinterOptions.SectionName));
+var labelPrinters = builder.Configuration.GetSection(Abis.Api.Documents.LabelPrinterOptions.SectionName)
+    .Get<Abis.Api.Documents.LabelPrinterOptions>() ?? new();
+if (labelPrinters.Printers.Count > 0)
+    builder.Services.AddSingleton<Abis.Api.Documents.ICoilLabelPrinter, Abis.Api.Documents.TcpCoilLabelPrinter>();
+else
+    builder.Services.AddSingleton<Abis.Api.Documents.ICoilLabelPrinter, Abis.Api.Documents.NoOpCoilLabelPrinter>();
 
 // Secondary, read-only WinSPC (SQL Server) quality database. Inert unless WinSpc:Enabled=true
 // with a connection string — CI and un-wired deployments get a disabled connector.

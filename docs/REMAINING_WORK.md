@@ -477,13 +477,45 @@ The edge read path is live (run-state + piece-count → auto-downtime); the DAS 
   again on the same screen), not a block. Fixes over the CGI: bound parameter (a scanner is untrusted
   input), all matching ABCs returned, and `FirstOrDefault` for the advance notice since a coil can appear
   on several inbound EDI files.
-- [~] **C** Native Zebra ZPL/CPCL over TCP :6101 + printer routing by device IP + connectivity check —
-  **label + seam done, transport not wired.** `ZplLabels.CoilAbcLabel` is the legacy payload byte-for-byte
-  (inverted `^BCI`/`^A0I` orientation, `^PW384`/`^LL0203` stock size, sent TWICE per mint), pinned by test.
-  `ICoilLabelPrinter` is the transport seam; the default `NoOpCoilLabelPrinter` does not print and reports
-  itself **unreachable** — which is the safety property, because minting checks reachability FIRST.
-  Still TODO: a real socket transport to `:6101` + the device-IP → printer map
-  (`192.168.10.8/9/10` → `192.168.10.12/13/14`) + an offline page. **Needs hardware to validate.**
+- [x] **ZPL transport over TCP - done (#373), verified against the plant's two printers.**
+  `TcpCoilLabelPrinter` sends raw ZPL and probes with a real connect (ICMP says the box is powered on,
+  not that the print server is listening). Registered only when `LabelPrinters:Printers` is non-empty,
+  so an unconfigured deployment keeps the NoOp and mints nothing.
+  <br>**Port 9100, NOT legacy's 6101.** Measured 2026-08-05: the 6x10 (192.168.10.53) answers on both,
+  the 4x6 (192.168.9.14) answers on **9100 only**. Hardcoding 6101 as the backlog said would have left
+  the 4x6 permanently unreachable - and since reachability gates minting, receiving would have refused
+  to mint. A per-printer `host:port` still overrides.
+- [ ] **H** **The 6x10 shipping label + cert label content.** The transport is ready and both printers
+  answer; what is missing is the label BODY. `ZplLabels` currently holds only the ~2x1 inch coil ABC
+  label, which fits neither stock, and the legacy layouts are PowerBuilder DataWindows that are **not
+  vendored** - `u_default_barcode.sru` is the only file in `legacy/src/rpabco/`. Porting them needs
+  either the DataWindow export or a sample of each printed label to work from.
+  <br>**The rule is known** (`u_default_barcode.sru:619-631`): per skid, **2 shipping labels** - two
+  separate `Print()` calls - and **1 cert label**, the cert only when `f_coil_cert_label_req` says the
+  customer requires it. A `sleep_ms(f_get_ship_print_delay())` precedes every print (added 2019,
+  "Ship_Print_Delay").
+  <br>**Where the layout actually is.** 761 `.srd` DataWindows ARE vendored, including barcode ones
+  (`da/d_report_coil_barcode_zebra*`, `coil_receiving/d_coil_barcode`, `inv_coil/d_report_coil_barcode`)
+  - so start by checking whether one of those is the 6x10. The SHIPPING label is not among them:
+  `u_default_barcode` prints through an inherited `idw_requestor`, assigned at runtime by its caller,
+  and the ancestor lives in the **`silverdome*` / `aaaa` core libraries**, deliberately excluded from
+  vendoring for size (~1.1 GB with binaries - see `legacy/src/README.md`). The same exclusion is why
+  `f_suppress_barcode_print` and `f_print_cert_label` have call sites but no bodies here: only 26
+  `.srf` are vendored.
+  <br>**It is not lost** - the README says to read the core libraries in place from the export. Getting
+  the label body is an extraction from that export, not a reverse-engineering job.
+- [ ] **DO NOT PORT: `SUPPRESS_BARCODE_PRINT` (86 rows).** It suppresses the **first** of the two
+  shipping-label prints for a given (workstation MAC, customer, ship-to, user) - so a matching
+  combination prints ONE label instead of two. It is keyed on **MAC address**, which is the tell: the
+  problem it works around was the *machine*, not the data - certain PCs printed every job twice
+  (the reported symptom was 4 shipping labels and 2 certs instead of 2 and 1).
+  <br>The modern path prints **raw ZPL over a TCP socket**: no Windows spooler, no per-workstation
+  driver, so the duplication it compensates for cannot occur. Porting it would give those users ONE
+  label where the correct output is two.
+  <br>Legacy itself has been backing it out: `u_default_barcode.sru:757` has the call **commented out
+  and hardcoded `False`** since 2025-03-25 ("2341_Always_Reprint_2Labels") on the single-skid reprint
+  path. It is still live on the bulk-shipment path at line 1505.
+
 - [x] **H** Single-scan ABC mint — done (#312): `POST /receiving/scan/mint` draws the next
   `coil_abc_num` and stamps `inbound_coil_status`. **The printer is checked BEFORE anything is minted**
   (legacy pings first): unreachable → 503 and nothing minted, because an ABC number with no printed label
