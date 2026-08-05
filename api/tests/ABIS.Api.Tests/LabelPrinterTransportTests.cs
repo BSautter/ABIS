@@ -255,7 +255,7 @@ public sealed class LabelPrinterTransportTests
         var p = Printer(new LabelPrinterOptions
         {
             Printers = { ["skid"] = "192.168.9.9", ["offload"] = "192.168.9.11" },
-            LineRouting = { ["6"] = "skid", ["6:offload"] = "offload" },
+            LineRouting = { ["6"] = "skid", ["6_offload"] = "offload" },
         });
 
         Assert.Equal(("192.168.9.9", 9100), p.ResolveLine(6));               // the line's default
@@ -332,5 +332,33 @@ public sealed class LabelPrinterTransportTests
         Assert.Equal(("192.168.9.14", 9100), p.ResolveLine(4));
         Assert.Null(p.Resolve("4"));            // a line number is not a device address
         Assert.Null(p.ResolveLine(192));        // and vice versa
+    }
+
+    [Fact]
+    public void The_purpose_key_uses_a_separator_an_environment_variable_can_carry()
+    {
+        // Found while writing the server's config: this box configures through systemd's
+        // EnvironmentFile, where a routing key becomes an ENVIRONMENT VARIABLE NAME. A colon is not
+        // valid in one — systemd skips the line without failing, so BL110's offload printer would have
+        // been silently absent while everything looked configured.
+        var p = Printer(new LabelPrinterOptions
+        {
+            Printers = { ["skid"] = "10.0.0.1", ["offload"] = "10.0.0.2" },
+            LineRouting = { ["6"] = "skid", ["6_offload"] = "offload" },
+        });
+        Assert.Equal(("10.0.0.2", 9100), p.ResolveLine(6, "offload"));
+    }
+
+    [Fact]
+    public void The_colon_form_still_works_for_appsettings_deployments()
+    {
+        // Kept as an alias rather than swapped outright: a JSON-configured deployment can carry a colon
+        // perfectly well, and breaking it to fix the env-var case would trade one silent failure for another.
+        var p = Printer(new LabelPrinterOptions
+        {
+            Printers = { ["skid"] = "10.0.0.1", ["offload"] = "10.0.0.2" },
+            LineRouting = { ["6"] = "skid", ["6:offload"] = "offload" },
+        });
+        Assert.Equal(("10.0.0.2", 9100), p.ResolveLine(6, "offload"));
     }
 }

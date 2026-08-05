@@ -18,11 +18,17 @@ public sealed class LabelPrinterOptions
     public Dictionary<string, string> DeviceRouting { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Production line → printer name, for the tags that come off a line rather than a gun.
-    /// <para>Keys are <c>"&lt;lineNum&gt;"</c> or <c>"&lt;lineNum&gt;:&lt;purpose&gt;"</c>. Lookup tries the
-    /// purpose-specific key first and falls back to the plain line — because a line is NOT always one
-    /// printer: <b>BL110 has two</b>, a skid printer and an offload printer, and a skid tag going to the
-    /// offload station is a tag nobody at the line ever sees.</para>
-    /// <para>Example: <c>{"4": "bl78", "7": "bl84", "6": "bl110-skid", "6:offload": "bl110-offload"}</c></para></summary>
+    /// <para>Keys are <c>"&lt;lineNum&gt;"</c> or <c>"&lt;lineNum&gt;<b>_</b>&lt;purpose&gt;"</c>. Lookup tries
+    /// the purpose-specific key first and falls back to the plain line — because a line is NOT always
+    /// one printer: <b>BL110 has two</b>, a skid printer and an offload printer, and a skid tag going to
+    /// the offload station is a tag nobody at the line ever sees.</para>
+    /// <para><b>Underscore, not colon.</b> The server configures this through systemd's
+    /// <c>EnvironmentFile</c> (<c>/etc/abis/abis.env</c>), where a key becomes an ENVIRONMENT VARIABLE
+    /// NAME — and a colon is not valid in one, so systemd silently skips the line and the printer is
+    /// never configured. A colon still works for <c>appsettings.json</c> deployments and is accepted as
+    /// an alias, but underscore is the form that works everywhere.</para>
+    /// <para>Example: <c>{"4": "bl78", "7": "bl84", "6": "bl110-skid", "6_offload": "bl110-offload"}</c>
+    /// — as env vars, <c>LabelPrinters__LineRouting__6_offload=bl110-offload</c>.</para></summary>
     public Dictionary<string, string> LineRouting { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Used when a device has no routing entry. Without one, an unrouted device prints
@@ -84,7 +90,11 @@ public sealed class TcpCoilLabelPrinter(IOptions<LabelPrinterOptions> options, I
     internal (string Host, int Port)? ResolveLine(long lineNum, string? purpose = null)
     {
         string? name = null;
-        if (purpose is { Length: > 0 } && _o.LineRouting.TryGetValue($"{lineNum}:{purpose}", out var byPurpose))
+        // Underscore first — it is the form that survives an environment-variable name. The colon form
+        // is accepted as an alias so an appsettings.json deployment keeps working.
+        if (purpose is { Length: > 0 }
+            && (_o.LineRouting.TryGetValue($"{lineNum}_{purpose}", out var byPurpose)
+             || _o.LineRouting.TryGetValue($"{lineNum}:{purpose}", out byPurpose)))
             name = byPurpose;
         else if (_o.LineRouting.TryGetValue(lineNum.ToString(System.Globalization.CultureInfo.InvariantCulture), out var byLine))
             name = byLine;
