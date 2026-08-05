@@ -102,4 +102,68 @@ public sealed class SequenceResyncCoverageTests
         }
         Assert.Equal("bill_of_lading_seq", explicitSeq);
     }
+
+    /// <summary>The standalone <c>tools/resync_sequences.sql</c> lists the same sequences the app does.
+    /// <para>The comment on <c>SequenceBackedTables</c> says to keep the two in step and calls that
+    /// ENFORCED — it was not. The tests here compared the C# list against the <c>NextIdAsync</c> call
+    /// sites and never opened the SQL file, so the operator's fallback script could fall behind the
+    /// app silently. It happens to agree today; nothing was making it.</para>
+    /// <para>The script matters precisely when the app cannot self-heal: it is what a DBA runs when the
+    /// application's user lacks ALTER SEQUENCE. A sequence missing from it is one that stays behind its
+    /// table max, and every insert minting from it fails with ORA-00001.</para></summary>
+    [Fact]
+    public void The_standalone_resync_script_lists_the_same_sequences_as_the_app()
+    {
+        var sql = File.ReadAllText(Path.Combine(RepoRoot(), "tools", "resync_sequences.sql"));
+        var listed = Regex.Matches(sql, @"'([A-Z_]+_SEQ)'")
+            .Select(m => m.Groups[1].Value.ToUpperInvariant()).ToHashSet();
+        Assert.NotEmpty(listed);
+
+        // Resolve each covered table the way the app does — through the factory, so the
+        // Database:Sequences overrides (error_evt -> ERROR_EVT_SEQ, dt_instance -> DT_INSTANCE_SEQ,
+        // shipment -> PACKING_LIST_NUM_SEQ, ...) are applied rather than guessed.
+        var options = new DatabaseOptions { Provider = "Oracle" };
+        var cfgText = File.ReadAllText(Path.Combine(RepoRoot(), "api", "src", "ABIS.Api", "appsettings.json"));
+        using (var doc = System.Text.Json.JsonDocument.Parse(cfgText))
+        {
+            var db = doc.RootElement.GetProperty("Database");
+            if (db.TryGetProperty("Sequences", out var seqs))
+                foreach (var pr in seqs.EnumerateObject())
+                    options.Sequences[pr.Name] = pr.Value.GetString()!;
+            if (db.TryGetProperty("MaxIdTables", out var mit))
+                options.MaxIdTables = mit.EnumerateArray().Select(e => e.GetString()!).ToHashSet();
+        }
+        var factory = new DbConnectionFactory(options);
+
+        var resolved = new HashSet<string>();
+        foreach (var (table, column, explicitSeq) in CoveredWithSequence())
+            resolved.Add((explicitSeq ?? factory.SequenceFor(table, column)!).ToUpperInvariant());
+
+        var missing = resolved.Except(listed).OrderBy(x => x).ToList();
+        var stale = listed.Except(resolved).OrderBy(x => x).ToList();
+
+        Assert.True(missing.Count == 0,
+            "tools/resync_sequences.sql is missing sequences the app mints from. That script is what a " +
+            "DBA runs when the application's user lacks ALTER SEQUENCE, so anything absent stays behind " +
+            "its table max and every insert on it fails with ORA-00001: " + string.Join(", ", missing));
+        Assert.True(stale.Count == 0,
+            "tools/resync_sequences.sql lists sequences the app no longer mints from: " + string.Join(", ", stale));
+    }
+
+    /// <summary>Every covered row as (table, column, explicit sequence or null).</summary>
+    private static List<(string Table, string Column, string? Sequence)> CoveredWithSequence()
+    {
+        var field = typeof(AbisSchema).GetField("SequenceBackedTables", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(field);
+        var rows = (System.Collections.IEnumerable)field!.GetValue(null)!;
+        var list = new List<(string, string, string?)>();
+        foreach (var row in rows)
+        {
+            var t = row.GetType();
+            list.Add(((string)t.GetField("Item1")!.GetValue(row)!,
+                      (string)t.GetField("Item2")!.GetValue(row)!,
+                      (string?)t.GetField("Item3")!.GetValue(row)));
+        }
+        return list;
+    }
 }

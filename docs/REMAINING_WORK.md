@@ -766,7 +766,9 @@ function `f_add_system_log_tran`, whose body is not vendored), and the Instron "
   `LINE_CURRENT_STATUS` pass or fail, and deletes what it made.
   <br>Note the sequence-drift blocker recorded earlier is **stale**: `ResyncSequencesAsync` self-heals
   on startup (default on) and covers both `error_evt` and `dt_instance`, so no manual
-  `resync_sequences.sql` step is needed first. The script re-checks it rather than assuming.
+  `resync_sequences.sql` step is needed first. The script re-checks it rather than assuming, resolving
+  the sequence NAMES from `Database:Sequences` the way the app does — `error_evt` is `ERROR_EVT_SEQ`,
+  not `ERROR_EVT_ID_SEQ`, and `dt_instance` is `DT_INSTANCE_SEQ`, not `INSTANCE_NUM_SEQ`.
 - [x] **The DAS write paths now have coverage — done (#365).** The item above was misdiagnosed twice
   over. No seeded shift was needed: line 110 is *already* seeded running (shift 7701, job 1001, coil
   5001). The sweep was probing **line 4, which the fixture does not seed at all**, so all 15 endpoints

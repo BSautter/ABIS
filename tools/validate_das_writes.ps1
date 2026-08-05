@@ -130,10 +130,23 @@ try {
     # every id-minting insert with ORA-00001. Startup self-heals it (Database:ResyncSequencesOnStartup),
     # so this checks the heal actually ran rather than assuming it did.
     Step "Pre-flight: id sequences for the DAS writes"
-    foreach ($pair in @(@("ERROR_EVT_ID_SEQ", "error_evt", "error_evt_id"),
-                        @("INSTANCE_NUM_SEQ", "dt_instance", "instance_num"),
-                        @("SHIFT_NUM_SEQ",    "shift",      "shift_num"))) {
-        $seq, $table, $col = $pair
+    # Resolve the sequence NAMES the way the app does, from appsettings, rather than hardcoding them.
+    # Two of the three are overridden (error_evt -> ERROR_EVT_SEQ, not ERROR_EVT_ID_SEQ; dt_instance ->
+    # DT_INSTANCE_SEQ, not INSTANCE_NUM_SEQ), so a hardcoded guess reports a healthy database as broken.
+    $appsettings = Get-Content (Join-Path $repoRoot "api/src/ABIS.Api/appsettings.json") -Raw | ConvertFrom-Json
+    $overrides = @{}
+    if ($appsettings.Database.Sequences) {
+        $appsettings.Database.Sequences.PSObject.Properties | ForEach-Object { $overrides[$_.Name.ToLower()] = $_.Value }
+    }
+    $fmt = if ($appsettings.Database.SequenceNameFormat) { $appsettings.Database.SequenceNameFormat } else { "{0}_seq" }
+    function SeqFor($table, $col) {
+        if ($overrides.ContainsKey($table.ToLower())) { return $overrides[$table.ToLower()].ToUpper() }
+        return ($fmt -f $col).ToUpper()
+    }
+
+    foreach ($pair in @(@("error_evt", "error_evt_id"), @("dt_instance", "instance_num"), @("shift", "shift_num"))) {
+        $table, $col = $pair
+        $seq = SeqFor $table $col
         $exists = Scalar "SELECT COUNT(*) FROM user_sequences WHERE sequence_name = '$seq'"
         if ($exists -eq 0) { Bad "$seq does not exist — $table inserts will raise ORA-02289"; continue }
         $last = Scalar "SELECT last_number FROM user_sequences WHERE sequence_name = '$seq'"
