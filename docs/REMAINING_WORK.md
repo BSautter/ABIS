@@ -33,36 +33,19 @@
 - [ ] **DEFERRED (by policy)** EDI VAN transport (GXS / Inovis SFTP) + postpro — legacy-owned, do NOT build (transmit seam stays no-op).
 - [ ] **DEFERRED (operational, → 1.0)** Data-source cutover (codi-ABIS reads the .230 sandbox, not live prod .9) — enables the EDI-stall alert to be meaningful.
 
-- [ ] **H** **4x6 skid + scrap tags (currently browser-printed HTML, #129).** Hardware is known:
-  192.168.9.14 is a **ZM400 at 203 dpi**, so 4x6in = `^PW812` / `^LL1218`, thermal transfer (`^MTT`).
-  <br>**BLOCKED on the other lines' printer IPs.** That printer's System Name is **"BL-78 Ticket"** -
-  it is BL-78's own, not a shared 4x6. Per-station printing is how this plant works: the legacy
-  receiving CGI routes scanner guns at 192.168.10.8/.9/.10 to printers at 192.168.10.12/.13/.14. A
-  skid tag should print at the line that made the skid, so `LabelPrinters:DeviceRouting` needs one
-  entry per line. Ask the plant for each line's ticket-printer IP before building this.
+- [x] **4x6 skid + scrap tags as ZPL — done (#377).** `SkidTag4x6.SheetSkid` / `.ScrapSkid`, ported
+  from the VENDORED DataWindows `legacy/src/da/d_skid_ticket_new.srd` and `d_scrap_skid_ticket_new.srd`
+  (these were in `legacy/src/` already — unlike the 6x10, no PBL extraction needed). 4x6in at 203 dpi
+  (`^PW812`/`^LL1218`), thermal transfer, and the scrap tag's coil table repeats per contributing coil.
+  <br>**Barcode prefixes are load-bearing and NOT interchangeable:** sheet = `S<num>`, scrap =
+  `3S<num>` (legacy's own samples are `*S123456*` and `*3S123456*`). The handheld strips ONE leading
+  `S`, so a scrap code beginning with `S` would survive that strip as a plausible sheet-skid number and
+  resolve to the wrong record. Guarded by a test asserting the scrap prefix does not start with the
+  sheet prefix.
+  <br>**NOT YET PRINTED** and **not yet wired to an endpoint** — the HTML tags (#129) still serve the
+  DAS browser-print path. Wiring is per-line routing: BL78 192.168.9.14, BL84 192.168.9.15, BL110 has
+  TWO (skid 192.168.9.9, offload 192.168.9.11, and .9.9 did not answer when probed).
 
-## B. Architectural program — the live-DAS workflow spine
-The edge read path is live (run-state + piece-count → auto-downtime); the DAS *workflow core* is absent. Buildable in pieces.
-
-> **WRITE paths validated on the LIVE non-prod Oracle (.230) 2026-07-24** (#292), after the sequence
-> re-sync (see [[abis-230-sequence-drift]]) was RUN on .230: the full DAS write suite — shift
-> create/start/end, coil-run start/end, change-job, reverse, and the LINE_PRIORITY queue upsert/reorder/
-> delete — all execute correctly on Oracle. Two Oracle-only bugs SQLite CI couldn't show were found + fixed:
-> `ERROR_EVT.ERROR_USER`/`ERROR_TYPE_ID` are NOT NULL (reverse now defaults them to `das` / `1 OPERATOR`),
-> and `shift_coil` FKs (coil, job) to `process_coil` so coil-run/change-job now guard with a clean 409
-> instead of ORA-02291. Real INGEAR tag ids discovered live + captured in `edge/appsettings.Plant.example.json`.
->
-> **READ paths validated on the LIVE non-prod Oracle (.230) 2026-07-24** (#288). Every read added by #281–#287
-> was run there read-only — the 21-branch skid unpivot, the line board, the queue, the coil-run ledger and
-> the live-metric reads all execute correctly on Oracle against real data. What the live data changed:
-> (a) the 7 lines are `line_num` 1–7 = **BL 24 / 36 / 60 / 78 / 108 / 110 / 84** (internal codes; the LINE
-> table is the map); (b) the **19 floor skid-position columns are unused in practice** — only a stacker slot
-> was occupied, so the board's skid strip is normally empty; (c) **all three "open" shifts were stale**
-> (31 h, 31 h, 103 h, no `dt_total`), which is why live efficiency is now withheld for a shift left open
-> (§B live-metrics item); (d) real `LINE_PRIORITY` rows carry a **NULL `priority_num`**, which Oracle sorts
-> last and SQLite first — the queue's ORDER BY is now explicit. **Still unvalidated: the WRITE paths**
-> (#283–#286 mutate `line_current_status` / `shift` / `shift_coil` / `line_priority`); exercising those on
-> .230 needs a decision, since the deployed UI reads that same sandbox.
 - [x] **C** `LINE_CURRENT_STATUS` live line board (job/coil/shift, 19 skid locations, 2 stacker skids) — done
   (#281): `GET /das/line-board` (+ `/{lineNum}`, 404 when the line has no board row) reads the one-row-per-line
   DAS table joined to `line`/`shift`/`ab_job`/`coil`, and unpivots the 21 flat skid columns
