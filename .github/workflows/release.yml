@@ -64,9 +64,17 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+        # ONE LINE, no backslash continuations. The notes flag is chosen into a variable instead.
+        #
+        # The v0.8.0 release failed here: the previous revision of this step was written with `\`
+        # continuations and the newlines came out as literal `\n` two-character sequences, so bash saw
+        # `gh release create "v0.8.0" \n dist/...` and died globbing for a file called `n`. Everything
+        # before it had already succeeded — tests, tarball, .deb, checksums — so the failure landed on
+        # the one step that publishes, after all the work.
+        #
+        # A continuation inside a YAML block scalar is a needless dependency on exact whitespace and
+        # line endings surviving every editor and every checkout. A long line is not.
         run: |
-          if [ "${{ steps.notes.outputs.found }}" = "yes" ]; then
-            gh release create "${GITHUB_REF_NAME}" \n              dist/*.tar.gz dist/*.deb dist/SHA256SUMS \n              --title "ABIS ${GITHUB_REF_NAME}" \n              --notes-file dist/NOTES.md
-          else
-            gh release create "${GITHUB_REF_NAME}" \n              dist/*.tar.gz dist/*.deb dist/SHA256SUMS \n              --title "ABIS ${GITHUB_REF_NAME}" \n              --generate-notes
-          fi
+          NOTES="--generate-notes"
+          if [ "${{ steps.notes.outputs.found }}" = "yes" ]; then NOTES="--notes-file dist/NOTES.md"; fi
+          gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz dist/*.deb dist/SHA256SUMS --title "ABIS ${GITHUB_REF_NAME}" $NOTES
