@@ -290,4 +290,42 @@ public sealed class ShippingLabel6x10Tests
         Assert.True(bottom < addressY,
             $"the pieces barcode ends at y={bottom} but the address starts at y={addressY}");
     }
+
+    // ---- The rules that box the fields -----------------------------------------------
+
+    [Fact]
+    public void The_label_draws_the_rules_that_box_its_fields()
+    {
+        // Missing from the first four test prints. My extraction pulled only text and compute
+        // controls, so the DataWindow's 24 line() elements were silently dropped and the label came
+        // out as bare rows. Nothing in the ZPL was wrong — it was incomplete, which is harder to see.
+        var z = ShippingLabel6x10.Build(Sample());
+        var rules = Regex.Matches(z, @"\^GB\d+,\d+,\d+\^FS").Count;
+        Assert.True(rules >= 12, $"expected the field rules, found {rules}");
+    }
+
+    [Fact]
+    public void The_rules_run_horizontally_and_vertically_but_never_both()
+    {
+        // ^GB with both dimensions set draws a filled BOX, not a rule — one transposed argument would
+        // black out a field. Every rule must be flat in exactly one axis.
+        var z = ShippingLabel6x10.Build(Sample());
+        foreach (Match m in Regex.Matches(z, @"\^GB(\d+),(\d+),(\d+)\^FS"))
+        {
+            var w = int.Parse(m.Groups[1].Value);
+            var h = int.Parse(m.Groups[2].Value);
+            Assert.True(w <= 1 || h <= 1, $"^GB{w},{h} is a filled box, not a rule");
+        }
+    }
+
+    [Fact]
+    public void No_rule_is_drawn_off_the_stock()
+    {
+        var z = ShippingLabel6x10.Build(Sample());
+        foreach (Match m in Regex.Matches(z, @"\^FO(\d+),(\d+)\^GB(\d+),(\d+),"))
+        {
+            Assert.InRange(int.Parse(m.Groups[1].Value) + int.Parse(m.Groups[3].Value), 0, 1800);
+            Assert.InRange(int.Parse(m.Groups[2].Value) + int.Parse(m.Groups[4].Value), 0, 3000);
+        }
+    }
 }

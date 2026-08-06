@@ -497,10 +497,29 @@
   vendoring for size (~1.1 GB with binaries - see `legacy/src/README.md`). The same exclusion is why
   `f_suppress_barcode_print` and `f_print_cert_label` have call sites but no bodies here: only 26
   `.srf` are vendored.
-  <br>**BODY WRITTEN (#375)** - `ShippingLabel6x10.Build` emits the label from the recovered geometry:
-  6x10in at 300 dpi (`^PW1800`/`^LL3000`), thermal transfer (`^MTT`), 8 Code 39 barcodes, the AIAG
-  numbered captions, and the metric variant. 24 tests. **Not yet printed** - the test print to
-  192.168.10.53 is the remaining step, and orientation/scale only fail visibly on paper.
+  <br>**BODY WRITTEN (#375) and VERIFIED ON PAPER 2026-08-06.** `ShippingLabel6x10.Build` — 6x10in at
+  300 dpi (`^PW1800`/`^LL3000`), thermal transfer, 8 Code 39 barcodes with AIAG identifiers, the
+  numbered captions, and the metric variant. Print #4 came out correct in every respect after three
+  defects found on paper across prints 1-3 (overprint, missing AIAG prefixes, barcode running into the
+  address). **Scanner-verified the same day** — correct on paper and machine-readable.
+  <br>**BUT it is the WRONG VARIANT for Novelis, and the format is PER CUSTOMER (confirmed by the
+  plant 2026-08-06).** Photographs of real Novelis output show a different layout: `7-LGTH./THEO.WT`
+  rather than `7-GROSS WT`, size numbered 9 and printed on three lines in mm, alloy numbered 10, and an
+  `11-LOT NO.` multi-coil table the port has nothing for. Plus kg/metric units, the AIAG identifier
+  printed as a caption `(P)`/`(V)`/…, and the value ABOVE the barcode with no interpretation line.
+  Full detail in **`docs/LABEL_6X10_NOVELIS.md`**.
+- [ ] **H** **Rework the 6x10 as a per-customer VARIANT system.** The existing implementation is a sound
+  foundation — geometry, escaping, barcodes, rules — but hardcodes one variant. Needs: variant
+  selection per customer, the theo/LGTH layout, the lot table, and per-variant unit defaults.
+- [ ] **H** **The Certificate of Conformance.** A second 6x10 printed INLINE with the shipping labels
+  (once per skid, where the label prints twice), required for Novelis (`CERT_LABEL_CUSTOMERS` =
+  1153/1459/2950). Its mechanical-properties block is generated from `CERT_LABEL_DATA_ELEMENTS` per
+  (customer, OEM) — confirmed against a real cert, 11 of FCA's 14 elements present in `seq_num` order.
+  <br>**Blocked on two unknowns:** where CHEMICAL COMPOSITION comes from (SI/FE/CU/MN/MG/CR/ZN/TI/V/AL
+  are not in that table), and where Spec / Country of Cast / Country of Smelt / Born Date live.
+- [ ] **M** **The pre-print 863 gate.** Legacy abandons the WHOLE print run when
+  `f_all_coils_have_863(shipment)` fails — a skid whose coils have no test data cannot be certified.
+  The port has no such gate, so it would happily print an uncertifiable skid.
   <br>**RECOVERED (#374).** `tools/pbl_extract.py` reads object source straight out of a `.pbl`, and the
   layout is now written up in `docs/LABEL_6X10_LAYOUT.md`: 59 controls with exact x/y/w/h, fonts, and
   the Code 39 barcode font that becomes ZPL `^B3`. Artwork is 5.11in x 9.64in on the 6x10 INCH stock

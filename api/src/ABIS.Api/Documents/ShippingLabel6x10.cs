@@ -123,6 +123,21 @@ public static class ShippingLabel6x10
         return $"^FO{D(x)},{D(y)}^BY2,3.0,{D(heightUnits)}^B3N,N,{D(heightUnits)},Y,N^FH_^FD{identifier}{v}^FS";
     }
 
+    /// <summary>A rule — the lines that box the numbered fields.
+    /// <para><b>These were missing from the first four test prints.</b> My extraction pulled only
+    /// <c>text</c> and <c>compute</c> controls, so the DataWindow's <b>24 <c>line(</c> elements</b> were
+    /// silently dropped and the label printed as bare rows. The plant spotted it from memory of the real
+    /// label ("the fields were in little boxes") before a photo arrived — a reminder that "I extracted
+    /// the controls" is not the same as "I extracted the layout".</para>
+    /// <para>Drawn as <c>^GB</c>: a box of zero height is a horizontal line of the given thickness, and
+    /// zero width a vertical one.</para></summary>
+    private static string Rule(int x, int y, int widthUnits, int heightUnits, int penUnits)
+    {
+        var t = Math.Max(1, D(penUnits));
+        return $"^FO{D(x)},{D(y)}^GB{Math.Max(D(widthUnits), heightUnits == 0 ? 1 : 0)},"
+             + $"{Math.Max(D(heightUnits), widthUnits == 0 ? 1 : 0)},{t}^FS";
+    }
+
     private static string Num(decimal? v, string format) =>
         v is { } d ? d.ToString(format, CultureInfo.InvariantCulture) : "";
 
@@ -141,6 +156,23 @@ public static class ShippingLabel6x10
         z.Append($"^LL{LengthDots}");
         z.Append("^LH0,0^LS0");
         z.Append("^CI28");                                  // UTF-8 in, so trimmed text stays intact
+
+
+        // --- the rules that box the fields (DataWindow line() elements) ------------------
+        // Near-coincident parallels in the source are the two label variants drawing the same rule a
+        // few units apart; the longer span of each pair is kept so a logical rule prints once.
+        z.Append(Rule(33, 2258, 5142, 0, 16));
+        z.Append(Rule(16, 3116, 5150, 0, 16));
+        z.Append(Rule(0, 3950, 5058, 0, 16));
+        z.Append(Rule(0, 4783, 5066, 0, 25));
+        z.Append(Rule(16, 5633, 5117, 0, 16));
+        z.Append(Rule(16, 6475, 5117, 0, 16));
+        z.Append(Rule(0, 7350, 5100, 0, 16));
+        z.Append(Rule(2000, 7850, 3100, 0, 16));
+        z.Append(Rule(25, 8241, 5108, 0, 25));
+        z.Append(Rule(33, 9250, 5142, 0, 16));
+        z.Append(Rule(1975, 7375, 0, 1666, 16));
+        z.Append(Rule(2783, 6483, 0, 1733, 16));
 
         // --- header block: date and the part number, both oversized -------------------
         z.Append(Text(975, 66, 36, d.ShippingDate?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture)));
