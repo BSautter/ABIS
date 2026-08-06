@@ -220,7 +220,12 @@ behaves differently from the mechanical one — chemistry keeps its fixed slots.
 
 - ~~`PST_TEST_RESULT`~~ — an earlier guess, **superseded**. It holds test results, but not the element
   codes the cert is keyed on, and it cannot supply the chemical block at all.
-- **EVERYTHING comes from the inbound EDI 863.** `DATA_IN_863` carries **72 columns** matching the
+> **SUPERSEDED — see `CERT_LABEL.md` §2.** The mechanical results come from **`mech_test_results`**
+> (suffixes `_f` / `_b`, each with its own `_date` and `_uom`), not from `DATA_IN_863`. The bullet below
+> was inferred from matching column-name fragments and is wrong. `f_print_cert_label` builds the column
+> names explicitly and reads them from `d_863_mech_test_results`, retrieved by `coil_org_num`.
+
+- ~~**EVERYTHING comes from the inbound EDI 863.**~~ `DATA_IN_863` carries **72 columns** matching the
   `data_element` codes — `TTL`, `TTT`, `TET`, `TRT`, `TNT`, `MDO`, `DPA`, `ARO`, `BKN`, `X27`, `ULT`,
   `UPT`, `ITT`, `ISU`, `YSR`, `YPN`, `N4T` — each suffixed `_F_M1` / `_F_M2` / `_B_M1` / `_B_M2`
   (front/back x two measurements). The **chemical composition** is on the same tables: `SI FE CU MN MG
