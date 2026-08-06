@@ -23,7 +23,12 @@ public sealed class SkidTag4x6Tests
         Customer = "ALCAN RP", EndUser = "FREIGHTCAR-SHELBY",
         JobNum = 56535, SkidSeq = 3,
         Alloy = "5454", Temper = "H34", Gauge = "0.024899", Width = "45.69", Length = "125.125",
-        TareWt = 101m, NetWt = 1380m, LotNum = "LOT-1", CoilNum = "C-9001", Pieces = 250,
+        TareWt = 101m, NetWt = 1380m,
+        Lots =
+        [
+            new SkidTagLot { LotNum = "LOT-1", CoilNum = "C-9001", Pieces = 200 },
+            new SkidTagLot { LotNum = "LOT-2", CoilNum = "C-9002", Pieces = 50 },
+        ],
     };
 
     private static ScrapTagData Scrap() => new()
@@ -144,6 +149,47 @@ public sealed class SkidTag4x6Tests
         Assert.DoesNotContain("^FD0^FS", z);
     }
 
+    // ---- The sheet tag's repeating coil band -----------------------------------------
+
+    [Fact]
+    public void Every_coil_on_the_skid_gets_a_row()
+    {
+        // The legacy ticket puts lot / coil / pieces in a DETAIL band (height 109) that repeats per
+        // production item — it is not a single row. An earlier port took the FIRST coil only, which
+        // silently under-reports the tag on the ~15% of live skids carrying more than one item.
+        var z = SkidTag4x6.SheetSkid(Skid());
+        Assert.Contains("^FDLOT-1^FS", z);
+        Assert.Contains("^FDLOT-2^FS", z);
+        Assert.Contains("^FDC-9002^FS", z);
+    }
+
+    [Fact]
+    public void The_coil_rows_advance_down_the_tag_rather_than_overprint()
+    {
+        var z = SkidTag4x6.SheetSkid(Skid());
+        var a = int.Parse(Regex.Match(z, @"\^FO\d+,(\d+)[^^]*\^[^^]*\^FH_\^FDLOT-1\^FS").Groups[1].Value);
+        var b = int.Parse(Regex.Match(z, @"\^FO\d+,(\d+)[^^]*\^[^^]*\^FH_\^FDLOT-2\^FS").Groups[1].Value);
+        Assert.True(b > a, $"row 2 (y={b}) must sit below row 1 (y={a})");
+    }
+
+    [Fact]
+    public void The_sheet_tag_draws_the_two_rules_the_DataWindow_has()
+    {
+        // d_skid_ticket_new.srd carries TWO line() elements — l_2 closing the header band and l_1
+        // underlining each detail row — and the port emitted NEITHER. Same extraction gap that left the
+        // 6x10 printing as bare rows for four test prints, caught here before any paper.
+        var z = SkidTag4x6.SheetSkid(Skid());
+        var rules = Regex.Matches(z, @"\^GB\d+,\d+,\d+\^FS").Count;
+        Assert.Equal(3, rules);   // the header rule + one per coil row
+    }
+
+    [Fact]
+    public void A_skid_with_one_coil_still_gets_its_underline()
+    {
+        var z = SkidTag4x6.SheetSkid(Skid() with { Lots = [new SkidTagLot { LotNum = "L", CoilNum = "C" }] });
+        Assert.Equal(2, Regex.Matches(z, @"\^GB\d+,\d+,\d+\^FS").Count);
+    }
+
     // ---- The scrap tag's repeating coil table ---------------------------------------
 
     [Fact]
@@ -190,6 +236,38 @@ public sealed class SkidTag4x6Tests
 
         foreach (Match m in Regex.Matches(z, @"\^FO(\d+),(\d+)"))
             Assert.InRange(int.Parse(m.Groups[2].Value), 0, 1218);
+    }
+
+    // ---- The barcode must not collide with its own readable number ---------------------
+
+    [Fact]
+    public void The_barcode_does_not_print_its_own_interpretation_line()
+    {
+        // t_skid_num_b carries the font "C39 Medium 24pt LJ4" - it IS the barcode - while
+        // t_skid_num_t, 125 units below, is plain Arial showing the readable number. Emitting
+        // ^B3 ...,Y,N printed the value TWICE and dropped the interpretation line on top of that Arial
+        // control. The 6x10 made the identical mistake; this one was caught in a preview.
+        foreach (var z in new[] { SkidTag4x6.SheetSkid(Skid()), SkidTag4x6.ScrapSkid(Scrap()) })
+        {
+            Assert.DoesNotMatch(@"\^B3N,N,\d+,Y,N", z);
+            Assert.Matches(@"\^B3N,N,\d+,N,N", z);
+        }
+    }
+
+    [Fact]
+    public void The_barcode_stops_above_the_readable_number()
+    {
+        // t_skid_num_b is a 144-unit BOX holding a 24pt font, so its glyphs fill ~126 units and stop
+        // short of the control below. ^B3 has no such slack: asked for 144 it draws 144 and runs into
+        // the readable number. The symbol spans the GAP between the two instead.
+        var z = SkidTag4x6.SheetSkid(Skid());
+        var bar = Regex.Match(z, @"\^FO\d+,(\d+)\^BY[^^]*\^B3N,N,(\d+),N,N");
+        var readable = Regex.Match(z, @"\^FO\d+,(\d+)\^A0N[^^]*\^FH_\^FD414637\^FS");
+        Assert.True(bar.Success && readable.Success);
+
+        var barBottom = int.Parse(bar.Groups[1].Value) + int.Parse(bar.Groups[2].Value);
+        Assert.True(barBottom <= int.Parse(readable.Groups[1].Value),
+            $"the barcode ends at y={barBottom} but the readable number starts at y={readable.Groups[1].Value}");
     }
 
     // ---- Structure -------------------------------------------------------------------

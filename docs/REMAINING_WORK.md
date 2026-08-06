@@ -502,12 +502,29 @@
   numbered captions, and the metric variant. Print #4 came out correct in every respect after three
   defects found on paper across prints 1-3 (overprint, missing AIAG prefixes, barcode running into the
   address). **Scanner-verified the same day** — correct on paper and machine-readable.
-  <br>**BUT it is the WRONG VARIANT for Novelis, and the format is PER CUSTOMER (confirmed by the
-  plant 2026-08-06).** Photographs of real Novelis output show a different layout: `7-LGTH./THEO.WT`
-  rather than `7-GROSS WT`, size numbered 9 and printed on three lines in mm, alloy numbered 10, and an
-  `11-LOT NO.` multi-coil table the port has nothing for. Plus kg/metric units, the AIAG identifier
-  printed as a caption `(P)`/`(V)`/…, and the value ABOVE the barcode with no interpretation line.
+  <br>**CORRECTED (#382): there is ONE layout, and print #4 was the wrong half of it.** Photographs of
+  real Novelis output showed `7-LGTH./THEO.WT` rather than `7-GROSS WT`, size numbered 9 on three lines
+  in mm, alloy numbered 10, and an `11-LOT NO.` table. I first read that as a second per-customer
+  variant; the source says otherwise. Across all five barcode user objects `theo_t` is populated 15
+  times and `gross_t` **zero**, with no object filling a dock field — the gross captions are dead
+  artwork in a shared DataWindow. Two real defects came out of the same pass: weights are stored in
+  POUNDS and must be multiplied by `0.45359` (the port had been relabelling only, a 2.2x overstatement),
+  and field 7 is switched OFF by default (`ib_theo_on = FALSE`), which is why it was blank on paper.
   Full detail in **`docs/LABEL_6X10_NOVELIS.md`**.
+  <br>**WIRED (#385).** `GET /documents/shipping-label/{skid}.zpl` renders without printing;
+  `POST /documents/shipping-label/{skid}/print` is the plant's per-skid REPRINT; and
+  `POST /shipments/{packingList}/print-labels` prints every skid on a shipment, two copies each. There
+  is deliberately no shipment-level REPRINT — legacy's loop over the shipment's skids is commented out
+  and replaced by a single-skid call, so that is not a feature to invent. No print-dialog step either:
+  legacy's "click Print, then Print again" is `PrintSetup()`, and a socket needs no dialog.
+  <br>**Config:** the shipping printer routes through `LabelPrinters:DeviceRouting:shipping-6x10`
+  (env: `LabelPrinters__DeviceRouting__shipping-6x10=<printer name>`), NOT `LineRouting` — a shipping
+  label is produced at the dock for a shipment, not at the line that made the skid.
+  <br>**STILL NOT PRINTED in its corrected form.** Prints 1–4 were the old body. The lot table's column
+  scale is derived rather than read (the sub-report uses different units from the outer label) and is
+  the first thing to check on the next test print.
+  <br>**The CERT is specified but NOT built** — see `docs/CERT_LABEL.md`. It needs the duplicate-863
+  narrowing resolved first: 483 coils on `.230` have more than one 863 row and legacy errors on >1.
 - [ ] **H** **Rework the 6x10 as a per-customer VARIANT system.** The existing implementation is a sound
   foundation — geometry, escaping, barcodes, rules — but hardcodes one variant. Needs: variant
   selection per customer, the theo/LGTH layout, the lot table, and per-variant unit defaults.

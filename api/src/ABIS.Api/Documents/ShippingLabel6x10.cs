@@ -267,6 +267,14 @@ public static class ShippingLabel6x10
     }
 
     /// <summary>Weights print through <c>String(ll_wt, "######")</c> — a Long, so no decimal at all.</summary>
+    /// <summary>How far above a field's caption its boxing rule sits. Taken from the pairs that printed
+    /// correctly and applied to all of them, so caption and rule cannot drift apart again.</summary>
+    private const int RuleAboveCaption = 33;
+
+    /// <summary>A field's horizontal rule, positioned from the caption it boxes.</summary>
+    private static string FieldRule(int x, int captionY, int widthUnits, int penUnits) =>
+        Rule(x, captionY - RuleAboveCaption, widthUnits, 0, penUnits);
+
     private static string Weight(decimal? v) =>
         v is { } d ? Math.Round(d, MidpointRounding.AwayFromZero).ToString("######", CultureInfo.InvariantCulture) : "";
 
@@ -287,18 +295,41 @@ public static class ShippingLabel6x10
         // --- the rules that box the fields (DataWindow line() elements) ------------------
         // Near-coincident parallels in the source are the artwork drawing the same rule a few units
         // apart; the longer span of each pair is kept so a logical rule prints once.
-        z.Append(Rule(33, 2258, 5142, 0, 16));
-        z.Append(Rule(16, 3116, 5150, 0, 16));
-        z.Append(Rule(0, 3950, 5058, 0, 16));
-        z.Append(Rule(0, 4783, 5066, 0, 25));
-        z.Append(Rule(16, 5633, 5117, 0, 16));
-        z.Append(Rule(16, 6475, 5117, 0, 16));
-        z.Append(Rule(0, 7350, 5100, 0, 16));
-        z.Append(Rule(2000, 7850, 3100, 0, 16));
-        z.Append(Rule(25, 8241, 5108, 0, 25));
-        z.Append(Rule(33, 9250, 5142, 0, 16));
-        z.Append(Rule(1975, 7375, 0, 1666, 16));
-        z.Append(Rule(2783, 6483, 0, 1733, 16));
+        //
+        // EACH RULE IS POSITIONED FROM THE CAPTION IT BOXES, not from a raw y, because the raw numbers
+        // struck the text through on the fifth test print.
+        //
+        // The cause is worth keeping: the captions for fields 1-5 were recovered from one DataWindow and
+        // those for 6-11 from another, and the two sit ~33 units apart. Every rule came from the FIRST.
+        // Fields 1-3 therefore looked right while 4 and 6-10 printed with a line through them - 14 text
+        // fields in all. Deriving each rule from its caption makes that drift impossible rather than
+        // merely fixed.
+        z.Append(FieldRule(33, 2291, 5142, 16));   // 1-PRODUCT IDENT.
+        z.Append(FieldRule(16, 3141, 5150, 16));   // 2-SUPPLIER NO.
+        z.Append(FieldRule(0, 3975, 5058, 16));    // 3-SERIAL NO.
+        z.Append(FieldRule(0, 4808, 5066, 25));    // 4-CSTMR. ORD. NO
+        z.Append(FieldRule(16, 5658, 5117, 16));   // 5-HEAT/PROCESS NO.
+        z.Append(FieldRule(16, 6475, 5117, 16));   // 6-ACTUAL WT. / 9-SIZE
+        z.Append(FieldRule(0, 7341, 5100, 16));    // 7-LGTH./THEO.WT / 10-ALLOY
+        z.Append(FieldRule(25, 8233, 5108, 25));   // 8-PIECES / 11-LOT NO.
+        z.Append(Rule(33, 9250, 5142, 0, 16));     // above the address footer
+
+        // The lower block has exactly TWO verticals, and each spans only its own rows:
+        //
+        //   6-ACTUAL WT. | 9-SIZE          <- the upper divider, 2783
+        //   7-LGTH./THEO | 10-ALLOY        <- same divider continues
+        //   ------------------------------ <- the 8-PIECES rule ends it
+        //   8-PIECES     | 11-LOT NO.      <- the lower divider, 1975, starts HERE
+        //
+        // The lower one previously began at 7375, which drew a second vertical between fields 7 and 10
+        // where the real label has one. Caught on the seventh test print by the plant, against the
+        // photographed original.
+        z.Append(Rule(2783, 6483, 0, 1733, 16));            // 6|9 and 7|10
+        z.Append(Rule(1975, 8200, 0, 841, 16));             // 8|11 only
+
+        // NO horizontal under the alloy value. The recovered artwork has a line() at 7850 spanning that
+        // width, but it belongs to the GROSS variant, where 10-DLOC occupies the space - on the real
+        // Novelis label the alloy block is closed by the 8-PIECES rule below it and nothing else.
 
         // --- header block: date and the part number, both oversized -------------------
         z.Append(Text(975, 66, 36, Date(d.ShippingDate)));
@@ -323,7 +354,9 @@ public static class ShippingLabel6x10
 
         z.Append(Caption(58, 5658, "5-HEAT/PROCESS NO.", Aiag.Heat));
         z.Append(Text(1575, 5658, 22, d.Heat));
-        z.Append(Barcode(458, 5950, Aiag.Heat, d.Heat));
+        // 5916, not the recovered 5950: field 5 is the boundary between the two recovered coordinate
+        // families, and at 5950 this barcode's 500-unit block ran 8 units into field 6's rule.
+        z.Append(Barcode(458, 5916, Aiag.Heat, d.Heat));
 
         // --- field 6: actual weight, switchable and unit-converted ----------------------
         z.Append(Caption(58, 6475, "6-ACTUAL WT.", Aiag.ActualWeight));
@@ -338,7 +371,9 @@ public static class ShippingLabel6x10
         // --- field 9: size, stacked on three lines with X separators --------------------
         z.Append(Text(2833, 6483, 10, "9-SIZE"));
         z.Append(Text(3383, 6483, 14, Size(d.Gauge, d, gauge: true)));
-        z.Append(Text(4475, 6458, 16, "X"));
+        // 6470, not the recovered 6458: the X is 16pt against the gauge's 14pt, and at 6458 its taller
+        // glyph clipped the rule above. 6470 clears the rule AND centres it on the gauge value.
+        z.Append(Text(4475, 6470, 16, "X"));
         z.Append(Text(3391, 6750, 14, Size(d.Width, d)));
         z.Append(Text(4475, 6741, 16, "X"));
         z.Append(Text(3358, 7025, 14, Size(d.Length, d)));
@@ -357,7 +392,9 @@ public static class ShippingLabel6x10
         z.Append(Text(2841, 7333, 10, "10-ALLOY"));
         z.Append(Text(3150, 7641, 16, d.Alloy));
         z.Append(Text(3975, 7625, 18, "-"));
-        z.Append(Text(4158, 7633, 16, d.Temper));
+        // 4260, not the recovered 4158: at 4158 the dash sits 55 dots from the temper and 247 from the
+        // alloy, and the fifth test print read "5182    -O4". The real label is evenly spaced.
+        z.Append(Text(4260, 7633, 16, d.Temper));
 
         // --- field 8: pieces --------------------------------------------------------------
         z.Append(Caption(58, 8233, "8-PIECES", Aiag.Pieces));
@@ -384,7 +421,11 @@ public static class ShippingLabel6x10
     // The nested lot report sits at 2125,8325 and is 3016 units wide; its own controls are laid out in
     // a narrower internal space, so the columns are scaled onto it. The row numbers 1./2./3. are text
     // controls OUTSIDE the report at x=2041, and their y values are what the rows line up with.
-    private const int LotX = 2125, LotY = 8325, LotWidth = 3016, LotInnerWidth = 1350;
+    // LotX is the recovered report origin (2125) plus a 40-unit indent. Without it the "1." marker - a
+    // text control OUTSIDE the report, ending at 2116 - sits 7 dots from the lot number and the two read
+    // as one run-on value ("1.5896879"). Legacy's own geometry is that tight; the photographed label is
+    // not, so the indent buys back the gap the real one has.
+    private const int LotX = 2165, LotY = 8325, LotWidth = 3016, LotInnerWidth = 1350;
     private static readonly int[] LotRowY = [8475, 8650, 8808];
     private static int Lx(int inner) => LotX + (int)Math.Round(inner * (LotWidth / (double)LotInnerWidth));
 

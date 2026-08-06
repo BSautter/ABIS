@@ -496,11 +496,34 @@ public sealed class ShippingLabel6x10Tests
     [Fact]
     public void The_numbered_fields_are_boxed_by_rules()
     {
-        // The plant spotted this from memory before a photo arrived: "the fields were in little boxes."
-        // My first extraction pulled only text and compute controls, silently dropping the DataWindow's
-        // 24 line() elements, so four test prints came out as bare rows.
+        // The plant spotted the ABSENCE of these from memory before a photo arrived: "the fields were in
+        // little boxes." My first extraction pulled only text and compute controls, silently dropping the
+        // DataWindow's line() elements, so four test prints came out as bare rows.
+        //
+        // Asserted as STRUCTURE rather than a count, because a count passed while the label carried two
+        // rules the real one does not have — an eighth vertical between fields 7 and 10, and a
+        // horizontal underlining the alloy. Both survived a ">= 12 rules" check and were found on paper.
         var z = ShippingLabel6x10.Build(Sample());
-        Assert.True(Regex.Matches(z, @"\^GB\d+,\d+,\d+\^FS").Count >= 12);
+        var rules = Regex.Matches(z, @"\^FO(\d+),(\d+)\^GB(\d+),(\d+),(\d+)\^FS")
+            .Select(m => (X: int.Parse(m.Groups[1].Value), Y: int.Parse(m.Groups[2].Value),
+                          W: int.Parse(m.Groups[3].Value), H: int.Parse(m.Groups[4].Value),
+                          T: int.Parse(m.Groups[5].Value)))
+            .ToList();
+
+        var horizontals = rules.Where(r => r.W > r.T).ToList();
+        var verticals = rules.Where(r => r.W <= r.T).ToList();
+
+        // Eight numbered field bands plus the address footer.
+        Assert.Equal(9, horizontals.Count);
+
+        // EXACTLY TWO verticals, and each spans only its own rows: the upper one divides 6|9 and
+        // continues past 7|10; the lower one starts at the 8-PIECES rule and divides 8|11.
+        Assert.Equal(2, verticals.Count);
+        var lower = verticals.OrderBy(v => v.Y).Last();
+        var piecesRule = horizontals.OrderBy(h => h.Y).ToList()[7];
+        Assert.True(lower.Y >= piecesRule.Y,
+            $"the 8|11 divider starts at y={lower.Y}, above the 8-PIECES rule at y={piecesRule.Y} — "
+            + "that draws a second vertical between fields 7 and 10, which the real label does not have");
     }
 
     [Fact]
@@ -514,6 +537,45 @@ public sealed class ShippingLabel6x10Tests
             var w = int.Parse(m.Groups[1].Value);
             var h = int.Parse(m.Groups[2].Value);
             Assert.True(w <= 1 || h <= 1, $"^GB{w},{h} is a filled box, not a rule");
+        }
+    }
+
+    [Fact]
+    public void No_rule_is_drawn_through_a_field()
+    {
+        // THE DEFECT THE FIFTH TEST PRINT FOUND — 14 text fields printed with a line through them.
+        //
+        // The captions for fields 1-5 were recovered from one DataWindow and those for 6-11 from
+        // another, and the two sit ~33 units apart. Every RULE came from the first. Fields 1-3 looked
+        // correct, which is what made it survive review: the error was invisible until the lower half of
+        // a physical label came back with "6-ACTUAL WT.", "8-PIECES" and the alloy struck through.
+        //
+        // Rules are now derived from the caption they box, so the two cannot drift. This asserts the
+        // OUTPUT rather than the derivation, so it still fails if someone reintroduces a raw y.
+        var z = ShippingLabel6x10.Build(Sample());
+
+        var rules = Regex.Matches(z, @"\^FO(\d+),(\d+)\^GB(\d+),(\d+),(\d+)\^FS")
+            .Select(m => (X: int.Parse(m.Groups[1].Value), Y: int.Parse(m.Groups[2].Value),
+                          W: Math.Max(int.Parse(m.Groups[3].Value), int.Parse(m.Groups[5].Value)),
+                          H: Math.Max(int.Parse(m.Groups[4].Value), int.Parse(m.Groups[5].Value))))
+            .ToList();
+
+        foreach (Match m in Regex.Matches(z, @"\^FO(\d+),(\d+)\^A0N,(\d+),\d+\^FH_\^FD(.+?)\^FS"))
+        {
+            var (x, y, h, v) = (int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value),
+                                int.Parse(m.Groups[3].Value), m.Groups[4].Value);
+            if (v.Trim().Length == 0) continue;
+
+            // 0.55 em per character is a deliberate under-estimate of ^A0 advance, and the glyph box is
+            // taken at 80% of the character cell: digits and capitals have no descender, so the printed
+            // ink stops short of the cell. Over-estimating either would fail on pairs the photographed
+            // label shows are fine.
+            var w = v.Length * h * 0.55;
+            var ink = h * 0.8;
+
+            foreach (var r in rules)
+                Assert.False(x < r.X + r.W && r.X < x + w && y < r.Y + r.H && r.Y < y + ink,
+                    $"the rule at y={r.Y} runs through \"{v}\" at y={y}..{y + ink:F0}");
         }
     }
 

@@ -3400,6 +3400,66 @@ public sealed class WarehouseItemDeleteResult
 }
 /// <summary>A sheet-skid tag's data, assembled for printing: the skid, the job it came off, the line
 /// that made it (which selects the printer), and the material description from the order line.</summary>
+/// <summary>One coil row of the 6x10 label's <c>11-LOT NO.</c> table.</summary>
+public sealed class ShippingLabelLotRow
+{
+    public string? LotNum { get; set; }
+    public string? CoilOrgNum { get; set; }
+    public int? Pieces { get; set; }
+    /// <summary>Primary country of smelt, from the coil's inbound 863.</summary>
+    public string? PrimarySmelt { get; set; }
+    /// <summary>Secondary country of smelt. Legacy prints the two joined, which is why a real label
+    /// reads <c>CA AE</c> rather than one country.</summary>
+    public string? SecondarySmelt { get; set; }
+    /// <summary>The 863's <c>cash_date</c> — printed as <c>H.T. DATE</c> here and as <c>Born Date</c> on
+    /// the Certificate of Conformance. Stored as <c>YYYYMMDD</c> text.</summary>
+    public string? HeatDate { get; set; }
+}
+
+/// <summary>Everything the 6x10 shipping label needs for one skid.
+/// <para>Assembled to match <c>u_default_barcode.sru</c>'s own retrieve rather than the obvious
+/// columns — see <see cref="Abis.Api.Data.AbisRepository"/> for the three places those differ.</para></summary>
+public sealed class ShippingLabelPrintData
+{
+    public long SheetSkidNum { get; set; }
+    /// <summary>3-SERIAL NO. Legacy prints <c>sheet_skid_display_num</c>, NOT the skid id — the line
+    /// that printed the id is commented out in the source. This is why a real label reads
+    /// <c>T1846085</c>, which is not a number at all.</summary>
+    public string? SheetSkidDisplayNum { get; set; }
+    public long? AbJobNum { get; set; }
+    /// <summary>The order the label reads from: <c>sheet_skid.ref_order_abc_num</c>, NOT the job's
+    /// order. A transferred skid keeps printing its reference order's part and PO.</summary>
+    public long? RefOrderAbcNum { get; set; }
+    public int? RefOrderAbcItem { get; set; }
+
+    public string? PartNum { get; set; }           // order_item.enduser_part_num
+    public string? SupplierCode { get; set; }      // order_item.supplier_code
+    public string? EnduserPo { get; set; }         // customer_order.enduser_po
+    public string? Alloy { get; set; }
+    public string? Temper { get; set; }
+    public decimal? Gauge { get; set; }
+    public string? SheetType { get; set; }
+
+    public decimal? Width { get; set; }
+    public decimal? Length { get; set; }
+
+    /// <summary>SUM(prod_item_net_wt) over the skid's detail items — NOT sheet_skid.sheet_net_wt.</summary>
+    public decimal? NetWtLb { get; set; }
+    /// <summary>SUM(prod_item_pieces) over the skid's detail items — NOT sheet_skid.skid_pieces.</summary>
+    public int? Pieces { get; set; }
+    public decimal? TheoreticalWtLb { get; set; }
+
+    public string? Address { get; set; }
+    /// <summary>SK# — <c>sheet_packing_item.sh_packing_item</c>, the skid's line number on the
+    /// shipment. Null when the skid is not on the shipment being printed.</summary>
+    public int? PackingItemNum { get; set; }
+    public string? Place { get; set; }
+    public DateTime? ShippingDate { get; set; }
+    public string? Heat { get; set; }
+
+    public List<ShippingLabelLotRow> Lots { get; set; } = [];
+}
+
 public sealed class SkidTagPrintData
 {
     public long SheetSkidNum { get; set; }
@@ -3418,9 +3478,18 @@ public sealed class SkidTagPrintData
     public decimal? TareWt { get; set; }
     public int? Pieces { get; set; }
     public DateTime? SkidDate { get; set; }
+    /// <summary>The coils on the skid. The legacy tag's lot/coil/pieces sit in a REPEATING detail
+    /// band, so a skid built from several coils lists them all.</summary>
+    public List<SkidTagCoilRow> Lots { get; set; } = [];
+    public string? OperatorInitial { get; set; }
+}
+
+/// <summary>One row of the sheet-skid tag's repeating lot/coil/pieces band.</summary>
+public sealed class SkidTagCoilRow
+{
     public string? LotNum { get; set; }
     public string? CoilOrgNum { get; set; }
-    public string? OperatorInitial { get; set; }
+    public int? Pieces { get; set; }
 }
 
 /// <summary>A scrap tag's data. The coil rows are the legacy detail band.</summary>

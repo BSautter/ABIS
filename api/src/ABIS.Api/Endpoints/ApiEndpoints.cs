@@ -2656,8 +2656,11 @@ public static class ApiEndpoints
                     Date = d.SkidDate, Customer = d.Customer ?? "", EndUser = d.EndUser ?? "",
                     JobNum = d.AbJobNum, Alloy = d.Alloy ?? "", Temper = d.Temper ?? "",
                     Gauge = Dec(d.Gauge), Width = Dec(d.Width), Length = Dec(d.Length),
-                    TareWt = d.TareWt, NetWt = d.NetWt, Pieces = d.Pieces,
-                    LotNum = d.LotNum ?? "", CoilNum = d.CoilOrgNum ?? "",
+                    TareWt = d.TareWt, NetWt = d.NetWt,
+                    Lots = d.Lots.Select(l => new SkidTagLot
+                    {
+                        LotNum = l.LotNum ?? "", CoilNum = l.CoilOrgNum ?? "", Pieces = l.Pieces,
+                    }).ToList(),
                 });
                 var r = await printer.PrintForLineAsync(line, purpose, zpl, 1, ct);
                 return r.Printed
@@ -2698,6 +2701,87 @@ public static class ApiEndpoints
            .WithSummary("Print the 4x6 scrap tag as ZPL at the line that made it, with one row per contributing coil.")
            .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status404NotFound)
            .Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status503ServiceUnavailable);
+
+        // ---- The 6x10 shipping label -------------------------------------------------------------
+        // Tagged "Skids" for the same reason the 4x6 tags are: the RBAC gate keys on an endpoint's
+        // FIRST tag, and "Documents" is not a mapped feature, so a Documents-tagged write would ship
+        // ungated. WriteEndpointGateTests catches that.
+        //
+        // TWO endpoints, matching what the plant actually does (docs/LABEL_6X10_NOVELIS.md §6):
+        //   * print a whole SHIPMENT — every skid on it, two labels each
+        //   * reprint ONE skid, chosen from a dropdown
+        // Legacy has no "reprint the whole shipment": the loop over the shipment's skids is commented
+        // out in u_default_barcode.sru and replaced by a single-skid call, so it is not invented here.
+        //
+        // There is no print-dialog step. Legacy's "click Print, then Print again" is PrintSetup(), the
+        // Windows dialog; this writes ZPL to a known printer over a socket, so one call prints.
+
+        api.MapGet("/documents/shipping-label/{sheetSkidNum:long}.zpl", async (long sheetSkidNum,
+                IAbisRepository repo, CancellationToken ct, long? packingList = null) =>
+            {
+                if (await repo.GetShippingLabelDataAsync(sheetSkidNum, packingList, ct) is not { } d)
+                    return Results.NotFound(new { message = $"Sheet skid {sheetSkidNum} not found." });
+                return Results.Text(ShippingLabel6x10.Build(ToLabel(d)), "text/plain; charset=us-ascii");
+            })
+           .WithName("ShippingLabelZpl").WithTags("Skids")
+           .WithSummary("The 6x10 shipping label's ZPL for one skid, WITHOUT printing it. For checking a label before committing stock to it; pass packingList to fill SK# and the shipping date.")
+           .Produces(StatusCodes.Status200OK, contentType: "text/plain").Produces(StatusCodes.Status404NotFound);
+
+        api.MapPost("/documents/shipping-label/{sheetSkidNum:long}/print", async (long sheetSkidNum,
+                IAbisRepository repo, ICoilLabelPrinter printer, CancellationToken ct,
+                long? packingList = null, string? device = null, int? copies = null) =>
+            {
+                if (await repo.GetShippingLabelDataAsync(sheetSkidNum, packingList, ct) is not { } d)
+                    return Results.NotFound(new { message = $"Sheet skid {sheetSkidNum} not found." });
+
+                var r = await printer.PrintAsync(device ?? ShippingLabelDevice,
+                    ShippingLabel6x10.Build(ToLabel(d)), copies ?? ShippingLabel6x10.Copies, ct);
+                return r.Printed
+                    ? Results.Ok(new { printed = true, printer = r.Printer, copies = copies ?? ShippingLabel6x10.Copies, skids = 1, lotRowsDropped = LotOverflow(d) })
+                    : Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Not printed", detail: r.Reason);
+            })
+           .WithName("PrintShippingLabel").WithTags("Skids")
+           .WithSummary("Reprint the 6x10 shipping label for ONE skid — the plant's reprint path. Two copies by default. 503 when the printer is unreachable.")
+           .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status404NotFound)
+           .Produces(StatusCodes.Status503ServiceUnavailable);
+
+        api.MapPost("/shipments/{packingList:long}/print-labels", async (long packingList,
+                IAbisRepository repo, ICoilLabelPrinter printer, CancellationToken ct, string? device = null) =>
+            {
+                var skids = await repo.GetShipmentSkidNumbersAsync(packingList, ct);
+                if (skids.Count == 0)
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Nothing to print",
+                        detail: $"Shipment {packingList} has no sheet skids on it.");
+
+                // Print skid by skid and report per skid. A partial run is REPORTED rather than rolled
+                // back: the labels already on paper exist, and telling the operator "failed" when nine
+                // of ten printed would send them looking for ten missing labels.
+                var results = new List<object>();
+                var printed = 0;
+                foreach (var skid in skids)
+                {
+                    if (await repo.GetShippingLabelDataAsync(skid, packingList, ct) is not { } d)
+                    {
+                        results.Add(new { sheetSkidNum = skid, printed = false, reason = "skid not found" });
+                        continue;
+                    }
+                    var r = await printer.PrintAsync(device ?? ShippingLabelDevice,
+                        ShippingLabel6x10.Build(ToLabel(d)), ShippingLabel6x10.Copies, ct);
+                    if (r.Printed) printed++;
+                    results.Add(new { sheetSkidNum = skid, printed = r.Printed, reason = r.Reason, lotRowsDropped = LotOverflow(d) });
+                }
+
+                return printed == skids.Count
+                    ? Results.Ok(new { printed = true, skids = skids.Count, copiesEach = ShippingLabel6x10.Copies, results })
+                    : Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable,
+                        title: printed == 0 ? "Not printed" : "Partially printed",
+                        detail: $"{printed} of {skids.Count} skids printed. See the results list.",
+                        extensions: new Dictionary<string, object?> { ["results"] = results });
+            })
+           .WithName("PrintShipmentLabels").WithTags("Shipments")
+           .WithSummary("Print the 6x10 shipping labels for every skid on a shipment — two per skid. 409 when the shipment carries no skids; 503 (with a per-skid breakdown) when some or all did not print.")
+           .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status409Conflict)
+           .Produces(StatusCodes.Status503ServiceUnavailable);
 
         // The die/tool report (legacy w_report_die_tool → d_die_print). Optional ?status= mirrors the
         // status filter that window offered. Every die is listed — there are 134 on the live database,
@@ -4326,6 +4410,66 @@ public static class ApiEndpoints
     /// <summary>Returns a ProblemDetails error dictionary, or null when valid.</summary>
     /// <summary>Dimensions print as text on the tag; trailing zeros are how the legacy tag reads.</summary>
     private static string Dec(decimal? v) => v?.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) ?? "";
+
+    /// <summary>The logical device name the 6x10 shipping labels route through.
+    /// <para>Resolved by <c>LabelPrinters:DeviceRouting</c> like a scanner gun is, so the shipping
+    /// office's printer is configuration rather than code. Unlike the 4x6 skid tags this is NOT routed
+    /// per line: a shipping label is produced at the dock for a shipment, not at the line that made the
+    /// skid, so there is no line to route by.</para>
+    /// <para><b>Underscores, no hyphen.</b> The server configures this through systemd's
+    /// <c>EnvironmentFile</c>, where this string becomes part of an ENVIRONMENT VARIABLE NAME
+    /// (<c>LabelPrinters__DeviceRouting__shipping_6x10</c>). A hyphen is not valid in one, so systemd
+    /// silently skips the line and the label prints nowhere. This is the same trap that cost a redeploy
+    /// on the per-line routing keys — see <see cref="Documents.LabelPrinterOptions.LineRouting"/>.</para></summary>
+    public const string ShippingLabelDevice = "shipping_6x10";
+
+    /// <summary>How many lot rows the label had to drop. The artwork has exactly three numbered rows, so
+    /// a skid built from more coils silently loses the rest — reported so the caller can warn rather
+    /// than the operator discovering it by reading a tag.</summary>
+    private static int LotOverflow(ShippingLabelPrintData d) =>
+        Math.Max(0, d.Lots.Count - ShippingLabel6x10.LotRows);
+
+    /// <summary>Map the retrieved row onto the label's own shape.
+    /// <para>The weights go across in POUNDS because that is how they are stored; the label converts
+    /// (x0.45359) when its kilogram flag is set. Handing it kilograms here would convert twice.</para></summary>
+    private static ShippingLabelData ToLabel(ShippingLabelPrintData d) => new()
+    {
+        PartNum = d.PartNum ?? "",
+        SupplierCode = d.SupplierCode ?? "",
+        Serial = d.SheetSkidDisplayNum ?? "",
+        CustomerOrder = d.EnduserPo ?? "",
+        Heat = d.Heat ?? "",
+        ActualWeightLb = d.NetWtLb,
+        TheoreticalWeightLb = d.TheoreticalWtLb,
+        Pieces = d.Pieces,
+        Alloy = d.Alloy ?? "",
+        Temper = d.Temper ?? "",
+        Gauge = d.Gauge,
+        Width = d.Width,
+        Length = d.Length,
+        Address = d.Address ?? "",
+        JobNum = d.AbJobNum,
+        SkidItemNum = d.PackingItemNum,
+        Place = d.Place ?? "",
+        ShippingDate = d.ShippingDate,
+        Lots = d.Lots.Select(l => new ShippingLabelLot
+        {
+            LotNum = l.LotNum ?? "",
+            // Legacy computes the smelt cell as primary + secondary, which is why a real label reads
+            // "CA AE" rather than one country. A missing secondary must not leave a trailing space.
+            Smelt = string.Join(" ", new[] { l.PrimarySmelt?.Trim(), l.SecondarySmelt?.Trim() }
+                .Where(x => !string.IsNullOrEmpty(x))),
+            CoilNum = l.CoilOrgNum ?? "",
+            Pieces = l.Pieces,
+            HeatDate = ParseYyyymmdd(l.HeatDate),
+        }).ToList(),
+    };
+
+    /// <summary>The 863 stores its dates as YYYYMMDD TEXT, not as dates. Anything else parses to null
+    /// rather than throwing — a malformed date must not stop a skid shipping.</summary>
+    private static DateTime? ParseYyyymmdd(string? s) =>
+        DateTime.TryParseExact(s?.Trim(), "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var dt) ? dt : null;
 
     private static Dictionary<string, string[]>? Validate(WarehouseSkidWrite body)
     {

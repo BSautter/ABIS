@@ -13787,6 +13787,47 @@
         }
       }
     },
+    "/api/shipments/{packingList}/print-labels": {
+      "post": {
+        "tags": [
+          "Shipments"
+        ],
+        "summary": "Print the 6x10 shipping labels for every skid on a shipment — two per skid. 409 when the shipment carries no skids; 503 (with a per-skid breakdown) when some or all did not print.",
+        "operationId": "PrintShipmentLabels",
+        "parameters": [
+          {
+            "name": "packingList",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "device",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/sketches": {
       "get": {
         "tags": [
@@ -14337,6 +14378,102 @@
           },
           "409": {
             "description": "Conflict"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/documents/shipping-label/{sheetSkidNum}.zpl": {
+      "get": {
+        "tags": [
+          "Skids"
+        ],
+        "summary": "The 6x10 shipping label's ZPL for one skid, WITHOUT printing it. For checking a label before committing stock to it; pass packingList to fill SK# and the shipping date.",
+        "operationId": "ShippingLabelZpl",
+        "parameters": [
+          {
+            "name": "sheetSkidNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "packingList",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/documents/shipping-label/{sheetSkidNum}/print": {
+      "post": {
+        "tags": [
+          "Skids"
+        ],
+        "summary": "Reprint the 6x10 shipping label for ONE skid — the plant's reprint path. Two copies by default. 503 when the printer is unreachable.",
+        "operationId": "PrintShippingLabel",
+        "parameters": [
+          {
+            "name": "sheetSkidNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "packingList",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "device",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "copies",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
           },
           "503": {
             "description": "Service Unavailable"

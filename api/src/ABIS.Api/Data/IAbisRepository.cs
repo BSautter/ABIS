@@ -103,6 +103,13 @@ public interface IAbisRepository
     /// which printer it goes to). Null when the skid does not exist.</summary>
     Task<SkidTagPrintData?> GetSheetSkidTagDataAsync(long sheetSkidNum, CancellationToken ct);
 
+    /// <summary>The 6x10 shipping label's data for one skid. <paramref name="packingList"/> supplies SK#
+    /// and the shipping date, which belong to the shipment rather than the skid.</summary>
+    Task<ShippingLabelPrintData?> GetShippingLabelDataAsync(long sheetSkidNum, long? packingList, CancellationToken ct);
+
+    /// <summary>The sheet skids on a shipment, in packing-item order — the print order.</summary>
+    Task<IReadOnlyList<long>> GetShipmentSkidNumbersAsync(long packingList, CancellationToken ct);
+
     /// <summary>Everything the 4x6 scrap TAG prints, including its per-coil detail rows, plus the line.</summary>
     Task<ScrapTagPrintData?> GetScrapSkidTagDataAsync(long scrapSkidNum, CancellationToken ct);
 

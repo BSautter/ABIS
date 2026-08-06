@@ -96,4 +96,51 @@ public static class ShapeGeometry
 
     /// <summary>All known dimensioned shapes (the catalog behind <c>/lookups/shape-types</c>).</summary>
     public static IReadOnlyList<ShapeDef> All => Defs;
+
+    /// <summary>Which two columns the 6x10 shipping label prints as its WIDTH and LENGTH.</summary>
+    /// <param name="Table">The shape's order-item table.</param>
+    /// <param name="WidthCol">Always present.</param>
+    /// <param name="LengthCol">Null where the shape has no second dimension to print.</param>
+    public sealed record LabelSizeDef(string Table, string WidthCol, string? LengthCol);
+
+    /// <summary>
+    /// The <c>9-SIZE</c> block's source columns, per <c>u_default_barcode.sru</c>'s
+    /// <c>CHOOSE CASE Trim(ls_sheet_type)</c>.
+    ///
+    /// <para><b>This is NOT the same as a shape's full dimension list</b>, which is why it is its own
+    /// map rather than derived from <see cref="ShapeDef.Dims"/>. The label picks two columns and, for
+    /// several shapes, picks them in a way the general definition would not predict:</para>
+    /// <list type="bullet">
+    /// <item>The three trapezoids print <c>*_long_length</c> and ignore the short length entirely.</item>
+    /// <item><b>Circle prints its DIAMETER as the width and hard-sets length to 0</b> — legacy assigns
+    /// <c>lr_length = 0</c> explicitly, so a circle's label reads <c>gauge X diameter X 0</c>.</item>
+    /// <item><b>Fender sets the width from <c>fe_side</c> and does not touch length at all</b> — it has a
+    /// <c>fe_length</c> column and the label ignores it.</item>
+    /// <item>An unrecognised <c>sheet_type</c> prints <c>0 X 0</c> rather than failing.</item>
+    /// </list>
+    /// <para>Deriving these from the shape catalog would silently print a trapezoid's short length or a
+    /// fender's length, and neither would look wrong on paper.</para>
+    /// </summary>
+    private static readonly Dictionary<string, LabelSizeDef> LabelSizes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["RECTANGLE"] = new("rectangle", "rt_width", "rt_length"),
+        ["REINFORCEMENT"] = new("reinforcement", "re_width", "re_length"),
+        ["LIFTGATE"] = new("liftgate_shape", "li_width", "li_length"),
+        ["LIFTGATE_SHAPE"] = new("liftgate_shape", "li_width", "li_length"),
+        ["PARALLELOGRAM"] = new("parallelogram", "p_width", "p_length"),
+        ["CHEVRON"] = new("chevron", "ch_width", "ch_length"),
+        ["TRAPEZOID"] = new("trapezoid", "tr_width", "tr_long_length"),
+        ["RTRAPEZOID"] = new("right_trapezoid", "rtr_width", "rtr_long_length"),
+        ["RIGHT_TRAPEZOID"] = new("right_trapezoid", "rtr_width", "rtr_long_length"),
+        ["LTRAPEZOID"] = new("left_trapezoid", "ltr_width", "ltr_long_length"),
+        ["LEFT_TRAPEZOID"] = new("left_trapezoid", "ltr_width", "ltr_long_length"),
+        ["FENDER"] = new("fender", "fe_side", null),          // length deliberately untouched
+        ["CIRCLE"] = new("circle", "c_diameter", null),       // length hard-set to 0 by the caller
+        ["OTHER"] = new("x1_shape", "x_1", "x_2"),
+    };
+
+    /// <summary>The label's width/length columns for a <c>sheet_type</c>, or null when the type is not
+    /// one the label knows — in which case both dimensions print as 0, as legacy's CASE ELSE does.</summary>
+    public static LabelSizeDef? LabelSize(string? sheetType) =>
+        !string.IsNullOrWhiteSpace(sheetType) && LabelSizes.TryGetValue(sheetType.Trim(), out var d) ? d : null;
 }

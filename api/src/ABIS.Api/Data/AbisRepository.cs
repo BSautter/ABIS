@@ -9812,15 +9812,6 @@ public sealed class AbisRepository : IAbisRepository
         return p;
     }
 
-    /// <summary>The coil identity printed on a skid tag. A named type rather than a ValueTuple because
-    /// Dapper maps tuples POSITIONALLY — reordering the two columns would silently swap lot and coil
-    /// number, and both are opaque strings so nothing downstream would notice.</summary>
-    private sealed class CoilIdentity
-    {
-        public string? LotNum { get; set; }
-        public string? CoilOrgNum { get; set; }
-    }
-
     /// <summary>The 4x6 sheet-skid tag's data.
     /// <para>The coil identity (lot + org number) and the piece count come from the legacy ticket's own
     /// retrieve — <c>production_sheet_item</c> ⋈ <c>sheet_skid_detail</c> ⋈ <c>coil</c>
@@ -9857,25 +9848,189 @@ public sealed class AbisRepository : IAbisRepository
             """, new { skid = sheetSkidNum }, cancellationToken: ct));
         if (head is null) return null;
 
-        // The coil identity, from the legacy ticket's own retrieve.
-        // FIRST, not Single: a skid carries several detail items and a job several coils, so this query
-        // returns a row per pairing. QuerySingleOrDefault threw "Sequence contains more than one
-        // element" on the seeded fixture — the tag shows one coil identity, the topmost, which is what
-        // the legacy detail band shows first.
-        var coil = await conn.QueryFirstOrDefaultAsync<CoilIdentity>(new CommandDefinition(
+        // ALL the coils, not the first. The legacy ticket puts lot / coil / pieces in a REPEATING
+        // detail band (height 109), so a skid assembled from several production items lists every one.
+        // An earlier revision took QueryFirstOrDefault and printed a single row, which silently
+        // under-reports the tag on the ~15% of live skids carrying more than one item.
+        head.Lots = (await conn.QueryAsync<SkidTagCoilRow>(new CommandDefinition(
             """
-            SELECT c.lot_num AS LotNum, c.coil_org_num AS CoilOrgNum
+            SELECT c.lot_num          AS LotNum,
+                   c.coil_org_num     AS CoilOrgNum,
+                   p.prod_item_pieces AS Pieces
               FROM sheet_skid_detail d
               JOIN production_sheet_item p ON p.prod_item_num = d.prod_item_num
-              LEFT JOIN process_coil pc    ON pc.ab_job_num = p.ab_job_num
-              LEFT JOIN coil c             ON c.coil_abc_num = pc.coil_abc_num
+              LEFT JOIN coil c             ON c.coil_abc_num = p.coil_abc_num
              WHERE d.sheet_skid_num = :skid
              ORDER BY d.prod_item_num
-            """, new { skid = sheetSkidNum }, cancellationToken: ct));
-        head.LotNum = coil?.LotNum;
-        head.CoilOrgNum = coil?.CoilOrgNum;
+            """, new { skid = sheetSkidNum }, cancellationToken: ct))).ToList();
         return head;
     }
+
+    /// <summary>
+    /// The 6x10 shipping label's data for one skid, assembled to match <c>u_default_barcode.sru</c>'s
+    /// own retrieve rather than the columns one would reach for.
+    ///
+    /// <para><b>Three places the obvious answer is wrong</b>, each of which prints something plausible:</para>
+    /// <list type="number">
+    /// <item><b>The order is <c>sheet_skid.ref_order_abc_num</c>, not the job's order.</b> Legacy reads
+    /// <c>ab_job.order_abc_num</c>, validates it, then does every customer and item lookup against the
+    /// REFERENCE order and item. A transferred skid keeps printing its reference order's part and PO;
+    /// using the job's order would put a different customer's part number on a real skid.</item>
+    /// <item><b>Weight and pieces are SUMs over <c>sheet_skid_detail</c>, not <c>sheet_skid</c>'s own
+    /// columns.</b> <c>sheet_net_wt</c> and <c>skid_pieces</c> exist and are close enough to look right.</item>
+    /// <item><b>The serial is <c>sheet_skid_display_num</c>, not the skid id</b> — the line printing the
+    /// id is commented out in the source. Real labels read <c>T1846085</c>, which is not a number.</item>
+    /// </list>
+    ///
+    /// <para><b>The address omits the street on purpose.</b> Legacy builds
+    /// <c>name + ",   " + city + ",  " + state + "  " + zip</c> with the street-bearing version
+    /// commented out directly above it, and the photographed label matches that exactly.</para>
+    /// </summary>
+    public async Task<ShippingLabelPrintData?> GetShippingLabelDataAsync(long sheetSkidNum, long? packingList, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+
+        var d = await conn.QuerySingleOrDefaultAsync<ShippingLabelPrintData>(new CommandDefinition(
+            """
+            SELECT s.sheet_skid_num          AS SheetSkidNum,
+                   s.sheet_skid_display_num  AS SheetSkidDisplayNum,
+                   s.ab_job_num              AS AbJobNum,
+                   s.ref_order_abc_num       AS RefOrderAbcNum,
+                   s.ref_order_abc_item      AS RefOrderAbcItem,
+                   s.sheet_theoretical_wt    AS TheoreticalWtLb
+              FROM sheet_skid s
+             WHERE s.sheet_skid_num = :skid
+            """, new { skid = sheetSkidNum }, cancellationToken: ct));
+        if (d is null) return null;
+
+        // The item and customer half, off the REFERENCE order. LEFT JOINs throughout: a skid whose
+        // reference order is missing still prints a label with blanks, which is what legacy's separate
+        // SELECTs do when they find nothing.
+        if (d.RefOrderAbcNum is { } refOrder && d.RefOrderAbcItem is { } refItem)
+        {
+            var head = await conn.QuerySingleOrDefaultAsync<ShippingLabelPrintData>(new CommandDefinition(
+                """
+                SELECT i.enduser_part_num AS PartNum,
+                       i.supplier_code    AS SupplierCode,
+                       i.alloy2           AS Alloy,
+                       i.temper           AS Temper,
+                       i.gauge            AS Gauge,
+                       i.sheet_type       AS SheetType,
+                       o.enduser_po       AS EnduserPo,
+                       TRIM(c.customer_full_name) || ',   ' || TRIM(c.customer_city) || ',  '
+                         || TRIM(c.customer_state) || '  ' || c.customer_zip AS Address
+                  FROM order_item i
+                  LEFT JOIN customer_order o ON o.order_abc_num = i.order_abc_num
+                  LEFT JOIN customer c       ON c.customer_id = o.orig_customer_id
+                 WHERE i.order_abc_num = :ord AND i.order_item_num = :item
+                """, new { ord = refOrder, item = refItem }, cancellationToken: ct));
+            if (head is not null)
+            {
+                d.PartNum = head.PartNum; d.SupplierCode = head.SupplierCode;
+                d.Alloy = head.Alloy; d.Temper = head.Temper; d.Gauge = head.Gauge;
+                d.SheetType = head.SheetType; d.EnduserPo = head.EnduserPo; d.Address = head.Address;
+            }
+
+            // 9-SIZE comes from the SHAPE table, chosen by sheet_type. Circle and Fender are the two
+            // that do not simply map two columns - see ShapeGeometry.LabelSize.
+            if (ShapeGeometry.LabelSize(d.SheetType) is { } size)
+            {
+                var isCircle = string.Equals(d.SheetType?.Trim(), "CIRCLE", StringComparison.OrdinalIgnoreCase);
+                var dims = await conn.QuerySingleOrDefaultAsync<ShapeSize>(new CommandDefinition(
+                    $"""
+                     SELECT {size.WidthCol} AS Width, {size.LengthCol ?? "NULL"} AS Length
+                       FROM {size.Table}
+                      WHERE order_abc_num = :ord AND order_item_num = :item
+                     """, new { ord = refOrder, item = refItem }, cancellationToken: ct));
+                d.Width = dims?.Width;
+                // A circle prints "gauge X diameter X 0": legacy sets lr_length = 0 explicitly rather
+                // than leaving it unset, and the 0 is what comes out on paper.
+                d.Length = isCircle ? 0m : dims?.Length;
+            }
+        }
+
+        // Weight and pieces: SUMs over the skid's detail items.
+        var totals = await conn.QuerySingleOrDefaultAsync<SkidTotals>(new CommandDefinition(
+            """
+            SELECT SUM(p.prod_item_net_wt) AS NetWtLb, SUM(p.prod_item_pieces) AS Pieces
+              FROM sheet_skid_detail sd
+              JOIN production_sheet_item p ON p.prod_item_num = sd.prod_item_num
+             WHERE sd.sheet_skid_num = :skid
+            """, new { skid = sheetSkidNum }, cancellationToken: ct));
+        d.NetWtLb = totals?.NetWtLb;
+        d.Pieces = totals?.Pieces;
+
+        // The placement footer. One item -> that item's value; several -> the DISTINCT values joined
+        // with '/', which is legacy's loop and why live data holds things like "Edge/Center".
+        var places = (await conn.QueryAsync<string?>(new CommandDefinition(
+            """
+            SELECT DISTINCT p.prod_item_placement
+              FROM sheet_skid_detail sd
+              JOIN production_sheet_item p ON p.prod_item_num = sd.prod_item_num
+             WHERE sd.sheet_skid_num = :skid AND p.prod_item_placement IS NOT NULL
+            """, new { skid = sheetSkidNum }, cancellationToken: ct)))
+            .Select(x => x?.Trim()).Where(x => !string.IsNullOrEmpty(x)).ToList();
+        d.Place = string.Join("/", places);
+
+        // SK# and the shipping date both belong to the SHIPMENT, so they are only knowable when the
+        // caller says which shipment is being printed. A reprint driven from the skid alone leaves them
+        // blank rather than inventing a shipment for it.
+        if (packingList is { } pl)
+        {
+            var ship = await conn.QuerySingleOrDefaultAsync<ShipmentLabelBits>(new CommandDefinition(
+                """
+                SELECT spi.sh_packing_item AS PackingItemNum,
+                       sh.shipment_actualed_date_time AS ShippingDate
+                  FROM sheet_packing_item spi
+                  LEFT JOIN shipment sh ON sh.packing_list = spi.packing_list
+                 WHERE spi.packing_list = :pl AND spi.sheet_skid_num = :skid
+                """, new { pl, skid = sheetSkidNum }, cancellationToken: ct));
+            d.PackingItemNum = ship?.PackingItemNum;
+            d.ShippingDate = ship?.ShippingDate;
+        }
+
+        // The 11-LOT NO. table: one row per coil on the skid, with country of smelt and heat date from
+        // that coil's inbound 863. LEFT JOIN on purpose - a coil with no 863 still gets its lot, coil
+        // and piece count; only the smelt and date come up blank. It is the CERTIFICATE that refuses
+        // without an 863, not the shipping label.
+        var lots = (await conn.QueryAsync<ShippingLabelLotRow>(new CommandDefinition(
+            """
+            SELECT c.lot_num          AS LotNum,
+                   c.coil_org_num     AS CoilOrgNum,
+                   p.prod_item_pieces AS Pieces,
+                   e.primary_cntry_of_smelt   AS PrimarySmelt,
+                   e.secondary_cntry_of_smelt AS SecondarySmelt,
+                   e.cash_date        AS HeatDate
+              FROM sheet_skid_detail sd
+              JOIN production_sheet_item p ON p.prod_item_num = sd.prod_item_num
+              LEFT JOIN coil c             ON c.coil_abc_num = p.coil_abc_num
+              LEFT JOIN data_in_863 e      ON e.coil_num = c.coil_org_num
+             WHERE sd.sheet_skid_num = :skid
+             ORDER BY sd.prod_item_num
+            """, new { skid = sheetSkidNum }, cancellationToken: ct))).ToList();
+        d.Lots = lots;
+        d.Heat = lots.FirstOrDefault()?.LotNum;   // 5-HEAT/PROCESS NO. is the skid's lot number
+        return d;
+    }
+
+    /// <summary>The sheet skids on a shipment, in packing-item order.
+    /// <para>Order matters: it is the order the labels come off the printer, and the operator matches
+    /// them to skids on the dock by SK#.</para></summary>
+    public async Task<IReadOnlyList<long>> GetShipmentSkidNumbersAsync(long packingList, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return (await conn.QueryAsync<long>(new CommandDefinition(
+            """
+            SELECT sheet_skid_num
+              FROM sheet_packing_item
+             WHERE packing_list = :pl
+             ORDER BY sh_packing_item
+            """, new { pl = packingList }, cancellationToken: ct))).ToList();
+    }
+
+    private sealed class ShapeSize { public decimal? Width { get; set; } public decimal? Length { get; set; } }
+    private sealed class SkidTotals { public decimal? NetWtLb { get; set; } public int? Pieces { get; set; } }
+    private sealed class ShipmentLabelBits { public int? PackingItemNum { get; set; } public DateTime? ShippingDate { get; set; } }
 
     /// <summary>The 4x6 scrap tag's data, including the per-coil rows the legacy detail band shows
     /// (<c>return_scrap_item</c> ⋈ <c>scrap_skid_detail</c> ⋈ <c>coil</c>, from

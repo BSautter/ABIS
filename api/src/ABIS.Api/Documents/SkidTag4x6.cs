@@ -21,11 +21,21 @@ public sealed record SkidTagData
     public string Length { get; init; } = "";
     public decimal? TareWt { get; init; }
     public decimal? NetWt { get; init; }
+    /// <summary>The coils on this skid. <b>A repeating DETAIL band, not one row</b> — the legacy
+    /// DataWindow puts lot / coil / pieces in a 109-unit detail band that repeats per production item,
+    /// so a skid built from several coils lists them all. An earlier port printed only the first, which
+    /// under-reports the tag on the ~15% of live skids that carry more than one.</summary>
+    public IReadOnlyList<SkidTagLot> Lots { get; init; } = [];
+
+    public decimal? GrossWt => NetWt is null && TareWt is null ? null : (NetWt ?? 0) + (TareWt ?? 0);
+}
+
+/// <summary>One row of the sheet-skid tag's repeating lot/coil/pieces band.</summary>
+public sealed record SkidTagLot
+{
     public string LotNum { get; init; } = "";
     public string CoilNum { get; init; } = "";
     public int? Pieces { get; init; }
-
-    public decimal? GrossWt => NetWt is null && TareWt is null ? null : (NetWt ?? 0) + (TareWt ?? 0);
 }
 
 /// <summary>What goes on a scrap-skid tag. The coil detail repeats per contributing coil.</summary>
@@ -92,6 +102,15 @@ public static class SkidTag4x6
     /// <summary>The barcode prefix that identifies a SCRAP skid. Deliberately different — see remarks.</summary>
     public const string ScrapBarcodePrefix = "3S";
 
+    /// <summary>Where the sheet-skid tag's repeating detail band starts (<c>header(height=1440)</c>).</summary>
+    private const int HeaderBand = 1440;
+
+    /// <summary>The sheet-skid detail band's own height (<c>detail(height=109)</c>).</summary>
+    private const int DetailBand = 109;
+
+    /// <summary>The stock, in source units — 6in at 378 units/in. Rows stop here rather than clip.</summary>
+    private const int LengthUnits = 2268;
+
     private static int D(int units) => (int)Math.Round(units / UnitsPerInch * Dpi);
     private static int Pt(int points) => (int)Math.Round(points / 72.0 * Dpi);
 
@@ -114,14 +133,27 @@ public static class SkidTag4x6
     private static string Text(int x, int y, int points, string? value) =>
         $"^FO{D(x)},{D(y)}^A0N,{Pt(points)},{Pt(points)}^FH_^FD{Fd(value)}^FS";
 
-    /// <summary>Code 39 with its interpretation line. <paramref name="prefix"/> is the scannable kind
-    /// marker — see the class remarks on why it must not be shared between tag types.</summary>
+    /// <summary>Code 39 with <b>NO interpretation line</b>. <paramref name="prefix"/> is the scannable
+    /// kind marker — see the class remarks on why it must not be shared between tag types.
+    ///
+    /// <para><b>The readable value is a SEPARATE control, so the symbol must not print its own.</b>
+    /// <c>t_skid_num_b</c> carries the font <c>C39 Medium 24pt LJ4</c> — it IS the barcode — while
+    /// <c>t_skid_num_t</c> 125 units below it is plain <c>Arial</c> showing the human-readable number.
+    /// Emitting <c>^B3 …,Y,N</c> printed the value twice and landed the interpretation line on top of
+    /// that Arial control. Exactly the mistake the 6x10 made, found here in a preview instead of on
+    /// paper.</para></summary>
     private static string Barcode(int x, int y, int heightUnits, string prefix, string? value)
     {
         var v = Fd(value);
         if (v.Length == 0) return "";
-        return $"^FO{D(x)},{D(y)}^BY2,3.0,{D(heightUnits)}^B3N,N,{D(heightUnits)},Y,N^FH_^FD{prefix}{v}^FS";
+        return $"^FO{D(x)},{D(y)}^BY2,3.0,{D(heightUnits)}^B3N,N,{D(heightUnits)},N,N^FH_^FD{prefix}{v}^FS";
     }
+
+    /// <summary>A horizontal rule. <b>Both of the sheet-skid tag's <c>line()</c> elements were missing
+    /// from the port</b> — the same extraction gap that left the 6x10 printing as bare rows for four
+    /// test prints. <c>pen.width=4</c> in PowerBuilder units.</summary>
+    private static string Rule(int x1, int y, int x2, int penUnits = 4) =>
+        $"^FO{D(x1)},{D(y)}^GB{Math.Max(D(x2 - x1), 1)},{Math.Max(D(penUnits), 1)},{Math.Max(D(penUnits), 1)}^FS";
 
     private static string Wt(decimal? v) => v is { } d ? d.ToString("######", CultureInfo.InvariantCulture) : "";
     private static string N(long? v) => v?.ToString(CultureInfo.InvariantCulture) ?? "";
@@ -146,7 +178,12 @@ public static class SkidTag4x6
         z.Append(Text(33, 291, 12, string.IsNullOrWhiteSpace(d.EndUser) ? "" : "End User: " + d.EndUser));
 
         // The barcode carries the SKID prefix; the human-readable number sits under it.
-        z.Append(Barcode(585, 419, 144, SkidBarcodePrefix, N(d.SkidNum)));
+        //
+        // HEIGHT 125, not the control's 144. t_skid_num_b is a 144-unit BOX holding a 24pt Code 39 font,
+        // so its glyphs fill ~126 units and stop short of the readable Arial control 125 units below.
+        // ^B3 has no such slack — asked for 144 it draws 144 and runs 10 dots into that control. The
+        // symbol therefore spans exactly the gap between the two.
+        z.Append(Barcode(585, 419, 125, SkidBarcodePrefix, N(d.SkidNum)));
         z.Append(Text(252, 502, 12, "Skid Num:"));
         z.Append(Text(585, 544, 12, d.SkidDisplayNum ?? N(d.SkidNum)));
 
@@ -175,12 +212,25 @@ public static class SkidTag4x6
         z.Append(Text(99, 1206, 12, "Gross Wt:"));
         z.Append(Text(501, 1206, 12, Wt(d.GrossWt)));
 
+        // Column headers sit in the header band; the values repeat below in the detail band.
         z.Append(Text(99, 1341, 12, "Lot Num:"));
-        z.Append(Text(48, 1427, 12, d.LotNum));
         z.Append(Text(596, 1341, 12, "Coil Num:"));
-        z.Append(Text(552, 1427, 12, d.CoilNum));
         z.Append(Text(1112, 1341, 12, "Pieces:"));
-        z.Append(Text(1097, 1427, 12, N(d.Pieces)));
+
+        // l_2: closes the header band, just above where the detail rows begin.
+        z.Append(Rule(59, HeaderBand - 3, 1492));
+
+        // The detail band repeats per coil. l_1 underlines each row at detail-y 99.
+        var row = HeaderBand + 6;
+        foreach (var lot in d.Lots)
+        {
+            if (row + DetailBand > LengthUnits) break;      // stop at the stock edge rather than clip
+            z.Append(Text(48, row, 12, lot.LotNum));
+            z.Append(Text(552, row, 12, lot.CoilNum));
+            z.Append(Text(1097, row, 12, N(lot.Pieces)));
+            z.Append(Rule(59, row + 93, 1415));
+            row += DetailBand;
+        }
 
         return z.Append("^PQ1,0,1,Y").Append("^XZ").ToString();
     }
@@ -198,7 +248,9 @@ public static class SkidTag4x6
         z.Append(Text(395, 134, 12, d.Customer));
 
         // 3S, not S. A scrap tag carrying the skid prefix scans as a different kind of record.
-        z.Append(Barcode(618, 237, 131, ScrapBarcodePrefix, N(d.ScrapSkidNum)));
+        // Height 125 for the same reason as the sheet tag: the symbol spans the gap down to the
+        // readable number rather than its control's nominal box.
+        z.Append(Barcode(618, 237, 125, ScrapBarcodePrefix, N(d.ScrapSkidNum)));
         z.Append(Text(44, 288, 12, "Scrap Skid Num:"));
         z.Append(Text(618, 362, 12, N(d.ScrapSkidNum)));
 
@@ -218,7 +270,7 @@ public static class SkidTag4x6
         z.Append(Text(1119, 755, 8, "Temper"));
         z.Append(Text(1298, 755, 8, "Gage"));
 
-        var row = 820;
+        var row = 810;   // detail(height=70) starts at header(height=810)
         foreach (var c in d.Coils)
         {
             z.Append(Text(44, row, 8, N(c.JobNum)));
@@ -228,8 +280,8 @@ public static class SkidTag4x6
             z.Append(Text(929, row, 8, Wt(c.NetWt)));
             z.Append(Text(1115, row, 8, c.Temper));
             z.Append(Text(1291, row, 8, c.Gauge));
-            row += 67;                                   // the detail band's own height
-            if (row > 2200) break;                       // stop at the stock edge rather than clip
+            row += 70;                                   // detail(height=70)
+            if (row + 70 > LengthUnits) break;           // stop at the stock edge rather than clip
         }
 
         return z.Append("^PQ1,0,1,Y").Append("^XZ").ToString();

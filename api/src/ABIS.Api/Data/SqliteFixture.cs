@@ -123,6 +123,9 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS abis_user_credential;
             DROP TABLE IF EXISTS abis_truck_appointment;
             DROP TABLE IF EXISTS sheet_skid_detail;
+            DROP TABLE IF EXISTS x1_shape;
+            DROP TABLE IF EXISTS data_in_863;
+            DROP TABLE IF EXISTS unit_of_measure;
             DROP TABLE IF EXISTS sheet_packing_item;
             DROP TABLE IF EXISTS scrap_packing_item;
             DROP TABLE IF EXISTS reject_coil_packing_item;
@@ -253,6 +256,30 @@ public static class SqliteFixture
             CREATE TABLE liftgate_shape (order_item_num INTEGER NOT NULL, order_abc_num INTEGER NOT NULL,
                 li_width REAL, li_width_plus REAL, li_width_minus REAL, li_length REAL, li_length_plus REAL, li_length_minus REAL,
                 li_die1 TEXT, li_die2 TEXT, PRIMARY KEY (order_abc_num, order_item_num));
+            -- The "OTHER" sheet_type's geometry: two unnamed dimensions. The 6x10 shipping label reads
+            -- x_1 as width and x_2 as length (u_default_barcode.sru's CHOOSE CASE "OTHER").
+            CREATE TABLE x1_shape (order_item_num INTEGER NOT NULL, order_abc_num INTEGER NOT NULL,
+                x_1 REAL, x_2 REAL, PRIMARY KEY (order_abc_num, order_item_num));
+
+            -- Inbound EDI 863 test data, landed per coil. The 6x10 label's 11-LOT NO. table takes the
+            -- country of smelt and heat date from here; the Certificate of Conformance takes its whole
+            -- mechanical block from the per-element columns (see docs/CERT_LABEL.md).
+            --
+            -- Two things about the real table are reproduced because they are load-bearing:
+            --   * cash_date is TEXT in YYYYMMDD form, not a date.
+            --   * an element's value lives in <code>_F_M2 as "value|YYYYMMDD" - PIPE-DELIMITED, with
+            --     _F_M1 populated 0 times in 11,696 live rows. Reading _M1 yields a blank certificate.
+            CREATE TABLE data_in_863 (
+                edi_file_id INTEGER, coil_num TEXT, status TEXT,
+                primary_cntry_of_smelt TEXT, secondary_cntry_of_smelt TEXT,
+                cash_date TEXT, prod_date TEXT, chemical_test_date TEXT,
+                ttl_f_m1 TEXT, ttl_f_m2 TEXT, ttl_f_uom TEXT,
+                ttt_f_m1 TEXT, ttt_f_m2 TEXT, ttt_f_uom TEXT,
+                itt_f_m1 TEXT, itt_f_m2 TEXT, itt_f_uom TEXT);
+
+            -- uom_code -> the abbreviation printed beside a certificate value. A code with a blank
+            -- abbreviation prints nothing, which is why R Value and N Value are unitless on a real cert.
+            CREATE TABLE unit_of_measure (uom_code TEXT PRIMARY KEY, uom_abbrev TEXT);
 
             -- Part-master geometry: same dimensions per shape, keyed by part_num_id, no dies.
             CREATE TABLE part_num_rectangle (part_num_id INTEGER PRIMARY KEY,
@@ -1487,7 +1514,6 @@ public static class SqliteFixture
                 new { SheetSkidNum = 3001L, ProdItemNum = 6002L },
                 new { SheetSkidNum = 3003L, ProdItemNum = 6004L }   // job 1003, skid status 0 -> shipped
             });
-
         // Recovery / quality scrap worksheets (legacy recovery_scrap_worksheet + quality fallback).
         conn.Execute("""
             INSERT INTO recovery_scrap_worksheet (coil_abc_num, ab_job_num, scrap_type_id, scrap_item_piece, scrap_item_net_wt)
