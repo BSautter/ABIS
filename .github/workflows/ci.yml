@@ -202,3 +202,49 @@ jobs:
           echo "readiness:"; curl -fsS http://localhost:8080/health/ready; echo
           docker logs abis | tail -20
           docker rm -f abis
+
+  # How far main has drifted from the newest release tag.
+  #
+  # WARNS, never fails. An unreleased commit is not an error, and a check that blocks merges over one
+  # would be routed around within a week. This exists so the gap is visible while it is still small
+  # enough to describe: v0.7.0 sat for 86 commits across three subsystems before anyone noticed, and by
+  # then the release notes had to be reconstructed from the log.
+  #
+  # See docs/RELEASING.md — tag at the end of a batch.
+  version-drift:
+    name: Version drift
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # tags and full history
+      - name: Count commits since the newest tag
+        run: |
+          THRESHOLD=25
+          TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+
+          if [ -z "$TAG" ]; then
+            echo "No version tag found — nothing to compare against." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          AHEAD=$(git rev-list --count "$TAG"..HEAD)
+          WHEN=$(git log -1 --format=%cs "$TAG")
+          DAYS=$(( ( $(date +%s) - $(git log -1 --format=%ct "$TAG") ) / 86400 ))
+
+          echo "Newest tag **$TAG** ($WHEN, $DAYS days ago) — main is **$AHEAD commits** ahead." \
+            >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$AHEAD" -ge "$THRESHOLD" ]; then
+            {
+              echo ""
+              echo "> [!WARNING]"
+              echo "> $AHEAD unreleased commits is past the $THRESHOLD-commit mark. If a batch of work has"
+              echo "> finished, tag it — release notes get harder to write the longer the gap runs, and"
+              echo "> nothing deployed can be pointed at and described."
+              echo ">"
+              echo "> \`docs/RELEASING.md\` has the how and the which-number."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning title=Version drift::$AHEAD commits since $TAG ($DAYS days). See docs/RELEASING.md."
+          fi

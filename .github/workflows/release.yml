@@ -43,11 +43,30 @@ jobs:
       - name: Checksums
         run: ( cd dist && sha256sum *.tar.gz *.deb > SHA256SUMS )
 
+      # Prefer the hand-written CHANGELOG section. GitHub's --generate-notes lists PR titles, which
+      # says what was merged rather than what changed for anyone deciding whether to deploy it - and
+      # it cannot carry a "Known limitations" section, which is the part that decides that.
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        run: |
+          awk -v tag="${GITHUB_REF_NAME}" '
+            $0 ~ "^## " tag "([^0-9]|$)" { on = 1; next }
+            on && /^## / { exit }
+            on { print }
+          ' CHANGELOG.md > dist/NOTES.md
+          if [ -s dist/NOTES.md ]; then
+            echo "found=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=no" >> "$GITHUB_OUTPUT"
+            echo "::warning title=No changelog entry::CHANGELOG.md has no section for ${GITHUB_REF_NAME}; falling back to generated notes. See docs/RELEASING.md."
+          fi
+
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            dist/*.tar.gz dist/*.deb dist/SHA256SUMS \
-            --title "ABIS ${GITHUB_REF_NAME}" \
-            --generate-notes
+          if [ "${{ steps.notes.outputs.found }}" = "yes" ]; then
+            gh release create "${GITHUB_REF_NAME}" \n              dist/*.tar.gz dist/*.deb dist/SHA256SUMS \n              --title "ABIS ${GITHUB_REF_NAME}" \n              --notes-file dist/NOTES.md
+          else
+            gh release create "${GITHUB_REF_NAME}" \n              dist/*.tar.gz dist/*.deb dist/SHA256SUMS \n              --title "ABIS ${GITHUB_REF_NAME}" \n              --generate-notes
+          fi
