@@ -3,40 +3,17 @@ using System.Text;
 
 namespace Abis.Api.Documents;
 
-/// <summary>
-/// Which 6x10 layout a customer gets.
-///
-/// <para><b>This is a per-customer requirement, and there is no table for it.</b> `.230` was searched
-/// for any selector on <c>CUSTOMER</c> (<c>%LABEL%</c>, <c>%BARCODE%</c>, <c>%FORMAT%</c>) and has none,
-/// so legacy chooses in CODE — by assigning a different DataWindow to <c>idw_requestor</c>. The PBLs bear
-/// that out: <c>silverdome7</c> alone holds two dozen near-duplicate label DataWindows, and
-/// <c>inv_coil.pbl</c> carries whole user objects named for their customer
-/// (<c>u_hayes_barcode_scale</c>, <c>u_johnstown_barcode_scale</c>, <c>u_ogihara_barcode_scale</c>).</para>
-///
-/// <para>So this enum is deliberately NOT "the list of variants" — it is the two that have been
-/// decoded. Adding a third means reading its DataWindow, not inventing a layout.</para>
-/// </summary>
-public enum ShippingLabelVariant
-{
-    /// <summary>Fields 7-GROSS WT / 7-SIZE / 9-ALLOY / 10-DLOC. Imperial, size on one line.
-    /// <b>Not yet verified on paper</b> — no photographed sample of this variant exists.</summary>
-    Gross,
-
-    /// <summary>Fields 7-LGTH./THEO.WT / 9-SIZE / 10-ALLOY / 11-LOT NO. Metric, size on three lines,
-    /// and the lot table instead of a dock. <b>Verified against two photographed Novelis jobs</b>
-    /// (124424 and 124401, 2026-08-06) — see <c>docs/LABEL_6X10_NOVELIS.md</c>.</summary>
-    Theoretical,
-}
-
-/// <summary>One row of the <c>11-LOT NO.</c> table on the <see cref="ShippingLabelVariant.Theoretical"/>
-/// variant. A skid is built from one or more coils and each contributes a row.</summary>
+/// <summary>One row of the <c>11-LOT NO.</c> table. A skid is built from one or more coils and each
+/// contributes a row.</summary>
 public sealed record ShippingLabelLot
 {
     public string LotNum { get; init; } = "";
+
     /// <summary>Country of smelt. Legacy computes this as <c>primary_cntry_of_smelt + …</c> — the
-    /// primary and secondary codes joined, which is why the printed value reads <c>CA AE</c> rather
-    /// than a single country.</summary>
+    /// primary and secondary codes joined — which is why the printed value reads <c>CA AE</c> rather
+    /// than a single country, and why it matches the cert's Primary/Secondary pair.</summary>
     public string Smelt { get; init; } = "";
+
     public string CoilNum { get; init; } = "";
     public int? Pieces { get; init; }
     public DateTime? HeatDate { get; init; }
@@ -47,22 +24,28 @@ public sealed record ShippingLabelLot
 /// <c>docs/LABEL_6X10_LAYOUT.md</c> and <c>u_default_barcode.sru</c>.</remarks>
 public sealed record ShippingLabelData
 {
-    public ShippingLabelVariant Variant { get; init; } = ShippingLabelVariant.Gross;
-
     public string PartNum { get; init; } = "";          // 1-PRODUCT IDENT.
     public string SupplierCode { get; init; } = "";     // 2-SUPPLIER NO.
     public string Serial { get; init; } = "";           // 3-SERIAL NO.   (skid number)
     public string CustomerOrder { get; init; } = "";    // 4-CSTMR. ORD. NO
     public string Heat { get; init; } = "";             // 5-HEAT/PROCESS NO. (lot)
-    public decimal? ActualWeight { get; init; }         // 6-ACTUAL WT.
-    public decimal? GrossWeight { get; init; }          // 7-GROSS WT      (Gross variant)
-    public decimal? TheoreticalWeight { get; init; }    // 7-LGTH./THEO.WT (Theoretical variant)
+
+    /// <summary>6-ACTUAL WT., <b>in POUNDS</b>. Converted to kg at print time when
+    /// <see cref="ActualInKg"/> is set — see <see cref="ShippingLabel6x10.LbToKg"/>.</summary>
+    public decimal? ActualWeightLb { get; init; }
+
+    /// <summary>7-LGTH./THEO.WT, <b>in POUNDS</b>. Only printed when <see cref="TheoreticalOn"/>.</summary>
+    public decimal? TheoreticalWeightLb { get; init; }
+
     public int? Pieces { get; init; }                   // 8-PIECES
-    public string Alloy { get; init; } = "";            // 9-ALLOY / 10-ALLOY
+    public string Alloy { get; init; } = "";            // 10-ALLOY
     public string Temper { get; init; } = "";
-    public decimal? Gauge { get; init; }                // 7-SIZE / 9-SIZE: gauge x width x length
+
+    /// <summary>9-SIZE, <b>in INCHES</b>. Converted to mm when <see cref="SizeMetric"/> is set.</summary>
+    public decimal? Gauge { get; init; }
     public decimal? Width { get; init; }
     public decimal? Length { get; init; }
+
     public string Address { get; init; } = "";
     public long? JobNum { get; init; }                  // JOB#
     public int? SkidItemNum { get; init; }              // SK#
@@ -76,31 +59,61 @@ public sealed record ShippingLabelData
     public string Place { get; init; } = "";
 
     public DateTime? ShippingDate { get; init; }
-    public string Dock { get; init; } = "DOCK # 3";     // 10-DLOC (Gross variant only)
 
-    /// <summary>The <c>11-LOT NO.</c> rows (Theoretical variant only). See
-    /// <see cref="ShippingLabel6x10.LotRows"/> for why more than three is a problem.</summary>
+    /// <summary>The <c>11-LOT NO.</c> rows. See <see cref="ShippingLabel6x10.LotRows"/> for why more
+    /// than three is a problem.</summary>
     public IReadOnlyList<ShippingLabelLot> Lots { get; init; } = [];
 
-    /// <summary>Metric: legacy multiplies gauge/width/length by 25.4 and prints weights in kg.
-    /// <para>Defaults ON for <see cref="ShippingLabelVariant.Theoretical"/>, matching the 2021 change in
-    /// <c>u_default_barcode.sru</c> that flipped <c>ib_act_kg</c> and <c>ib_size_metric</c> FALSE→True,
-    /// and matching both photographed labels (<c>1939 kg</c>, <c>1.3 X 1727.2 X 1470.</c>).</para></summary>
-    public bool? Metric { get; init; }
+    // ---- The four operator switches ------------------------------------------------------
+    //
+    // w_barcode_item_setup (reached from ue_setupreport, li_allowsetup = 1) lets the operator flip
+    // these per print run, so they are settings with defaults rather than constants. The defaults are
+    // u_default_barcode.sru's constructor verbatim — including the 2021 change
+    // "1159_Change_Checkmarks_On_Barcode_Printing_Screen" that flipped the two metric flags.
 
-    internal bool IsMetric => Metric ?? Variant == ShippingLabelVariant.Theoretical;
+    /// <summary>Print field 6 at all. <c>ib_act_on = TRUE</c>.</summary>
+    public bool ActualOn { get; init; } = true;
+
+    /// <summary>Print field 6 in kilograms. <c>ib_act_kg</c>, FALSE→True in 2021.</summary>
+    public bool ActualInKg { get; init; } = true;
+
+    /// <summary>Print field 7 at all. <c><b>ib_theo_on = FALSE</b></c>.
+    /// <para>This is why <c>7-LGTH./THEO.WT</c> was blank on both photographed labels — the field is
+    /// switched OFF by default, not missing data. Anything that "fixes" the blank by supplying a weight
+    /// is fixing the wrong thing.</para></summary>
+    public bool TheoreticalOn { get; init; }
+
+    /// <summary>Print field 7 in kilograms. <c>ib_theo_kg = FALSE</c> — note this did NOT change in
+    /// 2021, so the two weights genuinely default to different units.</summary>
+    public bool TheoreticalInKg { get; init; }
+
+    /// <summary>Print 9-SIZE in millimetres. <c>ib_size_metric</c>, FALSE→True in 2021.</summary>
+    public bool SizeMetric { get; init; } = true;
 }
 
 /// <summary>
 /// The 6x10 inch shipping label, as ZPL.
 ///
 /// <para><b>Where the geometry came from.</b> Legacy prints this as a PowerBuilder DataWindow through
-/// the Windows driver, not as ZPL — <c>u_default_barcode.sru</c> populates ~54 named controls on a
-/// DataWindow it never names, because <c>idw_requestor</c> is assigned by an ancestor. Those
-/// DataWindows were not in <c>legacy/src/</c>: they live in the <c>silverdome*</c> core libraries,
-/// excluded from vendoring for size. They were recovered with <c>tools/pbl_extract.py</c> and written up
-/// in <b><c>docs/LABEL_6X10_LAYOUT.md</c></b> and <b><c>docs/LABEL_6X10_NOVELIS.md</c></b>. Every
-/// coordinate below traces to a control in one of those; change them there first.</para>
+/// the Windows driver, not as ZPL — <c>u_default_barcode.sru</c> populates ~54 named controls on
+/// <c>d_report_barcode_multiple</c> (named in its constructor). That DataWindow was not in
+/// <c>legacy/src/</c>: it lives in the <c>silverdome*</c> core libraries, excluded from vendoring for
+/// size. It was recovered with <c>tools/pbl_extract.py</c> and written up in
+/// <b><c>docs/LABEL_6X10_LAYOUT.md</c></b> and <b><c>docs/LABEL_6X10_NOVELIS.md</c></b>. Every
+/// coordinate below traces to a control in there; change them there first.</para>
+///
+/// <para><b>There is ONE layout, not a per-customer family.</b> An earlier revision shipped a "gross"
+/// variant built from <c>7-GROSS WT</c> / <c>7-SIZE</c> / <c>9-ALLOY</c> / <c>10-DLOC</c> controls found
+/// in the artwork. Those controls are <b>dead</b>: across all five barcode user objects
+/// (<c>u_default_barcode</c> plus <c>inv_coil</c>'s default/hayes/johnstown/ogihara scale labels),
+/// <c>gross_t</c> is populated <b>zero</b> times and <c>theo_t</c> fifteen. No code has ever filled a
+/// gross weight or a dock into this label. What looked like a second variant was leftover artwork in a
+/// shared DataWindow, and the first port implemented the half nothing prints.</para>
+///
+/// <para>Per-customer label variation IS real — but for a different document: the COIL scale label has
+/// <c>d_report_barcode_hayes</c>, <c>_johnstown</c> and <c>_ogihara</c> beside the default. If a
+/// customer-specific 6x10 SHIPPING label turns up, it will be its own DataWindow and should be read
+/// before being written.</para>
 ///
 /// <para><b>Units.</b> The source is thousandths of an INCH (the plant confirmed the stock is 6x10
 /// inches; the raw numbers fit a 6x10 cm stock equally well, so the file alone could not settle it).
@@ -111,9 +124,7 @@ public sealed record ShippingLabelData
 /// stacked controls — <c>bar_X_t_up</c> above <c>bar_X_t</c> — and BOTH carry the Code 39 TrueType font
 /// <c>C39 Low 54pt LJ4</c>. They are not a barcode plus its caption; they are the upper and lower halves
 /// of one tall symbol. The human-readable value is a separate control (<c>part_num_t</c>,
-/// <c>serial_t</c>, …) sitting ABOVE the pair. Earlier revisions emitted a 250-unit <c>^B3</c> with the
-/// interpretation line ON, which both halved the symbol and printed the value twice — the photographed
-/// output shows the value above the bars and nothing below them.</para>
+/// <c>serial_t</c>, …) sitting ABOVE the pair.</para>
 ///
 /// <para><b>Thermal transfer.</b> <c>^MTT</c>, because every Zebra in this plant runs ribbon. <c>^MTD</c>
 /// would be direct thermal and come out blank on this stock.</para>
@@ -124,13 +135,21 @@ public static class ShippingLabel6x10
     /// (<c>u_default_barcode.sru:619-625</c> calls <c>Print()</c> twice).</summary>
     public const int Copies = 2;
 
+    /// <summary>Legacy's own pounds→kilograms factor, <c>ll_wt * 0.45359</c>. Kept to legacy's five
+    /// digits rather than corrected to 0.4535924: the customer reconciles this number against an ASN
+    /// and a printed label, so matching what the plant has always sent matters more than the extra
+    /// precision. On a 4275 lb skid the difference is under 10 grams.</summary>
+    public const decimal LbToKg = 0.45359m;
+
+    /// <summary>Inches→millimetres, <c>lr_gauge * 25.4</c>.</summary>
+    public const decimal InToMm = 25.4m;
+
     /// <summary>The <c>11-LOT NO.</c> table has exactly three numbered rows — <c>t_14</c>/<c>t_15</c>/
     /// <c>t_16</c> are literal <c>"1."</c>, <c>"2."</c>, <c>"3."</c> text controls sitting OUTSIDE the
     /// nested report, so the allowance is fixed in the artwork rather than repeating.
     /// <para>Both photographed labels filled row 1 and left 2 and 3 blank. A skid built from more than
-    /// three coils has no row to print in and legacy would silently drop the rest — so extra rows are
-    /// dropped here too rather than overflowing into the address, and the caller can compare
-    /// <c>Lots.Count</c> against this to warn.</para></summary>
+    /// three coils has no row to print in, so extra rows are dropped rather than overflowing into the
+    /// address, and the caller can compare <c>Lots.Count</c> against this to warn.</para></summary>
     public const int LotRows = 3;
 
     private const int Dpi = 300;
@@ -168,11 +187,10 @@ public static class ShippingLabel6x10
     /// <summary>AIAG/ANSI MH10 data identifiers.
     /// <para>They go two places: prefixed to the barcode DATA so a customer's receiving scanner knows
     /// WHICH field it just read, and printed as a caption under the field number
-    /// (<c>is_N_t.Text = "(" + is_N + ")"</c>, <c>u_default_barcode.sru:286-437</c>) so a human can do the
-    /// same. Without the data prefix every barcode is an anonymous string and the ASN will not
-    /// reconcile.</para>
-    /// <para>The asterisks legacy writes (<c>*P12345*</c>) are Code 39 start/stop characters the TrueType
-    /// font needed spelled out — <c>^B3</c> adds them itself, so they must NOT be repeated here.</para></summary>
+    /// (<c>is_N_t.Text = "(" + is_N + ")"</c>, set unconditionally at
+    /// <c>u_default_barcode.sru:286-437</c>) so a human can do the same.</para>
+    /// <para>The asterisks legacy writes (<c>*P12345*</c>) are Code 39 start/stop characters the
+    /// TrueType font needed spelled out — <c>^B3</c> adds them itself, so they must NOT be repeated.</para></summary>
     public static class Aiag
     {
         public const string PartNumber = "P";       // is_1
@@ -181,7 +199,7 @@ public static class ShippingLabel6x10
         public const string CustomerOrder = "A";    // is_4
         public const string Heat = "1T";            // is_5
         public const string ActualWeight = "2Q";    // is_6
-        public const string GrossWeight = "1Q";     // is_7  (also the theoretical weight)
+        public const string TheoreticalWeight = "1Q"; // is_7
         public const string Pieces = "Q";           // is_8
     }
 
@@ -190,7 +208,8 @@ public static class ShippingLabel6x10
     /// 10pt line lower.</summary>
     private const int IdentifierDrop = 167;
 
-    /// <summary>A field caption plus its AIAG identifier caption underneath.</summary>
+    /// <summary>A field caption plus its AIAG identifier caption underneath. The identifier prints even
+    /// when the field itself is switched off — legacy sets <c>is_N_t</c> outside the on/off branch.</summary>
     private static string Caption(int x, int y, string caption, string identifier) =>
         Text(x, y, 10, caption) + Text(x, y + IdentifierDrop, 10, $"({identifier})");
 
@@ -219,8 +238,37 @@ public static class ShippingLabel6x10
              + $"{Math.Max(D(heightUnits), widthUnits == 0 ? 1 : 0)},{t}^FS";
     }
 
-    private static string Num(decimal? v, string format) =>
-        v is { } d ? d.ToString(format, CultureInfo.InvariantCulture) : "";
+    /// <summary>
+    /// PowerBuilder's <c>#</c> mask, which is NOT .NET's.
+    ///
+    /// <para><c>#</c> means "a digit, or nothing", and the literal <c>.</c> in the mask prints
+    /// regardless. So <c>String(1470.0, "########.#")</c> is <c>"1470."</c> — with the trailing point and
+    /// no zero — which is exactly what the photographed label shows for a whole-millimetre length, and
+    /// what .NET's <c>"#####.#"</c> would render as <c>"1470"</c>. Likewise <c>String(0.125, "#.####")</c>
+    /// is <c>".125"</c>, with the leading zero suppressed.</para>
+    ///
+    /// <para>Reproduced rather than tidied: the people reading these labels have been reading that exact
+    /// rendering for years, and a shipping label is not the place to quietly improve number formatting.</para>
+    /// </summary>
+    internal static string PbMask(decimal? value, int fractionDigits)
+    {
+        if (value is not { } v) return "";
+        var rounded = Math.Round(v, fractionDigits, MidpointRounding.AwayFromZero);
+        var whole = decimal.Truncate(Math.Abs(rounded));
+        var frac = Math.Abs(rounded) - whole;
+
+        var sb = new StringBuilder();
+        if (rounded < 0) sb.Append('-');
+        if (whole != 0) sb.Append(whole.ToString("0", CultureInfo.InvariantCulture));
+        sb.Append('.');
+        if (fractionDigits > 0 && frac != 0)
+            sb.Append(frac.ToString("." + new string('#', fractionDigits), CultureInfo.InvariantCulture)[1..]);
+        return sb.ToString();
+    }
+
+    /// <summary>Weights print through <c>String(ll_wt, "######")</c> — a Long, so no decimal at all.</summary>
+    private static string Weight(decimal? v) =>
+        v is { } d ? Math.Round(d, MidpointRounding.AwayFromZero).ToString("######", CultureInfo.InvariantCulture) : "";
 
     private static string Date(DateTime? d) =>
         d?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? "";
@@ -237,8 +285,8 @@ public static class ShippingLabel6x10
         z.Append("^CI28");                                  // UTF-8 in, so trimmed text stays intact
 
         // --- the rules that box the fields (DataWindow line() elements) ------------------
-        // Near-coincident parallels in the source are the label variants drawing the same rule a few
-        // units apart; the longer span of each pair is kept so a logical rule prints once.
+        // Near-coincident parallels in the source are the artwork drawing the same rule a few units
+        // apart; the longer span of each pair is kept so a logical rule prints once.
         z.Append(Rule(33, 2258, 5142, 0, 16));
         z.Append(Rule(16, 3116, 5150, 0, 16));
         z.Append(Rule(0, 3950, 5058, 0, 16));
@@ -256,7 +304,7 @@ public static class ShippingLabel6x10
         z.Append(Text(975, 66, 36, Date(d.ShippingDate)));
         z.Append(Text(8, 700, 65, d.PartNum));
 
-        // --- fields 1-5: identical in both variants ------------------------------------
+        // --- fields 1-5 -----------------------------------------------------------------
         z.Append(Caption(58, 2291, "1-PRODUCT IDENT.", Aiag.PartNumber));
         z.Append(Text(1350, 2283, 22, d.PartNum));
         z.Append(Barcode(416, 2591, Aiag.PartNumber, d.PartNum));
@@ -277,92 +325,59 @@ public static class ShippingLabel6x10
         z.Append(Text(1575, 5658, 22, d.Heat));
         z.Append(Barcode(458, 5950, Aiag.Heat, d.Heat));
 
-        // --- field 6 (actual weight) is shared; everything below it forks ---------------
-        z.Append(Caption(58, 6508, "6-ACTUAL WT.", Aiag.ActualWeight));
-        z.Append(Text(1033, 6500, 22, Num(d.ActualWeight, "######")));
-        z.Append(Text(2591, 6641, 8, d.IsMetric ? "kg" : "lb"));      // act_m_t
-        z.Append(Barcode(508, 6808, Aiag.ActualWeight, Num(d.ActualWeight, "######")));
+        // --- field 6: actual weight, switchable and unit-converted ----------------------
+        z.Append(Caption(58, 6475, "6-ACTUAL WT.", Aiag.ActualWeight));
+        if (d.ActualOn)
+        {
+            var wt = Weight(d.ActualInKg ? d.ActualWeightLb * LbToKg : d.ActualWeightLb);
+            z.Append(Text(1033, 6466, 22, wt));
+            z.Append(Text(2591, 6608, 8, d.ActualInKg ? "kg" : "lbs"));
+            z.Append(Barcode(508, 6775, Aiag.ActualWeight, wt));
+        }
 
-        z.Append(d.Variant == ShippingLabelVariant.Theoretical ? Theoretical(d) : Gross(d));
-
-        // --- footer: consignee address and the job/skid the label belongs to -------------
-        z.Append(Text(50, 9083, 9, d.Address));
-        z.Append(Text(50, 9341, 14, "JOB#"));
-        z.Append(Text(600, 9325, 16, d.JobNum?.ToString(CultureInfo.InvariantCulture)));
-        z.Append(Text(2175, 9341, 14, "SK#"));
-        z.Append(Text(2658, 9333, 16, d.SkidItemNum?.ToString(CultureInfo.InvariantCulture)));
-        z.Append(Text(3500, 9366, 10, d.Place));
-        z.Append(Text(4300, 9366, 10, Date(d.ShippingDate)));
-
-        z.Append("^PQ1,0,1,Y");   // one per payload; the caller sends it Copies times
-        z.Append("^XZ");
-        return z.ToString();
-    }
-
-    /// <summary>Fields 7-GROSS WT / 7-SIZE / 9-ALLOY / 10-DLOC.
-    /// <para><b>Unverified on paper.</b> No photographed sample of this variant exists, so the captions
-    /// and coordinates are the DataWindow's and nothing more. Treat a first print of it as a test.</para></summary>
-    private static string Gross(ShippingLabelData d)
-    {
-        var z = new StringBuilder(1024);
-
-        // Size on ONE line, imperial.
-        z.Append(Text(2833, 6516, 10, "7-SIZE"));
-        z.Append(Text(3383, 6516, 14, Dims(d, " X ")));
-
-        z.Append(Caption(58, 7375, "7-GROSS WT", Aiag.GrossWeight));
-        z.Append(Text(1266, 7366, 22, Num(d.GrossWeight, "######")));
-        z.Append(Text(2600, 7566, 8, d.IsMetric ? "kg" : "lb"));      // gross_m_t
-        z.Append(Barcode(483, 7725, Aiag.GrossWeight, Num(d.GrossWeight, "######")));
-
-        z.Append(Text(2091, 7391, 10, "9-ALLOY"));
-        z.Append(Text(2958, 7550, 16, d.Alloy));
-        z.Append(Text(3766, 7533, 18, "-"));
-        z.Append(Text(3958, 7541, 16, d.Temper));
-
-        // The pieces block has its OWN coordinates per variant, and mixing them is what made the first
-        // test print overprint "8-PIECES" on "7-GROSS WT".
-        z.Append(Caption(58, 8266, "8-PIECES", Aiag.Pieces));
-        z.Append(Text(983, 8266, 22, d.Pieces?.ToString(CultureInfo.InvariantCulture)));
-        z.Append(Barcode(441, 8566, Aiag.Pieces, d.Pieces?.ToString(CultureInfo.InvariantCulture)));
-
-        z.Append(Text(2116, 7883, 10, "10-DLOC:"));
-        z.Append(Text(3258, 7950, 16, d.Dock));
-        return z.ToString();
-    }
-
-    /// <summary>Fields 7-LGTH./THEO.WT / 9-SIZE / 10-ALLOY / 11-LOT NO.
-    /// <para>Verified against two photographed Novelis jobs. The size stacks on three lines with an
-    /// <c>X</c> after the first two, and the dock is replaced by the lot table.</para></summary>
-    private static string Theoretical(ShippingLabelData d)
-    {
-        var z = new StringBuilder(2048);
-
-        // Size on THREE stacked lines with the X separators as their own controls (t_7, t_8).
+        // --- field 9: size, stacked on three lines with X separators --------------------
         z.Append(Text(2833, 6483, 10, "9-SIZE"));
-        z.Append(Text(3383, 6483, 14, Size(d.Gauge, d)));
+        z.Append(Text(3383, 6483, 14, Size(d.Gauge, d, gauge: true)));
         z.Append(Text(4475, 6458, 16, "X"));
         z.Append(Text(3391, 6750, 14, Size(d.Width, d)));
         z.Append(Text(4475, 6741, 16, "X"));
         z.Append(Text(3358, 7025, 14, Size(d.Length, d)));
 
-        // 7 carries the LENGTH/theoretical weight, not the gross. Both photographed labels left it
-        // blank, which is why the empty case must print the caption and no barcode rather than a zero.
-        z.Append(Caption(58, 7341, "7-LGTH./THEO.WT", Aiag.GrossWeight));
-        z.Append(Text(1266, 7333, 22, Num(d.TheoreticalWeight, "######")));
-        z.Append(Text(2600, 7533, 8, d.TheoreticalWeight is null ? "" : d.IsMetric ? "kg" : "lb"));
-        z.Append(Barcode(483, 7691, Aiag.GrossWeight, Num(d.TheoreticalWeight, "######")));
+        // --- field 7: theoretical weight — OFF by default -------------------------------
+        z.Append(Caption(58, 7341, "7-LGTH./THEO.WT", Aiag.TheoreticalWeight));
+        if (d.TheoreticalOn)
+        {
+            var wt = Weight(d.TheoreticalInKg ? d.TheoreticalWeightLb * LbToKg : d.TheoreticalWeightLb);
+            z.Append(Text(1266, 7333, 22, wt));
+            z.Append(Text(2600, 7533, 8, d.TheoreticalInKg ? "kg" : "lbs"));
+            z.Append(Barcode(483, 7691, Aiag.TheoreticalWeight, wt));
+        }
 
+        // --- field 10: alloy - temper ----------------------------------------------------
         z.Append(Text(2841, 7333, 10, "10-ALLOY"));
         z.Append(Text(3150, 7641, 16, d.Alloy));
         z.Append(Text(3975, 7625, 18, "-"));
         z.Append(Text(4158, 7633, 16, d.Temper));
 
+        // --- field 8: pieces --------------------------------------------------------------
         z.Append(Caption(58, 8233, "8-PIECES", Aiag.Pieces));
         z.Append(Text(983, 8233, 22, d.Pieces?.ToString(CultureInfo.InvariantCulture)));
         z.Append(Barcode(441, 8533, Aiag.Pieces, d.Pieces?.ToString(CultureInfo.InvariantCulture)));
 
+        // --- field 11: the lot table ------------------------------------------------------
         z.Append(LotTable(d));
+
+        // --- footer: consignee address and the job/skid the label belongs to ---------------
+        z.Append(Text(50, 9050, 9, d.Address));
+        z.Append(Text(50, 9308, 14, "JOB#"));
+        z.Append(Text(608, 9291, 16, d.JobNum?.ToString(CultureInfo.InvariantCulture)));
+        z.Append(Text(2258, 9308, 14, "SK#"));
+        z.Append(Text(2658, 9300, 16, d.SkidItemNum?.ToString(CultureInfo.InvariantCulture)));
+        z.Append(Text(3500, 9333, 10, d.Place));
+        z.Append(Text(4158, 9341, 10, Date(d.ShippingDate)));
+
+        z.Append("^PQ1,0,1,Y");   // one per payload; the caller sends it Copies times
+        z.Append("^XZ");
         return z.ToString();
     }
 
@@ -406,11 +421,13 @@ public static class ShippingLabel6x10
         return z.ToString();
     }
 
-    /// <summary>Legacy converts to mm by multiplying inches by 25.4 (<c>u_default_barcode.sru:453-457</c>)
-    /// and formats metric to one decimal, imperial to four.</summary>
-    private static string Size(decimal? v, ShippingLabelData d) =>
-        Num(v * (d.IsMetric ? 25.4m : 1m), d.IsMetric ? "#####0.0" : "#0.0000");
-
-    private static string Dims(ShippingLabelData d, string sep) =>
-        $"{Size(d.Gauge, d)}{sep}{Size(d.Width, d)}{sep}{Size(d.Length, d)}";
+    /// <summary>A size component. Metric multiplies by 25.4 and keeps ONE decimal; imperial keeps four.
+    /// Gauge's imperial mask has a single integer digit, which is why it is called out separately —
+    /// though with PowerBuilder's <c>#</c> semantics the integer width only ever suppresses, so the
+    /// distinction is cosmetic here and kept for traceability to the source.</summary>
+    private static string Size(decimal? v, ShippingLabelData d, bool gauge = false)
+    {
+        _ = gauge;
+        return d.SizeMetric ? PbMask(v * InToMm, 1) : PbMask(v, 4);
+    }
 }

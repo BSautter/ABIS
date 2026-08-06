@@ -1,61 +1,139 @@
-# The 6x10 label — Novelis variant, and the Certificate of Conformance
+# The 6x10 shipping label, and the Certificate of Conformance
 
-Recorded from photographs of **real production output**, 2026-08-06, alongside the legacy source and
-the live `.230` tables. This is the reference for reworking `ShippingLabel6x10`, which currently
-implements a **different variant**.
-
-> **The label format is a PER-CUSTOMER requirement** (confirmed by the plant). Novelis uses the layout
-> below; the variant already implemented uses different field numbering. Neither is "the" format.
+Recorded from photographs of **real production output**, 2026-08-06 (Novelis-Oswego jobs `124424` and
+`124401`), cross-checked against the legacy source and the live `.230` tables.
 
 ---
 
-## 1. The two variants, and how they differ
+## 1. There is ONE layout, not a family of variants
 
-The DataWindow carries both under the **same control names**, distinguished only by the caption text of
-`t_9`. That is why they collided during the first port — see `ShippingLabel6x10`'s remarks.
+**An earlier reading of this was wrong and is corrected here.** The recovered artwork contains two sets
+of field captions under the **same control names** — `7-GROSS WT` / `7-SIZE` / `9-ALLOY` / `10-DLOC`
+beside `7-LGTH./THEO.WT` / `9-SIZE` / `10-ALLOY` / `11-LOT NO.` — and I first took that for two
+per-customer variants and implemented the first set.
 
-| field | **gross variant** (implemented) | **theo variant** (Novelis, photographed) |
+The source settles it. Across **all five** barcode user objects — `rpabco/u_default_barcode` plus
+`inv_coil`'s `u_default_barcode_scale`, `u_hayes_barcode_scale`, `u_johnstown_barcode_scale`,
+`u_ogihara_barcode_scale`:
+
+| control | populated by |
+|---|---:|
+| `theo_t` | **all five** (15 references in `u_default_barcode` alone) |
+| `gross_t` | **none** |
+| any dock / DLOC field | **none** |
+
+So the gross captions are **dead artwork** in a shared DataWindow. No code has ever filled a gross
+weight or a dock into this label, and the first port implemented the half nothing prints.
+
+`u_default_barcode`'s constructor names its DataWindow outright: `is_objectname =
+"d_report_barcode_multiple"`. That is the shipping label, and there is one of it.
+
+> **Per-customer label variation IS real — for a different document.** The COIL scale label has
+> `d_report_barcode_hayes`, `d_report_barcode_johnstown` and `d_report_barcode_ogihara` beside the
+> default, selected by which user object is instantiated. If a customer-specific 6x10 SHIPPING label
+> ever turns up it will be its own DataWindow, and it should be read before it is written.
+
+## 2. The four operator switches — and why field 7 was blank
+
+The label is not fully static: `w_barcode_item_setup` (reached from `ue_setupreport`, with
+`li_allowsetup = 1`) lets an operator flip four settings per print run. Their defaults are
+`u_default_barcode.sru`'s constructor verbatim:
+
+| flag | default | effect |
 |---|---|---|
-| 6 | `6-ACTUAL WT.` | `6-ACTUAL WT.` **(2Q)** |
-| 7 | `7-GROSS WT` | **`7-LGTH./THEO.WT` (1Q)** |
-| 7/9 | `7-SIZE` (one line, inches) | **`9-SIZE`** — three lines, **mm** |
-| 8 | `8-PIECES` | `8-PIECES` **(Q)** |
-| 9/10 | `9-ALLOY` | **`10-ALLOY`** — `5182 - O4` |
-| 10/11 | `10-DLOC:` | **`11-LOT NO.` — a multi-coil TABLE** |
+| `ib_act_on` | `TRUE` | print field 6 at all |
+| `ib_act_kg` | **`True`** — changed from FALSE in 2021 | field 6 in kilograms |
+| `ib_theo_on` | **`FALSE`** | print field 7 at all |
+| `ib_theo_kg` | `FALSE` — **not** changed in 2021 | field 7 in kilograms |
+| `ib_size_metric` | **`True`** — changed from FALSE in 2021 | 9-SIZE in millimetres |
 
-## 2. What the Novelis label shows that the current port does not
+(The 2021 change is commented `1159_Change_Checkmarks_On_Barcode_Printing_Screen`.)
 
-1. **The AIAG identifier prints as a caption** beneath each field number: `(P)`, `(V)`, `(S)`, `(A)`,
-   `(1T)`, `(2Q)`, `(1Q)`, `(Q)`. This is `is_N_t.Text = "(" + is_N + ")"` in
-   `u_default_barcode.sru`. The port currently puts the identifier only in the barcode DATA.
-2. **The human-readable value sits ABOVE the barcode, with NO interpretation line below it.** The port
-   emits `^B3 …,Y,N`, which prints the text underneath. It should be `N` for this variant, with the
-   value drawn as its own text field above.
-3. **Units are kg and metric mm.** Matches the 2021 constructor change in `u_default_barcode.sru`
-   (`ib_act_kg` and `ib_size_metric` both flipped FALSE→True,
-   "1159_Change_Checkmarks_On_Barcode_Printing_Screen"). Observed: `1935 kg`, `1.3 X 1727.2 X 1470.`
-4. **Size prints on three lines**, not one — gauge / width / length stacked, each followed by `X`
-   except the last.
-5. **`11-LOT NO.` is a table** with columns `LOT NO. / SMELT / COIL NO. / PCES / H.T. DATE` and
-   numbered rows `1. 2. 3.`. Observed row 1: `5897540 | CA AE | 1957838 | 250 | 07/23/2026`.
-   This is what "barcode from **contains multiple items**" means in the DataWindow's own comment.
-6. **A customer address footer**: `NOVELIS ALUMINUM CORPORATION-OSWEGO,  OSWEGO,  NY 13126`
-7. **The footer carries an extra field** between `SK#` and the date — observed `3000032609`
-   (unidentified; likely the package number, cf. `uf_set_package_num` in the legacy source).
-8. **Empty fields print their caption and nothing else** — `2-SUPPLIER NO. (V)` and
-   `7-LGTH./THEO.WT (1Q)` were both blank on the sample, with **no barcode drawn**. The port already
-   omits a barcode for an empty value, which matches.
-9. **The label is fully ruled** — horizontal rules between every numbered field, verticals dividing
-   the lower block. The `line()` elements are recovered in `LABEL_6X10_LAYOUT.md`.
+Two consequences worth stating plainly:
 
-## 3. The Certificate of Conformance
+**`7-LGTH./THEO.WT` was blank on both photographs because the field is switched OFF**, not because the
+data was missing. Anything that "fixes" the blank by supplying a weight is fixing the wrong thing.
+
+**The two weights default to DIFFERENT units.** `ib_act_kg` went True in 2021 and `ib_theo_kg` did not,
+so collapsing them into one "metric" flag would silently convert field 7.
+
+## 3. Weights are CONVERTED, not relabelled
+
+`ll_wt * 0.45359`. The weight is stored in **pounds**; the kilogram flag multiplies it. An earlier
+revision changed only the unit caption, which would have printed the pound figure under a `kg` label —
+a 2.2x overstatement on every skid, and the sort of error a customer finds by weighing the truck.
+
+Verified against the photograph: 4275 lb × 0.45359 = **1939 kg**, which is what was printed.
+
+Legacy's factor is five digits (`0.45359`, not `0.4535924`) and is kept as-is: the customer reconciles
+this number against an ASN and a printed label, so matching what the plant has always sent beats the
+extra precision. The difference on a full skid is under 10 grams.
+
+## 4. Sizes use PowerBuilder's `#` mask, which is not .NET's
+
+| flag | mask | 1470 mm | 0.125 in |
+|---|---|---|---|
+| metric | `########.#` after ×25.4 | `1470.` | — |
+| imperial | `#.####` / `#####.####` | — | `.125` |
+
+`#` means "a digit, **or nothing**", while the `.` in the mask is a literal that prints regardless. So a
+whole millimetre renders as **`1470.`** — trailing point, no zero — which is exactly what the photograph
+shows and what .NET's `"#####.#"` would render as `1470`. Likewise a leading zero is suppressed:
+`0.125` becomes `.125`.
+
+Reproduced rather than tidied. The dock has been reading that exact rendering for years, and a shipping
+label is not the place to quietly improve number formatting.
+
+## 5. What the photographs show that the first port did not
+
+1. **The AIAG identifier prints as a caption** beneath each field number — `(P)`, `(V)`, `(S)`, `(A)`,
+   `(1T)`, `(2Q)`, `(1Q)`, `(Q)`. This is `is_N_t.Text = "(" + is_N + ")"`, set **unconditionally**, so
+   field 7's `(1Q)` shows even on a label that prints no theoretical weight.
+2. **Barcodes are 500 units tall with NO interpretation line.** `bar_X_t_up` and `bar_X_t` BOTH carry
+   the font `C39 Low 54pt LJ4` — they are the upper and lower halves of one tall symbol, not a barcode
+   plus its caption. The readable value is a separate control above the pair. The first port emitted a
+   250-unit `^B3` with the interpretation line on, which halved every symbol and printed the value twice.
+3. **Size prints on three lines**, gauge / width / length stacked, with the `X` separators as their own
+   controls.
+4. **`11-LOT NO.` is a nested sub-report** — see section 8.
+5. **A customer address footer**: `NOVELIS ALUMINUM CORPORATION-OSWEGO,  OSWEGO,  NY 13126`
+6. **Empty fields print their caption and nothing else.** `2-SUPPLIER NO. (V)` was blank on both
+   samples with no barcode drawn.
+7. **The label is fully ruled** — horizontals between every numbered field, verticals dividing the lower
+   block. The `line()` elements are recovered in `LABEL_6X10_LAYOUT.md`.
+
+## 6. `SUPPRESS_BARCODE_PRINT` must NOT be ported — legacy retired it too
+
+The decision not to port it was made on the reasoning that it compensated for Windows-spooler
+duplication that raw-socket ZPL cannot exhibit. The source now confirms it independently:
+
+```
+//Alex Gerlants. 03/25/2025. 2341_Always_Reprint_2Labels. Commented out next line
+//ib_suppress_barcode_print = f_suppress_barcode_print(al_shipment, sqlca)
+ib_suppress_barcode_print = False
+```
+
+Legacy hard-coded it to False in March 2025. The table may still exist; the behaviour does not.
+
+## 7. The Certificate of Conformance
+
 
 Printed **on the same 6x10 stock, inline with the shipping labels** — one cert per skid where the
 shipping label prints twice. Not a separate printer or stock.
 
-Gated by `f_coil_cert_label_req(shipment)`, and legacy **abandons the entire print run** if
-`f_all_coils_have_863(shipment)` fails: a skid whose coils have no test data cannot be certified.
-**The port has no such gate.**
+Gated by `f_coil_cert_label_req(shipment)`. If that says yes, legacy then calls
+`f_all_coils_have_863(shipment)` and branches on its three return values:
+
+| return | meaning | action |
+|---:|---|---|
+| `1` | every coil has 863 data | fall through and print |
+| `2` | some coil does not, **and the operator declined to print anyway** | return without printing |
+| `-1` | DB error | abort |
+
+So it is a **prompt, not a silent abandon** — the operator is told and may still proceed. That
+distinction matters for the port: the equivalent is a warning the caller can override, not a hard 409.
+
+**The port has no such gate yet.**
 
 ```
                 Certificate of Conformance
@@ -161,7 +239,7 @@ behaves differently from the mechanical one — chemistry keeps its fixed slots.
 - **Which OEM's element list applies** → `customer_order.cert_label_customer_code`
   (`CERT_LABEL_CUSTOMER`: 1=FCA, 2=GM, 3=Ford). Only codes 1 and 2 have rows; Ford has none.
 
-## 4. Confirmed by a second job
+## 8. Confirmed by a second job
 
 A second Novelis-Oswego shipping tag + cert (job `124401`, part `68416648-1`, skid `T1846085`, coil
 `1949234`) was photographed alongside the first (job `124424`). Everything structural is identical, so
@@ -185,11 +263,9 @@ Three things this settles:
 3. **The footer field is not derived from the job** — `124424→…609` but `124401→…639`, so it moves
    independently. Still unidentified.
 
-## 5. How variants are actually selected — answered
+## 9. How the artwork was recovered
 
-**Each variant is a SEPARATE DataWindow, chosen in code by what gets assigned to `idw_requestor`.**
-
-The vendored `legacy/src/` does not show this because the label DataWindows were never exported. The
+The vendored `legacy/src/` does not carry the label DataWindows — they were never exported. The
 real libraries live in `Desktop/aaaa/` — **the copies at the repo root are stubs and de-block to
 nothing**, so check that before re-running `tools/pbl_extract.py`. Four of them carry label
 DataWindows:
@@ -202,24 +278,18 @@ DataWindows:
 | `silverdome4.pbl` | 1 |
 
 They are near-duplicates that differ only in captions and a few coordinates — several carry
-`2-CUST. PO.` and `4-CSTMR. PART` where the Novelis one has `2-SUPPLIER NO.` and `4-CSTMR. ORD. NO`.
-And `inv_coil.pbl` holds whole user objects named for their customer: `u_hayes_barcode_scale`,
-`u_johnstown_barcode_scale`, `u_ogihara_barcode_scale`, beside `u_default_barcode_scale`.
+`2-CUST. PO.` and `4-CSTMR. PART` where the shipping one has `2-SUPPLIER NO.` and `4-CSTMR. ORD. NO`.
+They belong to other documents (coil scale labels, combi forms, packing tickets), which is the trap:
+**a caption found in the PBLs is not necessarily on THIS label.** Section 1 is what settles which
+controls the shipping label actually prints — the `.sru` that populates them, not the artwork.
 
-So "per-customer format" is literally per-customer CODE. `ShippingLabelVariant` therefore names only
-the variants that have been DECODED, and adding a third means reading its DataWindow — not inventing a
-layout that looks plausible.
+> **A caveat worth keeping.** Entry boundaries in a de-blocked `.pbl` are unreliable; objects run into
+> one another, so a window of controls around a search hit can span two DataWindows. Scan for a control
+> by name and cross-check against the `.sru` rather than trusting an extracted "object".
 
-## 6. Two corrections the recovered geometry forced
+## 10. The footer field, identified
 
-**1. Barcodes are 500 units tall with NO interpretation line.** `bar_X_t_up` and `bar_X_t` both carry
-the font `C39 Low 54pt LJ4`. They are not a barcode plus its caption — they are the upper and lower
-halves of ONE tall symbol, and the readable value is a separate control (`part_num_t`, `serial_t`, …)
-sitting above the pair. Earlier revisions emitted a 250-unit `^B3` with the interpretation line ON,
-which both halved every symbol and printed the value twice. The photographs show value on top, bars
-below, nothing underneath.
-
-**2. The footer field is `place_t` = `production_sheet_item.prod_item_placement`.** Not an EDI number,
+**`place_t` = `production_sheet_item.prod_item_placement`.** Not an EDI number,
 and not the package number. `uf_set_package_num` was the obvious suspect and is ruled out: it reads
 `SHEET_SKID_PACKAGE`, is gated per job by `f_get_use_package_num_4job`, prints with a
 `"Customer Package #: "` caption, and its header comment dates it `Arconic_Package_Num`. The
@@ -231,7 +301,7 @@ jobs are using it to carry what looks like an SAP delivery number. **Print it as
 it.** No numeric placements appear on `.230` only because its snapshot stops at job `124385`, below
 both photographed jobs.
 
-## 7. The `11-LOT NO.` table is a nested sub-report
+## 11. The `11-LOT NO.` table is a nested sub-report
 
 It is its own DataWindow embedded at `2125,8325` (3016 × 675), with the `1.` `2.` `3.` markers as text
 controls sitting OUTSIDE it at `x=2041`. Its internal layout:
@@ -258,13 +328,16 @@ There is a second version of this sub-report **without** the smelt column (`COIL
 > **scaled** onto the 3016-unit report box. That scale is the one number here derived rather than read,
 > and it is the first thing a test print should be checked against.
 
-## 8. Open questions
+## 12. Open questions
 
-- **Which customer maps to which of the 32 label DataWindows?** Section 5 answers HOW selection works
-  (per-customer code, not a table); it does not answer WHICH. That mapping lives in whatever assigns
-  `idw_requestor`, and only two variants have been decoded so far.
 - **What do the other 29 cert-requiring customers get?** 32 have `coil_cert_label_req='Y'`; only 3 have
-  an element list. This has to be answered before the cert is built for anyone but Novelis.
-- Where do Spec, Country of Cast/Smelt and Born Date come from?
-- `w_barcode_item_setup` lets an operator override the identifiers and unit flags per print run. Does
-  the plant use it, or are the 2021 defaults always accepted?
+  rows in `CERT_LABEL_DATA_ELEMENTS`. This has to be answered before the cert is built for anyone but
+  Novelis — a sample cert from a customer outside `1153/1459/2950` would settle it.
+- Where do Spec, Country of Cast/Smelt and Born Date come from? Likely the same 863 feed or the coil,
+  but unconfirmed.
+- `w_barcode_item_setup` lets an operator override the identifiers and the four unit flags per print
+  run. Does the plant ever touch it, or are the 2021 defaults always accepted? The port exposes them as
+  settings either way, so this only affects what the UI needs to offer.
+- **Does the plant believe the 6x10 is per-customer?** They said so, and it is true of the cert and of
+  the COIL scale label — but section 1 shows it is not true of this document. Worth confirming the
+  belief is about those and not about a shipping-label variant nobody has produced yet.
