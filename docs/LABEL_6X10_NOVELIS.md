@@ -102,7 +102,30 @@ label is not the place to quietly improve number formatting.
 7. **The label is fully ruled** — horizontals between every numbered field, verticals dividing the lower
    block. The `line()` elements are recovered in `LABEL_6X10_LAYOUT.md`.
 
-## 6. `SUPPRESS_BARCODE_PRINT` must NOT be ported — legacy retired it too
+## 6. The print workflow, as the plant actually runs it
+
+Confirmed by the plant 2026-08-06, and it matches the source:
+
+- **Printing a shipment: click Print, then Print again, and it goes.** The second click is the Windows
+  print dialog — `li_rtn = PrintSetup()` at the top of the print event, which returns `-1` and abandons
+  the run if the operator cancels. **The port has no equivalent and needs none:** it sends ZPL to a
+  known printer over a socket, so there is no dialog to raise and no cancel to honour.
+- **Reprint is ONE skid, chosen from a dropdown.** This is `Reprint_Barcode_Button` (2019-05-07), and
+  the source shows the change explicitly — the loop over `d_shipment_sheet_skid_list` is commented out
+  and replaced by a single `ue_print_barcode(al_shipment, al_sheet_skid_num)` call:
+
+```
+//lds_skid.DataObject = "d_shipment_sheet_skid_list"
+//	FOR li_row = 1 TO li_count
+//		ll_skid_num = lds_skid.GetItemNumber(li_row, "sheet_skid_num")
+		li_rtn = this.Event ue_print_barcode(al_shipment, al_sheet_skid_num)
+//	NEXT
+```
+
+  So the reprint endpoint takes **a skid, not a shipment**, and still prints two labels plus a cert for
+  that one skid. Reprinting a whole shipment is not a feature legacy has.
+
+## 7. `SUPPRESS_BARCODE_PRINT` must NOT be ported — legacy retired it too
 
 The decision not to port it was made on the reasoning that it compensated for Windows-spooler
 duplication that raw-socket ZPL cannot exhibit. The source now confirms it independently:
@@ -115,7 +138,7 @@ ib_suppress_barcode_print = False
 
 Legacy hard-coded it to False in March 2025. The table may still exist; the behaviour does not.
 
-## 7. The Certificate of Conformance
+## 8. The Certificate of Conformance
 
 
 Printed **on the same 6x10 stock, inline with the shipping labels** — one cert per skid where the
@@ -220,10 +243,10 @@ behaves differently from the mechanical one — chemistry keeps its fixed slots.
 
 - ~~`PST_TEST_RESULT`~~ — an earlier guess, **superseded**. It holds test results, but not the element
   codes the cert is keyed on, and it cannot supply the chemical block at all.
-> **SUPERSEDED — see `CERT_LABEL.md` §2.** The mechanical results come from **`mech_test_results`**
-> (suffixes `_f` / `_b`, each with its own `_date` and `_uom`), not from `DATA_IN_863`. The bullet below
-> was inferred from matching column-name fragments and is wrong. `f_print_cert_label` builds the column
-> names explicitly and reads them from `d_863_mech_test_results`, retrieved by `coil_org_num`.
+> **SUPERSEDED — see `CERT_LABEL.md` §2**, which settles this on live data. The table below is right;
+> the COLUMN is not. Values live in `<CODE>_F_M2`, not `_F_M1` — `_M1` is populated 0 times in 11,696
+> rows — and `_M2` is pipe-delimited `value|YYYYMMDD`, carrying the measurement date with it. The unit
+> comes from `<CODE>_F_UOM` decoded through `unit_of_measure`.
 
 - ~~**EVERYTHING comes from the inbound EDI 863.**~~ `DATA_IN_863` carries **72 columns** matching the
   `data_element` codes — `TTL`, `TTT`, `TET`, `TRT`, `TNT`, `MDO`, `DPA`, `ARO`, `BKN`, `X27`, `ULT`,
@@ -244,7 +267,7 @@ behaves differently from the mechanical one — chemistry keeps its fixed slots.
 - **Which OEM's element list applies** → `customer_order.cert_label_customer_code`
   (`CERT_LABEL_CUSTOMER`: 1=FCA, 2=GM, 3=Ford). Only codes 1 and 2 have rows; Ford has none.
 
-## 8. Confirmed by a second job
+## 9. Confirmed by a second job
 
 A second Novelis-Oswego shipping tag + cert (job `124401`, part `68416648-1`, skid `T1846085`, coil
 `1949234`) was photographed alongside the first (job `124424`). Everything structural is identical, so
@@ -268,7 +291,7 @@ Three things this settles:
 3. **The footer field is not derived from the job** — `124424→…609` but `124401→…639`, so it moves
    independently. Still unidentified.
 
-## 9. How the artwork was recovered
+## 10. How the artwork was recovered
 
 The vendored `legacy/src/` does not carry the label DataWindows — they were never exported. The
 real libraries live in `Desktop/aaaa/` — **the copies at the repo root are stubs and de-block to
@@ -292,7 +315,7 @@ controls the shipping label actually prints — the `.sru` that populates them, 
 > one another, so a window of controls around a search hit can span two DataWindows. Scan for a control
 > by name and cross-check against the `.sru` rather than trusting an extracted "object".
 
-## 10. The footer field, identified
+## 11. The footer field, identified
 
 **`place_t` = `production_sheet_item.prod_item_placement`.** Not an EDI number,
 and not the package number. `uf_set_package_num` was the obvious suspect and is ruled out: it reads
@@ -301,12 +324,28 @@ and not the package number. `uf_set_package_num` was the obvious suspect and is 
 photographed footer is a bare number on a Novelis label.
 
 `prod_item_placement` is free text — on `.230` it is mostly `Edge`, `Center`, `Edge/Center` (hence
-legacy's `/`-join when a skid spans several items), with customer codes like `LT0304` mixed in. Novelis
-jobs are using it to carry what looks like an SAP delivery number. **Print it as given; do not compute
-it.** No numeric placements appear on `.230` only because its snapshot stops at job `124385`, below
-both photographed jobs.
+legacy's `/`-join when a skid spans several items), with customer codes like `LT0304` mixed in.
 
-## 11. The `11-LOT NO.` table is a nested sub-report
+**What the Novelis value IS:** an SAP material number of the same family as
+`ORDER_ITEM.STARTING_GOODS_MATERIAL_NUM`, whose values on `.230` run `3000001514` … `3000023296` — the
+same ten-digit `30000…` shape as the printed `3000032609` / `3000032639`, and just below them, which
+fits a snapshot that stops at job `124385`.
+
+It is **not read from that column** — `u_default_barcode.sru` is unambiguous that `place_t` comes from
+`prod_item_placement`.
+
+**Where the value comes from is NOT settled.** `prod_item_placement` is a `char(18)` column edited on
+the **Office Skid Entry** screen (`d_office_entry_skid_list`, `update="PRODUCTION_SHEET_ITEM"`), whose
+dropdown offers `Edge / Edge/Center / Center / …` but which clearly accepts free text — `.230` holds
+`LT0304`, `novi`, `lm0250`, `test`. Nothing is typed at PRINT time (the plant confirmed: print, print
+again, done), so whatever puts a SAP number in there does it at skid entry or upstream, and I have not
+found what.
+
+**Print it as given; do not compute it, and do not "helpfully" join it to `order_item`.** The
+resemblance to `STARTING_GOODS_MATERIAL_NUM` is suggestive, not a mapping — a lookup would be right
+until the day the field holds `Edge` again.
+
+## 12. The `11-LOT NO.` table is a nested sub-report
 
 It is its own DataWindow embedded at `2125,8325` (3016 × 675), with the `1.` `2.` `3.` markers as text
 controls sitting OUTSIDE it at `x=2041`. Its internal layout:
@@ -333,7 +372,7 @@ There is a second version of this sub-report **without** the smelt column (`COIL
 > **scaled** onto the 3016-unit report box. That scale is the one number here derived rather than read,
 > and it is the first thing a test print should be checked against.
 
-## 12. Open questions
+## 13. Open questions
 
 - **What do the other 29 cert-requiring customers get?** 32 have `coil_cert_label_req='Y'`; only 3 have
   rows in `CERT_LABEL_DATA_ELEMENTS`. This has to be answered before the cert is built for anyone but
@@ -343,6 +382,9 @@ There is a second version of this sub-report **without** the smelt column (`COIL
 - `w_barcode_item_setup` lets an operator override the identifiers and the four unit flags per print
   run. Does the plant ever touch it, or are the 2021 defaults always accepted? The port exposes them as
   settings either way, so this only affects what the UI needs to offer.
+- **What writes a SAP material number into `prod_item_placement`?** It is a skid-entry field with an
+  `Edge/Center` dropdown, nothing is typed at print time, and the value still arrives. Until that is
+  known the port just prints the column.
 - **Does the plant believe the 6x10 is per-customer?** They said so, and it is true of the cert and of
   the COIL scale label — but section 1 shows it is not true of this document. Worth confirming the
   belief is about those and not about a shipping-label variant nobody has produced yet.
