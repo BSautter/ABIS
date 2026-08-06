@@ -185,14 +185,86 @@ Three things this settles:
 3. **The footer field is not derived from the job** — `124424→…609` but `124401→…639`, so it moves
    independently. Still unidentified.
 
-## 5. Open questions
+## 5. How variants are actually selected — answered
 
-- **Which customers use which label variant?** Only "per-customer" is known. Searched `.230` for any
-  column matching `%LABEL%`, `%BARCODE%`, `%FORMAT%` on `CUSTOMER` and found no format selector, so
-  **the variant is almost certainly chosen in code**, which means the PBLs are the only source.
+**Each variant is a SEPARATE DataWindow, chosen in code by what gets assigned to `idw_requestor`.**
+
+The vendored `legacy/src/` does not show this because the label DataWindows were never exported. The
+real libraries live in `Desktop/aaaa/` — **the copies at the repo root are stubs and de-block to
+nothing**, so check that before re-running `tools/pbl_extract.py`. Four of them carry label
+DataWindows:
+
+| library | label DataWindows |
+|---|---:|
+| `silverdome7.pbl` | 24 |
+| `rpabco.pbl` | 5 |
+| `inv_coil.pbl` | 2 |
+| `silverdome4.pbl` | 1 |
+
+They are near-duplicates that differ only in captions and a few coordinates — several carry
+`2-CUST. PO.` and `4-CSTMR. PART` where the Novelis one has `2-SUPPLIER NO.` and `4-CSTMR. ORD. NO`.
+And `inv_coil.pbl` holds whole user objects named for their customer: `u_hayes_barcode_scale`,
+`u_johnstown_barcode_scale`, `u_ogihara_barcode_scale`, beside `u_default_barcode_scale`.
+
+So "per-customer format" is literally per-customer CODE. `ShippingLabelVariant` therefore names only
+the variants that have been DECODED, and adding a third means reading its DataWindow — not inventing a
+layout that looks plausible.
+
+## 6. Two corrections the recovered geometry forced
+
+**1. Barcodes are 500 units tall with NO interpretation line.** `bar_X_t_up` and `bar_X_t` both carry
+the font `C39 Low 54pt LJ4`. They are not a barcode plus its caption — they are the upper and lower
+halves of ONE tall symbol, and the readable value is a separate control (`part_num_t`, `serial_t`, …)
+sitting above the pair. Earlier revisions emitted a 250-unit `^B3` with the interpretation line ON,
+which both halved every symbol and printed the value twice. The photographs show value on top, bars
+below, nothing underneath.
+
+**2. The footer field is `place_t` = `production_sheet_item.prod_item_placement`.** Not an EDI number,
+and not the package number. `uf_set_package_num` was the obvious suspect and is ruled out: it reads
+`SHEET_SKID_PACKAGE`, is gated per job by `f_get_use_package_num_4job`, prints with a
+`"Customer Package #: "` caption, and its header comment dates it `Arconic_Package_Num`. The
+photographed footer is a bare number on a Novelis label.
+
+`prod_item_placement` is free text — on `.230` it is mostly `Edge`, `Center`, `Edge/Center` (hence
+legacy's `/`-join when a skid spans several items), with customer codes like `LT0304` mixed in. Novelis
+jobs are using it to carry what looks like an SAP delivery number. **Print it as given; do not compute
+it.** No numeric placements appear on `.230` only because its snapshot stops at job `124385`, below
+both photographed jobs.
+
+## 7. The `11-LOT NO.` table is a nested sub-report
+
+It is its own DataWindow embedded at `2125,8325` (3016 × 675), with the `1.` `2.` `3.` markers as text
+controls sitting OUTSIDE it at `x=2041`. Its internal layout:
+
+| column | header `y=0` | detail `y=13` | x | w |
+|---|---|---|---:|---:|
+| lot | `11-LOT NO.` | `coil_lot_num` | 7 | 333 |
+| | `/` | | 347 | 22 |
+| smelt | `SMELT` | `compute_1` = `primary_cntry_of_smelt + …` | 373 | 165 |
+| | `/` | | 552 | 22 |
+| coil | `COIL NO.` | `coil_org_num` | 578 | 296 |
+| | `/` | | 870 | 22 |
+| pieces | `PCES` | `prod_item_pieces` | 892 | 161 |
+| | `/` | | 1053 | 22 |
+| heat date | `H.T. DATE` | `coil_cash_date` | 1079 | 256 |
+
+The smelt column being a COMPUTE of primary + secondary country is why it prints `CA AE` rather than
+one country — the same pair the cert shows as Primary `CA` / Secondary `AE`.
+
+There is a second version of this sub-report **without** the smelt column (`COIL NO.` moves left to
+`x=457`). The photographed labels have smelt, so that is the one ported.
+
+> The sub-report's internal coordinates do not share the outer label's units, so the columns are
+> **scaled** onto the 3016-unit report box. That scale is the one number here derived rather than read,
+> and it is the first thing a test print should be checked against.
+
+## 8. Open questions
+
+- **Which customer maps to which of the 32 label DataWindows?** Section 5 answers HOW selection works
+  (per-customer code, not a table); it does not answer WHICH. That mapping lives in whatever assigns
+  `idw_requestor`, and only two variants have been decoded so far.
 - **What do the other 29 cert-requiring customers get?** 32 have `coil_cert_label_req='Y'`; only 3 have
   an element list. This has to be answered before the cert is built for anyone but Novelis.
-- What is the extra footer field (`3000032639` / `3000032609`)?
 - Where do Spec, Country of Cast/Smelt and Born Date come from?
 - `w_barcode_item_setup` lets an operator override the identifiers and unit flags per print run. Does
   the plant use it, or are the 2021 defaults always accepted?

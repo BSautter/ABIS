@@ -98,17 +98,39 @@ public sealed class ShippingLabel6x10Tests
         // Legacy drew these with a Code 39 TrueType font. ^B3 is the printer's own encoder — no font
         // has to be resident — and Code 39 is kept because the customers' readers expect it.
         var z = ShippingLabel6x10.Build(Sample());
-        var bars = Regex.Matches(z, @"\^B3N,N,\d+,Y,N").Count;
+        var bars = Regex.Matches(z, @"\^B3N,N,\d+,N,N").Count;
         Assert.Equal(8, bars);   // part, supplier, serial, order, heat, actual wt, gross wt, pieces
     }
 
     [Fact]
-    public void A_barcode_carries_its_human_readable_line()
+    public void A_barcode_carries_its_human_readable_value_ABOVE_it_not_below()
     {
-        // The Y in ^B3N,N,h,Y,N. Legacy stacked a second control to get this; if it were N the label
-        // would scan but nobody could read it back to a screen.
+        // Corrected from real output. The pair bar_X_t_up / bar_X_t are BOTH the Code 39 font
+        // "C39 Low 54pt LJ4" — they are the upper and lower halves of ONE tall symbol, not a barcode
+        // plus its caption. The readable value is a separate control (part_num_t, serial_t, ...) sitting
+        // above the pair, which is exactly what the photographed labels show: value on top, bars below,
+        // nothing underneath.
+        //
+        // So the interpretation line must be OFF. With it on, the value printed twice and the symbol was
+        // only half its intended height.
         var z = ShippingLabel6x10.Build(Sample());
-        Assert.Matches(@"\^B3N,N,\d+,Y,N", z);
+        Assert.Matches(@"\^B3N,N,\d+,N,N", z);
+        Assert.DoesNotMatch(@"\^B3N,N,\d+,Y,N", z);
+
+        // The part number's readable control sits above its barcode.
+        var textY = int.Parse(Regex.Match(z, @"\^FO\d+,(\d+)\^A0N[^^]*\^FH_\^FDPN-3003-A\^FS").Groups[1].Value);
+        var barY = int.Parse(Regex.Match(z, @"\^FO\d+,(\d+)\^BY[^^]*\^B3[^^]*\^FH_\^FDPPN-3003-A\^FS").Groups[1].Value);
+        Assert.True(textY < barY, $"the readable value (y={textY}) must sit above its barcode (y={barY})");
+    }
+
+    [Fact]
+    public void Every_barcode_spans_both_stacked_legacy_rows()
+    {
+        // bar_X_t_up and bar_X_t are 250 units each and adjacent, so the symbol is 500 units — 150 dots
+        // at 300 dpi. Emitting 250 halved every barcode on the first four test prints.
+        var z = ShippingLabel6x10.Build(Sample());
+        foreach (Match m in Regex.Matches(z, @"\^B3N,N,(\d+),N,N"))
+            Assert.Equal(150, int.Parse(m.Groups[1].Value));
     }
 
     [Fact]
@@ -117,7 +139,7 @@ public sealed class ShippingLabel6x10Tests
         // An empty Code 39 symbol is either a printer error or a scannable blank — both worse than
         // simply leaving the space empty.
         var z = ShippingLabel6x10.Build(Sample() with { Heat = "", GrossWeight = null });
-        var bars = Regex.Matches(z, @"\^B3N,N,\d+,Y,N").Count;
+        var bars = Regex.Matches(z, @"\^B3N,N,\d+,N,N").Count;
         Assert.Equal(6, bars);   // the other six still print
     }
 
@@ -271,24 +293,19 @@ public sealed class ShippingLabel6x10Tests
     }
 
     [Fact]
-    public void No_barcode_runs_its_interpretation_line_into_the_field_below()
+    public void The_last_barcode_finishes_above_the_address()
     {
-        // Found by the SECOND test print: the pieces barcode printed over the address line.
-        //
-        // Legacy stacks two 250-unit rows per barcode (bar_X_t_up above bar_X_t) because it draws with
-        // a font. A native ^B3 is ONE control whose interpretation line prints BELOW it, so it must be
-        // anchored at the _up row to occupy the same block. Anchoring at the lower row overflows by a
-        // text height — invisible unless something sits directly beneath, which only pieces does.
+        // Found by the SECOND test print: the pieces barcode printed over the address line. It is the
+        // only barcode with anything directly beneath it, so it is the only one where a height error
+        // shows up as overlap rather than just a short symbol.
         var z = ShippingLabel6x10.Build(Sample());
 
         var piecesBarcodeY = int.Parse(Regex.Match(z, @"\^FO\d+,(\d+)\^BY[^^]*\^B3[^^]*\^FH_\^FDQ250").Groups[1].Value);
-        var barcodeHeight = int.Parse(Regex.Match(z, @"\^FO\d+,\d+\^BY[^^]*\^B3N,N,(\d+),Y,N[^^]*\^FH_\^FDQ250").Groups[1].Value);
+        var barcodeHeight = int.Parse(Regex.Match(z, @"\^FO\d+,\d+\^BY[^^]*\^B3N,N,(\d+),N,N[^^]*\^FH_\^FDQ250").Groups[1].Value);
         var addressY = int.Parse(Regex.Match(z, @"\^FO\d+,(\d+)[^^]*\^[^^]*\^FH_\^FDAleris").Groups[1].Value);
 
-        // barcode + its interpretation line (roughly one 10pt row) must finish above the address.
-        var bottom = piecesBarcodeY + barcodeHeight + 42;
-        Assert.True(bottom < addressY,
-            $"the pieces barcode ends at y={bottom} but the address starts at y={addressY}");
+        Assert.True(piecesBarcodeY + barcodeHeight < addressY,
+            $"the pieces barcode ends at y={piecesBarcodeY + barcodeHeight} but the address starts at y={addressY}");
     }
 
     // ---- The rules that box the fields -----------------------------------------------
