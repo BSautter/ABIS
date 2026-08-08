@@ -227,7 +227,25 @@
   ⚠ **Needs the edge on .170/.175 REDEPLOYED** — `/conveyor` postdates the deployed build → 404 (the board
   then says "edge line feed unreachable" and falls back to DB-only, which is correct but empty).
   Still TODO: the 11 **shape displays**.
-- [ ] **M** Supervisor/role PIN gating (exit / override / drop-coil / maintenance)
+- [ ] **M — NEEDS A PLANT DECISION BEFORE IT IS BUILT.** Supervisor/role PIN gating (exit / override /
+  drop-coil / maintenance).
+  <br>**What legacy actually does** (`w_super_validation.srw` / `w_super_validation_offline.srw`, opened
+  from `w_da_sheet.wf_super_validation`): a modal titled *"enter supervisor password"* compares the typed
+  text against `is_shift_super_password` — **in plain text**, `if parent.st_password.text = is_pw`.
+  <br>**And that password is:**
+  `ProfileString(gs_downtime_ini_file, "OPCItems", "is_shift_super_password", "1234")` — a single SHARED
+  secret read from an INI file on the DAS PC, **defaulting to `1234`**. It is not per-supervisor, not in
+  the database, and not hashed. Every line's panel can hold a different one, or the default.
+  <br>**So this cannot be ported as-is.** Reproducing it would mean shipping a shared plaintext
+  credential with a guessable default into a system that already has AD-backed sign-in and
+  server-enforced RBAC. Parity is the floor, not the ceiling — but *whether* an override is gated is a
+  plant behaviour, so the gate stays; only HOW it authenticates should change.
+  <br>**The decision needed:** the DAS console is a shop-floor kiosk, and a supervisor override is
+  exactly the case where someone walks up mid-shift. Options: (a) keep a shared PIN, stored hashed and
+  configurable per line; (b) a per-supervisor PIN against `security_user`; (c) the supervisor signs in
+  with their AD account and the existing RBAC decides. (c) is the most defensible and needs no new
+  secret store, but it is slower at a panel with gloves on. **Ask the plant which they want before
+  building any of them.**
 - [ ] **M** Serial scale zero command + scrap-scale/gauge separation
 - [ ] **M** Live job sheet / e-folder (sketch image, shape-specific tolerances, coil totals, partial-skid usage)
 
