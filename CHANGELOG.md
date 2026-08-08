@@ -10,6 +10,66 @@ new ABIS can replace old ABIS and alpha testing begins.
 
 ---
 
+## v0.8.2 — 2026-08-08
+
+**The Certificate of Conformance** — the last unbuilt piece of the label subsystem. (#390)
+
+`GET /documents/cert-label/{skid}.zpl` renders it without printing;
+`POST /documents/cert-label/{skid}/print` prints one per coil on the skid, one copy each, on the same
+6x10 stock and inline with the shipping labels.
+
+A shipping label that is wrong sends a skid to the wrong dock. A certificate that is wrong is a signed
+statement about what material was tested at, so the refusals below matter as much as the layout.
+
+### The duplicate-863 blocker is resolved
+
+483 coils on the live database carry more than one inbound 863 row, and legacy treats more than one as
+an error — yet certificates print for them. **469 of the 483 are the same 863 received twice**, differing
+only by `edi_file_id`. Selecting `DISTINCT` over the certificate's own columns, which exclude that id,
+collapses them to one row. The remaining **14** hold genuinely different measurements and still refuse:
+two contradictory answers about what a coil tested at is not something to resolve by taking the first.
+
+### The two blocks follow opposite rules
+
+Both recovered from `d_863_cert` and `d_863_cert_sub_chem` in `silverdome5.pbl`, and both confirmed
+against two photographed production certificates:
+
+- **Mechanical** — 16 slots in 8 rows of two, odd left and even right, with properties *dealt* into them.
+  An element with no value is skipped and everything after it shifts, which is why a certificate with 12
+  configured elements and 11 values prints `Thickness` bottom-**left**. Keying slots off `seq_num` would
+  put it bottom-right and misplace every property after the gap — and look perfectly tidy doing it.
+- **Chemical** — a fixed 4x3 grid of 10 labelled slots. A missing element prints its label and a blank;
+  nothing shifts.
+
+### Refusing is a first-class answer
+
+`DATA_IN_863` is the certificate's only data source, so a coil with no inbound 863 cannot be certified.
+A refusal returns **409 with the reason**, never an empty 200 — "no certificates" and "this skid must
+not be certified" are different answers and the dock has to tell them apart. A customer with no rows in
+`cert_label_data_elements` refuses the same way: legacy has no default list, and inventing one would
+mean signing a document asserting things nobody configured.
+
+### Also
+
+Element codes are whitelisted against the 17 the live schema defines, because they are concatenated into
+column names (`ttl` → `ttl_f_m2`) and an unconstrained value would be SQL injection through a column
+name — reachable by anyone who can edit the element list. Values print exactly as measured: the same
+element read `94.78` on one photographed certificate and `94.7` on the other.
+
+`tools/labelprint --label cert` renders it the same way as the other three labels.
+
+### Known limitations
+
+**Nothing in this subsystem has printed in production.** The 6x10 shipping label is verified on the
+plant's test printer across eight prints; the two 4x6 tags and this certificate are verified as rendered
+previews only. The certificate's chemistry value offset is the one coordinate derived rather than read —
+the value controls were not among the recovered elements.
+
+Also unchanged: only the Novelis 6x10 layout is decoded, and the deployed app still reads the non-prod
+database.
+
+---
+
 ## v0.8.1 — 2026-08-08
 
 One change: **you can now ask the running app which label printers it has, and whether they answer.**
