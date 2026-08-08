@@ -480,7 +480,8 @@
   the 4x6 (192.168.9.14) answers on **9100 only**. Hardcoding 6101 as the backlog said would have left
   the 4x6 permanently unreachable - and since reachability gates minting, receiving would have refused
   to mint. A per-printer `host:port` still overrides.
-- [ ] **H** **The 6x10 shipping label + cert label content.** The transport is ready and both printers
+- [x] **H** **The 6x10 shipping label + cert label content** — BUILT and DEPLOYED (v0.8.2); the only
+  thing outstanding is test prints, detailed at the end of this entry. The transport is ready and both printers
   answer; what is missing is the label BODY. `ZplLabels` currently holds only the ~2x1 inch coil ABC
   label, which fits neither stock, and the legacy layouts are PowerBuilder DataWindows that are **not
   vendored** - `u_default_barcode.sru` is the only file in `legacy/src/rpabco/`. Porting them needs
@@ -525,22 +526,54 @@
   the first thing to check on the next test print.
   <br>**The CERT is specified but NOT built** — see `docs/CERT_LABEL.md`. It needs the duplicate-863
   narrowing resolved first: 483 coils on `.230` have more than one 863 row and legacy errors on >1.
-- [ ] **H** **Rework the 6x10 as a per-customer VARIANT system.** The existing implementation is a sound
-  foundation — geometry, escaping, barcodes, rules — but hardcodes one variant. Needs: variant
-  selection per customer, the theo/LGTH layout, the lot table, and per-variant unit defaults.
-- [ ] **H** **The Certificate of Conformance.** A second 6x10 printed INLINE with the shipping labels
-  (once per skid, where the label prints twice), required for Novelis (`CERT_LABEL_CUSTOMERS` =
-  1153/1459/2950). Its mechanical-properties block is generated from `CERT_LABEL_DATA_ELEMENTS` per
-  (customer, OEM) — confirmed against a real cert, 11 of FCA's 14 elements present in `seq_num` order.
-  <br>**Blocked on two unknowns:** where CHEMICAL COMPOSITION comes from (SI/FE/CU/MN/MG/CR/ZN/TI/V/AL
-  are not in that table), and where Spec / Country of Cast / Country of Smelt / Born Date live.
-- [ ] **M** **The pre-print 863 gate.** Legacy abandons the WHOLE print run when
-  `f_all_coils_have_863(shipment)` fails — a skid whose coils have no test data cannot be certified.
-  The port has no such gate, so it would happily print an uncertifiable skid.
+- [x] **H** ~~Rework the 6x10 as a per-customer VARIANT system~~ — **the premise was wrong** (#382).
+  There is no variant system to build: the 6x10 has ONE layout. The artwork carries two caption sets
+  under the same control names, but across all five barcode user objects `theo_t` is populated 15 times
+  and `gross_t` ZERO, with no object filling a dock field — the gross captions are dead artwork, and the
+  first port implemented the half nothing prints. Per-customer variation IS real, for the COIL scale
+  label (`d_report_barcode_hayes`/`_johnstown`/`_ogihara`), which is a different document.
+  <br>Two real defects came out of the same pass: weights are stored in POUNDS and must be multiplied by
+  `0.45359` (the port had been relabelling only — a 2.2x overstatement on every skid), and field 7 is
+  switched OFF by default (`ib_theo_on = FALSE`), which is why it was blank on the photographs.
+- [x] **H** **The Certificate of Conformance** — done (#390, v0.8.2). `CertLabel6x10` +
+  `GET/POST /documents/cert-label/{skid}`, one per coil, on the same 6x10 stock inline with the shipping
+  labels. Geometry RECOVERED from `d_863_cert` + `d_863_cert_sub_chem` (`silverdome5.pbl`, units=0 at
+  378/in), which confirms from the artwork the alternating 16-slot mechanical layout that had only been
+  derived from photographs — while the chemical block keeps a FIXED 4x3 grid. Two opposite rules on one
+  document.
+  <br>**Both "blocked on" unknowns are answered.** Everything comes from `DBO.DATA_IN_863`, column
+  `<code>_F_M2` — NOT `_F_M1`, which is populated 0 times in 11,696 rows — and `_M2` is pipe-delimited
+  `value|YYYYMMDD`. Units come from `unit_of_measure.uom_abbrev` by the element's `_F_UOM` code (code 69
+  is blank, which is why R Value prints unitless). Born Date = `cash_date`, ABC Serial =
+  `coil.coil_abc_num`, Cntry of Cast = `coil.cntry_of_cast`, Spec = `order_item.spec`, ship-to = the
+  DESTINATION customer's short name (the `cert_label_shipto_name` table is dead code, commented out per
+  Novelis in 2019). Only the second Spec token is still unlocated.
+  <br>**The 32-vs-3 gap resolved too:** `customer.coil_cert_label_req='Y'` on 32 customers while only 3
+  have an element list. Legacy REFUSES for the rest — there is no default set — so the port refuses the
+  same way rather than inventing one.
+- [x] **M** **The pre-print 863 gate** — done (#390). `DATA_IN_863` is the certificate's only data
+  source, so a coil with no inbound 863 cannot be certified. A refusal returns **409 with the reason**,
+  never an empty 200 — "no certificates" and "this skid must not be certified" are different answers.
+  <br>**The duplicate-863 blocker is solved.** 483 coils carry more than one 863 row and legacy treats
+  more than one as an error, yet certificates print for them: 469 of the 483 are the SAME 863 received
+  twice, differing only by `edi_file_id`, so `SELECT DISTINCT` over the certificate's own columns
+  collapses them. The other 14 hold genuinely different measurements and still refuse.
   <br>**RECOVERED (#374).** `tools/pbl_extract.py` reads object source straight out of a `.pbl`, and the
   layout is now written up in `docs/LABEL_6X10_LAYOUT.md`: 59 controls with exact x/y/w/h, fonts, and
   the Code 39 barcode font that becomes ZPL `^B3`. Artwork is 5.11in x 9.64in on the 6x10 INCH stock
-  (plant-confirmed). What remains is emitting the ZPL and a test print to 192.168.10.53.
+  (plant-confirmed).
+  <br>**WHAT REMAINS FOR THE WHOLE LABEL SUBSYSTEM IS PAPER.** All four documents are built, tested and
+  deployed (v0.8.2), but only the 6x10 shipping label has been printed — eight times, on the test
+  printer `192.168.10.53`. **The two 4x6 tags and the certificate have never been printed at all.**
+  Every defect worth finding in this batch was found by looking at physical output — rules struck
+  through text, a clipped header, a barcode printing its value twice, stray dividers — and none of them
+  failed a test first. The runs still owed:
+  <br>&nbsp;&nbsp;1. `10.53` — a 6x10 and its certificate back to back, because the cert prints INLINE
+  with the labels and that sequencing is the one thing a preview cannot show.
+  <br>&nbsp;&nbsp;2. A 4x6 line printer — one skid tag for a **two-coil** skid, so the repeating detail
+  band and its per-row underline both do something. A single-coil skid looks identical to the old
+  broken single-row version. These are PRODUCTION printers on `192.168.9.x`; `tools/labelprint` refuses
+  them without `--allow-production`.
 - [ ] **DO NOT PORT: `SUPPRESS_BARCODE_PRINT` (86 rows).** It suppresses the **first** of the two
   shipping-label prints for a given (workstation MAC, customer, ship-to, user) - so a matching
   combination prints ONE label instead of two. It is keyed on **MAC address**, which is the tell: the
