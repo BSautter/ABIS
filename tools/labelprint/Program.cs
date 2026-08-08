@@ -63,6 +63,7 @@ internal static class Program
             "skid"  => SkidTag4x6.SheetSkid(SkidSample(tag)),
             "scrap" => SkidTag4x6.ScrapSkid(ScrapSample(tag)),
             "6x10"  => ShippingLabel6x10.Build(Sample(tag)),
+            "cert"  => CertLabel6x10.Build(CertSample()),
             _ => throw new ArgumentException($"--label must be 6x10, skid or scrap (got {which})"),
         };
 
@@ -107,6 +108,33 @@ internal static class Program
         var i = Array.IndexOf(args, name);
         return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
     }
+
+    /// <summary>The Certificate of Conformance for the photographed coil 1949234 — eleven properties
+    /// with values and n4t absent, so the alternating slot layout does real work.</summary>
+    private static CertLabelData CertSample() => new()
+    {
+        OrigCustomer = "Novelis Corporation - Atlanta, GA 30326",
+        ShipToName = "WAYNE IND", ShipToStreet = "36253 MICHIGAN AVE", ShipToCityStateZip = "WAYNE, MI 48135",
+        SkidNum = "T1846085", CoilNum = "1949234", AbcSerial = "235729", PartNum = "68416648-1",
+        Spec = "MS.50005  MS.50005-AA5000-RS-U", SizeMm = "1.30 X 1727.20 X 1470.03",
+        BornDate = new DateTime(2026, 7, 17),
+        CountryOfCast = "CA", PrimarySmelt = "CA", SecondarySmelt = "AE",
+        Chemistry = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["SI"] = "0.08", ["FE"] = "0.21", ["CU"] = "0.01", ["MN"] = "0.34",
+            ["MG"] = "4.63", ["CR"] = "0.01", ["ZN"] = "0.01", ["TI"] = "0.01",
+            ["V"] = "", ["AL"] = "94.7",
+        },
+        Properties =
+        [
+            new("Tensile (MPA)", "275", "mpa"), new("R Value", "0.7", ""),
+            new("Yield (MPA)", "120", "mpa"), new("PT Bot Center", "2.3", "mg/m2"),
+            new("Elongation UNI(%)", "24", "%"), new("PT Top Center", "2.4", "mg/m2"),
+            new("Elongation TOT(%)", "25", "%"), new("PT Rinse Loss Bot Cen", "3", "%"),
+            new("N Value  10-UTS", "0.27", ""), new("PT Rinse Loss Top Cen", "3", "%"),
+            new("Thickness", "1.307", "mm"),
+        ],
+    };
 
     /// <summary>A finished sheet-skid tag with TWO coils, so the repeating detail band and its
     /// per-row underline both do real work. One coil would look identical to the old single-row port.</summary>

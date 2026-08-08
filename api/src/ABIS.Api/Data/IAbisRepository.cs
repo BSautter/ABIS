@@ -110,6 +110,10 @@ public interface IAbisRepository
     /// <summary>The sheet skids on a shipment, in packing-item order — the print order.</summary>
     Task<IReadOnlyList<long>> GetShipmentSkidNumbersAsync(long packingList, CancellationToken ct);
 
+    /// <summary>The Certificates of Conformance for a skid — one per coil — or the reason there are
+    /// none. <paramref name="packingList"/> supplies the ship-to and the customer whose element list applies.</summary>
+    Task<CertLabelPrintResult> GetCertLabelDataAsync(long sheetSkidNum, long? packingList, CancellationToken ct);
+
     /// <summary>Everything the 4x6 scrap TAG prints, including its per-coil detail rows, plus the line.</summary>
     Task<ScrapTagPrintData?> GetScrapSkidTagDataAsync(long scrapSkidNum, CancellationToken ct);
 

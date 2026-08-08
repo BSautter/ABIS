@@ -2702,6 +2702,59 @@ public static class ApiEndpoints
            .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status404NotFound)
            .Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status503ServiceUnavailable);
 
+        // ---- The Certificate of Conformance -------------------------------------------------------
+        // ONE per coil on the skid, printed on the same 6x10 stock inline with the shipping labels.
+        //
+        // THE 863 GATE IS THE POINT. DATA_IN_863 is the certificate's only data source, so a coil with
+        // no inbound 863 cannot be certified — legacy abandons the print rather than issue a document
+        // asserting untested material, and that is correct rather than a quirk. A refusal comes back as
+        // 409 with the reason, NOT as an empty 200: "no certificates" and "this skid must not be
+        // certified" are different answers and the dock must be able to tell them apart.
+        api.MapGet("/documents/cert-label/{sheetSkidNum:long}.zpl", async (long sheetSkidNum,
+                IAbisRepository repo, CancellationToken ct, long? packingList = null) =>
+            {
+                var r = await repo.GetCertLabelDataAsync(sheetSkidNum, packingList, ct);
+                if (r.Certificates.Count == 0)
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict,
+                        title: "No certificate", detail: r.Refusal ?? "Nothing to certify.");
+
+                var zpl = string.Concat(r.Certificates.Select(c => CertLabel6x10.Build(ToCert(c))));
+                return Results.Text(zpl, "text/plain; charset=us-ascii");
+            })
+           .WithName("CertLabelZpl").WithTags("Skids")
+           .WithSummary("The Certificate of Conformance ZPL for a skid — one per coil — WITHOUT printing. 409 with the reason when the skid cannot be certified (a coil with no inbound 863, conflicting 863 rows, or a customer with no configured element list).")
+           .Produces(StatusCodes.Status200OK, contentType: "text/plain").Produces(StatusCodes.Status409Conflict);
+
+        api.MapPost("/documents/cert-label/{sheetSkidNum:long}/print", async (long sheetSkidNum,
+                IAbisRepository repo, ICoilLabelPrinter printer, CancellationToken ct,
+                long? packingList = null, string? device = null) =>
+            {
+                var r = await repo.GetCertLabelDataAsync(sheetSkidNum, packingList, ct);
+                if (r.Certificates.Count == 0)
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict,
+                        title: "No certificate", detail: r.Refusal ?? "Nothing to certify.");
+
+                var printed = 0;
+                string? reason = null;
+                foreach (var c in r.Certificates)
+                {
+                    var res = await printer.PrintAsync(device ?? ShippingLabelDevice,
+                        CertLabel6x10.Build(ToCert(c)), CertLabel6x10.Copies, ct);
+                    if (res.Printed) printed++;
+                    else reason ??= res.Reason;
+                }
+
+                return printed == r.Certificates.Count
+                    ? Results.Ok(new { printed = true, certificates = printed })
+                    : Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable,
+                        title: printed == 0 ? "Not printed" : "Partially printed",
+                        detail: $"{printed} of {r.Certificates.Count} certificates printed. {reason}");
+            })
+           .WithName("PrintCertLabel").WithTags("Skids")
+           .WithSummary("Print the Certificate of Conformance for a skid — one per coil, one copy each. 409 when the skid cannot be certified; 503 when the printer did not take it.")
+           .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status409Conflict)
+           .Produces(StatusCodes.Status503ServiceUnavailable);
+
         // ---- Printer diagnostics ------------------------------------------------------------------
         // Routing is CONFIGURATION, and until this existed the first test of it was an operator at the
         // dock getting a 503. The specific failure it catches: the server sets these through systemd's
@@ -4426,6 +4479,27 @@ public static class ApiEndpoints
     /// <summary>Returns a ProblemDetails error dictionary, or null when valid.</summary>
     /// <summary>Dimensions print as text on the tag; trailing zeros are how the legacy tag reads.</summary>
     private static string Dec(decimal? v) => v?.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) ?? "";
+
+    /// <summary>Map a retrieved certificate onto the document's own shape.</summary>
+    private static CertLabelData ToCert(CertLabelPrintData d) => new()
+    {
+        OrigCustomer = d.OrigCustomer,
+        ShipToName = d.ShipToName,
+        ShipToStreet = d.ShipToStreet,
+        ShipToCityStateZip = d.ShipToCityStateZip,
+        SkidNum = d.SkidNum,
+        CoilNum = d.CoilOrgNum,
+        AbcSerial = d.CoilAbcNum,
+        PartNum = d.PartNum,
+        Spec = d.Spec,
+        BornDate = d.BornDate,
+        LubedDate = d.LubedDate,
+        CountryOfCast = d.CountryOfCast,
+        PrimarySmelt = d.PrimarySmelt,
+        SecondarySmelt = d.SecondarySmelt,
+        Chemistry = d.Chemistry,
+        Properties = d.Properties,
+    };
 
     /// <summary>The logical device name the 6x10 shipping labels route through.
     /// <para>Resolved by <c>LabelPrinters:DeviceRouting</c> like a scanner gun is, so the shipping

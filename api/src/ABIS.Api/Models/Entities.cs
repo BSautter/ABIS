@@ -3484,6 +3484,38 @@ public sealed class SkidTagPrintData
     public string? OperatorInitial { get; set; }
 }
 
+/// <summary>One coil's Certificate of Conformance, ready to render.</summary>
+public sealed class CertLabelPrintData
+{
+    public long SheetSkidNum { get; set; }
+    public string SkidNum { get; set; } = "";
+    public string CoilOrgNum { get; set; } = "";
+    public string CoilAbcNum { get; set; } = "";
+    public string CountryOfCast { get; set; } = "";
+    public string PartNum { get; set; } = "";
+    public string Spec { get; set; } = "";
+    public string OrigCustomer { get; set; } = "";
+    public string ShipToName { get; set; } = "";
+    public string ShipToStreet { get; set; } = "";
+    public string ShipToCityStateZip { get; set; } = "";
+    public string PrimarySmelt { get; set; } = "";
+    public string SecondarySmelt { get; set; } = "";
+    public DateTime? BornDate { get; set; }
+    public DateTime? LubedDate { get; set; }
+    /// <summary>Fixed 10-slot grid — a missing element prints its label and a blank.</summary>
+    public Dictionary<string, string> Chemistry { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Only the properties WITH values, in seq order. Absent ones are dropped, which shifts
+    /// every later one into a different slot — see CertLabel6x10.</summary>
+    public List<Abis.Api.Documents.CertProperty> Properties { get; set; } = [];
+}
+
+/// <summary>The certificates for a skid, or the reason there are none.
+/// <para>A reason is not an error: legacy skips a skid whose coil has no 863 and carries on with the
+/// shipment. The caller decides whether that is worth surfacing.</para></summary>
+/// <param name="Certificates">One per coil on the skid.</param>
+/// <param name="Refusal">Why nothing was produced, when the list is empty.</param>
+public sealed record CertLabelPrintResult(IReadOnlyList<CertLabelPrintData> Certificates, string? Refusal);
+
 /// <summary>One row of the sheet-skid tag's repeating lot/coil/pieces band.</summary>
 public sealed class SkidTagCoilRow
 {

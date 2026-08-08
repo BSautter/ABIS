@@ -14388,6 +14388,94 @@
         }
       }
     },
+    "/api/documents/cert-label/{sheetSkidNum}.zpl": {
+      "get": {
+        "tags": [
+          "Skids"
+        ],
+        "summary": "The Certificate of Conformance ZPL for a skid — one per coil — WITHOUT printing. 409 with the reason when the skid cannot be certified (a coil with no inbound 863, conflicting 863 rows, or a customer with no configured element list).",
+        "operationId": "CertLabelZpl",
+        "parameters": [
+          {
+            "name": "sheetSkidNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "packingList",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/documents/cert-label/{sheetSkidNum}/print": {
+      "post": {
+        "tags": [
+          "Skids"
+        ],
+        "summary": "Print the Certificate of Conformance for a skid — one per coil, one copy each. 409 when the skid cannot be certified; 503 when the printer did not take it.",
+        "operationId": "PrintCertLabel",
+        "parameters": [
+          {
+            "name": "sheetSkidNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "packingList",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "device",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/documents/printers": {
       "get": {
         "tags": [

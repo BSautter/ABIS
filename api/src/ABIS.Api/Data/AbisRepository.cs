@@ -10013,6 +10013,263 @@ public sealed class AbisRepository : IAbisRepository
         return d;
     }
 
+
+    /// <summary>The 17 element codes <c>cert_label_data_elements</c> can name, as of the live schema.
+    ///
+    /// <para><b>This is a whitelist, and it has to be.</b> The codes come from a DATA table and are
+    /// concatenated into column names (<c>ttl</c> → <c>ttl_f_m2</c>, <c>ttl_f_uom</c>), so an
+    /// unconstrained value would be SQL injection through a column name — reachable by anyone who can
+    /// edit the element list. Anything not on this list is ignored rather than interpolated.</para>
+    ///
+    /// <para>A code added to the table later will silently not print until it is added here. That is the
+    /// safe direction: a missing property is visible on the certificate, an injected one is not.</para></summary>
+    private static readonly HashSet<string> CertElementCodes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "aro", "bkn", "dpa", "isu", "itt", "mdo", "n4t", "tet", "tnt",
+        "trt", "ttl", "ttt", "ult", "upt", "x27", "ypn", "ysr",
+    };
+
+    /// <summary>Split an 863 measurement, which is stored as <c>value|YYYYMMDD</c> in ONE column.</summary>
+    private static string CertValue(string? packed)
+    {
+        if (string.IsNullOrWhiteSpace(packed)) return "";
+        var i = packed.IndexOf('|');
+        return (i < 0 ? packed : packed[..i]).Trim();
+    }
+
+    /// <summary>
+    /// The Certificate of Conformance for every coil on a skid — one certificate per coil, as legacy's
+    /// coil loop produces.
+    ///
+    /// <para><b>Values come from <c>DATA_IN_863.&lt;code&gt;_F_M2</c>, not <c>_F_M1</c>.</b> <c>_M1</c> is
+    /// populated 0 times in 11,696 live rows; reading it renders a certificate with every caption and no
+    /// values. <c>_M2</c> packs the measurement and its date into one column as <c>value|YYYYMMDD</c>.</para>
+    ///
+    /// <para><b>Duplicate 863 rows are collapsed with DISTINCT, not by picking one.</b> 483 coils on the
+    /// live database carry more than one row, and legacy treats more than one as an error — yet
+    /// certificates print for them. 469 of the 483 are the SAME 863 received twice and differ only by
+    /// <c>edi_file_id</c>, which is excluded here, so they collapse to one row. The remaining 14 hold
+    /// genuinely different measurements, and those still refuse: two contradictory answers about what a
+    /// coil tested at is not something to resolve by taking the first.</para>
+    ///
+    /// <para><b>A coil with no 863 makes the whole skid refuse.</b> <c>DATA_IN_863</c> is the
+    /// certificate's only source, so an uncertified coil cannot be certified — legacy abandons the run
+    /// and that is correct, not a quirk.</para>
+    /// </summary>
+    public async Task<CertLabelPrintResult> GetCertLabelDataAsync(long sheetSkidNum, long? packingList, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+
+        var head = await conn.QuerySingleOrDefaultAsync<CertHeader>(new CommandDefinition(
+            """
+            SELECT s.sheet_skid_display_num AS SkidNum,
+                   s.ref_order_abc_num      AS RefOrderAbcNum,
+                   s.ref_order_abc_item     AS RefOrderAbcItem
+              FROM sheet_skid s
+             WHERE s.sheet_skid_num = :skid
+            """, new { skid = sheetSkidNum }, cancellationToken: ct));
+        if (head is null) return new CertLabelPrintResult([], $"Sheet skid {sheetSkidNum} not found.");
+
+        // Ship-to is the DESTINATION customer's short name. There IS a cert_label_shipto_name table and
+        // legacy's code for it is commented out — per Jon Fleck at Novelis, 2019-12-18 — so it must not
+        // be ported. Both customers come off the shipment, which is why a certificate needs one.
+        CertParties? parties = null;
+        if (packingList is { } pl)
+            parties = await conn.QuerySingleOrDefaultAsync<CertParties>(new CommandDefinition(
+                """
+                SELECT dest.customer_short_name AS ShipToName,
+                       dest.customer_street     AS ShipToStreet,
+                       dest.customer_city       AS ShipToCity,
+                       dest.customer_state      AS ShipToState,
+                       dest.customer_zip        AS ShipToZip,
+                       orig.customer_full_name  AS OrigCustomer,
+                       orig.customer_city       AS OrigCity,
+                       orig.customer_state      AS OrigState,
+                       orig.customer_zip        AS OrigZip,
+                       o.cert_label_customer_code AS CertCustomerCode,
+                       o.orig_customer_id       AS OrigCustomerId
+                  FROM sheet_packing_item spi
+                  JOIN shipment sh          ON sh.packing_list = spi.packing_list
+                  LEFT JOIN customer dest   ON dest.customer_id = sh.des_sh_cust_id
+                  LEFT JOIN customer orig   ON orig.customer_id = sh.customer_id
+                  LEFT JOIN customer_order o ON o.order_abc_num = :ord
+                 WHERE spi.packing_list = :pl AND spi.sheet_skid_num = :skid
+                """, new { pl, skid = sheetSkidNum, ord = head.RefOrderAbcNum }, cancellationToken: ct));
+
+        var item = head.RefOrderAbcNum is { } ro && head.RefOrderAbcItem is { } ri
+            ? await conn.QuerySingleOrDefaultAsync<CertItem>(new CommandDefinition(
+                """
+                SELECT enduser_part_num AS PartNum, spec AS Spec, gauge AS Gauge
+                  FROM order_item WHERE order_abc_num = :ord AND order_item_num = :item
+                """, new { ord = ro, item = ri }, cancellationToken: ct))
+            : null;
+
+        // WHICH elements this customer gets, and in what order. No rows = legacy REFUSES, naming the
+        // customer — there is no default list, so inventing one would produce a signed quality document
+        // asserting things nobody configured.
+        var elements = new List<CertElementDef>();
+        if (parties is { OrigCustomerId: { } cust, CertCustomerCode: { } code })
+            elements = (await conn.QueryAsync<CertElementDef>(new CommandDefinition(
+                """
+                SELECT seq_num AS SeqNum, data_element AS Code, data_element_desc AS Description
+                  FROM cert_label_data_elements
+                 WHERE customer_id = :cust AND customer_code = :code
+                 ORDER BY seq_num
+                """, new { cust, code }, cancellationToken: ct))).ToList();
+
+        if (elements.Count == 0)
+            return new CertLabelPrintResult([],
+                $"Table cert_label_data_elements has no rows for customer {parties?.OrigCustomerId?.ToString() ?? "(unknown)"} "
+                + $"code {parties?.CertCustomerCode?.ToString() ?? "(unset)"}. Legacy refuses to print a certificate "
+                + "without a configured element list, and so does this — there is no default set.");
+
+        var uom = (await conn.QueryAsync<(string Code, string Abbrev)>(new CommandDefinition(
+            "SELECT uom_code AS Code, uom_abbrev AS Abbrev FROM unit_of_measure", cancellationToken: ct)))
+            .GroupBy(u => u.Code ?? "", StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Abbrev ?? "", StringComparer.OrdinalIgnoreCase);
+
+        var coils = (await conn.QueryAsync<CertCoil>(new CommandDefinition(
+            """
+            SELECT DISTINCT c.coil_org_num  AS CoilOrgNum,
+                            c.coil_abc_num  AS CoilAbcNum,
+                            c.cntry_of_cast AS CountryOfCast
+              FROM sheet_skid_detail d
+              JOIN production_sheet_item p ON p.prod_item_num = d.prod_item_num
+              LEFT JOIN coil c             ON c.coil_abc_num = p.coil_abc_num
+             WHERE d.sheet_skid_num = :skid AND c.coil_org_num IS NOT NULL
+            """, new { skid = sheetSkidNum }, cancellationToken: ct))).ToList();
+
+        if (coils.Count == 0)
+            return new CertLabelPrintResult([], $"Sheet skid {sheetSkidNum} has no coils to certify.");
+
+        // Only whitelisted codes reach the column list — see CertElementCodes.
+        var codes = elements.Select(e => e.Code ?? "").Where(CertElementCodes.Contains)
+                            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var valueCols = string.Join(", ", codes.SelectMany(c => new[]
+        {
+            $"e.{c}_f_m2 AS {c}_v", $"e.{c}_f_uom AS {c}_u",
+        }));
+
+        var certs = new List<CertLabelPrintData>();
+        foreach (var coil in coils)
+        {
+            var rows = (await conn.QueryAsync(new CommandDefinition(
+                $"""
+                 SELECT DISTINCT e.primary_cntry_of_smelt AS pri, e.secondary_cntry_of_smelt AS sec,
+                                 e.cash_date AS born, e.lube_date AS lubed,
+                                 e.si, e.fe, e.cu, e.mn, e.mg, e.cr, e.zn, e.ti, e.v, e.al
+                                 {(valueCols.Length > 0 ? ", " + valueCols : "")}
+                   FROM data_in_863 e
+                  WHERE e.coil_num = :coil
+                 """, new { coil = coil.CoilOrgNum }, cancellationToken: ct)))
+                .Cast<IDictionary<string, object?>>().ToList();
+
+            if (rows.Count == 0)
+                return new CertLabelPrintResult([],
+                    $"Coil {coil.CoilOrgNum} has no inbound 863, so it cannot be certified. "
+                    + "No certificate is printed for this skid.");
+
+            if (rows.Count > 1)
+                return new CertLabelPrintResult([],
+                    $"Coil {coil.CoilOrgNum} has {rows.Count} inbound 863 rows with DIFFERENT values. "
+                    + "Which one is correct cannot be decided here — the duplicate must be resolved first.");
+
+            var r = rows[0];
+            string Col(string k) => r.TryGetValue(k, out var v) ? v?.ToString() ?? "" : "";
+
+            var props = new List<Abis.Api.Documents.CertProperty>();
+            foreach (var e in elements)
+            {
+                if (e.Code is null || !CertElementCodes.Contains(e.Code)) continue;
+                var value = CertValue(Col($"{e.Code}_v"));
+                if (value.Length == 0) continue;    // no value -> the slot is not used, and the rest shift up
+                uom.TryGetValue(Col($"{e.Code}_u").Trim(), out var abbrev);
+                props.Add(new Abis.Api.Documents.CertProperty(e.Description ?? e.Code, value, abbrev ?? ""));
+            }
+
+            certs.Add(new CertLabelPrintData
+            {
+                SheetSkidNum = sheetSkidNum,
+                SkidNum = head.SkidNum ?? sheetSkidNum.ToString(CultureInfo.InvariantCulture),
+                CoilOrgNum = coil.CoilOrgNum ?? "",
+                CoilAbcNum = coil.CoilAbcNum?.ToString(CultureInfo.InvariantCulture) ?? "",
+                CountryOfCast = coil.CountryOfCast ?? "",
+                PartNum = item?.PartNum ?? "",
+                Spec = item?.Spec ?? "",
+                OrigCustomer = Join(parties?.OrigCustomer, parties?.OrigCity, parties?.OrigState, parties?.OrigZip),
+                ShipToName = parties?.ShipToName ?? "",
+                ShipToStreet = parties?.ShipToStreet ?? "",
+                ShipToCityStateZip = Join(null, parties?.ShipToCity, parties?.ShipToState, parties?.ShipToZip),
+                PrimarySmelt = Col("PRI").Trim(),
+                SecondarySmelt = Col("SEC").Trim(),
+                BornDate = ParseCertDate(Col("BORN")),
+                LubedDate = ParseCertDate(Col("LUBED")),
+                Chemistry = new[] { "SI", "FE", "CU", "MN", "MG", "CR", "ZN", "TI", "V", "AL" }
+                    .ToDictionary(s => s, s => Col(s).Trim(), StringComparer.OrdinalIgnoreCase),
+                Properties = props,
+            });
+        }
+
+        return new CertLabelPrintResult(certs, null);
+    }
+
+    /// <summary>The 863 stores dates as YYYYMMDD TEXT. Anything else is null rather than an exception —
+    /// a malformed date must not stop a skid shipping.</summary>
+    private static DateTime? ParseCertDate(string? s) =>
+        DateTime.TryParseExact(s?.Trim(), "yyyyMMdd", CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var d) ? d : null;
+
+    private static string Join(string? name, string? city, string? state, string? zip)
+    {
+        var parts = new[] { name?.Trim(), city?.Trim(), state?.Trim() }
+            .Where(x => !string.IsNullOrEmpty(x));
+        var s = string.Join(", ", parts);
+        return string.IsNullOrWhiteSpace(zip) ? s : $"{s} {zip.Trim()}";
+    }
+
+    private sealed class CertHeader
+    {
+        public string? SkidNum { get; set; }
+        public long? RefOrderAbcNum { get; set; }
+        public int? RefOrderAbcItem { get; set; }
+    }
+
+    private sealed class CertParties
+    {
+        public string? ShipToName { get; set; }
+        public string? ShipToStreet { get; set; }
+        public string? ShipToCity { get; set; }
+        public string? ShipToState { get; set; }
+        public string? ShipToZip { get; set; }
+        public string? OrigCustomer { get; set; }
+        public string? OrigCity { get; set; }
+        public string? OrigState { get; set; }
+        public string? OrigZip { get; set; }
+        public int? CertCustomerCode { get; set; }
+        public long? OrigCustomerId { get; set; }
+    }
+
+    private sealed class CertItem
+    {
+        public string? PartNum { get; set; }
+        public string? Spec { get; set; }
+        public decimal? Gauge { get; set; }
+    }
+
+    private sealed class CertElementDef
+    {
+        public int SeqNum { get; set; }
+        public string? Code { get; set; }
+        public string? Description { get; set; }
+    }
+
+    private sealed class CertCoil
+    {
+        public string? CoilOrgNum { get; set; }
+        public long? CoilAbcNum { get; set; }
+        public string? CountryOfCast { get; set; }
+    }
+
     /// <summary>The sheet skids on a shipment, in packing-item order.
     /// <para>Order matters: it is the order the labels come off the printer, and the operator matches
     /// them to skids on the dock by SK#.</para></summary>
