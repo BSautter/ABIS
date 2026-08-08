@@ -10,6 +10,49 @@ new ABIS can replace old ABIS and alpha testing begins.
 
 ---
 
+## v0.8.1 — 2026-08-08
+
+One change: **you can now ask the running app which label printers it has, and whether they answer.**
+
+### `GET /documents/printers`
+
+Lists every configured printer, what each device and line route resolves to, and — with `?probe=true` —
+whether each answers on its port. It **never prints**: the probe opens the socket a print would use and
+closes it, which a test asserts by standing up a listener and checking zero bytes arrive. (#388)
+
+Until this existed, label routing was configuration whose first test was an operator at the dock getting
+a 503.
+
+### The failure it catches is subtler than "not configured"
+
+The server sets routing through systemd's `EnvironmentFile`, where a key becomes an environment
+*variable name*, and systemd silently skips a line whose key is not a legal one — a `-` or `:` in a
+printer name does not error.
+
+That does **not** leave the route unresolved. Routing accepts a literal `host[:port]` as well as a
+configured name, so the typo becomes a *hostname*: `shipping-6x10` resolves to `shipping-6x10:9100`,
+which reads as configured and is not. A route falling through to a dotless literal is therefore flagged
+with what to check. It is a heuristic and says so — a single-label hostname is legal DNS — but on this
+network every real target is a dotted IP.
+
+That failure had already cost a redeploy twice: the line-routing `:` in v0.8.0's #379, and the shipping
+device's `-` in #385.
+
+### Two smaller choices, both about not lying
+
+- An **unconfigured deployment returns a row saying it prints nothing and mints nothing**, rather than an
+  empty list. Empty reads as "no problems found".
+- **Reachability is `null` when not probed** — not false, not true. "Not checked" and "checked and dead"
+  are different answers.
+
+### Known limitations
+
+Unchanged from v0.8.0 — **no label has printed in production**, the Certificate of Conformance is
+specified but not built, and only the Novelis 6x10 layout is decoded. This release makes the label
+subsystem *operable*, not proven.
+
+---
+
 ## v0.8.0 — 2026-08-06
 
 86 commits since `v0.7.0` (2026-07-24). Three substantial areas — the **label subsystem**, an
