@@ -115,6 +115,111 @@ public sealed class TcpCoilLabelPrinter(IOptions<LabelPrinterOptions> options, I
         return (target, _o.DefaultPort);
     }
 
+
+    /// <summary>What is configured, what each route resolves to, and optionally whether it answers.
+    ///
+    /// <para><b>Unresolved routes are reported, not skipped.</b> A device or line pointing at a printer
+    /// name that does not exist is the failure worth surfacing — it prints nowhere and says nothing —
+    /// so it appears with a null target and the reason, rather than being filtered out of a list that
+    /// would then look healthy.</para>
+    ///
+    /// <para>Probes run CONCURRENTLY and share the reachability timeout. Serially, a plant with six
+    /// printers and two of them powered off would take longer than most HTTP clients wait.</para></summary>
+    public async Task<IReadOnlyList<PrinterStatus>> DiagnoseAsync(bool probe, CancellationToken ct)
+    {
+        var rows = new List<PrinterStatus>();
+
+        foreach (var (name, _) in _o.Printers.OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase))
+            rows.Add(Describe("printer", name, null, ResolveName(name)));
+
+        foreach (var (device, target) in _o.DeviceRouting.OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase))
+            rows.Add(Describe("device", device, target, ResolveName(target)));
+
+        foreach (var (key, target) in _o.LineRouting.OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase))
+            rows.Add(Describe("line", key, target, ResolveName(target)));
+
+        if (_o.DefaultPrinter is { Length: > 0 } def)
+            rows.Add(Describe("default", def, def, ResolveName(def)));
+
+        if (rows.Count == 0)
+            return [new PrinterStatus("default", "(none)", null, null, probe ? false : null,
+                "LabelPrinters:Printers is empty, so nothing is configured to print.")];
+
+        if (!probe) return rows;
+
+        // Probe each DISTINCT target once — several routes commonly share one printer, and probing a
+        // powered-off box six times just multiplies the wait.
+        var byTarget = rows.Where(r => r.Target is not null)
+                           .Select(r => r.Target!)
+                           .Distinct(StringComparer.OrdinalIgnoreCase)
+                           .ToList();
+        var results = await Task.WhenAll(byTarget.Select(async t =>
+        {
+            var i = t.LastIndexOf(':');
+            var host = t[..i];
+            var port = int.Parse(t[(i + 1)..], System.Globalization.CultureInfo.InvariantCulture);
+            return (Target: t, Result: await ProbeAsync(host, port, ct));
+        }));
+        var probed = results.ToDictionary(r => r.Target, r => r.Result, StringComparer.OrdinalIgnoreCase);
+
+        return rows.Select(r => r.Target is not null && probed.TryGetValue(r.Target, out var p)
+                ? r with { Reachable = p.Ok, Problem = p.Problem ?? r.Problem }
+                : r)
+            .ToList();
+    }
+
+    /// <summary>Describe one row, INCLUDING the case that looks healthy and is not.
+    ///
+    /// <para>Routing accepts either a configured printer name or a literal <c>host[:port]</c>, so a
+    /// MISTYPED name does not fail to resolve — it silently becomes a hostname. <c>shipping-6x10</c>
+    /// resolves to <c>shipping-6x10:9100</c>, which reads as configured and is not. That is the exact
+    /// shape of the systemd bug this endpoint is for: the intended key was skipped, and what is left
+    /// looks fine.</para>
+    ///
+    /// <para>So a route that falls through to a literal WITHOUT A DOT is flagged. It is a heuristic —
+    /// a single-label hostname is legal DNS — but on this network every real target is a dotted IP,
+    /// and a name like <c>bl78</c> reaching this path means the <c>Printers</c> entry is missing.</para></summary>
+    private PrinterStatus Describe(string kind, string key, string? printerName, (string Host, int Port)? resolved)
+    {
+        if (resolved is not { } t)
+            return new PrinterStatus(kind, key, printerName, null, null,
+                printerName is null
+                    ? "Configured with no address."
+                    : $"Routes to '{printerName}', which is neither a printer in LabelPrinters:Printers nor a host[:port].");
+
+        var target = $"{t.Host}:{t.Port}";
+        var viaLiteral = printerName is not null && !_o.Printers.ContainsKey(printerName);
+        var looksLikeHost = t.Host.Contains('.') || t.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase);
+
+        return new PrinterStatus(kind, key, printerName, target, null,
+            viaLiteral && !looksLikeHost
+                ? $"'{printerName}' is not in LabelPrinters:Printers, so it is being used as a literal hostname. "
+                  + "If it was meant to name a printer, that entry is missing — check for a character systemd "
+                  + "will not accept in an environment-variable name, such as '-' or ':'."
+                : null);
+    }
+
+    /// <summary>Open the same socket a print would, and close it. Never sends anything.</summary>
+    private async Task<(bool Ok, string? Problem)> ProbeAsync(string host, int port, CancellationToken ct)
+    {
+        try
+        {
+            using var client = new TcpClient();
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(_o.ProbeTimeoutMs);
+            await client.ConnectAsync(host, port, timeout.Token);
+            return (client.Connected, null);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return (false, $"No answer within {_o.ProbeTimeoutMs}ms.");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
     public async Task<bool> IsReachableAsync(string? deviceAddress, CancellationToken ct)
     {
         if (Resolve(deviceAddress) is not { } t)

@@ -14388,6 +14388,33 @@
         }
       }
     },
+    "/api/documents/printers": {
+      "get": {
+        "tags": [
+          "Skids"
+        ],
+        "summary": "What label printers are configured, what each device/line route resolves to, and — with ?probe=true — whether each answers on its port. Never prints. A route with a null target is configured but resolves to nothing, which is the case that otherwise only shows up as a 503 at the dock.",
+        "operationId": "PrinterDiagnostics",
+        "parameters": [
+          {
+            "name": "probe",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/documents/shipping-label/{sheetSkidNum}.zpl": {
       "get": {
         "tags": [

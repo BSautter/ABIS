@@ -1,5 +1,22 @@
 namespace Abis.Api.Documents;
 
+/// <summary>One line of the printer diagnostics: a configured printer, or a route into one.</summary>
+/// <param name="Kind"><c>printer</c> a configured name; <c>device</c> a scanner-gun route;
+/// <c>line</c> a production-line route; <c>default</c> the fallback.</param>
+/// <param name="Key">The printer's name, or the device address / line key that routes to one.</param>
+/// <param name="PrinterName">Which configured printer this route resolves to. Null for <c>printer</c>.</param>
+/// <param name="Target">The <c>host:port</c> a label would actually go to, or null when the routing
+/// resolves to nothing — which is the failure this endpoint exists to make visible.</param>
+/// <param name="Reachable">Null when not probed. False means the socket did not open.</param>
+/// <param name="Problem">Why it does not resolve, or why the probe failed.</param>
+public sealed record PrinterStatus(
+    string Kind,
+    string Key,
+    string? PrinterName,
+    string? Target,
+    bool? Reachable,
+    string? Problem);
+
 /// <summary>Whether a label actually reached a printer, and which one.</summary>
 /// <param name="Printed">False = nothing was sent (no printer configured, or unreachable).</param>
 /// <param name="Printer">The printer address that answered, or null.</param>
@@ -28,6 +45,19 @@ public interface ICoilLabelPrinter
     /// <summary>Send a raw ZPL payload, <paramref name="copies"/> times.</summary>
     Task<LabelPrintResult> PrintAsync(string? deviceAddress, string zpl, int copies, CancellationToken ct);
 
+    /// <summary>What printers are configured, what each route resolves to, and — when
+    /// <paramref name="probe"/> — whether each answers.
+    ///
+    /// <para><b>Why this exists.</b> Routing is configuration, and until this endpoint the first test of
+    /// it was an operator at the dock getting a 503. The specific failure it catches is a routing key
+    /// that never loaded: the server configures these through systemd's <c>EnvironmentFile</c>, where a
+    /// key becomes an environment variable NAME, and systemd SILENTLY SKIPS a line whose key is not a
+    /// legal one. A hyphen or colon in a printer name therefore does not fail — the printer simply is
+    /// not there, and nothing says so.</para>
+    ///
+    /// <para><b>It never prints.</b> The probe opens the same socket a print would and closes it.</para></summary>
+    Task<IReadOnlyList<PrinterStatus>> DiagnoseAsync(bool probe, CancellationToken ct);
+
     /// <summary>Send to the printer for a PRODUCTION LINE rather than a scanner.
     /// <para>Skid and scrap tags come off a line, not a gun, and a line is not always one printer —
     /// BL110 has a skid printer and an offload printer. <paramref name="purpose"/> picks between them;
@@ -53,6 +83,16 @@ public sealed class NoOpCoilLabelPrinter(ILogger<NoOpCoilLabelPrinter> log) : IC
             deviceAddress ?? "(none)");
         return Task.FromResult(false);
     }
+
+    /// <summary>Nothing is configured, and saying so plainly is more useful than an empty list — an
+    /// empty response reads like "no problems found".</summary>
+    public Task<IReadOnlyList<PrinterStatus>> DiagnoseAsync(bool probe, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<PrinterStatus>>(
+        [
+            new PrinterStatus("default", "(none)", null, null, probe ? false : null,
+                "No printers are configured, so this deployment prints nothing and mints nothing. "
+                + "Set LabelPrinters:Printers to enable the TCP transport."),
+        ]);
 
     public Task<LabelPrintResult> PrintAsync(string? deviceAddress, string zpl, int copies, CancellationToken ct)
     {

@@ -2702,6 +2702,22 @@ public static class ApiEndpoints
            .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status404NotFound)
            .Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status503ServiceUnavailable);
 
+        // ---- Printer diagnostics ------------------------------------------------------------------
+        // Routing is CONFIGURATION, and until this existed the first test of it was an operator at the
+        // dock getting a 503. The specific failure it catches: the server sets these through systemd's
+        // EnvironmentFile, where a key becomes an environment variable NAME, and systemd silently SKIPS
+        // a line whose key is not a legal one. A hyphen or colon in a printer name does not error — the
+        // printer simply is not there. That has now cost a redeploy twice (the line-routing ':' in #379
+        // and the shipping device's '-' in #385).
+        //
+        // Tagged "Skids" like the print endpoints themselves: whoever may print may ask whether the
+        // printer answers. It never prints — the probe opens the socket a print would use and closes it.
+        api.MapGet("/documents/printers", async (ICoilLabelPrinter printer, CancellationToken ct, bool probe = false) =>
+                Results.Ok(new { probed = probe, printers = await printer.DiagnoseAsync(probe, ct) }))
+           .WithName("PrinterDiagnostics").WithTags("Skids")
+           .WithSummary("What label printers are configured, what each device/line route resolves to, and — with ?probe=true — whether each answers on its port. Never prints. A route with a null target is configured but resolves to nothing, which is the case that otherwise only shows up as a 503 at the dock.")
+           .Produces(StatusCodes.Status200OK);
+
         // ---- The 6x10 shipping label -------------------------------------------------------------
         // Tagged "Skids" for the same reason the 4x6 tags are: the RBAC gate keys on an endpoint's
         // FIRST tag, and "Documents" is not a mapped feature, so a Documents-tagged write would ship
