@@ -160,7 +160,7 @@ This surface is the least covered. The greenfield "das-console" is a manual web 
 | M | Serial scale/gauge acquisition (WSC32) | partial | `da/w_da_sheet.srw` (`wf_read_scale/wf_zero_scale`) | RS-232 zero/read commands, scrap-scale/gauge separation, device parsing. Greenfield GETs a single value from an optional edge URL. |
 | M | Skid dimensional check wired into the weigh path | partial | `da/w_dimensional_check.srw` | Wire the per-skid dimensional check into the DAS skid-weigh flow. Endpoints exist but live in the QC-sheet surface, not DAS. |
 | M | Offline manual-entry console (da_offline) | partial | `da_offline/w_da_offline_sheet.srw` | Add shift+job+coil selection and end-coil/end-skid guided steps. Greenfield console is closest to this but covers only weigh-skid/scrap/downtime-note. |
-| M | Production e-folder / live job sheet | partial | `da/w_da_sheet.srw` (`wf_show_job_sheet`) | Live job sheet with sketch image, shape-specific tolerances, coil totals, partial-skid usage; refreshed on job change. ProdFolder returns counts+notes only. |
+| M | Production e-folder / live job sheet | **BUILT** | `coil_eval/u_tabpg_job_sheet.sru` + `downtime2/d_report_prod_order.srd` | `GET /prod-folder/jobs/{job}/job-sheet`; rendered on the folder and the DAS console, re-read on job change; printable. **The legacy pointer in this row was wrong:** `da/w_da_sheet.srw`'s `wf_show_job_sheet` is an abandoned copy with every display call commented out. The live one is in coil_eval. |
 
 ---
 
@@ -211,8 +211,8 @@ Constraint reminder: EDI generation/transport must remain **single-owner** (lega
 | H | 846 Inventory Advice (Cleveland-Cliffs CCSC) | missing | `cron/edi-procs/p_846_cleveland_cliff_ccsc.sql` | 846 build using ABIS_X12_COIL/SKID/SCRAP mapping tables. Greenfield lacks the proc and the X12 mapping tables. |
 | H | Inbound EDI ingestion (856 ASN parse) | missing | `coil_receiving/d_coil_list_by_bol_edi.srd` | Parse inbound .edi into inbound_shipment/inbound_coil/status (feeds the 861 pipeline). Receiving is manual BOL entry only. |
 | H | 997 Functional Ack matching + aging alert | missing | `cron/edi-procs/p_check_997.sql` | Scan for sends >2h with no FA, alert. Greenfield surfaces `fa_receive_status` but has no matcher/ingest. |
-| H | Sketch image (the actual drawing) | partial | `oracle_ddl.sql:9231` | Upload/store/display `sketch_view` (LONG RAW) + `sketch_jpg`. Greenfield does header CRUD but explicitly excludes the image — the feature is hollow. |
-| H | Sketch linkage to job/part + on-screen display | missing | `da/w_da_sheet.srw:900` | Assign a sketch to ab_job/order and render it on the DAS job sheet, prod-order report, e-folder. Sketches page is standalone. |
+| H | Sketch image (the actual drawing) | partial | `oracle_ddl.sql:9231` | Display is DONE — served from **`sketch_jpg`**, the live table (`sketch` is the retired BMP predecessor, and the two were re-keyed against each other: reading it gave 3,420 jobs a different part's drawing). **Upload still missing:** the image is never written through the API. |
+| H | Sketch linkage to job/part + on-screen display | **BUILT** | `coil_eval/u_tabpg_job_sheet.sru:78` | Rendered on the production folder, the DAS console and the job sheet. Assigning a sketch to an order is still order-entry work. |
 | H | Die → shape + per-shape line assignment | missing | `die_tool/w_die_new.srw` | Which shapes a die produces + line_die_4sheet_type mapping. Greenfield Die is a flat header, so scheduling can't know which line/die makes which shape. |
 | M | 863 test-result / cert EDI screen | missing | `edi/w_edi_863.srw` | Full 863 send window (see §4). |
 | M | Manual EDI send / resend from UI | missing | `edi/w_edi.srw` | Operator "Send Alcan 870/863" triggers. `/edi` is strictly read. |

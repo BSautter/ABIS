@@ -364,6 +364,7 @@ public interface IAbisRepository
 
     // ---- Production folder -----------------------------------------------
     Task<ProductionFolder?> GetProductionFolderAsync(long abJobNum, CancellationToken ct);
+    Task<JobSheet?> GetJobSheetAsync(long abJobNum, CancellationToken ct);
     Task<IReadOnlyList<JobFolderNote>> GetJobFolderNotesAsync(long abJobNum, CancellationToken ct);
     Task<JobFolderNote> AddJobFolderNoteAsync(long abJobNum, long userId, string? notes, CancellationToken ct);
 

@@ -9098,6 +9098,44 @@
         }
       }
     },
+    "/api/prod-folder/jobs/{abJobNum}/job-sheet": {
+      "get": {
+        "tags": [
+          "ProdFolder"
+        ],
+        "summary": "A job's live job sheet: spec, shape dimensions and tolerances, coil totals, and partial-skid usage.",
+        "operationId": "GetJobSheet",
+        "parameters": [
+          {
+            "name": "abJobNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobSheet"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/prod-folder/jobs/{abJobNum}/notes": {
       "get": {
         "tags": [
@@ -20852,6 +20890,412 @@
             "type": "string",
             "nullable": true,
             "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "JobSheet": {
+        "type": "object",
+        "properties": {
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lineNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "lineDesc": {
+            "type": "string",
+            "nullable": true
+          },
+          "orderAbcNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "orderItemNum": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "customer": {
+            "type": "string",
+            "nullable": true
+          },
+          "endUser": {
+            "type": "string",
+            "nullable": true
+          },
+          "orderQty": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "materialReceived": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "shipTolerancePlus": {
+            "type": "string",
+            "nullable": true
+          },
+          "shipToleranceMinus": {
+            "type": "string",
+            "nullable": true
+          },
+          "alloy2": {
+            "type": "string",
+            "nullable": true
+          },
+          "temper": {
+            "type": "string",
+            "nullable": true
+          },
+          "sheetType": {
+            "type": "string",
+            "nullable": true
+          },
+          "scrapHandingType": {
+            "type": "string",
+            "nullable": true
+          },
+          "sheetHandlingType": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "byLot": {
+            "type": "boolean"
+          },
+          "piecesPerSkid": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "maxSkidWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "estSkidWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "numSkids": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "gauge": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "gaugePlus": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "gaugeMinus": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "width": {
+            "$ref": "#/components/schemas/JobSheetDimension"
+          },
+          "length": {
+            "$ref": "#/components/schemas/JobSheetDimension"
+          },
+          "metalDensity": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "theoreticalUnitWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "dieName": {
+            "type": "string",
+            "nullable": true
+          },
+          "pitch": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "pitchPlus": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "pitchMinus": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "materialYield": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "materialYieldAfterTrim": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "maxScrapWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "sheetWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "trimmingRequired": {
+            "type": "boolean"
+          },
+          "trimmedWidthOverridden": {
+            "type": "boolean"
+          },
+          "trimTypeDesc": {
+            "type": "string",
+            "nullable": true
+          },
+          "incomingCoilWidth": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "trimmedCoilWidth": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "yieldStrength": {
+            "type": "string",
+            "nullable": true
+          },
+          "materialEndUse": {
+            "type": "string",
+            "nullable": true
+          },
+          "surface": {
+            "type": "string",
+            "nullable": true
+          },
+          "flatness": {
+            "type": "string",
+            "nullable": true
+          },
+          "dimplingCode": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "oilStencilInterleave": {
+            "type": "string",
+            "nullable": true
+          },
+          "itemAttachments": {
+            "type": "string",
+            "nullable": true
+          },
+          "processingOtherSpec": {
+            "type": "string",
+            "nullable": true
+          },
+          "packagingSpecs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "readOnly": true
+          },
+          "packagingBands": {
+            "type": "string",
+            "nullable": true
+          },
+          "packagingOtherSpec": {
+            "type": "string",
+            "nullable": true
+          },
+          "itemNote": {
+            "type": "string",
+            "nullable": true
+          },
+          "sketchJobNote": {
+            "type": "string",
+            "nullable": true
+          },
+          "jobNotes": {
+            "type": "string",
+            "nullable": true
+          },
+          "jobReferenceCodes": {
+            "type": "string",
+            "nullable": true
+          },
+          "enduserPartNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "timeDateStarted": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "timeDateFinished": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "numberOfMenUsed": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "sketchId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "sketchName": {
+            "type": "string",
+            "nullable": true
+          },
+          "coils": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobSheetCoil"
+            },
+            "nullable": true,
+            "readOnly": true
+          },
+          "coilCount": {
+            "type": "integer",
+            "format": "int32",
+            "readOnly": true
+          },
+          "partials": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobSheetPartial"
+            },
+            "nullable": true,
+            "readOnly": true
+          },
+          "partialSkidNote": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "JobSheetCoil": {
+        "type": "object",
+        "properties": {
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lotNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilOrgNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "processQuantity": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "skids": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "piecesPerSkid": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "JobSheetDimension": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "value": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "plusTol": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "minusTol": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "JobSheetPartial": {
+        "type": "object",
+        "properties": {
+          "sheetSkidNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "madeOnJob": {
+            "type": "string",
+            "nullable": true
+          },
+          "lotNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "coilOrgNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "netWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "pieces": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "skidDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "location": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false

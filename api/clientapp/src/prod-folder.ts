@@ -3,8 +3,9 @@
 // note counts) and the job's e-folder notes (job_efolder_notes), with add. Typed NSwag client.
 //
 // Compiled by tsc to wwwroot/ui/app/prod-folder.js; served at /ui/prod-folder.html.
-import { AbisClient, JobFolderNoteWrite } from './generated/abis-client.js';
+import { AbisClient, JobFolderNoteWrite, JobSheet } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
+import { printJobSheet, renderJobSheet } from './job-sheet.js';
 import { renderSketch } from './sketch.js';
 import { initShell } from './shell.js';
 import { lineLabel } from './status-labels.js';
@@ -21,6 +22,7 @@ const setV = (id: string, val: unknown) => { $<HTMLInputElement>(id).value = val
 const dt = (d: unknown): string => (d == null ? '' : new Date(d as string).toLocaleString());
 
 let job: number | null = null;
+let sheet: JobSheet | null = null;
 
 function scaffold(): string {
   return `
@@ -48,6 +50,12 @@ function scaffold(): string {
               <img id="sketchImg" alt="" style="max-width:100%;height:auto;border:1px solid var(--rail-line);background:#fff" />
             </a>
           </div>
+        </div></div>
+        <!-- The production order itself. It spans the grid because it is the document, not a
+             sidebar: the operator reads dimensions, tolerances and packaging off it. -->
+        <div class="stack" style="grid-column:1/-1"><div class="card" id="sheetCard" hidden>
+          <header><h2>Job sheet</h2><button class="btn sm ghost" id="btnPrintSheet" type="button">Print</button></header>
+          <div class="body" id="sheetBody"></div>
         </div></div>
         <div class="stack"><div class="card">
           <header><h2>E-folder notes</h2></header>
@@ -85,8 +93,15 @@ async function loadFolder(): Promise<void> {
     void renderSketch(
       { card: $('#sketchCard'), meta: $('#sketchMeta'), img: $<HTMLImageElement>('#sketchImg'), link: $<HTMLAnchorElement>('#sketchLink') },
       f.sketchId, f.sketchName, f.sketchJobNote);
+    $('#sheetCard').hidden = false;
+    sheet = await renderJobSheet($('#sheetBody'), id);
     await loadNotes();
-  } catch (e) { setErr(`Load folder failed: ${(e as Error).message}`); job = null; $('#workarea').classList.add('disabled'); }
+  } catch (e) {
+    setErr(`Load folder failed: ${(e as Error).message}`);
+    job = null; sheet = null;
+    $('#sheetCard').hidden = true;      // never leave the previous job's sheet on screen
+    $('#workarea').classList.add('disabled');
+  }
   finally { setBusy(false); }
 }
 
@@ -119,4 +134,7 @@ async function addNote(): Promise<void> {
   main.innerHTML = scaffold();
   $<HTMLFormElement>('#jobForm').addEventListener('submit', (e) => { e.preventDefault(); void loadFolder(); });
   $('#btnNote').addEventListener('click', () => void addNote());
+  $('#btnPrintSheet').addEventListener('click', () => {
+    if (sheet) printJobSheet(sheet); else setErr('Open a job first.');
+  });
 })();

@@ -2099,10 +2099,11 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     public async Task Partial_skids_list_and_by_job()
     {
         var all = await _client.GetFromJsonAsync<JsonElement>("/api/partial-skids");
-        Assert.Equal(3, all.GetProperty("totalCount").GetInt32());
+        Assert.Equal(4, all.GetProperty("totalCount").GetInt32());
 
+        // Three on job 1001: two of its own plus one carried in from job 990.
         var byJob = await _client.GetFromJsonAsync<JsonElement>("/api/jobs/1001/partial-skids");
-        Assert.Equal(2, byJob.GetArrayLength());
+        Assert.Equal(3, byJob.GetArrayLength());
     }
 
     [Fact]

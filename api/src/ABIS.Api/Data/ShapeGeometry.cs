@@ -86,6 +86,9 @@ public static class ShapeGeometry
         d["LEFT_TRAPEZOID"] = d["LTRAPEZOID"];
         d["RIGHT_TRAPEZOID"] = d["RTRAPEZOID"];
         d["LIFTGATE_SHAPE"] = d["LIFTGATE"];
+        // The dotted forms legacy's own CHOOSE CASE tests for — see the note in LabelSizes.
+        d["L.TRAPEZOID"] = d["LTRAPEZOID"];
+        d["R.TRAPEZOID"] = d["RTRAPEZOID"];
         return d;
     }
 
@@ -137,10 +140,55 @@ public static class ShapeGeometry
         ["FENDER"] = new("fender", "fe_side", null),          // length deliberately untouched
         ["CIRCLE"] = new("circle", "c_diameter", null),       // length hard-set to 0 by the caller
         ["OTHER"] = new("x1_shape", "x_1", "x_2"),
+        // Legacy's CHOOSE CASE matches the DOTTED forms — `CASE "L.TRAPEZOID"` — not the table names.
+        // No order item on the live database carries either value, so this is latent rather than a
+        // live defect, but without them a left/right trapezoid would fall through to CASE ELSE and
+        // print 0 X 0 on the label and blank dimensions on the job sheet.
+        ["L.TRAPEZOID"] = new("left_trapezoid", "ltr_width", "ltr_long_length"),
+        ["R.TRAPEZOID"] = new("right_trapezoid", "rtr_width", "rtr_long_length"),
     };
 
     /// <summary>The label's width/length columns for a <c>sheet_type</c>, or null when the type is not
     /// one the label knows — in which case both dimensions print as 0, as legacy's CASE ELSE does.</summary>
     public static LabelSizeDef? LabelSize(string? sheetType) =>
         !string.IsNullOrWhiteSpace(sheetType) && LabelSizes.TryGetValue(sheetType.Trim(), out var d) ? d : null;
+
+    /// <summary>One measured dimension: its value column and, where the shape has them, its
+    /// <c>+</c>/<c>-</c> tolerance columns.</summary>
+    public sealed record ToleranceDim(string ValueCol, string? PlusCol, string? MinusCol);
+
+    /// <summary>The width/length pair the job sheet prints, with tolerances.</summary>
+    /// <param name="Length">Null for the shapes that have only one dimension to state.</param>
+    public sealed record JobSheetSizeDef(string Table, ToleranceDim Width, ToleranceDim? Length);
+
+    /// <summary>
+    /// What the <b>job sheet</b> prints on its <c>PC.WGT.</c> line: gauge X width X length, each with
+    /// a <c>+tol/-tol</c> pair, per <c>coil_eval/u_tabpg_job_sheet.sru</c>'s <c>CHOOSE CASE</c>.
+    ///
+    /// <para>That CASE picks <b>exactly the same columns</b> as the shipping label's, which is why this
+    /// is <i>derived</i> from <see cref="LabelSizes"/> rather than written out a second time — two
+    /// hand-maintained copies of the same eleven-shape mapping would drift, and a drifted one prints a
+    /// plausible wrong number. The tolerances come from the shape catalog by matching on the value
+    /// column, so a shape the catalog does not model (<c>OTHER</c> → <c>x1_shape</c>) yields the value
+    /// with no tolerances — which is what legacy does there too.</para>
+    ///
+    /// <para>Circle and fender return a null <see cref="JobSheetSizeDef.Length"/>. Legacy leaves the
+    /// length text at its DataWindow default for those, guarding the whole length block with
+    /// <c>IF NOT(IsNull(lr_l) OR lr_l = 0)</c> — a circle has a diameter and a fender a side, and
+    /// printing "0.000" against a tolerance would read as a dimension to cut to.</para>
+    /// </summary>
+    public static JobSheetSizeDef? JobSheetSize(string? sheetType)
+    {
+        if (LabelSize(sheetType) is not { } size) return null;
+        var dims = Resolve(sheetType)?.Dims;
+
+        ToleranceDim WithTolerance(string valueCol)
+        {
+            var d = dims?.FirstOrDefault(x => string.Equals(x.ValueCol, valueCol, StringComparison.OrdinalIgnoreCase));
+            return new ToleranceDim(valueCol, d?.PlusCol, d?.MinusCol);
+        }
+
+        return new JobSheetSizeDef(size.Table, WithTolerance(size.WidthCol),
+            size.LengthCol is null ? null : WithTolerance(size.LengthCol));
+    }
 }

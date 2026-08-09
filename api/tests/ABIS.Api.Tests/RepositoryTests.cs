@@ -840,10 +840,14 @@ public sealed class RepositoryTests : IDisposable
     public async Task GetPartialSkids_lists_all_and_filters_by_job()
     {
         var all = await _repo.GetPartialSkidsAsync(1, 25, null, CancellationToken.None);
-        Assert.Equal(3, all.TotalCount);
+        Assert.Equal(4, all.TotalCount);
 
+        // Job 1001 holds three: two it made itself and one CARRIED IN from job 990. The filter is on
+        // which job the partial is assigned to, not which job made it — assigning a partial to a
+        // different job is how the plant runs metal down, so filtering on the maker would hide
+        // exactly the rows an operator needs.
         var job1001 = await _repo.GetJobPartialSkidsAsync(1001, CancellationToken.None);
-        Assert.Equal(2, job1001.Count);
+        Assert.Equal(3, job1001.Count);
         Assert.All(job1001, s => Assert.Equal(1001, s.AbJobNum));
     }
 

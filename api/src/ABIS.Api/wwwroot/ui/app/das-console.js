@@ -16,6 +16,7 @@ import { initAuth, authFetch } from './auth.js';
 import { statusChip, lineLabel, loadLineNames } from './status-labels.js';
 import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount, fetchCounters, countersForRunTag, fetchStacker, fetchConveyor, fetchLineStatus, browseEdgeTags } from './edge.js';
 import { renderSketch } from './sketch.js';
+import { printJobSheet, renderJobSheet } from './job-sheet.js';
 import { decideConveyorWeight } from './skid-weight.js';
 const $ = (sel) => document.querySelector(sel);
 const client = () => new AbisClient('', { fetch: authFetch });
@@ -28,6 +29,7 @@ const setV = (id, val) => { $(id).value = val == null ? '' : String(val); };
 const num = (n) => (n == null ? '' : Number(n).toLocaleString());
 const dShow = (d) => (d == null ? '' : d.toLocaleString());
 let job = null;
+let jobSheet = null;
 let lineNum = null;
 let runCoil = null; // the coil the operator is currently running
 let lastSkid = null; // most recently saved sheet skid (the tag the print button prints)
@@ -112,6 +114,16 @@ function scaffold() {
           <a id="sketchLink" target="_blank" rel="noopener" title="Open the full-size drawing">
             <img id="sketchImg" alt="" style="max-width:100%;height:auto;border:1px solid var(--rail-line);background:#fff" />
           </a>
+        </div>
+      </details>
+      <!-- The production order. Legacy shows this on the DAS station and re-reads it whenever the
+           running job changes (coil_eval/u_tabpg_job_sheet). Collapsed like the sketch: the running
+           controls must stay where the operator expects them. -->
+      <details id="jobSheetCard" class="card" style="margin-bottom:10px" hidden>
+        <summary style="cursor:pointer;padding:8px 10px"><b>Job sheet</b> — dimensions, tolerances, packaging</summary>
+        <div class="body">
+          <div class="frow" style="justify-content:flex-end"><button class="btn sm ghost" id="btnPrintSheet" type="button">Print</button></div>
+          <div id="jobSheetBody"></div>
         </div>
       </details>
       <div class="dop-lamps" id="tLamps" title="Health lamps — lit means healthy (the legacy DAS DB / OPC / PLC / auto lamps)"></div>
@@ -250,6 +262,11 @@ async function loadJob() {
         // Fire-and-forget: a 417 KB drawing must not hold up the coil/skid/scrap loads the operator is
         // actually waiting on.
         void renderSketch({ card: $('#sketchCard'), meta: $('#sketchMeta'), img: $('#sketchImg'), link: $('#sketchLink') }, j.sketchId, undefined, j.sketchJobNote);
+        // Same fire-and-forget rule as the drawing: the sheet is reference material, and the coil/skid
+        // loads below are what the operator is waiting on. Legacy re-reads it on every job change, which
+        // is exactly here.
+        $('#jobSheetCard').hidden = false;
+        void renderJobSheet($('#jobSheetBody'), id).then((s) => { jobSheet = s; });
         await Promise.all([loadCoils(), loadSkids(), loadScrap(), loadOpBoard(), loadFaultCodes()]);
         $('#tDt').innerHTML = '<tr><td colspan="4" class="muted">No downtime logged this session.</td></tr>';
         clearAutoDowntime();
@@ -1399,6 +1416,8 @@ async function pickerBrowse(bases, targetId, path) {
     $('#btnScrap').addEventListener('click', () => void saveScrap());
     $('#btnScrapTag').addEventListener('click', () => void printScrapTag());
     $('#btnDt').addEventListener('click', () => void saveDowntime());
+    $('#btnPrintSheet').addEventListener('click', () => { if (jobSheet)
+        printJobSheet(jobSheet); });
     $('#btnShiftStart').addEventListener('click', () => {
         const s = v('#opShift');
         if (!s) {

@@ -5,6 +5,7 @@
 // Compiled by tsc to wwwroot/ui/app/prod-folder.js; served at /ui/prod-folder.html.
 import { AbisClient, JobFolderNoteWrite } from './generated/abis-client.js';
 import { authFetch } from './auth.js';
+import { printJobSheet, renderJobSheet } from './job-sheet.js';
 import { renderSketch } from './sketch.js';
 import { initShell } from './shell.js';
 import { lineLabel } from './status-labels.js';
@@ -18,6 +19,7 @@ const v = (id) => $(id).value.trim();
 const setV = (id, val) => { $(id).value = val == null ? '' : String(val); };
 const dt = (d) => (d == null ? '' : new Date(d).toLocaleString());
 let job = null;
+let sheet = null;
 function scaffold() {
     return `
   <div class="page">
@@ -37,13 +39,19 @@ function scaffold() {
           <header><h2>Sketch</h2></header>
           <div class="body">
             <div class="kv" id="sketchMeta"></div>
-            <!-- The drawing is a 417 KB BMP served from /api/sketches/{id}/image. It is shown at the
-                 card's width and opens full size in a new tab, because the shop floor reads dimensions
-                 off it and the on-screen scale is not the point. -->
+            <!-- The drawing comes from /api/sketches/{id}/image. It is shown at the card's width and
+                 opens full size in a new tab, because the shop floor reads dimensions off it and the
+                 on-screen scale is not the point. -->
             <a id="sketchLink" target="_blank" rel="noopener" title="Open the full-size drawing">
               <img id="sketchImg" alt="" style="max-width:100%;height:auto;border:1px solid var(--rail-line);background:#fff" />
             </a>
           </div>
+        </div></div>
+        <!-- The production order itself. It spans the grid because it is the document, not a
+             sidebar: the operator reads dimensions, tolerances and packaging off it. -->
+        <div class="stack" style="grid-column:1/-1"><div class="card" id="sheetCard" hidden>
+          <header><h2>Job sheet</h2><button class="btn sm ghost" id="btnPrintSheet" type="button">Print</button></header>
+          <div class="body" id="sheetBody"></div>
         </div></div>
         <div class="stack"><div class="card">
           <header><h2>E-folder notes</h2></header>
@@ -82,11 +90,15 @@ async function loadFolder() {
       <span><b>Customer</b>${esc(f.customerShortName)}</span>
       <span><b>Contents</b>${esc(f.coilCount)} coil(s) · ${esc(f.skidCount)} skid(s) · ${esc(f.noteCount)} note(s)</span>`;
         void renderSketch({ card: $('#sketchCard'), meta: $('#sketchMeta'), img: $('#sketchImg'), link: $('#sketchLink') }, f.sketchId, f.sketchName, f.sketchJobNote);
+        $('#sheetCard').hidden = false;
+        sheet = await renderJobSheet($('#sheetBody'), id);
         await loadNotes();
     }
     catch (e) {
         setErr(`Load folder failed: ${e.message}`);
         job = null;
+        sheet = null;
+        $('#sheetCard').hidden = true; // never leave the previous job's sheet on screen
         $('#workarea').classList.add('disabled');
     }
     finally {
@@ -134,4 +146,10 @@ async function addNote() {
     main.innerHTML = scaffold();
     $('#jobForm').addEventListener('submit', (e) => { e.preventDefault(); void loadFolder(); });
     $('#btnNote').addEventListener('click', () => void addNote());
+    $('#btnPrintSheet').addEventListener('click', () => {
+        if (sheet)
+            printJobSheet(sheet);
+        else
+            setErr('Open a job first.');
+    });
 })();

@@ -151,7 +151,13 @@ public static class SqliteFixture
                 ab_job_num INTEGER PRIMARY KEY, order_abc_num INTEGER NOT NULL, order_item_num INTEGER NOT NULL,
                 line_num INTEGER, job_status INTEGER, material_yield REAL, number_of_men_used INTEGER,
                 sketch_id INTEGER, create_date TEXT, due_date TEXT, time_date_started TEXT,
-                time_date_finished TEXT, job_notes TEXT, sketch_job_note TEXT);
+                time_date_finished TEXT, job_notes TEXT, sketch_job_note TEXT,
+                -- The job-sheet half of ab_job (legacy d_report_prod_order): the planned quantities,
+                -- the die and pitch the line is set to, the reference codes, and the edge-trim scrap
+                -- percentage the printed material yield is reduced by.
+                job_process_quantity REAL, job_sheet_wt REAL, job_skid REAL, job_pieces_skid INTEGER,
+                pitch REAL, pitch_plus REAL, pitch_minus REAL,
+                edge_trim_scrap_percentage REAL, die_id INTEGER, job_reference_codes TEXT);
 
             CREATE TABLE coil (
                 coil_abc_num INTEGER PRIMARY KEY, coil_alloy2 TEXT, coil_temper TEXT, coil_gauge REAL,
@@ -548,6 +554,16 @@ public static class SqliteFixture
             -- Per-alloy density (lb/in^3) for the piece-weight calculator (legacy METAL_DENSITY).
             CREATE TABLE metal_density (
                 metal_alloy TEXT PRIMARY KEY, metal_density REAL);
+
+            -- Edge-trim types, named on the job sheet beside the incoming/trimmed coil widths.
+            CREATE TABLE trim_type (
+                trim_type_code INTEGER PRIMARY KEY, trim_type_desc TEXT);
+
+            -- Yield strength per alloy+temper. Note the column is VARCHAR2 on Oracle, not a number —
+            -- the values carry units and ranges, and the sheet prints them as written.
+            CREATE TABLE yield_strength (
+                alloy TEXT NOT NULL, temper TEXT NOT NULL, yield_strength TEXT,
+                PRIMARY KEY (alloy, temper));
 
             CREATE TABLE customer_contact (
                 contact_id INTEGER PRIMARY KEY, customer_id INTEGER NOT NULL, first_name TEXT, last_name TEXT,
@@ -1414,6 +1430,81 @@ public static class SqliteFixture
                 // rendered as one "NONE" line whose counts swamped the real ones.
                 new { AbJobNum = 1004L, OrderAbcNum = (long?)9002L, OrderItemNum = (long?)7003L, LineNum = (long?)0L, JobStatus = (int?)1, MaterialYield = (decimal?)null, NumberOfMenUsed = (int?)null, SketchId = (long?)null, CreateDate = (DateTime?)d, DueDate = (DateTime?)d.AddDays(9), TimeDateStarted = (DateTime?)d, TimeDateFinished = (DateTime?)null, JobNotes = "Never assigned to a line", SketchJobNote = "" }
             });
+
+        // ---- The job sheet (legacy d_report_prod_order) -------------------------------------
+        // Two contrasting jobs, because the sheet is not one document:
+        //   1001 — RECTANGLE, ordinary sheet handling, edge trimming REQUIRED and its trimmed width
+        //          OVERRIDDEN, which is the only combination that prints the sheet's safety warning.
+        //   1002 — CIRCLE, so the sheet has a DIAMETER and no length to print.
+        //   1003 — on a BY-LOT order (sheet_handling_type 1), so pieces-per-skid is worked out per coil
+        //          rather than stated once. The arithmetic itself is covered exhaustively by
+        //          JobSheetMathTests; this row only has to prove the endpoint applies it.
+        conn.Execute("""
+            UPDATE ab_job SET job_process_quantity = :qty, job_sheet_wt = :sheetWt, job_skid = :skids,
+                   job_pieces_skid = :pcsSkid, pitch = :pitch, pitch_plus = :pitchP, pitch_minus = :pitchM,
+                   edge_trim_scrap_percentage = :trimPct, die_id = :dieId, job_reference_codes = :refCodes
+            WHERE ab_job_num = :job
+            """,
+            new[]
+            {
+                // Yield 0.92 less 0.04 edge trim = the 0.88 the sheet prints.
+                new { job = 1001L, qty = (decimal?)25000m, sheetWt = (decimal?)22000m, skids = (decimal?)18m, pcsSkid = (int?)50, pitch = (decimal?)3.5m, pitchP = (decimal?)0.05m, pitchM = (decimal?)0.05m, trimPct = (decimal?)0.04m, dieId = (long?)1L, refCodes = "REF-A/REF-B" },
+                new { job = 1002L, qty = (decimal?)9000m, sheetWt = (decimal?)8000m, skids = (decimal?)7m, pcsSkid = (int?)40, pitch = (decimal?)null, pitchP = (decimal?)null, pitchM = (decimal?)null, trimPct = (decimal?)null, dieId = (long?)null, refCodes = "" },
+            });
+
+        conn.Execute("""
+            UPDATE customer_order SET enduser_id = :endUser, sheet_handling_type = :handling
+            WHERE order_abc_num = :ord
+            """,
+            new[]
+            {
+                // 9001 deliberately has NO end user — the invoice's "no enduser" path depends on it,
+                // and the job sheet has to print the customer anyway rather than blanking both.
+                new { ord = 9001L, endUser = (long?)null, handling = (int?)0 },
+                // 9002's end user (ACME) is NOT its originating customer (BETA). The sheet prints both
+                // names side by side and conflating them is the easy mistake.
+                new { ord = 9002L, endUser = (long?)4001L, handling = (int?)1 },
+            });
+
+        conn.Execute("""
+            UPDATE order_item SET max_skid_wt = :maxSkid, stacks_skid = :stacks,
+                   -- sh_toleranc_minus, not sh_tolerance_minus: order_item drops the 'e' while its
+                   -- own sh_tolerance_plus keeps it, and part_num spells both in full. Spelled here
+                   -- exactly as Oracle has it so the query that reads it cannot be "corrected".
+                   sh_tolerance_plus = :tolP, sh_toleranc_minus = :tolM,
+                   trimming_required = :trimReq, trimmed_width_overridden = :override,
+                   trim_type_code = :trimType, incoming_coil_width = :inW, trimmed_coil_width = :outW,
+                   oil_stencil_interleave = :oil, item_attachments = :attach, processing_other_spec = :otherProc,
+                   packaging_spec1 = :p1, packaging_spec2 = :p2, packaging_bands = :bands,
+                   packaging_other_spec = :otherPack, item_note = :note, dimpling_code = :dimple
+            WHERE order_abc_num = :ord AND order_item_num = :item
+            """,
+            new[]
+            {
+                new { ord = 9001L, item = 7001L, maxSkid = (int?)4000, stacks = (int?)5, tolP = "10%", tolM = "5%", trimReq = "Y", @override = "Y", trimType = (int?)2, inW = (decimal?)50.0m, outW = (decimal?)48.25m, oil = "Oiled, interleaved", attach = "None", otherProc = "Deburr", p1 = "Stretch wrap", p2 = "Corner boards", bands = "4 steel", otherPack = "Label both ends", note = "Customer runs this weekly", dimple = (int?)1 },
+                // Trimming NOT required, but the override flag is set anyway. The warning must stay
+                // silent: an override on an item nobody is trimming is not a hazard, and a banner that
+                // cries wolf is a banner the floor stops reading.
+                new { ord = 9001L, item = 7002L, maxSkid = (int?)30, stacks = (int?)2, tolP = "0%", tolM = "0%", trimReq = "N", @override = "Y", trimType = (int?)null, inW = (decimal?)null, outW = (decimal?)null, oil = "Dry", attach = "", otherProc = "", p1 = "Banded", p2 = "", bands = "2 steel", otherPack = "", note = "", dimple = (int?)null },
+            });
+        // Item 7003 is on the BY-LOT order. max_skid_wt 40 against its coil's 40 lb at 0.95 yield gives
+        // one skid, which is what a lot this size actually makes.
+        // Its trimming flag is a "blank" that is SPACES rather than empty — how this VARCHAR2 reads on
+        // Oracle. Testing it against "Y" without trimming passes here and prints a phantom warning in
+        // the plant; testing IsNullOrWhiteSpace is the only version that behaves the same in both.
+        conn.Execute("UPDATE order_item SET trimming_required = '   ', max_skid_wt = 40 WHERE order_abc_num = 9002 AND order_item_num = 7003");
+
+        conn.Execute("INSERT INTO trim_type (trim_type_code, trim_type_desc) VALUES (1, 'One side'), (2, 'Both sides')");
+        conn.Execute("INSERT INTO yield_strength (alloy, temper, yield_strength) VALUES ('3003', 'H14', '21 ksi min')");
+
+        // A partial skid CARRIED IN from another job: skid 2990 was made on job 990 and is assigned to
+        // job 1001. Skids 3001/3002 are 1001's own, so they belong on the "use partial skid" line but
+        // NOT in the carried-in detail — which is the distinction the two legacy queries encode.
+        conn.Execute("""
+            INSERT INTO process_partial_skid (sheet_skid_num, ab_job_num, partial_skid_ab_job_num,
+                partial_sheet_net_wt, partial_skid_pieces, partial_skid_location, partial_skid_date)
+            VALUES (2990, 1001, '990', 20000, 100, 'WIP-3', :dt)
+            """, new { dt = d.AddHours(4) });
 
         conn.Execute("""
             INSERT INTO coil (coil_abc_num, coil_alloy2, coil_temper, coil_gauge, coil_width, coil_line_num,

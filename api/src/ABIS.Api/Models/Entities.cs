@@ -2741,6 +2741,188 @@ public sealed class JobFolderNote
     public string? Notes { get; set; }
 }
 
+// ---- The live job sheet / production order (legacy d_report_prod_order) ----
+
+/// <summary>
+/// The <b>PRODUCTION ORDER</b> — the sheet the operator works the job from, and the document the
+/// DAS station puts on screen when the running job changes.
+///
+/// <para>Recovered from <c>downtime2/d_report_prod_order.srd</c> (and its <c>_by_lot</c> twin) plus
+/// the runtime overrides in <c>coil_eval/u_tabpg_job_sheet.sru</c>. Six of these fields are not
+/// columns on any of those tables — legacy computes them in the DataWindow or stamps them over a
+/// static text at retrieve time — so they are computed here rather than left for a UI to guess:
+/// <see cref="Customer"/>, <see cref="MaterialReceived"/>, <see cref="EstSkidWt"/>,
+/// <see cref="MaxScrapWt"/>, <see cref="MaterialYieldAfterTrim"/> and the shape dimensions.</para>
+/// </summary>
+public sealed class JobSheet
+{
+    // ---- Identity -----------------------------------------------------------------------
+    public long AbJobNum { get; set; }
+    public long? LineNum { get; set; }
+    public string? LineDesc { get; set; }
+    public long? OrderAbcNum { get; set; }
+    public long? OrderItemNum { get; set; }
+
+    /// <summary>The ORIGINATING customer (<c>customer_order.orig_customer_id</c>), upper-cased.
+    /// Legacy fetches this separately and writes it over the sheet's <c>cust_t</c> text — the
+    /// DataWindow's own customer join is the END USER, which is the next field. The sheet shows
+    /// both, and they are frequently different.</summary>
+    public string? Customer { get; set; }
+    /// <summary>The END USER (<c>customer_order.enduser_id</c>) — the sheet's second name.</summary>
+    public string? EndUser { get; set; }
+
+    // ---- Quantities ---------------------------------------------------------------------
+    /// <summary>ORDER QTY — <c>ab_job.job_process_quantity</c>.</summary>
+    public decimal? OrderQty { get; set; }
+    /// <summary>MAT. REC'D — the sum of <c>process_coil.process_quantity</c> over the job's coils.
+    /// Legacy totals it in PowerBuilder by walking the nested coil report row by row.</summary>
+    public decimal? MaterialReceived { get; set; }
+    public string? ShipTolerancePlus { get; set; }
+    public string? ShipToleranceMinus { get; set; }
+    public string? Alloy2 { get; set; }
+    public string? Temper { get; set; }
+    public string? SheetType { get; set; }
+
+    // ---- Skid plan ----------------------------------------------------------------------
+    public string? ScrapHandingType { get; set; }
+    /// <summary>0/null = the ordinary sheet; 1 = handled BY LOT, which changes the sheet. See
+    /// <see cref="ByLot"/>.</summary>
+    public int? SheetHandlingType { get; set; }
+    /// <summary><c>sheet_handling_type = 1</c>. Legacy swaps the whole DataWindow for
+    /// <c>d_report_prod_order_by_lot</c>, which replaces the single PC./SKID figure with the literal
+    /// text <b>"See Below"</b> and works pieces-per-skid out per coil instead — because each lot
+    /// yields a different number. <see cref="PiecesPerSkid"/> is therefore not the operator's answer
+    /// when this is set; the per-coil figures are.</summary>
+    public bool ByLot { get; set; }
+    public int? PiecesPerSkid { get; set; }
+    public decimal? MaxSkidWt { get; set; }
+    /// <summary>EST SKID WT — <c>ceiling(job_pieces_skid * theoretical_unit_wt)</c>.</summary>
+    public decimal? EstSkidWt { get; set; }
+    public decimal? NumSkids { get; set; }
+
+    // ---- The PC.WGT. line: gauge X width X length X density = piece weight ---------------
+    public decimal? Gauge { get; set; }
+    public decimal? GaugePlus { get; set; }
+    public decimal? GaugeMinus { get; set; }
+    /// <summary>The shape's width — for a circle its DIAMETER, for a fender its SIDE.</summary>
+    public JobSheetDimension? Width { get; set; }
+    /// <summary>The shape's length, or <b>null</b> where the shape has none to state (circle,
+    /// fender). Legacy leaves those blank rather than printing a zero someone could cut to.</summary>
+    public JobSheetDimension? Length { get; set; }
+    public decimal? MetalDensity { get; set; }
+    public decimal? TheoreticalUnitWt { get; set; }
+    public string? DieName { get; set; }
+    public decimal? Pitch { get; set; }
+    public decimal? PitchPlus { get; set; }
+    public decimal? PitchMinus { get; set; }
+
+    // ---- Yield ----------------------------------------------------------------------------
+    public decimal? MaterialYield { get; set; }
+    /// <summary>The yield the sheet actually prints: <c>material_yield</c> less
+    /// <c>edge_trim_scrap_percentage</c> when the job has one.</summary>
+    public decimal? MaterialYieldAfterTrim { get; set; }
+    /// <summary>MAX SCRAP WGT. — <c>job_process_quantity - job_sheet_wt</c>.</summary>
+    public decimal? MaxScrapWt { get; set; }
+    public decimal? SheetWt { get; set; }
+
+    // ---- Edge trimming ----------------------------------------------------------------------
+    /// <summary>Prints EDGE TRIMMING REQUIRED across the top of the sheet, in red.</summary>
+    public bool TrimmingRequired { get; set; }
+    /// <summary>With <see cref="TrimmingRequired"/>, prints the sheet's one safety warning:
+    /// "TRIMMED WIDTH OUTSIDE OF EQUIPMENT TOLERANCE. CONTACT FOREMAN BEFORE RUNNING." Six order
+    /// items on the live database are in this state.</summary>
+    public bool TrimmedWidthOverridden { get; set; }
+    public string? TrimTypeDesc { get; set; }
+    public decimal? IncomingCoilWidth { get; set; }
+    public decimal? TrimmedCoilWidth { get; set; }
+    public string? YieldStrength { get; set; }
+
+    // ---- Processing / packaging (the numbered lists on the lower half) -----------------------
+    public string? MaterialEndUse { get; set; }
+    public string? Surface { get; set; }
+    public string? Flatness { get; set; }
+    public int? DimplingCode { get; set; }
+    public string? OilStencilInterleave { get; set; }
+    public string? ItemAttachments { get; set; }
+    public string? ProcessingOtherSpec { get; set; }
+    public List<string?> PackagingSpecs { get; } = [];
+    public string? PackagingBands { get; set; }
+    public string? PackagingOtherSpec { get; set; }
+    public string? ItemNote { get; set; }
+
+    // ---- Notes, schedule, drawing --------------------------------------------------------
+    public string? SketchJobNote { get; set; }
+    public string? JobNotes { get; set; }
+    public string? JobReferenceCodes { get; set; }
+    public string? EnduserPartNum { get; set; }
+    public DateTime? TimeDateStarted { get; set; }
+    public DateTime? TimeDateFinished { get; set; }
+    public int? NumberOfMenUsed { get; set; }
+    public long? SketchId { get; set; }
+    public string? SketchName { get; set; }
+
+    // ---- The two nested reports ----------------------------------------------------------
+    public List<JobSheetCoil> Coils { get; } = [];
+    /// <summary>No. of coils, from the nested report's <c>rowcount()</c>.</summary>
+    public int CoilCount => Coils.Count;
+    /// <summary>Partial skids <b>carried in from other jobs</b> and consumed by this one.</summary>
+    public List<JobSheetPartial> Partials { get; } = [];
+    /// <summary>Legacy's <c>partial_t</c> text, verbatim: "use partial skid  N  N" or empty. The
+    /// operator reads this line, so it is produced here rather than re-invented per client.</summary>
+    public string PartialSkidNote { get; set; } = "";
+}
+
+/// <summary>A dimension on the job sheet: the value and its two tolerances. Legacy prints a missing
+/// tolerance as an explicit <c>+ 0.000</c> / <c>- 0.000</c> rather than a blank, so a zero here is
+/// "no tolerance given" and means the same thing.</summary>
+public sealed class JobSheetDimension
+{
+    /// <summary>Which measurement this is — "width", "diameter", "side", "longLength" — taken from
+    /// the shape catalog, because "width" on a circle would be a lie.</summary>
+    public string Name { get; set; } = "";
+    public decimal? Value { get; set; }
+    public decimal? PlusTol { get; set; }
+    public decimal? MinusTol { get; set; }
+}
+
+/// <summary>One coil on the job (<c>process_coil</c> ⋈ <c>coil</c>, legacy
+/// <c>d_report_ab_job_coil</c>).</summary>
+public sealed class JobSheetCoil
+{
+    public long CoilAbcNum { get; set; }
+    public string? LotNum { get; set; }
+    public string? CoilOrgNum { get; set; }
+    /// <summary>The weight of this coil committed to the job — the column the sheet totals.</summary>
+    public decimal? ProcessQuantity { get; set; }
+
+    /// <summary>Skids this coil is expected to make, on a BY-LOT job:
+    /// <c>ceiling(process_quantity * material_yield / max_skid_wt)</c>, 0 when there is no skid
+    /// weight. Null on an ordinary job, where the sheet states one figure for the whole job.</summary>
+    public decimal? Skids { get; set; }
+    /// <summary>Pieces per skid for this coil, on a BY-LOT job: the pieces the coil yields divided
+    /// across <see cref="Skids"/>, then <b>rounded DOWN to a whole number of stacks</b> when the item
+    /// has a <c>stacks_skid</c>. A part-stack is not a skid the plant ships.</summary>
+    public int? PiecesPerSkid { get; set; }
+}
+
+/// <summary>A partial skid this job consumes that was made on a DIFFERENT job (legacy
+/// <c>d_report_ab_job_partial</c>, whose WHERE clause is precisely
+/// <c>production_sheet_item.ab_job_num &lt;&gt; :al_job</c>). This is the "use partial skid" line on
+/// the sheet: metal already on the floor that the operator is to run down before opening a new
+/// coil.</summary>
+public sealed class JobSheetPartial
+{
+    public long SheetSkidNum { get; set; }
+    /// <summary>The job that MADE the partial — not the job consuming it.</summary>
+    public string? MadeOnJob { get; set; }
+    public string? LotNum { get; set; }
+    public string? CoilOrgNum { get; set; }
+    public decimal? NetWt { get; set; }
+    public int? Pieces { get; set; }
+    public DateTime? SkidDate { get; set; }
+    public string? Location { get; set; }
+}
+
 // ---- Stacker line board / error log (legacy stacker_110) ----
 
 /// <summary>One job on a line's stacker board (legacy w_110_stacker_read_only): the job +

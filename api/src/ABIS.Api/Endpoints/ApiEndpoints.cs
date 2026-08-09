@@ -1422,6 +1422,17 @@ public static class ApiEndpoints
            .WithSummary("A job's production-folder summary (header + coil/skid/note counts).")
            .Produces<ProductionFolder>().Produces(StatusCodes.Status404NotFound);
 
+        // The live job sheet — legacy's PRODUCTION ORDER (downtime2/d_report_prod_order), the document
+        // the operator works the job from. The DAS station re-reads it whenever the running job
+        // changes, so it is one GET returning the whole sheet rather than a spec call plus a coils
+        // call plus a partials call: three round trips at a shift change is three chances to show a
+        // half-built sheet.
+        api.MapGet("/prod-folder/jobs/{abJobNum:long}/job-sheet", async (long abJobNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetJobSheetAsync(abJobNum, ct) is { } s ? Results.Ok(s) : Results.NotFound())
+           .WithName("GetJobSheet").WithTags("ProdFolder")
+           .WithSummary("A job's live job sheet: spec, shape dimensions and tolerances, coil totals, and partial-skid usage.")
+           .Produces<JobSheet>().Produces(StatusCodes.Status404NotFound);
+
         api.MapGet("/prod-folder/jobs/{abJobNum:long}/notes", async (long abJobNum, IAbisRepository repo, CancellationToken ct) =>
                 Results.Ok(await repo.GetJobFolderNotesAsync(abJobNum, ct)))
            .WithName("GetJobFolderNotes").WithTags("ProdFolder")

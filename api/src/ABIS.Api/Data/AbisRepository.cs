@@ -1621,6 +1621,17 @@ public sealed class AbisRepository : IAbisRepository
         row is not null && row.TryGetValue(key, out var v) && v is not null and not DBNull
             ? Convert.ToDecimal(v) : null;
 
+    /// <summary>A date out of a dynamic row. Oracle hands back a <see cref="DateTime"/>; the SQLite
+    /// fixture stores dates as text, so both shapes have to be accepted or every date on a
+    /// dynamically-read row would be null in CI and populated in production.</summary>
+    private static DateTime? Date(IDictionary<string, object?>? row, string key)
+    {
+        if (row is null || !row.TryGetValue(key, out var v) || v is null or DBNull) return null;
+        if (v is DateTime dt) return dt;
+        return DateTime.TryParse(Convert.ToString(v, CultureInfo.InvariantCulture),
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed) ? parsed : null;
+    }
+
     // Part-master geometry — the same shapes/dimensions as the order-item level, but keyed by
     // part_num_id (single key) in the PART_NUM_* tables, with no die columns.
 
@@ -7623,6 +7634,297 @@ public sealed class AbisRepository : IAbisRepository
             LEFT JOIN sketch_jpg sk ON sk.sketch_id = j.sketch_id
             WHERE j.ab_job_num = :id
             """, new { id = abJobNum }, cancellationToken: ct));
+    }
+
+    /// <summary>
+    /// The live job sheet — legacy's PRODUCTION ORDER, assembled the way
+    /// <c>coil_eval/u_tabpg_job_sheet.of_show_job_sheet</c> assembles it: one retrieve for the body,
+    /// one nested report for the coils, one for the carried-in partials, and a handful of figures the
+    /// DataWindow computes or the code stamps over a static text.
+    ///
+    /// <para><b>Read the live copy, not the tidy one.</b> There is a second, near-identical
+    /// <c>wf_show_job_sheet</c> in <c>da/w_da_sheet.srw</c> whose every display call is commented out
+    /// — an abandoned "new interface" — and it still names the retired <c>sketch</c> table where the
+    /// live one names <c>sketch_jpg</c>. Everything here follows the live copy.</para>
+    ///
+    /// <para>Returns null when the job does not exist. A job with no order item still returns a sheet:
+    /// the operator needs the job number and line even when the spec is incomplete.</para>
+    /// </summary>
+    public async Task<JobSheet?> GetJobSheetAsync(long abJobNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+
+        // ORDER_ITEM.SH_TOLERANC_MINUS is spelled without its final 'e' while its own partner
+        // SH_TOLERANCE_PLUS keeps it — and PART_NUM, next door, spells BOTH in full. Writing the
+        // obvious SH_TOLERANCE_MINUS raises ORA-00904 against order_item and works against part_num,
+        // so this is not a typo to tidy up.
+        var raw = await conn.QueryFirstOrDefaultAsync(new CommandDefinition(
+            """
+            SELECT j.ab_job_num AS AbJobNum, j.line_num AS LineNum, l.line_desc AS LineDesc,
+                   j.order_abc_num AS OrderAbcNum, j.order_item_num AS OrderItemNum,
+                   oc.customer_short_name AS Customer, ec.customer_short_name AS EndUser,
+                   j.job_process_quantity AS OrderQty,
+                   i.sh_tolerance_plus AS ShipTolerancePlus, i.sh_toleranc_minus AS ShipToleranceMinus,
+                   i.alloy2 AS Alloy2, i.temper AS Temper, i.sheet_type AS SheetType,
+                   o.scrap_handing_type AS ScrapHandingType, o.sheet_handling_type AS SheetHandlingType,
+                   j.job_pieces_skid AS PiecesPerSkid, i.max_skid_wt AS MaxSkidWt,
+                   i.theoretical_unit_wt AS TheoreticalUnitWt, i.stacks_skid AS StacksSkid,
+                   j.job_skid AS NumSkids,
+                   i.gauge AS Gauge, i.gauge_p AS GaugePlus, i.gauge_m AS GaugeMinus,
+                   md.metal_density AS MetalDensity, d.die_name AS DieName,
+                   j.pitch AS Pitch, j.pitch_plus AS PitchPlus, j.pitch_minus AS PitchMinus,
+                   j.material_yield AS MaterialYield, j.edge_trim_scrap_percentage AS EdgeTrimScrapPercentage,
+                   j.job_sheet_wt AS SheetWt,
+                   i.trimming_required AS TrimmingRequired, i.trimmed_width_overridden AS TrimmedWidthOverridden,
+                   tt.trim_type_desc AS TrimTypeDesc, i.incoming_coil_width AS IncomingCoilWidth,
+                   i.trimmed_coil_width AS TrimmedCoilWidth, ys.yield_strength AS YieldStrength,
+                   i.material_end_use AS MaterialEndUse, i.surface AS Surface, i.flatness AS Flatness,
+                   i.dimpling_code AS DimplingCode, i.oil_stencil_interleave AS OilStencilInterleave,
+                   i.item_attachments AS ItemAttachments, i.processing_other_spec AS ProcessingOtherSpec,
+                   i.packaging_spec1 AS PackagingSpec1, i.packaging_spec2 AS PackagingSpec2,
+                   i.packaging_spec3 AS PackagingSpec3, i.packaging_spec4 AS PackagingSpec4,
+                   i.packaging_spec5 AS PackagingSpec5, i.packaging_spec6 AS PackagingSpec6,
+                   i.packaging_spec7 AS PackagingSpec7, i.packaging_bands AS PackagingBands,
+                   i.packaging_other_spec AS PackagingOtherSpec, i.item_note AS ItemNote,
+                   j.sketch_job_note AS SketchJobNote, j.job_notes AS JobNotes,
+                   j.job_reference_codes AS JobReferenceCodes, i.enduser_part_num AS EnduserPartNum,
+                   j.time_date_started AS TimeDateStarted, j.time_date_finished AS TimeDateFinished,
+                   j.number_of_men_used AS NumberOfMenUsed,
+                   j.sketch_id AS SketchId, sk.sketch_name AS SketchName
+            FROM ab_job j
+            LEFT JOIN customer_order o ON o.order_abc_num = j.order_abc_num
+            LEFT JOIN order_item i ON i.order_abc_num = j.order_abc_num AND i.order_item_num = j.order_item_num
+            -- Two customers, deliberately. The sheet's DataWindow joins the END USER; the code then
+            -- writes the ORIGINATING customer over the sheet's cust_t text. Both are printed.
+            LEFT JOIN customer oc ON oc.customer_id = o.orig_customer_id
+            LEFT JOIN customer ec ON ec.customer_id = o.enduser_id
+            LEFT JOIN line l ON l.line_num = j.line_num
+            LEFT JOIN metal_density md ON md.metal_alloy = i.alloy2
+            LEFT JOIN trim_type tt ON tt.trim_type_code = i.trim_type_code
+            LEFT JOIN yield_strength ys ON ys.alloy = i.alloy2 AND ys.temper = i.temper
+            LEFT JOIN die d ON d.die_id = j.die_id
+            -- sketch_jpg is the live drawing table; see SketchTable.
+            LEFT JOIN sketch_jpg sk ON sk.sketch_id = j.sketch_id
+            WHERE j.ab_job_num = :job
+            """, new { job = abJobNum }, cancellationToken: ct));
+        if (raw is null) return null;
+
+        var r = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in (IDictionary<string, object>)raw) r[kv.Key] = kv.Value;
+
+        // Trimmed, and blank collapses to null. Live values on this sheet come back padded —
+        // "NOVELIS-OSWEGO    ", "Trapezoid         " — and a "blank" column is frequently SPACES
+        // rather than ''. The DataWindow hid both by printing into a fixed-width text; JSON does not,
+        // and neither does an equality test. See docs/ORACLE_DEFECT_SWEEP.md.
+        string? Str(string key)
+        {
+            if (!r.TryGetValue(key, out var v) || v is null or DBNull) return null;
+            var s = v.ToString()?.Trim();
+            return string.IsNullOrEmpty(s) ? null : s;
+        }
+        bool Flag(string key) => string.Equals(Str(key), "Y", StringComparison.OrdinalIgnoreCase);
+        int? Int(string key) => Dec(r, key) is { } d ? (int)d : null;
+
+        var sheet = new JobSheet
+        {
+            AbJobNum = abJobNum,
+            LineNum = (long?)Dec(r, "LineNum"),
+            LineDesc = Str("LineDesc"),
+            OrderAbcNum = (long?)Dec(r, "OrderAbcNum"),
+            OrderItemNum = (long?)Dec(r, "OrderItemNum"),
+            Customer = Str("Customer")?.ToUpperInvariant(),
+            EndUser = Str("EndUser"),
+            OrderQty = Dec(r, "OrderQty"),
+            ShipTolerancePlus = Str("ShipTolerancePlus"),
+            ShipToleranceMinus = Str("ShipToleranceMinus"),
+            Alloy2 = Str("Alloy2"),
+            Temper = Str("Temper"),
+            SheetType = Str("SheetType"),
+            ScrapHandingType = Str("ScrapHandingType"),
+            SheetHandlingType = Int("SheetHandlingType"),
+            PiecesPerSkid = Int("PiecesPerSkid"),
+            MaxSkidWt = Dec(r, "MaxSkidWt"),
+            NumSkids = Dec(r, "NumSkids"),
+            Gauge = Dec(r, "Gauge"),
+            GaugePlus = Dec(r, "GaugePlus"),
+            GaugeMinus = Dec(r, "GaugeMinus"),
+            MetalDensity = Dec(r, "MetalDensity"),
+            TheoreticalUnitWt = Dec(r, "TheoreticalUnitWt"),
+            DieName = Str("DieName"),
+            Pitch = Dec(r, "Pitch"),
+            PitchPlus = Dec(r, "PitchPlus"),
+            PitchMinus = Dec(r, "PitchMinus"),
+            MaterialYield = Dec(r, "MaterialYield"),
+            SheetWt = Dec(r, "SheetWt"),
+            TrimmingRequired = Flag("TrimmingRequired"),
+            TrimTypeDesc = Str("TrimTypeDesc"),
+            IncomingCoilWidth = Dec(r, "IncomingCoilWidth"),
+            TrimmedCoilWidth = Dec(r, "TrimmedCoilWidth"),
+            YieldStrength = Str("YieldStrength"),
+            MaterialEndUse = Str("MaterialEndUse"),
+            Surface = Str("Surface"),
+            Flatness = Str("Flatness"),
+            DimplingCode = Int("DimplingCode"),
+            OilStencilInterleave = Str("OilStencilInterleave"),
+            ItemAttachments = Str("ItemAttachments"),
+            ProcessingOtherSpec = Str("ProcessingOtherSpec"),
+            PackagingBands = Str("PackagingBands"),
+            PackagingOtherSpec = Str("PackagingOtherSpec"),
+            ItemNote = Str("ItemNote"),
+            SketchJobNote = Str("SketchJobNote"),
+            JobNotes = Str("JobNotes"),
+            JobReferenceCodes = Str("JobReferenceCodes"),
+            EnduserPartNum = Str("EnduserPartNum"),
+            TimeDateStarted = Date(r, "TimeDateStarted"),
+            TimeDateFinished = Date(r, "TimeDateFinished"),
+            NumberOfMenUsed = Int("NumberOfMenUsed"),
+            SketchId = (long?)Dec(r, "SketchId"),
+            SketchName = Str("SketchName"),
+        };
+        for (var n = 1; n <= 7; n++) sheet.PackagingSpecs.Add(Str($"PackagingSpec{n}"));
+
+        // The trimmed-width warning only prints when BOTH flags are set — an override on an item that
+        // is not being trimmed is not a warning, and shouting about it would train the floor to ignore
+        // the banner that matters.
+        sheet.TrimmedWidthOverridden = sheet.TrimmingRequired && Flag("TrimmedWidthOverridden");
+
+        sheet.ByLot = sheet.SheetHandlingType == 1;
+
+        // EST SKID WT — ceiling(pieces per skid * piece weight), the sheet's own compute.
+        if (sheet.PiecesPerSkid is { } pcs && sheet.TheoreticalUnitWt is { } unit)
+            sheet.EstSkidWt = Math.Ceiling(pcs * unit);
+
+        // MAX SCRAP WGT. — what is committed to the job less what it is meant to yield as sheet.
+        if (sheet.OrderQty is { } qty && sheet.SheetWt is { } sheetWt)
+            sheet.MaxScrapWt = qty - sheetWt;
+
+        // The printed yield is the yield less the edge trim, when the job has one. Legacy's compute
+        // guards on IsNull, NOT on zero: a job with 0% trim prints the plain yield either way.
+        sheet.MaterialYieldAfterTrim = sheet.MaterialYield - (Dec(r, "EdgeTrimScrapPercentage") ?? 0m);
+
+        await LoadJobSheetShapeAsync(conn, sheet, ct);
+        await LoadJobSheetCoilsAsync(conn, sheet, Dec(r, "StacksSkid"), ct);
+        await LoadJobSheetPartialsAsync(conn, sheet, abJobNum, ct);
+        return sheet;
+    }
+
+    /// <summary>The gauge X <b>width</b> X <b>length</b> pair for the job's shape, with tolerances.
+    /// A shape with only one dimension to state (circle, fender) leaves Length null.</summary>
+    private static async Task LoadJobSheetShapeAsync(DbConnection conn, JobSheet sheet, CancellationToken ct)
+    {
+        if (sheet.OrderAbcNum is not { } ord || sheet.OrderItemNum is not { } item) return;
+        if (ShapeGeometry.JobSheetSize(sheet.SheetType) is not { } size) return;
+
+        // Every fragment interpolated here comes from ShapeGeometry's own constants, never from input.
+        var cols = new List<string> { $"{size.Width.ValueCol} AS wv" };
+        if (size.Width.PlusCol is not null) cols.Add($"{size.Width.PlusCol} AS wp");
+        if (size.Width.MinusCol is not null) cols.Add($"{size.Width.MinusCol} AS wm");
+        if (size.Length is { } len)
+        {
+            cols.Add($"{len.ValueCol} AS lv");
+            if (len.PlusCol is not null) cols.Add($"{len.PlusCol} AS lp");
+            if (len.MinusCol is not null) cols.Add($"{len.MinusCol} AS lm");
+        }
+
+        var raw = await conn.QueryFirstOrDefaultAsync(new CommandDefinition(
+            $"SELECT {string.Join(", ", cols)} FROM {size.Table} WHERE order_abc_num = :ord AND order_item_num = :item",
+            new { ord, item }, cancellationToken: ct));
+        if (raw is null) return;
+
+        var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in (IDictionary<string, object>)raw) row[kv.Key] = kv.Value;
+
+        // Name each dimension from the shape catalog: "width" on a circle would be a lie, and the
+        // operator is reading a diameter.
+        var def = ShapeGeometry.Resolve(sheet.SheetType);
+        string NameOf(string valueCol, string fallback) =>
+            def?.Dims.FirstOrDefault(d => string.Equals(d.ValueCol, valueCol, StringComparison.OrdinalIgnoreCase))?.Name
+            ?? fallback;
+
+        sheet.Width = new JobSheetDimension
+        {
+            Name = NameOf(size.Width.ValueCol, "width"),
+            Value = Dec(row, "wv"), PlusTol = Dec(row, "wp"), MinusTol = Dec(row, "wm"),
+        };
+        if (size.Length is { } l)
+            sheet.Length = new JobSheetDimension
+            {
+                Name = NameOf(l.ValueCol, "length"),
+                Value = Dec(row, "lv"), PlusTol = Dec(row, "lp"), MinusTol = Dec(row, "lm"),
+            };
+    }
+
+    /// <summary>The job's coils and the MAT. REC'D total, plus — on a BY-LOT job — the per-coil skid
+    /// and pieces-per-skid figures that replace the sheet's single PC./SKID number.</summary>
+    private static async Task LoadJobSheetCoilsAsync(DbConnection conn, JobSheet sheet, decimal? stacksSkid, CancellationToken ct)
+    {
+        // Ordered by lot. Legacy's by-lot variant sorts this way and the plain one does not sort at
+        // all; an unordered coil list on a printed sheet is only ever accidental.
+        var coils = await conn.QueryAsync<JobSheetCoil>(new CommandDefinition(
+            """
+            SELECT pc.coil_abc_num AS CoilAbcNum, c.lot_num AS LotNum, c.coil_org_num AS CoilOrgNum,
+                   pc.process_quantity AS ProcessQuantity
+            FROM process_coil pc
+            JOIN coil c ON c.coil_abc_num = pc.coil_abc_num
+            WHERE pc.ab_job_num = :job
+            ORDER BY c.lot_num, pc.coil_abc_num
+            """, new { job = sheet.AbJobNum }, cancellationToken: ct));
+        sheet.Coils.AddRange(coils);
+
+        sheet.MaterialReceived = sheet.Coils.Count == 0 ? null : sheet.Coils.Sum(c => c.ProcessQuantity ?? 0m);
+
+        if (!sheet.ByLot) return;
+
+        var yieldPct = sheet.MaterialYield ?? 0m;
+        var maxSkid = sheet.MaxSkidWt ?? 0m;
+        var unit = sheet.TheoreticalUnitWt ?? 0m;
+        var stacks = stacksSkid is { } s ? (int)s : (int?)null;
+
+        foreach (var coil in sheet.Coils)
+        {
+            var qty = coil.ProcessQuantity ?? 0m;
+            coil.Skids = JobSheetMath.Skids(qty, yieldPct, maxSkid);
+            coil.PiecesPerSkid = JobSheetMath.PiecesPerSkid(qty, yieldPct, maxSkid, unit, stacks);
+        }
+    }
+
+    /// <summary>
+    /// Partial-skid usage — <b>two different sets, both on the paper sheet</b>, and they are not the
+    /// same query.
+    /// <list type="bullet">
+    /// <item><see cref="JobSheet.PartialSkidNote"/> comes from <c>d_ab_job_process_partial</c>: EVERY
+    /// partial assigned to the job. It is the "use partial skid N N" line.</item>
+    /// <item><see cref="JobSheet.Partials"/> comes from the nested <c>d_report_ab_job_partial</c>,
+    /// whose WHERE clause is <c>production_sheet_item.ab_job_num &lt;&gt; :al_job</c> — only material
+    /// carried in from ANOTHER job, with the coil it came off.</item>
+    /// </list>
+    /// Collapsing them into one list would be tidier and would drop either the job's own partials from
+    /// the note or the source coil from the detail.
+    /// </summary>
+    private static async Task LoadJobSheetPartialsAsync(DbConnection conn, JobSheet sheet, long abJobNum, CancellationToken ct)
+    {
+        var assigned = (await conn.QueryAsync<long>(new CommandDefinition(
+            "SELECT sheet_skid_num FROM process_partial_skid WHERE ab_job_num = :job ORDER BY sheet_skid_num",
+            new { job = abJobNum }, cancellationToken: ct))).AsList();
+        sheet.PartialSkidNote = assigned.Count == 0
+            ? ""
+            : "use partial skid " + string.Concat(assigned.Select(s => " " + s.ToString(CultureInfo.InvariantCulture)));
+
+        var rows = await conn.QueryAsync<JobSheetPartial>(new CommandDefinition(
+            """
+            SELECT ss.sheet_skid_num AS SheetSkidNum, pps.partial_skid_ab_job_num AS MadeOnJob,
+                   c.lot_num AS LotNum, c.coil_org_num AS CoilOrgNum,
+                   psi.prod_item_net_wt AS NetWt, pps.partial_skid_pieces AS Pieces,
+                   pps.partial_skid_date AS SkidDate, pps.partial_skid_location AS Location
+            FROM process_partial_skid pps
+            JOIN sheet_skid ss ON ss.sheet_skid_num = pps.sheet_skid_num
+            JOIN sheet_skid_detail ssd ON ssd.sheet_skid_num = ss.sheet_skid_num
+            JOIN production_sheet_item psi ON psi.prod_item_num = ssd.prod_item_num
+            JOIN coil c ON c.coil_abc_num = psi.coil_abc_num
+            WHERE pps.ab_job_num = :job AND psi.ab_job_num <> :job
+            ORDER BY ss.sheet_skid_num, c.lot_num
+            """, new { job = abJobNum }, cancellationToken: ct));
+        sheet.Partials.AddRange(rows);
     }
 
     public async Task<IReadOnlyList<JobFolderNote>> GetJobFolderNotesAsync(long abJobNum, CancellationToken ct)

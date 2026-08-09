@@ -247,7 +247,18 @@
   secret store, but it is slower at a panel with gloves on. **Ask the plant which they want before
   building any of them.**
 - [ ] **M** Serial scale zero command + scrap-scale/gauge separation
-- [ ] **M** Live job sheet / e-folder (sketch image, shape-specific tolerances, coil totals, partial-skid usage)
+- [x] **M** Live job sheet / e-folder — **BUILT.** `GET /prod-folder/jobs/{job}/job-sheet` returns the
+  whole PRODUCTION ORDER (spec, shape dimensions with tolerances, coil totals, partial-skid usage,
+  both edge-trim warnings), rendered on the production folder and on the DAS console where it
+  re-reads on every job change. Printable. Ported from `coil_eval/u_tabpg_job_sheet.sru` +
+  `downtime2/d_report_prod_order.srd`; every query verified against live `.230`.
+  <br>**Two things it turned up.** The job screens were serving drawings out of the retired `sketch`
+  table — 31,048 live jobs got no drawing and **3,420 got a different part's** — because the port was
+  taken from `da/w_da_sheet.srw`, whose `wf_show_job_sheet` is entirely commented out. And
+  `order_item.sh_toleranc_minus` is spelled without its final `e` while its own `sh_tolerance_plus`
+  keeps it and `part_num` spells both in full.
+  <br>Still open: the sheet is read-only. Legacy's tab has a Print button and nothing else, so this
+  is parity — but the e-folder's *notes* remain a separate card rather than part of the sheet.
 
 ## C. Buildable feature gaps (no blocker)
 

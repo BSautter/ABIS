@@ -11706,6 +11706,58 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * A job's live job sheet: spec, shape dimensions and tolerances, coil totals, and partial-skid usage.
+     * @return OK
+     */
+    getJobSheet(abJobNum) {
+        let url_ = this.baseUrl + "/api/prod-folder/jobs/{abJobNum}/job-sheet";
+        if (abJobNum === undefined || abJobNum === null)
+            throw new globalThis.Error("The parameter 'abJobNum' must be defined.");
+        url_ = url_.replace("{abJobNum}", encodeURIComponent("" + abJobNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetJobSheet(_response);
+        });
+    }
+    processGetJobSheet(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = JobSheet.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * The e-folder notes on a job (with author name).
      * @return OK
      */
@@ -17852,6 +17904,63 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Print the 6x10 shipping labels for every skid on a shipment — two per skid. 409 when the shipment carries no skids; 503 (with a per-skid breakdown) when some or all did not print.
+     * @param device (optional)
+     * @return OK
+     */
+    printShipmentLabels(packingList, device) {
+        let url_ = this.baseUrl + "/api/shipments/{packingList}/print-labels?";
+        if (packingList === undefined || packingList === null)
+            throw new globalThis.Error("The parameter 'packingList' must be defined.");
+        url_ = url_.replace("{packingList}", encodeURIComponent("" + packingList));
+        if (device === null)
+            throw new globalThis.Error("The parameter 'device' cannot be null.");
+        else if (device !== undefined)
+            url_ += "device=" + encodeURIComponent("" + device) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processPrintShipmentLabels(_response);
+        });
+    }
+    processPrintShipmentLabels(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status === 503) {
+            return response.text().then((_responseText) => {
+                return throwException("Service Unavailable", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * List part sketches/drawings (paged, sortable; filter by status). Excludes the binary image.
      * @param page (optional)
      * @param pageSize (optional)
@@ -18104,7 +18213,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * The sketch's drawing (BMP). 404 when the sketch does not exist or has no image.
+     * The sketch's drawing (JPEG). 404 when the sketch does not exist or has no image.
      * @return OK
      */
     getSketchImage(sketchId) {
@@ -18427,6 +18536,407 @@ export class AbisClient {
         else if (status === 404) {
             return response.text().then((_responseText) => {
                 return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Print the 4x6 sheet-skid tag as ZPL at the line that made it. purpose selects a line's alternate printer (BL110 has skid + offload); 409 when the skid has no line, 503 when its printer is unreachable.
+     * @param purpose (optional)
+     * @return OK
+     */
+    printSheetSkidTag(sheetSkidNum, purpose) {
+        let url_ = this.baseUrl + "/api/documents/sheet-skid/{sheetSkidNum}/print?";
+        if (sheetSkidNum === undefined || sheetSkidNum === null)
+            throw new globalThis.Error("The parameter 'sheetSkidNum' must be defined.");
+        url_ = url_.replace("{sheetSkidNum}", encodeURIComponent("" + sheetSkidNum));
+        if (purpose === null)
+            throw new globalThis.Error("The parameter 'purpose' cannot be null.");
+        else if (purpose !== undefined)
+            url_ += "purpose=" + encodeURIComponent("" + purpose) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processPrintSheetSkidTag(_response);
+        });
+    }
+    processPrintSheetSkidTag(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status === 503) {
+            return response.text().then((_responseText) => {
+                return throwException("Service Unavailable", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Print the 4x6 scrap tag as ZPL at the line that made it, with one row per contributing coil.
+     * @param purpose (optional)
+     * @return OK
+     */
+    printScrapSkidTag(scrapSkidNum, purpose) {
+        let url_ = this.baseUrl + "/api/documents/scrap-skid/{scrapSkidNum}/print?";
+        if (scrapSkidNum === undefined || scrapSkidNum === null)
+            throw new globalThis.Error("The parameter 'scrapSkidNum' must be defined.");
+        url_ = url_.replace("{scrapSkidNum}", encodeURIComponent("" + scrapSkidNum));
+        if (purpose === null)
+            throw new globalThis.Error("The parameter 'purpose' cannot be null.");
+        else if (purpose !== undefined)
+            url_ += "purpose=" + encodeURIComponent("" + purpose) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processPrintScrapSkidTag(_response);
+        });
+    }
+    processPrintScrapSkidTag(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status === 503) {
+            return response.text().then((_responseText) => {
+                return throwException("Service Unavailable", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * The Certificate of Conformance ZPL for a skid — one per coil — WITHOUT printing. 409 with the reason when the skid cannot be certified (a coil with no inbound 863, conflicting 863 rows, or a customer with no configured element list).
+     * @param packingList (optional)
+     * @return OK
+     */
+    certLabelZpl(sheetSkidNum, packingList) {
+        let url_ = this.baseUrl + "/api/documents/cert-label/{sheetSkidNum}.zpl?";
+        if (sheetSkidNum === undefined || sheetSkidNum === null)
+            throw new globalThis.Error("The parameter 'sheetSkidNum' must be defined.");
+        url_ = url_.replace("{sheetSkidNum}", encodeURIComponent("" + sheetSkidNum));
+        if (packingList === null)
+            throw new globalThis.Error("The parameter 'packingList' cannot be null.");
+        else if (packingList !== undefined)
+            url_ += "packingList=" + encodeURIComponent("" + packingList) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processCertLabelZpl(_response);
+        });
+    }
+    processCertLabelZpl(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Print the Certificate of Conformance for a skid — one per coil, one copy each. 409 when the skid cannot be certified; 503 when the printer did not take it.
+     * @param packingList (optional)
+     * @param device (optional)
+     * @return OK
+     */
+    printCertLabel(sheetSkidNum, packingList, device) {
+        let url_ = this.baseUrl + "/api/documents/cert-label/{sheetSkidNum}/print?";
+        if (sheetSkidNum === undefined || sheetSkidNum === null)
+            throw new globalThis.Error("The parameter 'sheetSkidNum' must be defined.");
+        url_ = url_.replace("{sheetSkidNum}", encodeURIComponent("" + sheetSkidNum));
+        if (packingList === null)
+            throw new globalThis.Error("The parameter 'packingList' cannot be null.");
+        else if (packingList !== undefined)
+            url_ += "packingList=" + encodeURIComponent("" + packingList) + "&";
+        if (device === null)
+            throw new globalThis.Error("The parameter 'device' cannot be null.");
+        else if (device !== undefined)
+            url_ += "device=" + encodeURIComponent("" + device) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processPrintCertLabel(_response);
+        });
+    }
+    processPrintCertLabel(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status === 503) {
+            return response.text().then((_responseText) => {
+                return throwException("Service Unavailable", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * What label printers are configured, what each device/line route resolves to, and — with ?probe=true — whether each answers on its port. Never prints. A route with a null target is configured but resolves to nothing, which is the case that otherwise only shows up as a 503 at the dock.
+     * @param probe (optional)
+     * @return OK
+     */
+    printerDiagnostics(probe) {
+        let url_ = this.baseUrl + "/api/documents/printers?";
+        if (probe === null)
+            throw new globalThis.Error("The parameter 'probe' cannot be null.");
+        else if (probe !== undefined)
+            url_ += "probe=" + encodeURIComponent("" + probe) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processPrinterDiagnostics(_response);
+        });
+    }
+    processPrinterDiagnostics(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * The 6x10 shipping label's ZPL for one skid, WITHOUT printing it. For checking a label before committing stock to it; pass packingList to fill SK# and the shipping date.
+     * @param packingList (optional)
+     * @return OK
+     */
+    shippingLabelZpl(sheetSkidNum, packingList) {
+        let url_ = this.baseUrl + "/api/documents/shipping-label/{sheetSkidNum}.zpl?";
+        if (sheetSkidNum === undefined || sheetSkidNum === null)
+            throw new globalThis.Error("The parameter 'sheetSkidNum' must be defined.");
+        url_ = url_.replace("{sheetSkidNum}", encodeURIComponent("" + sheetSkidNum));
+        if (packingList === null)
+            throw new globalThis.Error("The parameter 'packingList' cannot be null.");
+        else if (packingList !== undefined)
+            url_ += "packingList=" + encodeURIComponent("" + packingList) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processShippingLabelZpl(_response);
+        });
+    }
+    processShippingLabelZpl(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Reprint the 6x10 shipping label for ONE skid — the plant's reprint path. Two copies by default. 503 when the printer is unreachable.
+     * @param packingList (optional)
+     * @param device (optional)
+     * @param copies (optional)
+     * @return OK
+     */
+    printShippingLabel(sheetSkidNum, packingList, device, copies) {
+        let url_ = this.baseUrl + "/api/documents/shipping-label/{sheetSkidNum}/print?";
+        if (sheetSkidNum === undefined || sheetSkidNum === null)
+            throw new globalThis.Error("The parameter 'sheetSkidNum' must be defined.");
+        url_ = url_.replace("{sheetSkidNum}", encodeURIComponent("" + sheetSkidNum));
+        if (packingList === null)
+            throw new globalThis.Error("The parameter 'packingList' cannot be null.");
+        else if (packingList !== undefined)
+            url_ += "packingList=" + encodeURIComponent("" + packingList) + "&";
+        if (device === null)
+            throw new globalThis.Error("The parameter 'device' cannot be null.");
+        else if (device !== undefined)
+            url_ += "device=" + encodeURIComponent("" + device) + "&";
+        if (copies === null)
+            throw new globalThis.Error("The parameter 'copies' cannot be null.");
+        else if (copies !== undefined)
+            url_ += "copies=" + encodeURIComponent("" + copies) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processPrintShippingLabel(_response);
+        });
+    }
+    processPrintShippingLabel(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 503) {
+            return response.text().then((_responseText) => {
+                return throwException("Service Unavailable", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -25013,6 +25523,294 @@ export class JobQcSkid {
         data["inSpecCount"] = this.inSpecCount;
         data["outOfSpecCount"] = this.outOfSpecCount;
         data["status"] = this.status;
+        return data;
+    }
+}
+export class JobSheet {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.abJobNum = _data["abJobNum"];
+            this.lineNum = _data["lineNum"];
+            this.lineDesc = _data["lineDesc"];
+            this.orderAbcNum = _data["orderAbcNum"];
+            this.orderItemNum = _data["orderItemNum"];
+            this.customer = _data["customer"];
+            this.endUser = _data["endUser"];
+            this.orderQty = _data["orderQty"];
+            this.materialReceived = _data["materialReceived"];
+            this.shipTolerancePlus = _data["shipTolerancePlus"];
+            this.shipToleranceMinus = _data["shipToleranceMinus"];
+            this.alloy2 = _data["alloy2"];
+            this.temper = _data["temper"];
+            this.sheetType = _data["sheetType"];
+            this.scrapHandingType = _data["scrapHandingType"];
+            this.sheetHandlingType = _data["sheetHandlingType"];
+            this.byLot = _data["byLot"];
+            this.piecesPerSkid = _data["piecesPerSkid"];
+            this.maxSkidWt = _data["maxSkidWt"];
+            this.estSkidWt = _data["estSkidWt"];
+            this.numSkids = _data["numSkids"];
+            this.gauge = _data["gauge"];
+            this.gaugePlus = _data["gaugePlus"];
+            this.gaugeMinus = _data["gaugeMinus"];
+            this.width = _data["width"] ? JobSheetDimension.fromJS(_data["width"]) : undefined;
+            this.length = _data["length"] ? JobSheetDimension.fromJS(_data["length"]) : undefined;
+            this.metalDensity = _data["metalDensity"];
+            this.theoreticalUnitWt = _data["theoreticalUnitWt"];
+            this.dieName = _data["dieName"];
+            this.pitch = _data["pitch"];
+            this.pitchPlus = _data["pitchPlus"];
+            this.pitchMinus = _data["pitchMinus"];
+            this.materialYield = _data["materialYield"];
+            this.materialYieldAfterTrim = _data["materialYieldAfterTrim"];
+            this.maxScrapWt = _data["maxScrapWt"];
+            this.sheetWt = _data["sheetWt"];
+            this.trimmingRequired = _data["trimmingRequired"];
+            this.trimmedWidthOverridden = _data["trimmedWidthOverridden"];
+            this.trimTypeDesc = _data["trimTypeDesc"];
+            this.incomingCoilWidth = _data["incomingCoilWidth"];
+            this.trimmedCoilWidth = _data["trimmedCoilWidth"];
+            this.yieldStrength = _data["yieldStrength"];
+            this.materialEndUse = _data["materialEndUse"];
+            this.surface = _data["surface"];
+            this.flatness = _data["flatness"];
+            this.dimplingCode = _data["dimplingCode"];
+            this.oilStencilInterleave = _data["oilStencilInterleave"];
+            this.itemAttachments = _data["itemAttachments"];
+            this.processingOtherSpec = _data["processingOtherSpec"];
+            if (Array.isArray(_data["packagingSpecs"])) {
+                this.packagingSpecs = [];
+                for (let item of _data["packagingSpecs"])
+                    this.packagingSpecs.push(item);
+            }
+            this.packagingBands = _data["packagingBands"];
+            this.packagingOtherSpec = _data["packagingOtherSpec"];
+            this.itemNote = _data["itemNote"];
+            this.sketchJobNote = _data["sketchJobNote"];
+            this.jobNotes = _data["jobNotes"];
+            this.jobReferenceCodes = _data["jobReferenceCodes"];
+            this.enduserPartNum = _data["enduserPartNum"];
+            this.timeDateStarted = _data["timeDateStarted"] ? new Date(_data["timeDateStarted"].toString()) : undefined;
+            this.timeDateFinished = _data["timeDateFinished"] ? new Date(_data["timeDateFinished"].toString()) : undefined;
+            this.numberOfMenUsed = _data["numberOfMenUsed"];
+            this.sketchId = _data["sketchId"];
+            this.sketchName = _data["sketchName"];
+            if (Array.isArray(_data["coils"])) {
+                this.coils = [];
+                for (let item of _data["coils"])
+                    this.coils.push(JobSheetCoil.fromJS(item));
+            }
+            this.coilCount = _data["coilCount"];
+            if (Array.isArray(_data["partials"])) {
+                this.partials = [];
+                for (let item of _data["partials"])
+                    this.partials.push(JobSheetPartial.fromJS(item));
+            }
+            this.partialSkidNote = _data["partialSkidNote"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new JobSheet();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["abJobNum"] = this.abJobNum;
+        data["lineNum"] = this.lineNum;
+        data["lineDesc"] = this.lineDesc;
+        data["orderAbcNum"] = this.orderAbcNum;
+        data["orderItemNum"] = this.orderItemNum;
+        data["customer"] = this.customer;
+        data["endUser"] = this.endUser;
+        data["orderQty"] = this.orderQty;
+        data["materialReceived"] = this.materialReceived;
+        data["shipTolerancePlus"] = this.shipTolerancePlus;
+        data["shipToleranceMinus"] = this.shipToleranceMinus;
+        data["alloy2"] = this.alloy2;
+        data["temper"] = this.temper;
+        data["sheetType"] = this.sheetType;
+        data["scrapHandingType"] = this.scrapHandingType;
+        data["sheetHandlingType"] = this.sheetHandlingType;
+        data["byLot"] = this.byLot;
+        data["piecesPerSkid"] = this.piecesPerSkid;
+        data["maxSkidWt"] = this.maxSkidWt;
+        data["estSkidWt"] = this.estSkidWt;
+        data["numSkids"] = this.numSkids;
+        data["gauge"] = this.gauge;
+        data["gaugePlus"] = this.gaugePlus;
+        data["gaugeMinus"] = this.gaugeMinus;
+        data["width"] = this.width ? this.width.toJSON() : undefined;
+        data["length"] = this.length ? this.length.toJSON() : undefined;
+        data["metalDensity"] = this.metalDensity;
+        data["theoreticalUnitWt"] = this.theoreticalUnitWt;
+        data["dieName"] = this.dieName;
+        data["pitch"] = this.pitch;
+        data["pitchPlus"] = this.pitchPlus;
+        data["pitchMinus"] = this.pitchMinus;
+        data["materialYield"] = this.materialYield;
+        data["materialYieldAfterTrim"] = this.materialYieldAfterTrim;
+        data["maxScrapWt"] = this.maxScrapWt;
+        data["sheetWt"] = this.sheetWt;
+        data["trimmingRequired"] = this.trimmingRequired;
+        data["trimmedWidthOverridden"] = this.trimmedWidthOverridden;
+        data["trimTypeDesc"] = this.trimTypeDesc;
+        data["incomingCoilWidth"] = this.incomingCoilWidth;
+        data["trimmedCoilWidth"] = this.trimmedCoilWidth;
+        data["yieldStrength"] = this.yieldStrength;
+        data["materialEndUse"] = this.materialEndUse;
+        data["surface"] = this.surface;
+        data["flatness"] = this.flatness;
+        data["dimplingCode"] = this.dimplingCode;
+        data["oilStencilInterleave"] = this.oilStencilInterleave;
+        data["itemAttachments"] = this.itemAttachments;
+        data["processingOtherSpec"] = this.processingOtherSpec;
+        if (Array.isArray(this.packagingSpecs)) {
+            data["packagingSpecs"] = [];
+            for (let item of this.packagingSpecs)
+                data["packagingSpecs"].push(item);
+        }
+        data["packagingBands"] = this.packagingBands;
+        data["packagingOtherSpec"] = this.packagingOtherSpec;
+        data["itemNote"] = this.itemNote;
+        data["sketchJobNote"] = this.sketchJobNote;
+        data["jobNotes"] = this.jobNotes;
+        data["jobReferenceCodes"] = this.jobReferenceCodes;
+        data["enduserPartNum"] = this.enduserPartNum;
+        data["timeDateStarted"] = this.timeDateStarted ? this.timeDateStarted.toISOString() : undefined;
+        data["timeDateFinished"] = this.timeDateFinished ? this.timeDateFinished.toISOString() : undefined;
+        data["numberOfMenUsed"] = this.numberOfMenUsed;
+        data["sketchId"] = this.sketchId;
+        data["sketchName"] = this.sketchName;
+        if (Array.isArray(this.coils)) {
+            data["coils"] = [];
+            for (let item of this.coils)
+                data["coils"].push(item ? item.toJSON() : undefined);
+        }
+        data["coilCount"] = this.coilCount;
+        if (Array.isArray(this.partials)) {
+            data["partials"] = [];
+            for (let item of this.partials)
+                data["partials"].push(item ? item.toJSON() : undefined);
+        }
+        data["partialSkidNote"] = this.partialSkidNote;
+        return data;
+    }
+}
+export class JobSheetCoil {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.lotNum = _data["lotNum"];
+            this.coilOrgNum = _data["coilOrgNum"];
+            this.processQuantity = _data["processQuantity"];
+            this.skids = _data["skids"];
+            this.piecesPerSkid = _data["piecesPerSkid"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new JobSheetCoil();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["lotNum"] = this.lotNum;
+        data["coilOrgNum"] = this.coilOrgNum;
+        data["processQuantity"] = this.processQuantity;
+        data["skids"] = this.skids;
+        data["piecesPerSkid"] = this.piecesPerSkid;
+        return data;
+    }
+}
+export class JobSheetDimension {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.name = _data["name"];
+            this.value = _data["value"];
+            this.plusTol = _data["plusTol"];
+            this.minusTol = _data["minusTol"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new JobSheetDimension();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["name"] = this.name;
+        data["value"] = this.value;
+        data["plusTol"] = this.plusTol;
+        data["minusTol"] = this.minusTol;
+        return data;
+    }
+}
+export class JobSheetPartial {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.sheetSkidNum = _data["sheetSkidNum"];
+            this.madeOnJob = _data["madeOnJob"];
+            this.lotNum = _data["lotNum"];
+            this.coilOrgNum = _data["coilOrgNum"];
+            this.netWt = _data["netWt"];
+            this.pieces = _data["pieces"];
+            this.skidDate = _data["skidDate"] ? new Date(_data["skidDate"].toString()) : undefined;
+            this.location = _data["location"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new JobSheetPartial();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["sheetSkidNum"] = this.sheetSkidNum;
+        data["madeOnJob"] = this.madeOnJob;
+        data["lotNum"] = this.lotNum;
+        data["coilOrgNum"] = this.coilOrgNum;
+        data["netWt"] = this.netWt;
+        data["pieces"] = this.pieces;
+        data["skidDate"] = this.skidDate ? this.skidDate.toISOString() : undefined;
+        data["location"] = this.location;
         return data;
     }
 }
