@@ -5,15 +5,16 @@
 // work: the endpoint sits behind the same auth as everything under /api, and a browser cannot put
 // X-Api-Key or an Authorization bearer on an <img> request. A plain src attribute gets a 401 and leaves
 // a broken-image icon on a production screen — it looks like the feature is missing, not like an auth
-// problem. Confirmed against the running app: 401 unauthenticated, 200 image/bmp with a key.
+// problem. Confirmed against the running app: 401 unauthenticated, 200 with a key.
 //
 // So the drawing is fetched like any other request and rendered from an object URL. The HTTP cache
 // still applies (it is an ordinary GET, and the response carries a day's Cache-Control), so re-opening
-// a job does not re-download the bitmap.
+// a job does not re-download the image.
 //
-// The images are large — every one of the 128 on live .230 is a 417 KB uncompressed BMP — which is why
-// object URLs are revoked before being replaced. A shop-floor console left open all shift would
-// otherwise accumulate one per job the operator looks at.
+// Object URLs are revoked before being replaced: the 253 drawings on live .230 run 8 KB to 124 KB
+// (median 31 KB), and a shop-floor console left open all shift would otherwise accumulate one per job
+// the operator looks at. Nothing here inspects the format — the endpoint sniffs and declares it — so
+// this renders the JPEGs the live table holds and would render the retired BMPs equally well.
 import { authFetch } from './auth.js';
 
 export interface SketchTarget {

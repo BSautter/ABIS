@@ -12,6 +12,16 @@ namespace Abis.Api.Data;
 /// </summary>
 public static class SqliteFixture
 {
+    /// <summary>A real 2x2 greyscale JPEG — quantisation and Huffman tables and all, opening
+    /// <c>FF D8 FF E0 / JFIF</c> and closing <c>FF D9</c>. Stands in for a live part drawing so the
+    /// image path can be asserted on the bytes themselves rather than on a length.</summary>
+    private static readonly byte[] JpegStub = Convert.FromBase64String(
+        "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDACAWGBwYFCAcGhwkIiAmMFA0MCwsMGJGSjpQdGZ6eHJmcG6AkLicgIiuim5woNqi" +
+        "rr7EztDOfJri8uDI8LjKzsb/wAALCAACAAIBAREA/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgED" +
+        "AwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RF" +
+        "RkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJ" +
+        "ytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/9oACAEBAAA/AM28u7mK9njjuJURJGVVVyAoB4AFf//Z");
+
     public static void EnsureCreatedAndSeeded(string connectionString)
     {
         using var conn = new SqliteConnection(connectionString);
@@ -80,6 +90,7 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS dt_instance;
             DROP TABLE IF EXISTS customer_contact;
             DROP TABLE IF EXISTS sketch;
+            DROP TABLE IF EXISTS sketch_jpg;
             DROP TABLE IF EXISTS line;
             DROP TABLE IF EXISTS groupdepartment;
             DROP TABLE IF EXISTS dt_cause;
@@ -542,11 +553,22 @@ public static class SqliteFixture
                 contact_id INTEGER PRIMARY KEY, customer_id INTEGER NOT NULL, first_name TEXT, last_name TEXT,
                 department TEXT, city TEXT, state TEXT, phone1 TEXT, email1 TEXT);
 
+            -- The LIVE drawing table. Identical in shape to `sketch`, which it replaced in 2016; the
+            -- app reads and writes only this one (AbisRepository.SketchTable explains why, and why
+            -- reading the other is worse than reading nothing).
+            CREATE TABLE sketch_jpg (
+                sketch_id INTEGER PRIMARY KEY, sketch_name TEXT, sketch_notes TEXT,
+                -- sketch_view is LONG RAW on Oracle, holding a JPEG. BLOB is the SQLite equivalent —
+                -- the point of seeding it is that the read path returns whole, self-consistent bytes,
+                -- which SketchImageTests checks via the JPEG's own header.
+                sketch_view BLOB,
+                sketch_sys_note TEXT, sketch_status INTEGER);
+
+            -- The RETIRED BMP predecessor. Seeded on purpose, with a DIFFERENT drawing under a shared
+            -- id, so a test can prove the app does not read it: on the live database 3,420 jobs point
+            -- at an id that exists in both tables and names two different parts.
             CREATE TABLE sketch (
                 sketch_id INTEGER PRIMARY KEY, sketch_name TEXT, sketch_notes TEXT,
-                -- sketch_view is LONG RAW on Oracle (a BMP; every live one is 417,078 bytes). BLOB is
-                -- the SQLite equivalent — the point of seeding it is that the read path returns whole,
-                -- self-consistent bytes, which SketchImageTests checks via the BMP's own header.
                 sketch_view BLOB,
                 sketch_sys_note TEXT, sketch_status INTEGER);
 
@@ -1337,7 +1359,7 @@ public static class SqliteFixture
             });
 
         conn.Execute("""
-            INSERT INTO sketch (sketch_id, sketch_name, sketch_notes, sketch_sys_note, sketch_status)
+            INSERT INTO sketch_jpg (sketch_id, sketch_name, sketch_notes, sketch_sys_note, sketch_status)
             VALUES (:SketchId, :SketchName, :SketchNotes, :SketchSysNote, :SketchStatus)
             """,
             new[]
@@ -1347,10 +1369,29 @@ public static class SqliteFixture
                 new { SketchId = 3L, SketchName = "BRKT-C rev1", SketchNotes = "Old revision", SketchSysNote = "", SketchStatus = (int?)0 }
             });
 
+        // The retired BMP table, holding a DIFFERENT part under the same ids. This mirrors the live
+        // database, where id 125 is "AB-2-5" here and "JL FENDER" in sketch_jpg across 1,203 jobs, and
+        // it is what lets a test assert the app reads the drawing a job is actually cut to. Seeding it
+        // as an empty stub would leave the wrong-table bug looking like a 404 instead of a wrong image.
+        conn.Execute("""
+            INSERT INTO sketch (sketch_id, sketch_name, sketch_notes, sketch_sys_note, sketch_status)
+            VALUES (:SketchId, :SketchName, :SketchNotes, :SketchSysNote, :SketchStatus)
+            """,
+            new[]
+            {
+                new { SketchId = 1L, SketchName = "RETIRED-BMP-1", SketchNotes = "Superseded 2016", SketchSysNote = "", SketchStatus = (int?)0 },
+                new { SketchId = 2L, SketchName = "RETIRED-BMP-2", SketchNotes = "Superseded 2016", SketchSysNote = "", SketchStatus = (int?)0 }
+            });
+
         // Sketch 1 gets a real drawing; sketch 2 deliberately gets none, so the endpoint's "exists but
-        // has no image" branch is covered as well as the happy path. A genuine 2x2 24-bit BMP, not
-        // arbitrary bytes: its header declares its own total length, which is the property the live
-        // 417,078-byte images have and the only way to prove a LONG RAW read came back whole.
+        // has no image" branch is covered as well as the happy path. A genuine 70-byte JPEG, not
+        // arbitrary bytes: it opens FF D8 FF E0 / JFIF and closes FF D9, which is what proves both that
+        // the media type is sniffed correctly and that a LONG RAW read came back whole.
+        conn.Execute("UPDATE sketch_jpg SET sketch_view = :img WHERE sketch_id = 1",
+            new { img = JpegStub });
+
+        // The retired table's copy is a BMP, and a different image — so "which table did we read?" is
+        // answerable from the bytes alone, not just from the name beside them.
         conn.Execute("UPDATE sketch SET sketch_view = :img WHERE sketch_id = 1",
             new { img = new byte[] { 66,77,70,0,0,0,0,0,0,0,54,0,0,0,40,0,0,0,2,0,0,0,2,0,0,0,1,0,24,0,0,0,0,0,16,0,0,0,19,11,0,0,19,11,0,0,0,0,0,0,0,0,0,0,255,0,0,0,255,0,0,0,0,0,255,255,255,255,0,0 } });
 

@@ -525,7 +525,9 @@ public static class AbisSchema
         ("receiving_bol", "receiving_bol_id", null), ("return_scrap_item", "return_scrap_item_num", null),
         ("scan_log", "scan_id", null), ("scrap_skid", "scrap_skid_num", null), ("sheet_skid", "sheet_skid_num", null),
         ("sheet_skid_dimension_check", "dimension_check_num", null), ("shift", "shift_num", null),
-        ("sketch", "sketch_id", null), ("shipment", "packing_list", null),
+        // sketch_jpg is the live drawing table (AbisRepository.SketchTable), but the sequence kept the
+        // retired table's name, so it has to be spelled out rather than derived from the table.
+        ("sketch_jpg", "sketch_id", "sketch_id_seq"), ("shipment", "packing_list", null),
 
         // --- added 2026-07-25 after all three were found BEHIND on the live database ---------------
         // Every finished-sheet write (DAS skid save, warehouse skid) mints from this one.

@@ -301,6 +301,27 @@ public sealed class AbisRepository : IAbisRepository
         department AS Department, city AS City, state AS State, phone1 AS Phone1, email1 AS Email1
         """;
 
+    /// <summary>The table holding part drawings: <b><c>sketch_jpg</c>, not <c>sketch</c></b>.
+    ///
+    /// <para>There are two identically-shaped tables and <c>ab_job.sketch_id</c> is a key into the JPEG
+    /// one. Legacy moved in 2016 — <c>coil_eval/u_tabpg_job_sheet.sru:78</c> carries the fix in a
+    /// comment, "Changed from FROM sketch to FROM sketch_jpg" — and every live consumer followed:
+    /// the production folder, the e-car folder, the shop folder, the stacker job details and the DAS
+    /// job sheet all read <c>sketch_jpg</c>. The single remaining reference to <c>sketch</c> in the
+    /// whole legacy source is <c>da/w_da_sheet.srw:911</c>, inside a subroutine whose every display
+    /// call is commented out. That dead copy is what this port was built from.</para>
+    ///
+    /// <para><b>The ids are not interchangeable — they were re-keyed, not copied.</b> Reading the wrong
+    /// table is therefore not merely a missing image. Measured on <c>.230</c>, of the 62,038 jobs
+    /// carrying a sketch id, all 62,038 resolve in <c>sketch_jpg</c>; against <c>sketch</c>, 31,048
+    /// find nothing and <b>3,420 find a DIFFERENT drawing</b> — id 125 alone is "AB-2-5" there and
+    /// "JL FENDER" here, on 1,203 jobs. A shop floor cutting to the wrong drawing is a scrap event,
+    /// so this is the more dangerous half of the defect.</para>
+    ///
+    /// <para><c>sketch</c> is the retired BMP predecessor: frozen at id 195 against the JPEG table's
+    /// 362, and no job references an id that exists only there.</para></summary>
+    private const string SketchTable = "sketch_jpg";
+
     private const string SketchCols = """
         sketch_id AS SketchId, sketch_name AS SketchName, sketch_notes AS SketchNotes,
         sketch_sys_note AS SketchSysNote, sketch_status AS SketchStatus
@@ -2756,7 +2777,9 @@ public sealed class AbisRepository : IAbisRepository
             LEFT JOIN customer_order o ON o.order_abc_num = j.order_abc_num
             LEFT JOIN order_item i ON i.order_abc_num = j.order_abc_num AND i.order_item_num = j.order_item_num
             LEFT JOIN customer cu ON cu.customer_id = o.orig_customer_id
-            LEFT JOIN sketch sk ON sk.sketch_id = j.sketch_id
+            -- sketch_jpg, not sketch: see SketchTable. The two are re-keyed against each other, so the
+            -- retired table answers with a different drawing's name for thousands of jobs.
+            LEFT JOIN sketch_jpg sk ON sk.sketch_id = j.sketch_id
             WHERE (:abJobNum IS NULL OR j.ab_job_num = :abJobNum)
               AND (:orderAbcNum IS NULL OR j.order_abc_num = :orderAbcNum)
               AND (:customerId IS NULL OR o.orig_customer_id = :customerId)
@@ -7590,13 +7613,14 @@ public sealed class AbisRepository : IAbisRepository
                    (SELECT COUNT(*) FROM sheet_skid ss WHERE ss.ab_job_num = j.ab_job_num AND (ss.skid_sheet_status IS NULL OR ss.skid_sheet_status <> 6)) AS SkidCount,
                    (SELECT COUNT(*) FROM job_efolder_notes n WHERE n.ab_job_num = j.ab_job_num) AS NoteCount,
                    -- The sketch the job is cut to. Legacy's production folder showed the drawing on
-                   -- this screen (w_production_folder.srw:226 SELECTBLOB sketch_view), so the folder
-                   -- carries the id and name; the 417 KB bitmap is fetched separately by the client.
+                   -- this screen (w_production_folder.srw:228 SELECTBLOB sketch_view FROM sketch_jpg),
+                   -- so the folder carries the id and name; the image is fetched separately.
                    j.sketch_id AS SketchId, sk.sketch_name AS SketchName, j.sketch_job_note AS SketchJobNote
             FROM ab_job j
             LEFT JOIN customer_order o ON o.order_abc_num = j.order_abc_num
             LEFT JOIN customer c ON c.customer_id = o.orig_customer_id
-            LEFT JOIN sketch sk ON sk.sketch_id = j.sketch_id
+            -- sketch_jpg, not sketch: see SketchTable.
+            LEFT JOIN sketch_jpg sk ON sk.sketch_id = j.sketch_id
             WHERE j.ab_job_num = :id
             """, new { id = abJobNum }, cancellationToken: ct));
     }
@@ -9667,7 +9691,7 @@ public sealed class AbisRepository : IAbisRepository
     }
 
     public Task<PagedResult<Sketch>> GetSketchesAsync(int page, int pageSize, int? status, string? orderBy, CancellationToken ct) =>
-        PageAsync<Sketch>(SketchCols, "sketch", orderBy ?? "sketch_id",
+        PageAsync<Sketch>(SketchCols, SketchTable, orderBy ?? "sketch_id",
             status is null ? null : "sketch_status = :status",
             new { status }, page, pageSize, ct);
 
@@ -9675,22 +9699,22 @@ public sealed class AbisRepository : IAbisRepository
     {
         await using var conn = await OpenAsync(ct);
         return await conn.QuerySingleOrDefaultAsync<Sketch>(new CommandDefinition(
-            $"SELECT {SketchCols} FROM sketch WHERE sketch_id = :id", new { id = sketchId }, cancellationToken: ct));
+            $"SELECT {SketchCols} FROM {SketchTable} WHERE sketch_id = :id", new { id = sketchId }, cancellationToken: ct));
     }
 
     /// <summary>The sketch's drawing, or null when the sketch does not exist or carries no image.
-    /// <para><c>sketch_view</c> is a <b>LONG RAW</b> holding a BMP — every one of the 128 sketches on
-    /// live <c>.230</c> is 417,078 bytes. LONG RAW is severely restricted in SQL: it cannot be
+    /// <para><c>sketch_view</c> is a <b>LONG RAW</b>, which is severely restricted in SQL: it cannot be
     /// aggregated or wrapped in a function (<c>COUNT(sketch_view)</c> raises ORA-00997), so this reads
     /// the column bare and lets the driver hand back the bytes. <c>IS NOT NULL</c> is permitted, which
     /// is why the emptiness check can live in the WHERE clause.</para>
-    /// <para>Legacy read it exactly this way — <c>SELECTBLOB sketch_view INTO :lb_pic FROM sketch</c>
-    /// (<c>w_da_sheet.srw:909</c>) — then wrote it to a .bmp file for a picture control.</para></summary>
+    /// <para>The bytes are a JPEG — see <see cref="SketchTable"/> for why this is not the BMP table.
+    /// They are passed through untouched; re-encoding would be the only step in the chain that could
+    /// silently alter a drawing the shop floor works from.</para></summary>
     public async Task<byte[]?> GetSketchImageAsync(long sketchId, CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
         return await conn.ExecuteScalarAsync<byte[]?>(new CommandDefinition(
-            "SELECT sketch_view FROM sketch WHERE sketch_id = :id AND sketch_view IS NOT NULL",
+            $"SELECT sketch_view FROM {SketchTable} WHERE sketch_id = :id AND sketch_view IS NOT NULL",
             new { id = sketchId }, cancellationToken: ct));
     }
 
@@ -9698,11 +9722,14 @@ public sealed class AbisRepository : IAbisRepository
     {
         await using var conn = await OpenAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
-        var id = await NextIdAsync(conn, tx, "sketch", "sketch_id", ct);
+        // Both sketch tables draw from the one SKETCH_ID_SEQ, so the sequence name stays keyed to the
+        // retired table's name. Naming it explicitly keeps the {table}_id_seq default from resolving
+        // a SKETCH_JPG_ID_SEQ that does not exist.
+        var id = await NextIdAsync(conn, tx, SketchTable, "sketch_id", ct, sequence: "sketch_id_seq");
         // The binary sketch_view (LONG RAW image) is never written through this API.
         await conn.ExecuteAsync(new CommandDefinition(
-            """
-            INSERT INTO sketch (sketch_id, sketch_name, sketch_notes, sketch_sys_note, sketch_status)
+            $"""
+            INSERT INTO {SketchTable} (sketch_id, sketch_name, sketch_notes, sketch_sys_note, sketch_status)
             VALUES (:id, :name, :notes, :sysNote, :status)
             """,
             new { id, name = body.SketchName, notes = body.SketchNotes, sysNote = body.SketchSysNote, status = body.SketchStatus },
@@ -9715,8 +9742,8 @@ public sealed class AbisRepository : IAbisRepository
     {
         await using var conn = await OpenAsync(ct);
         var n = await conn.ExecuteAsync(new CommandDefinition(
-            """
-            UPDATE sketch SET sketch_name = :name, sketch_notes = :notes,
+            $"""
+            UPDATE {SketchTable} SET sketch_name = :name, sketch_notes = :notes,
                    sketch_sys_note = :sysNote, sketch_status = :status
             WHERE sketch_id = :id
             """,

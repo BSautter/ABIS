@@ -41,9 +41,9 @@ function scaffold(): string {
           <header><h2>Sketch</h2></header>
           <div class="body">
             <div class="kv" id="sketchMeta"></div>
-            <!-- The drawing is a 417 KB BMP served from /api/sketches/{id}/image. It is shown at the
-                 card's width and opens full size in a new tab, because the shop floor reads dimensions
-                 off it and the on-screen scale is not the point. -->
+            <!-- The drawing comes from /api/sketches/{id}/image. It is shown at the card's width and
+                 opens full size in a new tab, because the shop floor reads dimensions off it and the
+                 on-screen scale is not the point. -->
             <a id="sketchLink" target="_blank" rel="noopener" title="Open the full-size drawing">
               <img id="sketchImg" alt="" style="max-width:100%;height:auto;border:1px solid var(--rail-line);background:#fff" />
             </a>

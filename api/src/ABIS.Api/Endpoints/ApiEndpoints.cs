@@ -2431,22 +2431,25 @@ public static class ApiEndpoints
            .WithSummary("Get one sketch header by id (no image).")
            .Produces<Sketch>().Produces(StatusCodes.Status404NotFound);
 
-        // The sketch drawing itself. Served as image/bmp because that is genuinely what is stored —
-        // sketch_view is a LONG RAW holding an uncompressed BMP (every live one is 417,078 bytes), and
-        // legacy wrote it straight out to a .bmp for a picture control. Browsers render BMP natively,
-        // so it is passed through untouched rather than re-encoded: a conversion would be the only
-        // step in the chain that could silently alter a drawing the shop floor works from.
-        // They are immutable in practice and large, so they carry a long cache lifetime.
+        // The sketch drawing itself, passed through untouched — re-encoding would be the only step in
+        // the chain that could silently alter a drawing the shop floor works from. They are immutable
+        // in practice and large, so they carry a long cache lifetime.
+        //
+        // The media type is SNIFFED rather than declared. The live table holds JPEGs, but the retired
+        // sketch table holds BMPs and the two have been confused once already (see SketchTable); a
+        // hard-coded type would let that confusion come back as a broken image instead of a failing
+        // test. Two magic numbers, no decoding.
         api.MapGet("/sketches/{sketchId:long}/image", async (long sketchId, IAbisRepository repo, HttpContext ctx, CancellationToken ct) =>
             {
                 var bytes = await repo.GetSketchImageAsync(sketchId, ct);
                 if (bytes is null || bytes.Length == 0) return Results.NotFound();
+                var (media, ext) = SniffImage(bytes);
                 ctx.Response.Headers.CacheControl = "private, max-age=86400";
-                return Results.File(bytes, "image/bmp", $"sketch-{sketchId}.bmp");
+                return Results.File(bytes, media, $"sketch-{sketchId}.{ext}");
             })
            .WithName("GetSketchImage").WithTags("Sketches")
-           .WithSummary("The sketch's drawing (BMP). 404 when the sketch does not exist or has no image.")
-           .Produces(StatusCodes.Status200OK, contentType: "image/bmp").Produces(StatusCodes.Status404NotFound);
+           .WithSummary("The sketch's drawing (JPEG). 404 when the sketch does not exist or has no image.")
+           .Produces(StatusCodes.Status200OK, contentType: "image/jpeg").Produces(StatusCodes.Status404NotFound);
 
         api.MapPost("/sketches", async (SketchWrite body, IAbisRepository repo, CancellationToken ct) =>
             {
@@ -4211,6 +4214,15 @@ public static class ApiEndpoints
         var updated = await update();
         return updated is null ? Results.NotFound() : Results.Ok(updated);
     }
+
+    /// <summary>The media type of a stored drawing, read from its first bytes.
+    /// <para>Both formats are in play: <c>sketch_jpg</c> holds JPEGs (<c>FF D8 FF</c>) and the retired
+    /// <c>sketch</c> table holds uncompressed BMPs (<c>BM</c>). Anything else is served as a download
+    /// rather than guessed at — a mislabelled image renders as a broken box with no clue why.</para></summary>
+    internal static (string Media, string Extension) SniffImage(ReadOnlySpan<byte> bytes) =>
+        bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF ? ("image/jpeg", "jpg")
+        : bytes.Length >= 2 && bytes[0] == 0x42 && bytes[1] == 0x4D ? ("image/bmp", "bmp")
+        : ("application/octet-stream", "bin");
 
     // Lightweight per-field validators. Max lengths mirror the Oracle column widths in
     // docs/data-model/oracle_ddl.sql so over-long or missing-required input fails fast as

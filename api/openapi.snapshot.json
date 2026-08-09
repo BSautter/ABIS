@@ -14048,7 +14048,7 @@
         "tags": [
           "Sketches"
         ],
-        "summary": "The sketch's drawing (BMP). 404 when the sketch does not exist or has no image.",
+        "summary": "The sketch's drawing (JPEG). 404 when the sketch does not exist or has no image.",
         "operationId": "GetSketchImage",
         "parameters": [
           {
