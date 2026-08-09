@@ -14,7 +14,7 @@
 import { AbisClient, SheetSkidWrite, ScrapSkidWrite, DowntimeInstanceWrite } from './generated/abis-client.js';
 import { initAuth, authFetch } from './auth.js';
 import { statusChip, lineLabel, loadLineNames } from './status-labels.js';
-import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount, fetchCounters, fetchStacker, fetchConveyor, fetchLineStatus, browseEdgeTags } from './edge.js';
+import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount, fetchCounters, countersForRunTag, fetchStacker, fetchConveyor, fetchLineStatus, browseEdgeTags } from './edge.js';
 import type { CountersResult, StackerResult, LineStatusResult } from './edge.js';
 import { renderSketch } from './sketch.js';
 import { decideConveyorWeight } from './skid-weight.js';
@@ -694,7 +694,7 @@ function startRunStatePoll(): void {
   if (bases.length === 0) { setRunInd('—'); setPieceInd('—'); return; }
   // The same 3s tick drives run-state (auto-downtime), the stacker piece count, and the coil-run
   // production counters (good/reject/strokes/feed).
-  const tick = () => { void pollRunState(bases, runTag); void pollPieceCount(bases, pieceTag); void pollCounters(bases); void pollStacker(bases); void pollLamps(bases); };
+  const tick = () => { void pollRunState(bases, runTag); void pollPieceCount(bases, pieceTag); void pollCounters(bases, runTag); void pollStacker(bases); void pollLamps(bases); };
   runPollTimer = window.setInterval(tick, 3000);
   tick();
 }
@@ -772,8 +772,11 @@ function renderCounters(): void {
   }).join('');
 }
 
-async function pollCounters(bases: string[]): Promise<void> {
-  const s = await fetchCounters(bases);
+async function pollCounters(bases: string[], runTag?: string): Promise<void> {
+  // SCOPED TO THIS LINE via the run tag's PLC prefix. Without tags the edge answers with its
+  // configured defaults, and both plant hosts default to BL110 — so BL78's panel showed BL110's
+  // production. Every other per-line reader here already passes tags; this one did not.
+  const s = await fetchCounters(bases, countersForRunTag(runTag));
   if (!s.reachable) { counterCurrent = null; renderCounters(); return; }
   counterCurrent = s;
   // Seed the baseline on the first good read after a run opens: this coil run starts at zero.

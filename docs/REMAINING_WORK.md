@@ -746,12 +746,27 @@ function `f_add_system_log_tran`, whose body is not vendored), and the Instron "
   values rather than being blanked for a fault they did not have. Verified in a browser by failing
   only that one request: `1 / 0 / 1` → `— / — / —` + banner, recovering on the next 15s tick.
 
-- [ ] **H — REDEPLOY THE EDGE: the deployed build predates the per-line conveyor fix.** Live check
-  2026-08-02: `GET /conveyor?line=4` on `.170` answers **`configured:true` with 12 cells** for **BL78**,
-  a line with no stacker at all — it is serving BL110's cell map under another line's number. The fix
-  is already in the repo (#305/#306: a line with no map of its own answers with NO cells, never the
-  default), it is simply not deployed. Until it is, the floor board can paint BL110's belt under BL78.
-  The same redeploy carries #340's `simulated` flag, which `/reading` on `.170` still does not report.
+- [x] **H — REDEPLOY THE EDGE** — **verified DONE live 2026-08-09.** `GET /conveyor?line=4` on `.170`
+  now answers `configured:false` with **no cells** for BL78, and `line=6` answers `configured:true`
+  with BL110's real stacker tags. `/reading` reports `"simulated": true`. Both edge hosts are up on
+  `:8090` and serving `/counters`, `/stacker`, `/run-state`, `/line-status`. The redeploy happened at
+  some point between 2026-08-02 and now; this entry was stale.
+  <br>**But the same live check found a DIFFERENT per-line leak** — see the next item.
+- [x] **H — the DAS console showed BL110's production counters on every line** — found and fixed
+  2026-08-09 while verifying the above. `/counters` and `/run-state` are **tag-parameterised, not
+  line-parameterised**: they take `?good=&reject=&stroke=&feed=` / `?tag=`, and answer with the edge's
+  CONFIGURED DEFAULTS when given none. Both plant hosts default to `PLC5-BL110`.
+  <br>`fetchRunState`, `fetchPieceCount` and `fetchLineStatus` all passed tags. **`fetchCounters` did
+  not** — so an operator on BL78 or BL84 read BL110's good/reject/stroke/feed, and the per-coil-run
+  delta was computed from another line's counter. Display-only (`counterDelta` feeds only the render),
+  so nothing wrong was ever saved.
+  <br>Fixed by deriving the four tags from the line's run tag, whose PLC prefix already identifies the
+  line (`PLC5-BL84.strokecnt` → `.goodpartcnt` / `.rejectpartcnt` / `.feedlength`). No tags → no query,
+  which keeps the old default behaviour for a single-line box.
+  <br>**Method note:** the first probe (`/counters?line=4`) looked like the SAME bug as the conveyor
+  one, because it returned BL110 tags. It was not — `line` is simply not a parameter that endpoint
+  accepts. Reading the endpoint's signature before reporting turned a false alarm into the real,
+  narrower defect one layer up.
 
 - [x] **C** **The plant edge was serving SIMULATED weights, and the DAS console saved them** — done (#340).
   `Edge:Scale:Provider` defaults to `Mock`, and both plant edge hosts configure only `Edge:Opc` (their

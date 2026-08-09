@@ -119,10 +119,44 @@ const NO_COUNTER = { configured: false, value: null };
  * the PLC; the DAS console captures a baseline at coil-run start and shows the delta as this run's
  * production. A null value (unreachable or bad read) means "unknown" — never a fabricated count.
  */
-export async function fetchCounters(bases) {
+/** Derive a line's four counter tags from its RUN tag, which the console already holds per line.
+ *
+ * The plant's tag map is one PLC prefix per line with fixed member names — `PLC5-BL84.strokecnt`,
+ * `.goodpartcnt`, `.rejectpartcnt`, `.feedlength` — so the prefix of the run tag identifies the line
+ * and the rest follow. That avoids asking the operator for four more tags they would have to keep in
+ * step with the one they already set.
+ *
+ * Returns null for a tag with no prefix, which makes the caller fall back to the edge's defaults —
+ * the previous behaviour, and correct on a single-line box. */
+export function countersForRunTag(runTag) {
+    const dot = (runTag ?? '').lastIndexOf('.');
+    if (dot <= 0)
+        return null;
+    const prefix = runTag.slice(0, dot);
+    return {
+        good: `${prefix}.goodpartcnt`,
+        reject: `${prefix}.rejectpartcnt`,
+        stroke: `${prefix}.strokecnt`,
+        feed: `${prefix}.feedlength`,
+    };
+}
+/** Read the line's counters. PASS `tags` TO SCOPE THEM TO A LINE.
+ *
+ * Without them the edge answers with its CONFIGURED DEFAULTS, and on this plant both edge hosts
+ * default to BL110 — so every line's panel showed BL110's production. Found live 2026-08-09:
+ * `/counters` on .170 and .175 both returned `PLC5-BL110.goodpartcnt` whatever line was displayed.
+ * Display-only, so nothing wrong was ever saved, but an operator on BL78 was reading BL110's numbers.
+ *
+ * Every other per-line reader here already takes tags — run-state, piece-count, line-status. This one
+ * was the exception. */
+export async function fetchCounters(bases, tags) {
+    const q = tags
+        ? `?good=${encodeURIComponent(tags.good)}&reject=${encodeURIComponent(tags.reject)}`
+            + `&stroke=${encodeURIComponent(tags.stroke)}&feed=${encodeURIComponent(tags.feed)}`
+        : '';
     for (let i = 0; i < bases.length; i++) {
         try {
-            const r = await fetchWithTimeout(`${bases[i]}/counters`, 2000);
+            const r = await fetchWithTimeout(`${bases[i]}/counters${q}`, 2000);
             if (!r.ok)
                 continue;
             const s = await r.json();

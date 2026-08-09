@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { parseEdgeUrls, fetchStacker, fetchConveyor } from '../src/edge.js';
+import { parseEdgeUrls, fetchStacker, fetchConveyor, fetchCounters, countersForRunTag } from '../src/edge.js';
 
 /**
  * The edge client — the browser's link to the two OPC boxes.
@@ -119,5 +119,58 @@ describe('fetchConveyor', () => {
     const r = await fetchConveyor(['http://a:8090'], 4);
     expect(r.configured).toBe(false);
     expect(r.cells.size).toBe(0);
+  });
+});
+
+describe('fetchCounters is scoped to a line', () => {
+  // FOUND LIVE 2026-08-09. /counters on BOTH plant edge hosts returned PLC5-BL110.goodpartcnt no
+  // matter which line the console was showing, because the client passed no tags and the edge fell
+  // back to its configured defaults. Display-only, so nothing wrong was saved — but an operator on
+  // BL78 was reading BL110's production. Every other per-line reader already passed tags.
+
+  it('derives the four counter tags from the run tag prefix', () => {
+    // The plant's map is one PLC prefix per line with fixed member names.
+    expect(countersForRunTag('PLC5-BL84.strokecnt')).toEqual({
+      good: 'PLC5-BL84.goodpartcnt',
+      reject: 'PLC5-BL84.rejectpartcnt',
+      stroke: 'PLC5-BL84.strokecnt',
+      feed: 'PLC5-BL84.feedlength',
+    });
+  });
+
+  it('returns null for a tag with no prefix, so the caller keeps the old default behaviour', () => {
+    // A single-line edge box with no run tag set must still work the way it did.
+    expect(countersForRunTag('')).toBeNull();
+    expect(countersForRunTag(undefined)).toBeNull();
+    expect(countersForRunTag('strokecnt')).toBeNull();
+  });
+
+  it('sends the tags on the query string so the edge cannot fall back to BL110', async () => {
+    let asked = '';
+    const fetchMock = vi.fn(async (url: string) => {
+      asked = url;
+      return { ok: true, json: async () => ({ good: { configured: true, value: 7 } }) } as Response;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await fetchCounters(['http://edge:8090'], countersForRunTag('PLC5-BL78.strokecnt'));
+
+    expect(asked).toContain('good=PLC5-BL78.goodpartcnt');
+    expect(asked).toContain('reject=PLC5-BL78.rejectpartcnt');
+    expect(asked).toContain('feed=PLC5-BL78.feedlength');
+    vi.unstubAllGlobals();
+  });
+
+  it('omits the query entirely when there are no tags', async () => {
+    let asked = '';
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      asked = url;
+      return { ok: true, json: async () => ({}) } as Response;
+    }));
+
+    await fetchCounters(['http://edge:8090'], null);
+
+    expect(asked).toBe('http://edge:8090/counters');
+    vi.unstubAllGlobals();
   });
 });
