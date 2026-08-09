@@ -273,7 +273,34 @@ The `sleep_ms` calls are "Ship_Print_Delay" (2019-06-12) and sit between every p
 Windows spooler; whether a raw socket needs them is unknown, but a Zebra's buffer is finite and three
 6x10 payloads back to back is the case to watch.
 
-## 9. Open
+## 9. Verified against LIVE Oracle, 2026-08-09
+
+The certificate was built and unit-tested against SQLite. This is its first end-to-end check on the real
+database, for the photographed coil `1949234` (Novelis-Oswego 1459, FCA code 1):
+
+| check | result |
+|---|---|
+| Duplicate 863 rows collapse under DISTINCT | **2 → 1** |
+| Element list joins to live values, in `seq_num` order | 12 configured |
+| Elements WITH values | **11** |
+| `n4t` (seq 11) | **empty** — exactly the one absent from the printed certificate |
+| Every value | matches the photograph: 275, 0.7, 120, 2.3, 24, 2.4, 25, 3, 0.27, 3, 1.307 |
+| Unit codes resolve | `M8`→`mpa`, `MM`→`mm`, `69`→ *blank* |
+| Coils whose duplicate 863s genuinely differ | **14** — the refusal case |
+
+So the data path holds on live data, not just on a fixture.
+
+### One thing that only shows up on Oracle
+
+**`unit_of_measure.uom_abbrev` for code 69 is three SPACES, not empty** — and the column is `VARCHAR2`,
+so that is stored data rather than CHAR padding. Someone typed spaces.
+
+`CertProperty.Display` tests `string.IsNullOrWhiteSpace(Unit)`, so it prints `0.7`. Had it tested
+`Unit == ""` or `Unit.Length == 0` — both of which pass every SQLite test, where the fixture stores
+`''` — the certificate would print `0.7` followed by three trailing spaces on every unitless property.
+Visible only on paper.
+
+## 10. Open
 
 - **`d_863_mech_test_results`' retrieve SQL** — needed to resolve the duplicate-863 case in §2, which
   affects ~4.4% of coils.
