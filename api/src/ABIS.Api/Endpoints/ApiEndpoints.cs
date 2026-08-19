@@ -1766,6 +1766,18 @@ public static class ApiEndpoints
            .Produces<SupervisorOverrideResult>().ProducesValidationProblem()
            .RequireRateLimiting("auth-login");
 
+        // The weights behind the end-coil balance check, so the console can work out whether closing
+        // this coil needs a supervisor BEFORE it offers the plain Save.
+        //
+        // The fourth term — the weight left on the coil — is not here on purpose: it is the figure the
+        // operator is typing and has not saved. The client holds it, so the client does the final
+        // subtraction. (Legacy computes the whole thing client-side too.)
+        api.MapGet("/das/coils/{coilAbcNum:long}/balance", async (long coilAbcNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetCoilBalanceAsync(coilAbcNum, ct) is { } b ? Results.Ok(b) : Results.NotFound())
+           .WithName("GetCoilBalance").WithTags("DAS")
+           .WithSummary("The coil's original weight and everything made or scrapped from it — the terms of the end-coil balance check that decides whether closing it needs a supervisor override.")
+           .Produces<CoilBalance>().Produces(StatusCodes.Status404NotFound);
+
         api.MapGet("/das/supervisor-override/actions", () => Results.Ok(
                 SupervisorOverride.Actions.Select(a => new { action = a.Key, description = a.Value })))
            .WithName("ListSupervisorOverrideActions").WithTags("DAS")

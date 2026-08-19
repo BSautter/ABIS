@@ -3940,6 +3940,44 @@
         }
       }
     },
+    "/api/das/coils/{coilAbcNum}/balance": {
+      "get": {
+        "tags": [
+          "DAS"
+        ],
+        "summary": "The coil's original weight and everything made or scrapped from it — the terms of the end-coil balance check that decides whether closing it needs a supervisor override.",
+        "operationId": "GetCoilBalance",
+        "parameters": [
+          {
+            "name": "coilAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoilBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/das/supervisor-override/actions": {
       "get": {
         "tags": [
@@ -17086,6 +17124,29 @@
             "type": "number",
             "format": "double",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CoilBalance": {
+        "type": "object",
+        "properties": {
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "originalNetWt": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "skidTotal": {
+            "type": "number",
+            "format": "double"
+          },
+          "scrapTotal": {
+            "type": "number",
+            "format": "double"
           }
         },
         "additionalProperties": false

@@ -182,6 +182,7 @@ public interface IAbisRepository
     Task SetUserCredentialAsync(string login, string passwordHash, bool mustChange, string? updatedBy, CancellationToken ct);
 
     // Supervisor override — the shop-floor gate that replaces legacy's shared plaintext PIN.
+    Task<CoilBalance?> GetCoilBalanceAsync(long coilAbcNum, CancellationToken ct);
     Task<SupervisorPinStatus?> GetSupervisorPinStatusAsync(string login, CancellationToken ct);
     Task SetSupervisorPinAsync(string login, string pinHash, string? updatedBy, CancellationToken ct);
     Task<bool> ClearSupervisorPinAsync(string login, CancellationToken ct);

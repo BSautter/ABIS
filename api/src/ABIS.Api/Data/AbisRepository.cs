@@ -8992,6 +8992,47 @@ public sealed class AbisRepository : IAbisRepository
         return recap;
     }
 
+    /// <summary>
+    /// The weights behind the end-coil balance check — legacy's <c>il_old_nt</c>,
+    /// <c>il_skid_total</c> and <c>il_scrap_total</c>. Null when the coil does not exist.
+    ///
+    /// <para>Every part is scoped to the COIL, not the coil+job pair, because that is what legacy
+    /// does: its recap grids retrieve on <c>:al_coil</c> alone and its starting weight is the coil's
+    /// origin weight. A coil split across two jobs would otherwise have one job's output measured
+    /// against the whole coil and look wildly out of balance every time.</para>
+    ///
+    /// <para>Deliberately NOT reusing <see cref="GetCoilRunRecapAsync"/>, which looks similar and
+    /// answers a different question: the recap is scoped to (coil, job) and takes its scrap from
+    /// <c>return_scrap_item</c>. Both differences would be invisible on a coil that ran one job.</para>
+    /// </summary>
+    public async Task<CoilBalance?> GetCoilBalanceAsync(long coilAbcNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var original = await conn.QueryFirstOrDefaultAsync<decimal?>(new CommandDefinition(
+            "SELECT net_wt FROM coil WHERE coil_abc_num = :coil", new { coil = coilAbcNum }, cancellationToken: ct));
+        if (original is null && !await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
+                "SELECT COUNT(*) FROM coil WHERE coil_abc_num = :coil", new { coil = coilAbcNum }, cancellationToken: ct)))
+            return null;
+
+        return new CoilBalance
+        {
+            CoilAbcNum = coilAbcNum,
+            OriginalNetWt = original,
+            // Through sheet_skid_detail, mirroring d_skid_item_display's join: an item that is not on
+            // a skid yet has not left the coil as finished product and does not count.
+            SkidTotal = await conn.ExecuteScalarAsync<decimal?>(new CommandDefinition(
+                """
+                SELECT SUM(psi.prod_item_net_wt)
+                FROM production_sheet_item psi
+                JOIN sheet_skid_detail ssd ON ssd.prod_item_num = psi.prod_item_num
+                WHERE psi.coil_abc_num = :coil
+                """, new { coil = coilAbcNum }, cancellationToken: ct)) ?? 0m,
+            ScrapTotal = await conn.ExecuteScalarAsync<decimal?>(new CommandDefinition(
+                "SELECT SUM(scrap_item_net_wt) FROM quality_scrap_worksheet WHERE coil_abc_num = :coil",
+                new { coil = coilAbcNum }, cancellationToken: ct)) ?? 0m,
+        };
+    }
+
     private sealed class RecapTotals
     {
         public int PiecesProduced { get; set; }

@@ -137,17 +137,38 @@ same hash work, so the panel cannot be used to enumerate who can authorise thing
 
 ---
 
+## The balance check
+
+`GET /api/das/coils/{coil}/balance` returns the three stored terms; the console supplies the fourth
+(the weight being typed, which is not saved yet) and applies the rule. Pressing **End coil run** on a
+coil more than 0.5% out of balance is refused with the measured figure, and the only way through is
+**End with supervisor override** — which is exactly legacy's disabled-Save-plus-Override-button.
+
+All three terms are scoped to the **coil**, across every job it has run on, and each has a plausible
+near-neighbour that would be wrong:
+
+| Term | Source | The wrong answer next door |
+|---|---|---|
+| `il_old_nt` | `coil.net_wt` — the coil's **origin** weight (`u_coil.sru:35`: *"il_coil_nw is coil orgin wt"*) | `net_wt_balance`, which compares what is left against what is left and reads as balanced on every coil |
+| `il_skid_total` | `production_sheet_item` **through `sheet_skid_detail`** (`d_skid_item_display`) | counting items not yet on a skid, so weight leaves the coil twice |
+| `il_scrap_total` | **`quality_scrap_worksheet`** (`d_recap_ed_scrap_work_sheet`) | `return_scrap_item`, which is what the run recap's *yield* uses — a different question |
+
+Scoping any of them to the coil **and job** would measure one job's output against the whole coil's
+input, so every coil that ran two jobs would demand a supervisor for no reason. Legacy's recap grids
+retrieve on `:al_coil` alone; there is no job in their WHERE clause.
+
+A discrepancy that **cannot be computed** — no coil loaded, no starting weight, the read failed — is
+not treated as out of balance. Blocking production over a failed supporting read is a failure mode
+legacy does not have, since its figures are already on screen by the time Save is pressed.
+
 ## What is NOT built
 
-- **The console does not yet detect the >0.5% condition and demand an override.** It offers the
-  override as a button the operator presses — which is what legacy's `cb_override` is — and carries
-  the authorisation when they use it. Automatic detection needs a per-open-run skid + scrap roll-up
-  the console does not assemble yet. The arithmetic itself is ported and tested
-  (`clientapp/src/supervisor-pin.ts`, `endCoilBalancePercent`).
-- **The server does not enforce the threshold either.** Legacy does not: its check lives in the
-  end-coil tab page and the flag it sets is client-side memory. Moving it server-side means
-  reproducing that roll-up, which is its own change.
-- **Nothing has run on a plant panel.** Every assertion here is against SQLite and the legacy source.
+- **The server does not enforce the threshold** — it records an authorisation when given one and
+  demands nothing when not. Legacy does not enforce it server-side either: its check lives in the
+  end-coil tab page and the flag it sets is client-side memory. The gate is therefore as strong as
+  legacy's and no stronger, which is a deliberate stopping point rather than an oversight.
+- **Nothing has run on a plant panel**, and none of the balance SQL has run against Oracle — every
+  assertion here is against SQLite and the legacy source.
 
 ## Rollout
 

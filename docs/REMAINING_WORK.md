@@ -247,11 +247,12 @@
   new `SECURITY_APPLICATION` feature was invented (issuing one is gated on the real `User Control`).
   The PIN is a **separate secret from the sign-in password, in its own table**: four digits typed on a
   shared panel in front of an operator must not open an application session.
-  <br>**Still owed:** the console offers the override as a button the operator presses (legacy's
-  `cb_override`); it does not yet *detect* the >0.5% condition and demand one, because that needs a
-  per-open-run skid+scrap roll-up the console does not assemble yet. The arithmetic itself is ported
-  and tested (`endCoilBalancePercent`). Server-side enforcement of the threshold is likewise not
-  there — legacy does not have it either, its check being client-side.
+  <br>**The 0.5% gate is wired**: `GET /das/coils/{coil}/balance` returns the three stored terms and
+  the console refuses a plain save above tolerance, leaving the supervisor override as the only way
+  through — legacy's disabled-Save-plus-Override-button. Server-side enforcement of the threshold is
+  deliberately absent, as it is in legacy, whose check is client-side.
+  <br>**Still owed:** none of it has run on a plant panel, and the balance SQL has never run against
+  Oracle.
 - [ ] **M** Serial scale zero command + scrap-scale/gauge separation
 - [x] **M** Live job sheet / e-folder — **BUILT.** `GET /prod-folder/jobs/{job}/job-sheet` returns the
   whole PRODUCTION ORDER (spec, shape dimensions with tolerances, coil totals, partial-skid usage,

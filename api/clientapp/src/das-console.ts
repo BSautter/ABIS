@@ -18,7 +18,7 @@ import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount, fetch
 import type { CountersResult, StackerResult, LineStatusResult } from './edge.js';
 import { renderSketch } from './sketch.js';
 import { printJobSheet, renderJobSheet } from './job-sheet.js';
-import { requestSupervisorOverride } from './supervisor-pin.js';
+import { requestSupervisorOverride, endCoilBalancePercent, needsBalanceOverride } from './supervisor-pin.js';
 import { decideConveyorWeight } from './skid-weight.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
@@ -465,6 +465,24 @@ async function coilRunAction(path: string, body: unknown, okMsg: (r: RunResult) 
 
 // End-coil recap — what actually came off the coil, shown once its run closes (the legacy DAS
 // showed the ending status and closing weight at this moment).
+/**
+ * How far out of balance this coil is, for the weight the operator has typed — or null when it
+ * cannot be worked out (no coil loaded, no starting weight, the read failed).
+ *
+ * A null is NOT treated as out of balance by the caller. Blocking a coil because a supporting read
+ * failed would stop production over a network blip, and legacy has no such failure mode to match:
+ * its numbers are already on screen by the time the operator presses Save.
+ */
+async function coilBalancePercent(endWeight: number): Promise<number | null> {
+  if (runCoil == null) return null;
+  try {
+    const r = await authFetch(`/api/das/coils/${runCoil}/balance`);
+    if (!r.ok) return null;
+    const b = await r.json() as { originalNetWt?: number | null; skidTotal?: number; scrapTotal?: number };
+    return endCoilBalancePercent(b.originalNetWt, b.skidTotal, b.scrapTotal, endWeight);
+  } catch { return null; }
+}
+
 /** End the coil, optionally carrying a supervisor's authorisation for closing it out of balance.
  *  The id is single-use server-side, so a refused or replayed one is a 409 rather than a silent save. */
 async function endCoil(endWeight: number, supervisorOverrideId: number | null): Promise<void> {
@@ -1313,7 +1331,18 @@ async function pickerBrowse(bases: string[], targetId: string, path: Crumb[]): P
   $('#btnEndCoil').addEventListener('click', () => {
     const wt = v('#opEndWt');
     if (wt === '') { setErr('Enter the weight left on the coil (0 if it ran out).'); return; }
-    void endCoil(Number(wt), null);
+    void (async () => {
+      // Legacy disables Save outright when the coil is out of balance and shows an Override button
+      // instead (u_tabpg_end_coil.sru:757). Same rule, checked at the moment of saving so it uses the
+      // weight actually typed.
+      const pct = await coilBalancePercent(Number(wt));
+      if (needsBalanceOverride(pct)) {
+        setErr(`This coil is ${pct!.toFixed(2)}% out of balance. Re-check the skid or scrap weights — ` +
+               'or use "End with supervisor override" and have a shift supervisor authorise it.');
+        return;
+      }
+      await endCoil(Number(wt), null);
+    })();
   });
   // Legacy's cb_override: the operator presses this when the coil's weights do not balance and the
   // plain Save is refused, and a supervisor comes over to authorise it (u_tabpg_end_coil.sru:632).
@@ -1321,10 +1350,14 @@ async function pickerBrowse(bases: string[], targetId: string, path: Crumb[]): P
     const wt = v('#opEndWt');
     if (wt === '') { setErr('Enter the weight left on the coil first — the supervisor is authorising THAT figure.'); return; }
     void (async () => {
+      // The measured discrepancy goes into the audit row, so the log says WHAT was authorised rather
+      // than only that something was.
+      const pct = await coilBalancePercent(Number(wt));
       const id = await requestSupervisorOverride({
         action: 'end-coil-out-of-balance',
         prompt: 'Close this coil even though its weights do not balance.',
-        reason: `Coil ${runCoil ?? '?'} on job ${job ?? '?'}, ending at ${wt} lb`,
+        reason: `Coil ${runCoil ?? '?'} on job ${job ?? '?'}, ending at ${wt} lb` +
+                (pct == null ? ' (discrepancy could not be measured)' : ` — ${pct.toFixed(2)}% out of balance`),
         lineNum, abJobNum: job, coilAbcNum: runCoil,
       });
       // Null means cancelled or refused. Either way the coil is not closed — a refusal is an answer.

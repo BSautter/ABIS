@@ -1692,6 +1692,38 @@ public sealed class SupervisorOverrideRecord
     public DateTime CreatedUtc { get; set; }
 }
 
+/// <summary>
+/// The three weights that decide whether a coil can be closed without a supervisor.
+///
+/// <para>Legacy's end-coil check (<c>u_tabpg_end_coil.sru:959</c>):</para>
+/// <code>
+/// il_hl         = il_skid_total + il_scrap_total + il_new_nt - il_old_nt
+/// ir_hl_percent = Round(ABS(il_hl / il_old_nt), 4) * 100
+/// </code>
+/// <para>Everything ever made from the coil, plus everything scrapped off it, plus what is still on
+/// it, should equal what it originally weighed. The fourth term — what is left — is the figure the
+/// operator is typing and has not saved, so it is not here: the client supplies it.</para>
+///
+/// <para><b>All three are scoped to the COIL, across every job it has run on</b>, and that is not an
+/// approximation. Legacy's recap DataWindows retrieve on <c>:al_coil</c> alone
+/// (<c>d_skid_item_display</c>, <c>d_recap_ed_scrap_work_sheet</c>) and its starting weight is
+/// <c>get_old_nw()</c>, the coil's ORIGIN weight. Scoping any of them to the job would compare a
+/// whole-coil weight against one job's output and report a discrepancy on every coil that was split.</para>
+/// </summary>
+public sealed class CoilBalance
+{
+    public long CoilAbcNum { get; set; }
+    /// <summary>The coil's original net weight (<c>coil.net_wt</c>) — legacy's <c>il_old_nt</c>.</summary>
+    public decimal? OriginalNetWt { get; set; }
+    /// <summary>Finished weight made from this coil, on any job — through the item-to-skid link, so
+    /// production items not yet on a skid do not count, exactly as the recap grid does.</summary>
+    public decimal SkidTotal { get; set; }
+    /// <summary>Scrapped weight off this coil, from <c>quality_scrap_worksheet</c>.
+    /// <para><b>Not <c>return_scrap_item</c></b>, which is what the run recap's yield uses. Two
+    /// different tables for two different questions, and legacy's balance check reads this one.</para></summary>
+    public decimal ScrapTotal { get; set; }
+}
+
 /// <summary>The answer to an override request. On refusal it carries no detail about WHY beyond
 /// locked-vs-not: telling a panel "that supervisor has no PIN" would let anyone stood at it enumerate
 /// who can authorise things.</summary>
