@@ -1,4 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Reflection;
 using System.Security.Claims;
 using System.Text;
 using Abis.Api.Admin;
@@ -71,12 +72,41 @@ public static class ApiEndpoints
         ["Lookups"] = "Production Control",   // the PLC fault-code dictionary is production reference data
     };
 
+    /// <summary>
+    /// What is actually running, as precisely as the build knows it.
+    ///
+    /// <para><b>The assembly version is not enough.</b> <c>build-deb.sh</c> derives the build's
+    /// identity from <c>git describe --tags --always --dirty</c> — something like
+    /// <c>v0.8.2-47-gec283af</c> — but only its leading <c>X.Y.Z</c> can go into
+    /// <c>-p:Version</c>, because that field is four numeric parts and nothing else. The full string
+    /// is passed separately as <c>InformationalVersion</c>, and reading
+    /// <c>Assembly.GetName().Version</c> throws exactly the part away that says WHICH build.</para>
+    ///
+    /// <para>That is not cosmetic. On 2026-08-19 the deployed app reported <c>0.8.2.0</c> while
+    /// serving code from five merged PRs past that tag, so <c>/</c> — the obvious place to check what
+    /// is running — said something false, and the only way to tell was probing individual endpoints
+    /// for 401-vs-404. Version drift is meant to be VISIBLE.</para>
+    /// </summary>
+    internal static string RunningVersion()
+    {
+        var asm = typeof(ApiEndpoints).Assembly;
+        var informational = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        // .NET appends "+<commit sha>" to InformationalVersion via SourceLink. Harmless, but the
+        // git-describe string already carries the commit, so the suffix is just noise here.
+        if (!string.IsNullOrWhiteSpace(informational))
+        {
+            var plus = informational.IndexOf('+');
+            return plus > 0 ? informational[..plus] : informational;
+        }
+        return asm.GetName().Version?.ToString() ?? "0.0.0-unknown";
+    }
+
     public static IEndpointRouteBuilder MapAbisApi(this IEndpointRouteBuilder app)
     {
         app.MapGet("/", (IHostEnvironment env) => Results.Ok(new
         {
             name = "ABIS API",
-            version = typeof(ApiEndpoints).Assembly.GetName().Version?.ToString() ?? "1.0.0",
+            version = RunningVersion(),
             environment = env.EnvironmentName,
             docs = "/swagger",
             health = "/health",
