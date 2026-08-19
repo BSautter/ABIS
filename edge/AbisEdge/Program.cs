@@ -186,6 +186,43 @@ app.MapGet("/reading", (LatestReading latest, IScale scale) =>
         })
         : Results.Json(new { status = "no-reading-yet", device = scale.Name, simulated = scale.Simulated }, statusCode: 503));
 
+// Re-zero the weigh device — legacy's wf_zero_scale, which sends a single 'a' down the COM port.
+//
+// A POST, because it changes the state of a physical instrument: every weight taken afterwards is
+// measured against the tare this clears.
+//
+// Three different answers, deliberately, because they need three different responses from whoever
+// pressed the button:
+//   200  the command went out. Nothing more can be claimed — legacy reads no reply either, and the
+//        scale does not acknowledge.
+//   409  the configured device cannot be zeroed from here. The plant's skid weight is an OPC tag on
+//        the stacker (ScaleSkidWt), which this service reads and cannot command, so this is the
+//        normal answer on a host wired that way — not a fault.
+//   503  it can be zeroed, but the port is not open, so nothing was sent.
+//
+// Legacy returns SUCCESS when its scale is not connected (`if not ib_scrap_scale_connected then
+// return 0`). That is not reproduced: an operator told the scale zeroed will weigh against a tare
+// that was never cleared, and every skid on that scale is then wrong by the same amount.
+app.MapPost("/scale/zero", async (IScale scale, CancellationToken ct) =>
+{
+    if (scale is not IZeroableScale z)
+        return Results.Json(new
+        {
+            status = "not-zeroable",
+            device = scale.Name,
+            detail = "This weigh device cannot be zeroed from the edge service — it is read, not commanded.",
+        }, statusCode: 409);
+
+    return await z.ZeroAsync(ct)
+        ? Results.Ok(new { status = "sent", device = scale.Name, simulated = scale.Simulated })
+        : Results.Json(new
+        {
+            status = "device-not-open",
+            device = scale.Name,
+            detail = "The serial port is not open, so no zero command was sent.",
+        }, statusCode: 503);
+});
+
 // The latest OPC tag values (the configured Edge:Opc:Tags), and one by name.
 app.MapGet("/tags", (LatestTags tags) => Results.Ok(tags.All()));
 app.MapGet("/tags/{name}", (string name, LatestTags tags) =>

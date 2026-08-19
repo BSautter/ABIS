@@ -12,11 +12,11 @@ export const DEFAULT_EDGE_URLS = 'http://192.168.10.170:8090, http://192.168.9.1
 export function parseEdgeUrls(raw) {
     return raw.split(/[\s,]+/).map((u) => u.trim().replace(/\/$/, '')).filter(Boolean);
 }
-async function fetchWithTimeout(url, ms) {
+async function fetchWithTimeout(url, ms, init) {
     const ctl = new AbortController();
     const t = window.setTimeout(() => ctl.abort(), ms);
     try {
-        return await fetch(url, { cache: 'no-store', signal: ctl.signal });
+        return await fetch(url, { cache: 'no-store', signal: ctl.signal, ...init });
     }
     finally {
         clearTimeout(t);
@@ -266,4 +266,31 @@ export async function fetchConveyor(bases, line) {
         catch { /* unreachable/timeout → try the next host */ }
     }
     return { reachable: false, via: '', configured: false, cells: new Map() };
+}
+/**
+ * Ask the edge to re-zero the scale — legacy's `wf_zero_scale`, which sends a single `'a'` down the
+ * COM port.
+ *
+ * The three edge answers are kept distinct, because they need different things from the operator:
+ * the device cannot be commanded at all (409 — normal on a host whose skid weight is an OPC tag),
+ * it can but the port is not open (503), or the command went out (200).
+ *
+ * **An unreachable edge is a failure, not a silent success.** Legacy returns success when its scale
+ * is not connected; someone told the scale zeroed weighs against a tare that was never cleared, and
+ * every skid on that scale is then wrong by the same amount.
+ */
+export async function zeroScale(bases) {
+    for (let i = 0; i < bases.length; i++) {
+        try {
+            const r = await fetchWithTimeout(`${bases[i]}/scale/zero`, 4000, { method: 'POST' });
+            const body = await r.json().catch(() => ({}));
+            if (r.ok)
+                return { sent: true, message: `Zero sent to ${body.device ?? 'the scale'}.` };
+            // A reachable edge that refuses is an ANSWER — do not fall through to the next host and
+            // report it as unreachable.
+            return { sent: false, message: body.detail ?? `The scale was not zeroed (${body.status ?? r.status}).` };
+        }
+        catch { /* unreachable/timeout → try the next host */ }
+    }
+    return { sent: false, message: 'No edge service answered — the scale was NOT zeroed.' };
 }

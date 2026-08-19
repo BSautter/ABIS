@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { parseEdgeUrls, fetchStacker, fetchConveyor, fetchCounters, countersForRunTag } from '../src/edge.js';
+import { parseEdgeUrls, fetchStacker, fetchConveyor, fetchCounters, countersForRunTag, zeroScale } from '../src/edge.js';
 
 /**
  * The edge client — the browser's link to the two OPC boxes.
@@ -172,5 +172,77 @@ describe('fetchCounters is scoped to a line', () => {
 
     expect(asked).toBe('http://edge:8090/counters');
     vi.unstubAllGlobals();
+  });
+});
+
+/**
+ * Re-zeroing the scale — legacy's `wf_zero_scale`.
+ *
+ * The one thing worth testing without hardware is that a zero which did NOT happen is never reported
+ * as one. Legacy gets this wrong: it returns success when its scale is not connected, and an operator
+ * told the scale zeroed weighs against a tare that was never cleared — every skid on that scale then
+ * wrong by the same amount, with nothing downstream able to detect it.
+ */
+describe('zeroScale', () => {
+  const res = (status: number, body: unknown): Response =>
+    ({ ok: status >= 200 && status < 300, status, json: async () => body }) as Response;
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('reports the command as sent when the edge accepts it', async () => {
+    fetchMock.mockResolvedValueOnce(res(200, { status: 'sent', device: 'serial-scale (COM3@9600)' }));
+    const r = await zeroScale(['http://edge']);
+    expect(r.sent).toBe(true);
+    expect(r.message).toContain('serial-scale');
+  });
+
+  it('POSTs, because zeroing changes the instrument', async () => {
+    fetchMock.mockResolvedValueOnce(res(200, { status: 'sent' }));
+    await zeroScale(['http://edge']);
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.method).toBe('POST');
+  });
+
+  it('a device that cannot be commanded is a clear NO, not a silent yes', async () => {
+    // Normal on a host whose skid weight is an OPC tag — read, never commanded.
+    fetchMock.mockResolvedValueOnce(res(409, {
+      status: 'not-zeroable',
+      detail: 'This weigh device cannot be zeroed from the edge service — it is read, not commanded.',
+    }));
+    const r = await zeroScale(['http://edge']);
+    expect(r.sent).toBe(false);
+    expect(r.message).toContain('cannot be zeroed');
+  });
+
+  it('a reachable edge that refuses is an ANSWER — it does not fall through to the fallback host', async () => {
+    // Otherwise a refusal from the primary would be retried against the fallback and finally reported
+    // as "unreachable", which is a different problem with a different fix.
+    fetchMock.mockResolvedValueOnce(res(503, {
+      status: 'device-not-open',
+      detail: 'The serial port is not open, so no zero command was sent.',
+    }));
+    const r = await zeroScale(['http://primary', 'http://fallback']);
+    expect(r.sent).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(r.message).toContain('not open');
+  });
+
+  it('falls over to the second host when the first is unreachable', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('timeout'));
+    fetchMock.mockResolvedValueOnce(res(200, { status: 'sent', device: 'serial-scale' }));
+    const r = await zeroScale(['http://primary', 'http://fallback']);
+    expect(r.sent).toBe(true);
+  });
+
+  it('no edge at all is a FAILURE that says the scale was not zeroed', async () => {
+    fetchMock.mockRejectedValue(new Error('unreachable'));
+    const r = await zeroScale(['http://a', 'http://b']);
+    expect(r.sent).toBe(false);
+    expect(r.message).toContain('NOT zeroed');
   });
 });

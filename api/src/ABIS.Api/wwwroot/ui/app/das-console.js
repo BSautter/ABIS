@@ -14,7 +14,7 @@
 import { AbisClient, SheetSkidWrite, ScrapSkidWrite, DowntimeInstanceWrite } from './generated/abis-client.js';
 import { initAuth, authFetch } from './auth.js';
 import { statusChip, lineLabel, loadLineNames } from './status-labels.js';
-import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount, fetchCounters, countersForRunTag, fetchStacker, fetchConveyor, fetchLineStatus, browseEdgeTags } from './edge.js';
+import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount, fetchCounters, countersForRunTag, fetchStacker, fetchConveyor, fetchLineStatus, browseEdgeTags, zeroScale } from './edge.js';
 import { renderSketch } from './sketch.js';
 import { printJobSheet, renderJobSheet } from './job-sheet.js';
 import { requestSupervisorOverride, endCoilBalancePercent, needsBalanceOverride } from './supervisor-pin.js';
@@ -95,6 +95,9 @@ function scaffold() {
           <strong>⚖ Scale</strong>
           <input id="edgeUrl" placeholder="http://…:8090 (primary, fallback)" style="width:250px" title="Edge /run-state host(s), primary first — comma-separated for failover. e.g. http://192.168.10.170:8090, http://192.168.9.175:8090 (.170 primary, .175 fallback)" />
           <button class="btn sm ghost" id="btnPull" type="button" style="color:#fff;border-color:var(--rail-line)">Pull weight →</button>
+          <!-- Legacy's wf_zero_scale: one 'a' down the COM port. Confirmed before sending, because it
+               re-tares a physical instrument and every weight taken afterwards is measured against it. -->
+          <button class="btn sm ghost" id="btnZeroScale" type="button" title="Re-zero the scale (legacy wf_zero_scale)" style="color:#fff;border-color:var(--rail-line)">⌫ Zero</button>
           <input id="runTag" placeholder="PLC run tag (e.g. PLC5-BL84.strokecnt)" style="width:190px" title="The edge item id whose change = this line running" />
           <button class="btn sm ghost" id="btnBrowseRun" type="button" title="Browse the edge for this line's run tag" style="color:#fff;border-color:var(--rail-line)">🔎</button>
           <input id="pieceTag" placeholder="Stacker count tag (e.g. PLC5-BL110.piececount)" style="width:210px" title="The edge item id of the stacker's running piece counter for this line" />
@@ -600,6 +603,28 @@ async function loadScrap() {
     <td class="num">${esc(num(s.scrapNetWt))}</td><td>${esc(s.scrapLocation)}</td></tr>`).join('')
         : '<tr><td colspan="5" class="muted">No scrap yet.</td></tr>';
     document.querySelectorAll('#tScrap tr.click').forEach((tr) => tr.addEventListener('click', () => void printDocument(`/api/documents/scrap-skid/${tr.dataset.scrap}`, `scrap #${tr.dataset.scrap}`, '#scrapOk')));
+}
+/**
+ * Re-zero the scale — legacy's `wf_zero_scale`.
+ *
+ * Confirmed first: this re-tares a physical instrument, and every weight taken afterwards is
+ * measured against it. Zeroing with a skid still on the scale sets that skid's weight as the new
+ * zero, and nothing downstream can detect it.
+ *
+ * The result is reported either way. Legacy reports success even when its scale is not connected,
+ * which is the one outcome an operator must never be given: they would weigh against a tare that
+ * was never cleared and every skid would be wrong by the same amount.
+ */
+async function zeroTheScale() {
+    if (!confirm('Re-zero the scale?\n\nMake sure nothing is on it — whatever is sitting there becomes the new zero.'))
+        return;
+    setErr('');
+    setOk('');
+    const r = await zeroScale(parseEdgeUrls(v('#edgeUrl')));
+    if (r.sent)
+        setOk(`⚖ ${r.message}`);
+    else
+        setErr(r.message);
 }
 // Pull the finished skid's weight from the CONVEYOR scale.
 //
@@ -1452,6 +1477,7 @@ async function pickerBrowse(bases, targetId, path) {
     $('#btnScrap').addEventListener('click', () => void saveScrap());
     $('#btnScrapTag').addEventListener('click', () => void printScrapTag());
     $('#btnDt').addEventListener('click', () => void saveDowntime());
+    $('#btnZeroScale').addEventListener('click', () => void zeroTheScale());
     $('#btnPrintSheet').addEventListener('click', () => { if (jobSheet)
         printJobSheet(jobSheet); });
     $('#btnShiftStart').addEventListener('click', () => {

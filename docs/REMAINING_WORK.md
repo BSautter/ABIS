@@ -253,7 +253,20 @@
   deliberately absent, as it is in legacy, whose check is client-side.
   <br>**Still owed:** none of it has run on a plant panel, and the balance SQL has never run against
   Oracle.
-- [ ] **M** Serial scale zero command + scrap-scale/gauge separation
+- [~] **M** Serial scale zero command + scrap-scale/gauge separation — **zero command BUILT; separation
+  still open.** `POST /scale/zero` on the edge sends legacy's single `'a'`
+  (`w_da_sheet.wf_zero_scale`), exposed on the DAS console as a confirmed **⌫ Zero** button.
+  <br>**The one behaviour deliberately NOT ported:** legacy returns *success* when its scale is not
+  connected (`if not ib_scrap_scale_connected then return 0`). An operator told the scale zeroed
+  weighs against a tare that was never cleared, and every skid on that scale is then wrong by the
+  same amount with nothing downstream able to see it. The edge answers three distinct ways instead —
+  sent (200), this device cannot be commanded (409, the normal answer where skid weight is an OPC
+  tag), port not open (503).
+  <br>Reading is left PASSIVE rather than switched to legacy's poll-with-`'b'`; the plant's readings
+  have been tuned against the passive form (#338, #341) and changing it unverified would risk the
+  weights themselves.
+  <br>**Still open:** the scrap-scale/gauge separation, which needs the plant's actual device layout
+  — and none of this has been exercised against a real scale.
 - [x] **M** Live job sheet / e-folder — **BUILT.** `GET /prod-folder/jobs/{job}/job-sheet` returns the
   whole PRODUCTION ORDER (spec, shape dimensions with tolerances, coil totals, partial-skid usage,
   both edge-trim warnings), rendered on the production folder and on the DAS console where it
