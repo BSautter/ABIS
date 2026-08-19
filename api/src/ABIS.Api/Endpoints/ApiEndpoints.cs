@@ -1150,6 +1150,32 @@ public static class ApiEndpoints
            .WithSummary("Store the mill's QR code against an inbound coil from the handheld (legacy addqrcode). Refuses a scan that is not the mill's payload shape, naming the rule that failed; 404 when no inbound coil carries that number.")
            .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
 
+        // The OTHER QR store: the standalone barcode_string table, keyed by the CUSTOMER coil number
+        // and written by the PowerBuilder desktop (w_qr_manual). Deliberately a separate endpoint from
+        // /receiving/scan/qr, which writes the inbound BOL line's column — see SaveCoilOrgBarcodeAsync
+        // for why the two are not quietly merged.
+        api.MapPut("/coils/org/{coilOrgNum}/barcode", async (string coilOrgNum, InboundCoilQrRequest body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (string.IsNullOrWhiteSpace(coilOrgNum))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["coilOrgNum"] = ["A customer coil number is required."] });
+                if (HandheldQrCode.Validate(coilOrgNum, body.QrCode) is { } problem)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["qrCode"] = [problem] });
+
+                var created = await repo.SaveCoilOrgBarcodeAsync(coilOrgNum, body.QrCode!, ct);
+                return Results.Ok(new { coilOrgNum = coilOrgNum.Trim(), created });
+            })
+           .WithName("SaveCoilOrgBarcode").WithTags("Coils")
+           .WithSummary("Store a QR code against a customer coil number in the standalone barcode_string table (legacy w_qr_manual). A DIFFERENT store from the inbound coil's barcode_string column — see the repository remarks.")
+           .Produces(StatusCodes.Status200OK).ProducesValidationProblem();
+
+        api.MapGet("/coils/org/{coilOrgNum}/barcode", async (string coilOrgNum, IAbisRepository repo, CancellationToken ct) =>
+                await repo.GetCoilOrgBarcodeAsync(coilOrgNum, ct) is { } bc
+                    ? Results.Ok(new { coilOrgNum = coilOrgNum.Trim(), barcodeString = bc })
+                    : Results.NotFound())
+           .WithName("GetCoilOrgBarcode").WithTags("Coils")
+           .WithSummary("The QR code stored against a customer coil number in the barcode_string table.")
+           .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status404NotFound);
+
         api.MapGet("/receiving/scan/qr", async (string? barcode, IAbisRepository repo, CancellationToken ct) =>
             {
                 var scan = HandheldBarcode.Parse(barcode);

@@ -656,8 +656,17 @@
   whether to rescan, reposition or call someone.
   <br>Legacy's UPDATE is scoped to the coil number alone and the same number can appear on several BOL
   lines; that is preserved, but `rowsUpdated` is returned so a scan that stamped four rows says four.
-  <br>**Still open:** the `coil_org_num` inventory lookup (finding a RECEIVED coil by its customer
-  number, distinct from the inbound advance notice this searches).
+  <br>**BOTH HALVES NOW DONE — and the backlog line conflated two different stores.** Legacy keeps
+  **two** QR stores, discovered by reading `w_qr_manual` after porting the CGI:
+  <br>&nbsp;&nbsp;• `inbound_coil_status.barcode_string` — a **column** on the BOL line, written by the
+  handheld CGI (`addqrcode`). **7,080** populated on `.230`.
+  <br>&nbsp;&nbsp;• `barcode_string` — a **table** of (coil_org_num, barcode_string), written by the
+  PowerBuilder desktop (`w_qr_manual`). **6,162** rows. Reached at
+  `PUT/GET /coils/org/{coilOrgNum}/barcode`.
+  <br>They are near-mirrors — **5,996 of the table's 6,162 coils also carry the column** — so code that
+  writes one and reads the other looks correct on almost every coil and is wrong on the rest. They are
+  kept as separate methods, each faithful to the path that owns it. Making the handheld write both
+  would be a behaviour change and is the plant's call, not a refactor.
 - [ ] **M** S-header strip+validate; coil-defect email notification
 - *(Done: scan→verify→label handheld page + HTML coil label.)*
 

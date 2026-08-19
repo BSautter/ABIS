@@ -99,6 +99,7 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS abis_plc_fault_code;
             DROP TABLE IF EXISTS dt_instance_detail;
             DROP TABLE IF EXISTS inbound_coil_status;
+            DROP TABLE IF EXISTS barcode_string;
             DROP TABLE IF EXISTS line_current_status;
             DROP TABLE IF EXISTS line_die_4sheet_type;
             DROP TABLE IF EXISTS line_priority;
@@ -228,6 +229,18 @@ public static class SqliteFixture
 
             -- Per-inbound-coil receiving state: which customer coil number maps to which minted ABC
             -- number (0/NULL = not yet minted), plus the damage flags and the scanned QR payload.
+            -- The SECOND QR store. Legacy keeps two, and they are not the same thing:
+            --   inbound_coil_status.barcode_string  a COLUMN on the BOL line, written by the handheld
+            --                                       receiving CGI (addqrcode). 7,080 populated on .230.
+            --   barcode_string                      this TABLE, keyed by the CUSTOMER coil number,
+            --                                       written by the PowerBuilder desktop
+            --                                       (w_qr_manual). 6,162 rows.
+            -- Near-mirrors: 5,996 of the table's coils also carry the column. Neither is a superset,
+            -- and nothing keeps them in step except both paths being used — so code that writes one
+            -- and reads the other looks right on almost every coil and is wrong on the rest.
+            CREATE TABLE barcode_string (
+                coil_org_num TEXT PRIMARY KEY, barcode_string TEXT);
+
             CREATE TABLE inbound_coil_status (
                 edi_file_id INTEGER NOT NULL, bol TEXT NOT NULL, item_num INTEGER NOT NULL,
                 damaged_code INTEGER, damaged_fault INTEGER, status INTEGER,

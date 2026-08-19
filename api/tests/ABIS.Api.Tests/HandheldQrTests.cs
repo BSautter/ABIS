@@ -173,3 +173,68 @@ public sealed class InboundCoilQrStoreTests : IDisposable
         try { if (File.Exists(_dbPath)) File.Delete(_dbPath); } catch { /* best effort */ }
     }
 }
+
+/// <summary>
+/// The <b>second</b> QR store — the standalone <c>barcode_string</c> table keyed by the customer coil
+/// number (legacy <c>w_qr_manual.wf_update_barcode_string</c>).
+///
+/// <para>Legacy keeps two QR stores and they are not the same thing: a COLUMN on the inbound BOL line
+/// (written by the handheld CGI, 7,080 populated on <c>.230</c>) and this TABLE (written by the
+/// PowerBuilder desktop, 6,162 rows). They are near-mirrors — <b>5,996 of the table's coils also
+/// carry the column</b> — so code that writes one and reads the other looks correct on almost every
+/// coil and is wrong on the rest. These tests exist mostly to hold that distinction in place.</para>
+/// </summary>
+public sealed class CoilOrgBarcodeTests : IDisposable
+{
+    private readonly string _dbPath;
+    private readonly AbisRepository _repo;
+    private readonly string _cs;
+
+    public CoilOrgBarcodeTests()
+    {
+        _dbPath = Path.Combine(Path.GetTempPath(), $"abis_orgbc_{Guid.NewGuid():N}.db");
+        _cs = $"Data Source={_dbPath}";
+        SqliteFixture.EnsureCreatedAndSeeded(_cs);
+        _repo = new AbisRepository(new Abis.Api.Data.DbConnectionFactory(new Abis.Api.Data.DatabaseOptions
+        {
+            Provider = "Sqlite", ConnectionString = _cs, Seed = true,
+        }));
+    }
+
+    private const string Qr = "MILL$COIL$HEAT$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+    [Fact]
+    public async Task A_first_scan_CREATES_and_a_second_REPLACES()
+    {
+        // Legacy counts first, then INSERTs or UPDATEs. The distinction is reported so a caller can
+        // tell "this coil had no code" from "this coil's code changed" — a relabelled coil is worth
+        // noticing.
+        Assert.True(await _repo.SaveCoilOrgBarcodeAsync("ORG-9001", Qr, CancellationToken.None));
+        Assert.False(await _repo.SaveCoilOrgBarcodeAsync("ORG-9001", Qr.Replace("HEAT", "HEA2"), CancellationToken.None));
+        Assert.Equal(Qr.Replace("HEAT", "HEA2"), await _repo.GetCoilOrgBarcodeAsync("ORG-9001", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task It_is_a_DIFFERENT_store_from_the_inbound_coil_column()
+    {
+        // The load-bearing assertion. Writing the table must not populate the column, and vice versa —
+        // if it ever does, the two stores have been silently merged and the 166 coils that live in only
+        // one of them on real data will start disagreeing with whatever reads the other.
+        await _repo.SaveCoilOrgBarcodeAsync("ORG-7777", Qr, CancellationToken.None);
+        Assert.Null(await _repo.GetInboundCoilQrAsync("ORG-7777", CancellationToken.None));
+
+        Assert.Equal(Qr, await _repo.GetCoilOrgBarcodeAsync("ORG-7777", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task An_unknown_coil_reads_back_null()
+    {
+        Assert.Null(await _repo.GetCoilOrgBarcodeAsync("NO-SUCH-ORG", CancellationToken.None));
+    }
+
+    public void Dispose()
+    {
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        try { if (File.Exists(_dbPath)) File.Delete(_dbPath); } catch { /* best effort */ }
+    }
+}

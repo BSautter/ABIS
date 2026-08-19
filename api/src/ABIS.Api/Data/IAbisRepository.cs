@@ -185,6 +185,8 @@ public interface IAbisRepository
     Task<CoilBalance?> GetCoilBalanceAsync(long coilAbcNum, CancellationToken ct);
     Task<int> SaveInboundCoilQrAsync(string coilNumber, string qrCode, CancellationToken ct);
     Task<string?> GetInboundCoilQrAsync(string coilNumber, CancellationToken ct);
+    Task<bool> SaveCoilOrgBarcodeAsync(string coilOrgNum, string barcode, CancellationToken ct);
+    Task<string?> GetCoilOrgBarcodeAsync(string coilOrgNum, CancellationToken ct);
     Task<SupervisorPinStatus?> GetSupervisorPinStatusAsync(string login, CancellationToken ct);
     Task<SupervisorPinCoverage> GetSupervisorPinCoverageAsync(string groupName, CancellationToken ct);
     Task SetSupervisorPinAsync(string login, string pinHash, string? updatedBy, CancellationToken ct);

@@ -3326,6 +3326,107 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Store a QR code against a customer coil number in the standalone barcode_string table (legacy w_qr_manual). A DIFFERENT store from the inbound coil's barcode_string column — see the repository remarks.
+     * @return OK
+     */
+    saveCoilOrgBarcode(coilOrgNum, body) {
+        let url_ = this.baseUrl + "/api/coils/org/{coilOrgNum}/barcode";
+        if (coilOrgNum === undefined || coilOrgNum === null)
+            throw new globalThis.Error("The parameter 'coilOrgNum' must be defined.");
+        url_ = url_.replace("{coilOrgNum}", encodeURIComponent("" + coilOrgNum));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processSaveCoilOrgBarcode(_response);
+        });
+    }
+    processSaveCoilOrgBarcode(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * The QR code stored against a customer coil number in the barcode_string table.
+     * @return OK
+     */
+    getCoilOrgBarcode(coilOrgNum) {
+        let url_ = this.baseUrl + "/api/coils/org/{coilOrgNum}/barcode";
+        if (coilOrgNum === undefined || coilOrgNum === null)
+            throw new globalThis.Error("The parameter 'coilOrgNum' must be defined.");
+        url_ = url_.replace("{coilOrgNum}", encodeURIComponent("" + coilOrgNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetCoilOrgBarcode(_response);
+        });
+    }
+    processGetCoilOrgBarcode(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Record a coil's ACTUAL weighed weight (abco_coil_net_wt); rejects values outside the legacy 100..99999 lb guard.
      * @return OK
      */

@@ -3586,6 +3586,52 @@ public sealed class AbisRepository : IAbisRepository
             new { qr = qrCode, coil = coilNumber.Trim() }, cancellationToken: ct));
     }
 
+    /// <summary>
+    /// Store a QR code against a CUSTOMER COIL NUMBER in the standalone <c>barcode_string</c> table —
+    /// legacy's <c>w_qr_manual.wf_update_barcode_string</c>.
+    ///
+    /// <para><b>This is a SECOND QR store, not the same one as
+    /// <see cref="SaveInboundCoilQrAsync"/>.</b> Legacy keeps two:</para>
+    /// <list type="bullet">
+    /// <item><c>inbound_coil_status.barcode_string</c> — a COLUMN on the BOL line, written by the
+    /// handheld receiving CGI (<c>addqrcode</c>). 7,080 rows populated on <c>.230</c>.</item>
+    /// <item><c>barcode_string</c> — a TABLE of (coil_org_num, barcode_string), written by the
+    /// PowerBuilder desktop. 6,162 rows.</item>
+    /// </list>
+    /// <para>They are near-mirrors: <b>5,996 of the table's 6,162 coils also carry the column</b>, so
+    /// in practice both paths run for the same coil. Neither is a superset, and nothing keeps them in
+    /// step except both being used. A port that wrote one and read the other would look correct on
+    /// almost every coil and be wrong on the rest — which is why they are separate methods here, each
+    /// faithful to the path that owns it, rather than one being quietly made to write both. Making
+    /// the handheld write both would be a behaviour change, and that is the plant's call.</para>
+    ///
+    /// <para>Upsert by UPDATE-then-INSERT, as legacy does (it counts first, then branches).</para>
+    /// </summary>
+    public async Task<bool> SaveCoilOrgBarcodeAsync(string coilOrgNum, string barcode, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var coil = coilOrgNum.Trim();
+        var updated = await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE barcode_string SET barcode_string = :bc WHERE coil_org_num = :coil",
+            new { bc = barcode, coil }, cancellationToken: ct));
+        if (updated > 0) return false;   // replaced an existing row
+        await conn.ExecuteAsync(new CommandDefinition(
+            "INSERT INTO barcode_string (coil_org_num, barcode_string) VALUES (:coil, :bc)",
+            new { coil, bc = barcode }, cancellationToken: ct));
+        return true;                     // created
+    }
+
+    /// <summary>The QR code stored against a customer coil number in the <c>barcode_string</c> table,
+    /// or null when it has none. See <see cref="SaveCoilOrgBarcodeAsync"/> for why this is a
+    /// different store from the inbound-coil column.</summary>
+    public async Task<string?> GetCoilOrgBarcodeAsync(string coilOrgNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.QueryFirstOrDefaultAsync<string?>(new CommandDefinition(
+            "SELECT barcode_string FROM barcode_string WHERE coil_org_num = :coil",
+            new { coil = coilOrgNum.Trim() }, cancellationToken: ct));
+    }
+
     /// <summary>The QR code already stored against an inbound coil, or null when it has none.</summary>
     public async Task<string?> GetInboundCoilQrAsync(string coilNumber, CancellationToken ct)
     {

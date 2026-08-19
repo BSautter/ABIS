@@ -2610,6 +2610,81 @@
         }
       }
     },
+    "/api/coils/org/{coilOrgNum}/barcode": {
+      "put": {
+        "tags": [
+          "Coils"
+        ],
+        "summary": "Store a QR code against a customer coil number in the standalone barcode_string table (legacy w_qr_manual). A DIFFERENT store from the inbound coil's barcode_string column — see the repository remarks.",
+        "operationId": "SaveCoilOrgBarcode",
+        "parameters": [
+          {
+            "name": "coilOrgNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboundCoilQrRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Coils"
+        ],
+        "summary": "The QR code stored against a customer coil number in the barcode_string table.",
+        "operationId": "GetCoilOrgBarcode",
+        "parameters": [
+          {
+            "name": "coilOrgNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/coils/{coilAbcNum}/actual-weight": {
       "post": {
         "tags": [
