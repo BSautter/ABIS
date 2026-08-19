@@ -10,6 +10,62 @@ new ABIS can replace old ABIS and alpha testing begins.
 
 ---
 
+## v0.9.1 — 2026-08-19
+
+Seven commits since `v0.9.0`, the same day. Two production-affecting fixes, two guards against
+classes of mistake that had already happened, and the handheld's QR capture.
+
+### A stale stacker count could be written as a skid's piece count
+
+The console kept the last good stacker reading when the edge went unreachable. That reading
+**auto-fills the skid's piece count on save**, and skid pieces reach the customer on a packing ticket
+and the 856 ASN and feed invoicing — so a count minutes old, bearing no relation to what was on the
+skid, could be written as a real one.
+
+A second bug sat beside it: the baseline advanced only when the counter was known, so a skid saved
+during an outage kept the old zero point and the **next** skid's delta spanned both — over-counting
+by roughly a whole skid, silently, in the direction that over-bills. (#409)
+
+### The mill QR code, and the two stores nobody had noticed
+
+`POST/GET /receiving/scan/qr` captures the mill's QR against an inbound coil (#411), with legacy's
+three acceptance rules ported verbatim and their boundaries pinned by test.
+
+Porting it turned up that **legacy keeps two QR stores**: a column on the inbound BOL line, written
+by the handheld, and a standalone `barcode_string` table keyed by the customer coil number, written
+by the PowerBuilder desktop. They are **97% mirrors** — 5,996 of the table's 6,162 coils also carry
+the column — so code that writes one and reads the other is correct on almost every coil and wrong on
+the rest. Both are now reachable, kept separate, with a test that they do not leak into each
+other. (#412)
+
+### Two guards
+
+- **The committed UI bundle is checked against a fresh build.** It had already drifted 218 lines,
+  missing two methods its own API exposed. CI regenerated that bundle on every run and never looked
+  at the result. (#410)
+- **Seeding is idempotent again.** Nineteen tables were created and never dropped, so a second local
+  run died on the first of them and the app would not start until someone deleted the file. Two of
+  the nineteen were added the same day, so it was still accruing. A test now asserts create/drop
+  parity. (#408)
+
+### Also
+
+`/` reports the version that is actually running, locally as well as when packaged — a plain
+`dotnet run` used to answer `1.0.0`, a number ABIS has never released (#408). The sidebar badge no
+longer renders `vv0.9.0-…` (#407), and the floor feed says **why** a line shows no piece count
+instead of leaving a blank that reads as a fault (#406).
+
+### Known limitations
+
+Unchanged from `v0.9.0`, and the important one is still open: **the end-coil balance gate warns
+rather than blocks**, because the figures do not reconcile on historical data — 6.3% median against a
+0.5% tolerance over 926 coils. Settling it needs someone watching a live end-coil.
+
+No supervisor override has been used yet (the audit log is at zero), nothing in this release has run
+on a plant panel, and the two 4x6 tags and the Certificate of Conformance still have never printed.
+
+---
+
 ## v0.9.0 — 2026-08-19
 
 12 commits since `v0.8.2`. The **DAS console reaches parity with `w_da_sheet`** — the live job sheet,
