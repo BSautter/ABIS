@@ -10,6 +10,99 @@ new ABIS can replace old ABIS and alpha testing begins.
 
 ---
 
+## v0.9.0 — 2026-08-19
+
+12 commits since `v0.8.2`. The **DAS console reaches parity with `w_da_sheet`** — the live job sheet,
+the supervisor override that replaces a shared plaintext PIN, and a scale that can be zeroed — plus a
+drawing bug that had been showing the wrong part to the shop floor.
+
+Per the milestone line this opens `0.9.x`: parity and hardening.
+
+### The job screens were showing a different part's drawing (#397)
+
+`ab_job.sketch_id` keys **`sketch_jpg`**, not `sketch`. Legacy moved in 2016 and every live consumer
+followed; the one reference to `sketch` left in the whole legacy source sits inside a subroutine whose
+every display call is commented out — and that dead copy is what the port had been built from.
+
+The two tables were **re-keyed against each other, not copied**, so reading the wrong one is worse
+than a missing image. Of the 62,038 jobs carrying a sketch id, all resolve in `sketch_jpg`; against
+`sketch`, 31,048 find nothing and **3,420 find a different drawing**. Sketch 125 is `AB-2-5` in the
+retired table and `JL FENDER` in the live one, across 1,203 jobs including recent ones.
+
+The images are also 8–124 KB JPEGs rather than uniform 417 KB bitmaps — about 13x less over the plant
+LAN.
+
+### The live job sheet (#399)
+
+`GET /prod-folder/jobs/{job}/job-sheet` returns legacy's PRODUCTION ORDER — the document an operator
+works the job from — rendered on the production folder and on the DAS console, where it re-reads on
+every job change, and printable from both.
+
+Six of its figures are not columns on anything: the originating customer (written over the sheet's own
+end-user join, so both names print), MAT. REC'D, EST SKID WT, MAX SCRAP WGT., the yield after edge
+trim, and the shape dimensions. Circle and fender print **no length** — legacy guards that block, and
+"0.000" beside a tolerance reads as a dimension to cut to.
+
+BY-LOT jobs are a different sheet: PC./SKID becomes "See Below" and each coil carries its own skid and
+pieces-per-skid figures. Both roundings in that arithmetic go **down**, for different reasons.
+
+### The supervisor override PIN (#400, #401, #403, #404)
+
+Legacy gates a handful of shop-floor overrides on one shared secret from an INI file on each DAS PC,
+compared in plain text, **defaulting to `1234`**, with unlimited attempts and no record of anything.
+Whether an override is gated is plant behaviour and stays; how it authenticates does not.
+
+- **A per-supervisor PIN in its own table**, hashed through the existing PBKDF2 path. A separate
+  secret from the sign-in password on purpose: four digits typed on a shared panel in front of an
+  operator must not open an application session.
+- **Every attempt is recorded, granted or not**, with who/what/where/why. A grant is single-use and is
+  spent by the write it authorises. The shared `1234` could never say who authorised anything.
+- Lockout per supervisor; failures count only against a PIN that exists, so nobody can lock out a
+  login they can guess. **`1234` is refused by name** when setting one.
+- **Holding a PIN is the eligibility** — no second "is supervisor" flag, and no invented feature name;
+  issuing one is gated on the real `User Control`.
+- The plant's rule is that **everyone in the IT group holds one**, and the Security page carries that
+  shortfall standing.
+
+The substantive gate is closing a coil whose weights do not balance — above 0.5% unaccounted-for
+weight legacy disables Save. So what the PIN really protects is *who agreed a coil's missing metal
+could be written off.*
+
+### A scale that can be zeroed (#402)
+
+Legacy can re-tare its scale from the DAS station; this could not at all. `POST /scale/zero` sends
+legacy's single `'a'`, exposed as a confirmed **⌫ Zero** button.
+
+The one behaviour deliberately not ported: legacy reports **success when the scale is not connected**.
+An operator told the scale zeroed weighs against a tare that was never cleared, and every skid on that
+scale is then wrong by the same amount. Three distinct answers instead.
+
+### Also
+
+Every line's DAS console was showing BL110's production counters (#395). The version at `/` now
+reports what is actually running — it said `0.8.2.0` while serving five PRs past that tag (#405).
+
+### Known limitations
+
+**The end-coil balance gate warns; it does not block.** Measured over 926 consumed coils on `.230`,
+the median discrepancy is 6.3% using `return_scrap_item` and 12.5% using `quality_scrap_worksheet` —
+against a 0.5% tolerance, with only 117 of 926 inside it. A hard block on those numbers demands a
+supervisor for every coil, which turns the override into a rubber stamp and destroys the audit trail
+that is the point of it. The figure is close to the plant's own material yield (median 97%), so the
+missing weight looks like real scrap the per-coil tables do not fully carry. **Settling it needs
+someone watching the numbers on a live panel during an end-coil.**
+
+**No supervisor has been enrolled yet**, so no override can currently be authorised at all — a
+deliberate fail-closed. Five active IT members; enrolling is a minute each on the Security page.
+
+**Nothing in this release has run on a plant panel.** The scale zero has not been exercised against a
+real scale, and the scrap-scale/gauge separation is untouched — that needs the plant's device layout.
+
+Still owed from `0.8.2`: **the two 4x6 tags and the Certificate of Conformance have never printed.**
+Only the 6x10 has, on the test printer. And the deployed app still reads the non-prod database.
+
+---
+
 ## v0.8.2 — 2026-08-08
 
 **The Certificate of Conformance** — the last unbuilt piece of the label subsystem. (#390)
