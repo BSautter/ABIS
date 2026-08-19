@@ -33,4 +33,44 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
 
+  <!--
+    Make a LOCAL build report the version it actually is.
+
+    build-deb.sh already stamps packaged builds: it passes an InformationalVersion taken from
+    `git describe` (with tags, always, dirty), which is what makes a deployed app say
+    v0.9.0-2-g781456f at `/`. A plain `dotnet run` got none of that and fell back to the SDK's own
+    default of 1.0.0 — a number ABIS has never released, sitting in the sidebar badge looking like a
+    real answer.
+
+    This closes that gap for anyone running from a checkout. It does NOT override a version passed on
+    the command line: an InformationalVersion set that way is a GLOBAL property, and MSBuild silently
+    ignores a target's attempt to reassign one — so CI and build-deb.sh keep winning exactly as before,
+    and that is why there is no condition guarding against them here.
+
+    There deliberately is no `Condition` on InformationalVersion being empty either. It never is: the
+    SDK derives it from Version during evaluation, so by the time any target runs it already reads
+    1.0.0 and such a condition would skip every single time. That was the first version of this and it
+    silently did nothing.
+
+    Everything about it degrades quietly. No git on PATH, a tarball with no .git directory, a shallow
+    clone with no tags — the Exec fails, the condition below is false, and the build carries on with
+    the SDK default. A version string is not worth failing a build over.
+
+    (XML comments cannot contain a double hyphen, which is why the git flags are described in words.)
+  -->
+  <Target Name="StampGitVersion" BeforeTargets="GetAssemblyAttributes">
+    <Exec Command="git describe --tags --always --dirty"
+          ConsoleToMSBuild="true"
+          StandardOutputImportance="low"
+          StandardErrorImportance="low"
+          ContinueOnError="true"
+          IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitDescribe" />
+      <Output TaskParameter="ExitCode" PropertyName="_GitDescribeExit" />
+    </Exec>
+    <PropertyGroup Condition="'$(_GitDescribeExit)' == '0' and '$(_GitDescribe)' != ''">
+      <InformationalVersion>$(_GitDescribe.Trim())</InformationalVersion>
+    </PropertyGroup>
+  </Target>
+
 </Project>

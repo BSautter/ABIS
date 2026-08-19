@@ -91,6 +91,30 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS customer_contact;
             DROP TABLE IF EXISTS sketch;
             DROP TABLE IF EXISTS sketch_jpg;
+            -- Tables that were created but never dropped, so a re-run against an existing
+            -- abis_dev.db died on the first of them ("table order_coil already exists"). Seeding is
+            -- meant to be idempotent: every local `dotnet run` re-seeds, and CI never noticed because
+            -- each test gets a fresh temp file. SqliteFixtureTests now asserts create/drop parity so
+            -- a new table cannot quietly reintroduce this.
+            DROP TABLE IF EXISTS abis_plc_fault_code;
+            DROP TABLE IF EXISTS dt_instance_detail;
+            DROP TABLE IF EXISTS inbound_coil_status;
+            DROP TABLE IF EXISTS line_current_status;
+            DROP TABLE IF EXISTS line_die_4sheet_type;
+            DROP TABLE IF EXISTS line_priority;
+            DROP TABLE IF EXISTS line_schedule;
+            DROP TABLE IF EXISTS maint_frequency;
+            DROP TABLE IF EXISTS metal_density;
+            DROP TABLE IF EXISTS order_coil;
+            DROP TABLE IF EXISTS receiving_bol_coil;
+            DROP TABLE IF EXISTS recovery_job_coil;
+            DROP TABLE IF EXISTS routing;
+            DROP TABLE IF EXISTS sheet_skid_package;
+            DROP TABLE IF EXISTS shift_coil;
+            DROP TABLE IF EXISTS shift_schedule;
+            DROP TABLE IF EXISTS shipment_track;
+            DROP TABLE IF EXISTS trim_type;
+            DROP TABLE IF EXISTS yield_strength;
             DROP TABLE IF EXISTS line;
             DROP TABLE IF EXISTS groupdepartment;
             DROP TABLE IF EXISTS dt_cause;
