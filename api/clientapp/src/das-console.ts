@@ -18,7 +18,8 @@ import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount, fetch
 import type { CountersResult, StackerResult, LineStatusResult } from './edge.js';
 import { renderSketch } from './sketch.js';
 import { printJobSheet, renderJobSheet } from './job-sheet.js';
-import { requestSupervisorOverride, endCoilBalancePercent, needsBalanceOverride } from './supervisor-pin.js';
+import { requestSupervisorOverride, endCoilBalancePercent, needsBalanceOverride,
+  END_COIL_BALANCE_TOLERANCE_PERCENT } from './supervisor-pin.js';
 import { decideConveyorWeight } from './skid-weight.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
@@ -1354,14 +1355,26 @@ async function pickerBrowse(bases: string[], targetId: string, path: Crumb[]): P
     const wt = v('#opEndWt');
     if (wt === '') { setErr('Enter the weight left on the coil (0 if it ran out).'); return; }
     void (async () => {
-      // Legacy disables Save outright when the coil is out of balance and shows an Override button
-      // instead (u_tabpg_end_coil.sru:757). Same rule, checked at the moment of saving so it uses the
-      // weight actually typed.
+      // Legacy DISABLES Save outright above tolerance (u_tabpg_end_coil.sru:757). This warns instead,
+      // and still saves — a deliberate, temporary softening, because the figures behind the
+      // percentage do not yet reconcile on this plant's data.
+      //
+      // Measured on .230 over 926 consumed coils: the median discrepancy is 6.3% using
+      // return_scrap_item and 12.5% using quality_scrap_worksheet — against a 0.5% tolerance. Only
+      // 117 of 926 coils came inside it. A hard block on those numbers would demand a supervisor for
+      // EVERY coil, which does not make anything safer: it makes the override a rubber stamp and
+      // destroys the audit trail that is the whole point of it.
+      //
+      // The 6.3% is close to the plant's own material yield (median 97%, mean 94.3%), so the missing
+      // weight looks like real scrap that the per-coil tables do not fully carry — legacy computes
+      // its check from the recap grids the operator has just filled in for THAT run, which is not
+      // something a historical query can reproduce. Restore the block once the live figures have been
+      // watched on a panel; see docs/SUPERVISOR_PIN.md.
       const pct = await coilBalancePercent(Number(wt));
       if (needsBalanceOverride(pct)) {
-        setErr(`This coil is ${pct!.toFixed(2)}% out of balance. Re-check the skid or scrap weights — ` +
-               'or use "End with supervisor override" and have a shift supervisor authorise it.');
-        return;
+        setErr(`⚠ This coil is ${pct!.toFixed(2)}% out of balance (tolerance ${END_COIL_BALANCE_TOLERANCE_PERCENT}%). ` +
+               'Re-check the skid and scrap weights. Saving anyway — if this is a real discrepancy, ' +
+               'use "End with supervisor override" so it is recorded against a supervisor.');
       }
       await endCoil(Number(wt), null);
     })();

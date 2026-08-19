@@ -157,6 +157,29 @@ Scoping any of them to the coil **and job** would measure one job's output again
 input, so every coil that ran two jobs would demand a supervisor for no reason. Legacy's recap grids
 retrieve on `:al_coil` alone; there is no job in their WHERE clause.
 
+### Measured on live data — and it does not reconcile yet
+
+Checked against `.230` on 2026-08-19, over **926 consumed coils** (ids 233000–234000 with production):
+
+| scrap source | median discrepancy | within 0.5% |
+|---|---|---|
+| `return_scrap_item` | **6.3%** | 117 / 926 |
+| `quality_scrap_worksheet` | **12.5%** | 13 / 926 |
+
+Against a 0.5% tolerance, both are an order of magnitude out. **So the console warns rather than
+blocks.** Legacy disables Save outright; a hard block on these numbers would demand a supervisor for
+*every* coil, which makes nothing safer — it makes the override a rubber stamp and destroys the audit
+trail that is the point of it.
+
+The 6.3% is close to the plant's own material yield (median **97%**, mean **94.3%**), so the missing
+weight looks like **real scrap the per-coil tables do not fully carry**. Legacy computes its check
+from the recap grids the operator has just filled in for *that run* — a live, in-progress figure a
+historical query cannot reproduce. That is the likely explanation, but it is a hypothesis, not a
+verified fact.
+
+**To settle it, someone has to watch the numbers on a live panel during an end-coil** and say which
+scrap record the operator is actually filling. Until then the block stays a warning.
+
 A discrepancy that **cannot be computed** — no coil loaded, no starting weight, the read failed — is
 not treated as out of balance. Blocking production over a failed supporting read is a failure mode
 legacy does not have, since its figures are already on screen by the time Save is pressed.
