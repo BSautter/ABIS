@@ -3,6 +3,7 @@ using System.Data.Common;
 using System.Globalization;
 using Abis.Api.Edi;
 using Abis.Api.Models;
+using Abis.Api.Security;
 using Dapper;
 
 namespace Abis.Api.Data;
@@ -3564,6 +3565,208 @@ public sealed class AbisRepository : IAbisRepository
                 VALUES (:login, :hash, :mc, :now, :updby)
                 """, new { login, hash = passwordHash, mc, now, updby = updatedBy }, cancellationToken: ct));
     }
+
+    // ---- Supervisor override (replaces legacy's shared plaintext PIN) ---------------------------
+
+    /// <summary>Whether a login holds an override PIN, and its lockout state. Never returns the hash.</summary>
+    public async Task<SupervisorPinStatus?> GetSupervisorPinStatusAsync(string login, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var row = await conn.QueryFirstOrDefaultAsync<SupervisorPinStatus>(new CommandDefinition(
+            """
+            SELECT login_id AS LoginId, failed_count AS FailedCount, locked_until_utc AS LockedUntilUtc,
+                   updated_utc AS UpdatedUtc, updated_by AS UpdatedBy
+            FROM abis_supervisor_pin WHERE LOWER(login_id) = LOWER(:login)
+            """, new { login }, cancellationToken: ct));
+        if (row is null) return null;
+        row.HasPin = true;
+        return row;
+    }
+
+    /// <summary>Set or replace a login's PIN. Resets the lockout: an administrator issuing a new PIN is
+    /// the intended way out of one, and leaving the counter set would keep a supervisor locked out of a
+    /// PIN they have only just been given.</summary>
+    public async Task SetSupervisorPinAsync(string login, string pinHash, string? updatedBy, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var now = DateTime.UtcNow;
+        // UPDATE-then-INSERT, as SetUserCredentialAsync does: portable across Oracle + SQLite with no
+        // MERGE/ON CONFLICT dialect split, and this is a low-write admin table.
+        var updated = await conn.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE abis_supervisor_pin
+               SET pin_hash = :hash, failed_count = 0, locked_until_utc = NULL,
+                   updated_utc = :now, updated_by = :updby
+             WHERE LOWER(login_id) = LOWER(:login)
+            """, new { hash = pinHash, now, updby = updatedBy, login }, cancellationToken: ct));
+        if (updated == 0)
+            await conn.ExecuteAsync(new CommandDefinition(
+                """
+                INSERT INTO abis_supervisor_pin (login_id, pin_hash, failed_count, locked_until_utc, updated_utc, updated_by)
+                VALUES (:login, :hash, 0, NULL, :now, :updby)
+                """, new { login, hash = pinHash, now, updby = updatedBy }, cancellationToken: ct));
+    }
+
+    /// <summary>Take a login's PIN away — they can no longer authorise anything. The override history
+    /// stays: removing someone's PIN must not erase what they authorised while they held it.</summary>
+    public async Task<bool> ClearSupervisorPinAsync(string login, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.ExecuteAsync(new CommandDefinition(
+            "DELETE FROM abis_supervisor_pin WHERE LOWER(login_id) = LOWER(:login)",
+            new { login }, cancellationToken: ct)) > 0;
+    }
+
+    /// <summary>
+    /// Verify a PIN and record the attempt, whatever the answer.
+    ///
+    /// <para>The order matters. The lockout is checked first, so a locked PIN is not tested at all;
+    /// then the hash; a failure increments the counter and locks at the threshold; a success clears
+    /// it. Every path writes exactly one audit row, so "granted", "wrong PIN", "no PIN held" and
+    /// "locked out" are all equally visible afterwards.</para>
+    ///
+    /// <para><b>A login with no PIN is refused exactly like a wrong PIN</b>, and both take the hash
+    /// computation. Answering "no such supervisor" faster, or differently, would turn the panel into a
+    /// way to enumerate who can authorise overrides.</para>
+    /// </summary>
+    public async Task<(SupervisorOverrideResult Result, SupervisorOverrideRecord Record)> TrySupervisorOverrideAsync(
+        SupervisorOverrideRequest req, CancellationToken ct)
+    {
+        var login = (req.LoginId ?? "").Trim();
+        var action = (req.Action ?? "").Trim();
+        var now = DateTime.UtcNow;
+
+        await using var conn = await OpenAsync(ct);
+        var row = await conn.QueryFirstOrDefaultAsync(new CommandDefinition(
+            """
+            SELECT pin_hash AS PinHash, failed_count AS FailedCount, locked_until_utc AS LockedUntilUtc
+            FROM abis_supervisor_pin WHERE LOWER(login_id) = LOWER(:login)
+            """, new { login }, cancellationToken: ct));
+
+        string? hash = null;
+        var failed = 0;
+        DateTime? lockedUntil = null;
+        if (row is not null)
+        {
+            var d = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in (IDictionary<string, object>)row) d[kv.Key] = kv.Value;
+            hash = d.TryGetValue("PinHash", out var h) ? h?.ToString() : null;
+            failed = (int)(Dec(d, "FailedCount") ?? 0m);
+            lockedUntil = Date(d, "LockedUntilUtc");
+        }
+
+        string outcome;
+        if (lockedUntil is { } until && until > now)
+        {
+            outcome = "locked";
+        }
+        else
+        {
+            // Verify even when no PIN is held — against a hash that cannot match — so the refusal takes
+            // the same work either way. Verify() returns false for a null stored hash by design, but it
+            // would return it immediately, and that difference is measurable from the panel.
+            var ok = PasswordHashing.Verify(req.Pin ?? "", hash ?? NonMatchingHash);
+            outcome = ok && hash is not null ? "granted" : "denied";
+
+            if (outcome == "granted")
+            {
+                await conn.ExecuteAsync(new CommandDefinition(
+                    "UPDATE abis_supervisor_pin SET failed_count = 0, locked_until_utc = NULL WHERE LOWER(login_id) = LOWER(:login)",
+                    new { login }, cancellationToken: ct));
+            }
+            else if (hash is not null)
+            {
+                // Only count failures against a PIN that exists. Counting them against an unknown login
+                // would let anyone lock out a name they can guess.
+                failed++;
+                var lockUntil = failed >= SupervisorOverride.MaxFailedAttempts
+                    ? now.Add(SupervisorOverride.LockoutDuration) : (DateTime?)null;
+                await conn.ExecuteAsync(new CommandDefinition(
+                    "UPDATE abis_supervisor_pin SET failed_count = :n, locked_until_utc = :until WHERE LOWER(login_id) = LOWER(:login)",
+                    new { n = failed, until = lockUntil, login }, cancellationToken: ct));
+                lockedUntil = lockUntil;
+            }
+        }
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var id = await NextIdAsync(conn, tx, "abis_supervisor_override", "override_id", ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO abis_supervisor_override
+                (override_id, action, login_id, outcome, line_num, ab_job_num, coil_abc_num, panel, reason, created_utc)
+            VALUES (:id, :action, :login, :outcome, :line, :job, :coil, :panel, :reason, :now)
+            """,
+            new
+            {
+                id, action, login, outcome,
+                line = req.LineNum, job = req.AbJobNum, coil = req.CoilAbcNum,
+                panel = Truncate(req.Panel, 64), reason = Truncate(req.Reason, 500), now,
+            }, transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+
+        var record = new SupervisorOverrideRecord
+        {
+            OverrideId = id, Action = action, LoginId = login, Outcome = outcome,
+            LineNum = req.LineNum, AbJobNum = req.AbJobNum, CoilAbcNum = req.CoilAbcNum,
+            Panel = req.Panel, Reason = req.Reason, CreatedUtc = now,
+        };
+        var result = new SupervisorOverrideResult
+        {
+            Granted = outcome == "granted",
+            OverrideId = outcome == "granted" ? id : null,
+            LockedUntilUtc = outcome == "locked" || lockedUntil is not null ? lockedUntil : null,
+            Message = outcome switch
+            {
+                "granted" => null,
+                "locked" => "Too many wrong PINs — this supervisor is locked out for now.",
+                _ => "That PIN was not accepted.",
+            },
+        };
+        return (result, record);
+    }
+
+    /// <summary>A well-formed hash that no PIN can match, so the "no PIN held" path does the same
+    /// PBKDF2 work as a wrong PIN instead of returning early.</summary>
+    private static readonly string NonMatchingHash = PasswordHashing.Hash(Guid.NewGuid().ToString("N"));
+
+    /// <summary>Mark a granted override as spent by the write it authorised. Returns false when the id
+    /// is unknown, was not granted, or has already been used — an authorisation is for one action, so
+    /// it cannot be replayed to close a second coil out of balance.</summary>
+    public async Task<bool> ConsumeSupervisorOverrideAsync(long overrideId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE abis_supervisor_override SET consumed_utc = :now
+             WHERE override_id = :id AND outcome = 'granted' AND consumed_utc IS NULL
+            """, new { now = DateTime.UtcNow, id = overrideId }, cancellationToken: ct)) > 0;
+    }
+
+    /// <summary>The override log, newest first — grants and refusals together.</summary>
+    public async Task<PagedResult<SupervisorOverrideRecord>> GetSupervisorOverridesAsync(
+        int page, int pageSize, string? login, string? outcome, CancellationToken ct)
+    {
+        var where = new List<string>();
+        if (!string.IsNullOrWhiteSpace(login)) where.Add("LOWER(o.login_id) = LOWER(:login)");
+        if (!string.IsNullOrWhiteSpace(outcome)) where.Add("o.outcome = :outcome");
+        var result = await PageAsync<SupervisorOverrideRecord>(
+            """
+            o.override_id AS OverrideId, o.action AS Action, o.login_id AS LoginId, o.outcome AS Outcome,
+            o.line_num AS LineNum, o.ab_job_num AS AbJobNum, o.coil_abc_num AS CoilAbcNum,
+            o.panel AS Panel, o.reason AS Reason, o.consumed_utc AS ConsumedUtc, o.created_utc AS CreatedUtc,
+            (u.user_first_name || ' ' || u.user_last_name) AS SupervisorName
+            """,
+            "abis_supervisor_override o LEFT JOIN security_user u ON LOWER(u.login_id) = LOWER(o.login_id)",
+            "o.override_id DESC",
+            where.Count == 0 ? null : string.Join(" AND ", where),
+            new { login, outcome }, page, pageSize, ct);
+        foreach (var r in result.Items)
+            r.ActionDescription = SupervisorOverride.Actions.TryGetValue(r.Action ?? "", out var d) ? d : null;
+        return result;
+    }
+
+    private static string? Truncate(string? s, int max) =>
+        string.IsNullOrWhiteSpace(s) ? null : s.Length <= max ? s.Trim() : s[..max].Trim();
 
     // The caller's effective privilege on a feature, resolved by login (case-insensitive):
     // MAX over that user's direct + group grants. null = no such user, feature, or grant. Mirrors

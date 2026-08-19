@@ -17,6 +17,7 @@ import { statusChip, lineLabel, loadLineNames } from './status-labels.js';
 import { DEFAULT_EDGE_URLS, parseEdgeUrls, fetchRunState, fetchPieceCount, fetchCounters, countersForRunTag, fetchStacker, fetchConveyor, fetchLineStatus, browseEdgeTags } from './edge.js';
 import { renderSketch } from './sketch.js';
 import { printJobSheet, renderJobSheet } from './job-sheet.js';
+import { requestSupervisorOverride } from './supervisor-pin.js';
 import { decideConveyorWeight } from './skid-weight.js';
 const $ = (sel) => document.querySelector(sel);
 const client = () => new AbisClient('', { fetch: authFetch });
@@ -166,6 +167,13 @@ function scaffold() {
               <div class="fld"><label>Weight left on coil</label><input id="opEndWt" class="big" type="number" step="0.01" style="width:150px" /></div>
               <div class="fld"><label>Ending status</label><select id="opEndStatus" class="big" style="min-width:150px">${END_STATUS_OPTIONS}</select></div>
               <button class="btn sm" id="btnEndCoil" type="button">End coil run</button>
+              <!-- Legacy's cb_override. The coil's weights are meant to balance — what went out as
+                   skids and scrap, plus what is left, should equal what came in. When they do not,
+                   legacy refuses the save and tells the operator to "ask your shift supervisor
+                   override it" (u_tabpg_end_coil.sru:757); this is that ask. What it records that
+                   legacy never could is WHO agreed to it. -->
+              <button class="btn sm ghost" id="btnEndCoilOverride" type="button"
+                      title="The weights do not balance — end the coil with a shift supervisor's authorisation">🔑 End with supervisor override</button>
               <button class="btn sm ghost" id="btnReverse" type="button" title="The coil was loaded in error: drop it and delete its run">↺ Reverse coil</button>
               <span id="opOk" class="ok-note"></span>
             </div>
@@ -461,6 +469,12 @@ async function coilRunAction(path, body, okMsg, then) {
 }
 // End-coil recap — what actually came off the coil, shown once its run closes (the legacy DAS
 // showed the ending status and closing weight at this moment).
+/** End the coil, optionally carrying a supervisor's authorisation for closing it out of balance.
+ *  The id is single-use server-side, so a refused or replayed one is a 409 rather than a silent save. */
+async function endCoil(endWeight, supervisorOverrideId) {
+    await coilRunAction(`/api/das/lines/${lineNum}/coil-run/end`, { endWeight, endStatus: Number(v('#opEndStatus')), coilAbcNum: runCoil ?? undefined, abJobNum: job,
+        supervisorOverrideId: supervisorOverrideId ?? undefined }, (r) => `Coil run ended${supervisorOverrideId != null ? ' (supervisor override)' : ''}${r.jobFinished ? ' — job finished' : ''}`, (r) => void showRecap(r.run));
+}
 async function showRecap(run) {
     const box = $('#opRecap');
     if (!run) {
@@ -1484,7 +1498,27 @@ async function pickerBrowse(bases, targetId, path) {
             setErr('Enter the weight left on the coil (0 if it ran out).');
             return;
         }
-        void coilRunAction(`/api/das/lines/${lineNum}/coil-run/end`, { endWeight: Number(wt), endStatus: Number(v('#opEndStatus')), coilAbcNum: runCoil ?? undefined, abJobNum: job }, (r) => `Coil run ended${r.jobFinished ? ' — job finished' : ''}`, (r) => void showRecap(r.run));
+        void endCoil(Number(wt), null);
+    });
+    // Legacy's cb_override: the operator presses this when the coil's weights do not balance and the
+    // plain Save is refused, and a supervisor comes over to authorise it (u_tabpg_end_coil.sru:632).
+    $('#btnEndCoilOverride').addEventListener('click', () => {
+        const wt = v('#opEndWt');
+        if (wt === '') {
+            setErr('Enter the weight left on the coil first — the supervisor is authorising THAT figure.');
+            return;
+        }
+        void (async () => {
+            const id = await requestSupervisorOverride({
+                action: 'end-coil-out-of-balance',
+                prompt: 'Close this coil even though its weights do not balance.',
+                reason: `Coil ${runCoil ?? '?'} on job ${job ?? '?'}, ending at ${wt} lb`,
+                lineNum, abJobNum: job, coilAbcNum: runCoil,
+            });
+            // Null means cancelled or refused. Either way the coil is not closed — a refusal is an answer.
+            if (id != null)
+                await endCoil(Number(wt), id);
+        })();
     });
     $('#btnDropCoil').addEventListener('click', () => void opAction(`/api/das/lines/${lineNum}/current-coil`, { coilAbcNum: null }, 'Coil dropped'));
     showTab('skids');

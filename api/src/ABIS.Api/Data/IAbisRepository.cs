@@ -181,6 +181,16 @@ public interface IAbisRepository
     Task<UserCredential?> GetUserCredentialAsync(string login, CancellationToken ct);
     Task SetUserCredentialAsync(string login, string passwordHash, bool mustChange, string? updatedBy, CancellationToken ct);
 
+    // Supervisor override — the shop-floor gate that replaces legacy's shared plaintext PIN.
+    Task<SupervisorPinStatus?> GetSupervisorPinStatusAsync(string login, CancellationToken ct);
+    Task SetSupervisorPinAsync(string login, string pinHash, string? updatedBy, CancellationToken ct);
+    Task<bool> ClearSupervisorPinAsync(string login, CancellationToken ct);
+    Task<(SupervisorOverrideResult Result, SupervisorOverrideRecord Record)> TrySupervisorOverrideAsync(
+        SupervisorOverrideRequest req, CancellationToken ct);
+    Task<bool> ConsumeSupervisorOverrideAsync(long overrideId, CancellationToken ct);
+    Task<PagedResult<SupervisorOverrideRecord>> GetSupervisorOverridesAsync(
+        int page, int pageSize, string? login, string? outcome, CancellationToken ct);
+
     Task<IReadOnlyList<ScrapType>> GetScrapTypesAsync(CancellationToken ct);
     Task<IReadOnlyList<ProductType>> GetProductTypesAsync(CancellationToken ct);
     Task<IReadOnlyList<RecoveryCustomer>> GetRecoveryCustomersAsync(CancellationToken ct);

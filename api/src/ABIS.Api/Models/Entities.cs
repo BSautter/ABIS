@@ -1648,6 +1648,64 @@ public sealed class SecurityUser
     public string? UserNotes { get; set; }
 }
 
+// ---- Supervisor override (replaces legacy's shared plaintext PIN, w_super_validation) ----
+
+/// <summary>Whether a user holds a shop-floor override PIN, and whether it is currently locked. The
+/// hash itself is never returned — this is the answer to "can this person authorise an override", not
+/// to "what is their PIN".</summary>
+public sealed class SupervisorPinStatus
+{
+    public string LoginId { get; set; } = "";
+    /// <summary>Holding a PIN IS the eligibility. There is no separate "supervisor" flag to drift out
+    /// of step with it.</summary>
+    public bool HasPin { get; set; }
+    public int FailedCount { get; set; }
+    /// <summary>When a lockout expires, or null when the PIN is usable.</summary>
+    public DateTime? LockedUntilUtc { get; set; }
+    public DateTime? UpdatedUtc { get; set; }
+    public string? UpdatedBy { get; set; }
+}
+
+/// <summary>One override attempt — <b>granted or not</b> (table <c>abis_supervisor_override</c>).
+/// <para>Legacy records nothing at all here: its gate is an in-memory <c>ii_super</c> flag that dies
+/// with the window, and the shared PIN could not have identified anyone anyway. The denials are kept
+/// as deliberately as the grants; a run of them at one panel is the only visible sign of someone
+/// working through a four-digit space.</para></summary>
+public sealed class SupervisorOverrideRecord
+{
+    public long OverrideId { get; set; }
+    public string Action { get; set; } = "";
+    /// <summary>A human sentence for the action, so the log reads without a lookup table.</summary>
+    public string? ActionDescription { get; set; }
+    public string LoginId { get; set; } = "";
+    public string? SupervisorName { get; set; }
+    /// <summary><c>granted</c>, <c>denied</c> (wrong PIN or no PIN held), or <c>locked</c>.</summary>
+    public string Outcome { get; set; } = "";
+    public long? LineNum { get; set; }
+    public long? AbJobNum { get; set; }
+    public long? CoilAbcNum { get; set; }
+    public string? Panel { get; set; }
+    public string? Reason { get; set; }
+    /// <summary>When the authorisation was actually spent on the write it was granted for — null while
+    /// it is still outstanding. A granted override nobody used is worth being able to see.</summary>
+    public DateTime? ConsumedUtc { get; set; }
+    public DateTime CreatedUtc { get; set; }
+}
+
+/// <summary>The answer to an override request. On refusal it carries no detail about WHY beyond
+/// locked-vs-not: telling a panel "that supervisor has no PIN" would let anyone stood at it enumerate
+/// who can authorise things.</summary>
+public sealed class SupervisorOverrideResult
+{
+    public bool Granted { get; set; }
+    /// <summary>The audit row's id, to be carried by the write this authorises. Null when refused.</summary>
+    public long? OverrideId { get; set; }
+    /// <summary>Set when the PIN is locked out, so the panel can say "try again at …" rather than
+    /// leaving a supervisor pressing a dead button.</summary>
+    public DateTime? LockedUntilUtc { get; set; }
+    public string? Message { get; set; }
+}
+
 /// <summary>A truck appointment (ABIS-owned table <c>abis_truck_appointment</c>) — schedule an
 /// inbound/outbound truck into a dock + time window, gate check-in/check-out onsite, and track its
 /// status. Replaces the plant's Excel truck schedule. <c>CarrierId</c> is a loose reference to the

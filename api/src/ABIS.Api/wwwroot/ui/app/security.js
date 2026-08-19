@@ -95,6 +95,23 @@ function scaffold() {
             </div>
             <p class="muted" style="margin:6px 0 0;font-size:12px">Stored hashed; the user must change it on next sign-in. Requires the User Control grant.</p>
           </div>
+          <header style="border-top:1px solid var(--line)"><h2>Shop-floor override PIN</h2></header>
+          <div class="body">
+            <div class="frow" style="align-items:center">
+              <div class="fld"><label>PIN (digits)</label><input id="setPin" type="password" inputmode="numeric" autocomplete="off" style="width:140px" /></div>
+              <button class="btn sm" id="btnSetPin" type="button">Give PIN</button>
+              <button class="btn sm ghost" id="btnClearPin" type="button" title="They can no longer authorise overrides. What they already authorised is kept.">Remove PIN</button>
+              <span id="pinOk" class="ok-note"></span>
+            </div>
+            <div class="kv" id="pinState" style="margin-top:8px"></div>
+            <p class="muted" style="margin:6px 0 0;font-size:12px">
+              Lets this person authorise shop-floor overrides at a DAS panel — closing a coil whose
+              weights do not balance, overriding a shift end, opening the Operation Panel.
+              <b>Holding a PIN is what makes someone a supervisor</b>; there is no separate flag.
+              It is a different secret from their password and cannot be used to sign in.
+              Replaces the shared <span class="mono">1234</span> the DAS PCs used to share.
+            </p>
+          </div>
         </div></div>
       </div>
     </div>
@@ -218,6 +235,8 @@ async function openUser(userId) {
         setV('#edStatus', u.userStatus);
         $('#pwOk').textContent = '';
         $('#edOk').textContent = '';
+        $('#pinOk').textContent = '';
+        void loadPinState();
         $('#tGroups').innerHTML = (groups ?? []).length ? (groups ?? []).map((g) => `<tr>
       <td class="mono">${esc(g.userGroupId)}</td><td>${esc(g.groupName)}</td>
       <td><button class="btn sm ghost rmGrp" data-g="${g.userGroupId}" type="button">remove</button></td></tr>`).join('')
@@ -331,6 +350,84 @@ async function setPassword() {
         if (await send(`/api/security/users/${curUser}/password`, 'POST', { password: pw })) {
             $('#setPw').value = '';
             $('#pwOk').textContent = '✓ Password set — the user must change it on next sign-in.';
+        }
+    }
+    finally {
+        setBusy(false);
+    }
+}
+// ---- Shop-floor override PIN ------------------------------------------------------------------
+// Giving someone a PIN is what makes them a supervisor for override purposes — there is no separate
+// "is supervisor" flag, so nothing can drift out of step with it. Gated server-side on "User
+// Control" like the other security-admin writes.
+async function loadPinState() {
+    const box = $('#pinState');
+    if (curUser == null) {
+        box.innerHTML = '';
+        return;
+    }
+    try {
+        const r = await authFetch(`/api/security/users/${curUser}/supervisor-pin`);
+        if (!r.ok) {
+            box.innerHTML = '<span class="muted">PIN status unavailable.</span>';
+            return;
+        }
+        const s = await r.json();
+        if (!s.hasPin) {
+            box.innerHTML = '<span><b>PIN</b>none — cannot authorise overrides</span>';
+            return;
+        }
+        const locked = s.lockedUntilUtc && new Date(s.lockedUntilUtc) > new Date();
+        box.innerHTML =
+            `<span><b>PIN</b>set${s.updatedUtc ? ' · ' + new Date(s.updatedUtc).toLocaleString() : ''}${s.updatedBy ? ' by ' + esc(s.updatedBy) : ''}</span>` +
+                (locked
+                    // Worth showing: a locked-out supervisor at a panel has no way to tell why, and re-issuing
+                    // the PIN is the way out.
+                    ? `<span><b>Locked</b>until ${new Date(s.lockedUntilUtc).toLocaleTimeString()} — give a new PIN to clear it</span>`
+                    : `<span><b>Failed tries</b>${esc(s.failedCount)}</span>`);
+    }
+    catch {
+        box.innerHTML = '<span class="muted">PIN status unavailable.</span>';
+    }
+}
+async function setPin() {
+    if (curUser == null) {
+        setErr('Open a user first.');
+        return;
+    }
+    const pin = v('#setPin');
+    if (!pin) {
+        setErr('Enter a PIN.');
+        return;
+    }
+    setErr('');
+    setBusy(true);
+    try {
+        // The server owns the PIN rules — refusing "1234" by name among them — so its message is shown
+        // rather than a second copy of the rules being kept here to drift.
+        if (await send(`/api/security/users/${curUser}/supervisor-pin`, 'POST', { pin })) {
+            $('#setPin').value = '';
+            $('#pinOk').textContent = '✓ PIN set — they can authorise shop-floor overrides.';
+            await loadPinState();
+        }
+    }
+    finally {
+        setBusy(false);
+    }
+}
+async function clearPin() {
+    if (curUser == null) {
+        setErr('Open a user first.');
+        return;
+    }
+    if (!window.confirm('Remove this PIN? They can no longer authorise overrides. What they already authorised stays in the log.'))
+        return;
+    setErr('');
+    setBusy(true);
+    try {
+        if (await send(`/api/security/users/${curUser}/supervisor-pin`, 'DELETE', undefined)) {
+            $('#pinOk').textContent = '✓ PIN removed.';
+            await loadPinState();
         }
     }
     finally {
@@ -616,6 +713,8 @@ function showTab(name) {
     $('#btnAddGroup').addEventListener('click', () => void addGroup());
     $('#btnGrant').addEventListener('click', () => void grantUserApp());
     $('#btnSetPw').addEventListener('click', () => void setPassword());
+    $('#btnSetPin').addEventListener('click', () => void setPin());
+    $('#btnClearPin').addEventListener('click', () => void clearPin());
     $('#btnNewUser').addEventListener('click', () => void createUser());
     $('#btnSaveUser').addEventListener('click', () => void saveUser());
     $('#btnDelUser').addEventListener('click', () => void removeUser());

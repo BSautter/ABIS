@@ -132,6 +132,8 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS abis_job_run;
             DROP TABLE IF EXISTS abis_scheduled_job;
             DROP TABLE IF EXISTS abis_user_credential;
+            DROP TABLE IF EXISTS abis_supervisor_pin;
+            DROP TABLE IF EXISTS abis_supervisor_override;
             DROP TABLE IF EXISTS abis_truck_appointment;
             DROP TABLE IF EXISTS sheet_skid_detail;
             DROP TABLE IF EXISTS x1_shape;
@@ -878,6 +880,23 @@ public static class SqliteFixture
                 login_id TEXT PRIMARY KEY, password_hash TEXT NOT NULL,
                 must_change INTEGER NOT NULL DEFAULT 1, updated_utc TEXT, updated_by TEXT);
             CREATE UNIQUE INDEX ux_abis_user_cred_login ON abis_user_credential (login_id COLLATE NOCASE);
+
+            -- The supervisor PIN that replaces legacy's shared plaintext "1234". A SEPARATE secret from
+            -- the sign-in password, in its own table, because four digits typed on a shop-floor panel
+            -- must not be able to open an application session. Lockout state is per-supervisor: a short
+            -- PIN is brute-forcible in a way a password is not.
+            CREATE TABLE abis_supervisor_pin (
+                login_id TEXT PRIMARY KEY, pin_hash TEXT NOT NULL,
+                failed_count INTEGER NOT NULL DEFAULT 0, locked_until_utc TEXT,
+                updated_utc TEXT, updated_by TEXT);
+            CREATE UNIQUE INDEX ux_abis_super_pin_login ON abis_supervisor_pin (login_id COLLATE NOCASE);
+
+            -- Every override attempt, granted or not. The shared 1234 could never say WHO authorised
+            -- closing a coil whose weights did not balance; recording that is most of the value here.
+            CREATE TABLE abis_supervisor_override (
+                override_id INTEGER PRIMARY KEY, action TEXT NOT NULL, login_id TEXT NOT NULL,
+                outcome TEXT NOT NULL, line_num INTEGER, ab_job_num INTEGER, coil_abc_num INTEGER,
+                panel TEXT, reason TEXT, consumed_utc TEXT, created_utc TEXT NOT NULL);
 
             -- ABIS-owned truck-appointment scheduling (replaces the plant's Excel truck schedule).
             -- One row per appointment: dock/window + carrier/truck/driver + optional shipment/receiving
@@ -2239,6 +2258,14 @@ public static class SqliteFixture
                 // jsmith has a DIRECT Write grant on Order Entry; effective = MAX(1 direct, 0 group) = 1.
                 new { UserId = 9001L, ApplicationId = 1L, UserApplicationPrivilege = 1 }
             });
+
+        // ---- Supervisor override PINs ----
+        // mlee holds one; jsmith does not. Holding a PIN is the eligibility, so the pair covers both
+        // answers — and jsmith's absence is what proves an unknown supervisor is refused exactly like a
+        // wrong PIN rather than being reported as "no such supervisor".
+        conn.Execute(
+            "INSERT INTO abis_supervisor_pin (login_id, pin_hash, failed_count, updated_utc, updated_by) VALUES (:login, :hash, 0, :now, 'seed')",
+            new { login = "mlee", hash = Abis.Api.Security.PasswordHashing.Hash("8471"), now = d });
 
         // ---- Admin scheduler registry (INERT — definitions only, nothing fires) ----
         // Two job definitions imported off the DB-host crontab, both DISABLED (enabled=0) so there

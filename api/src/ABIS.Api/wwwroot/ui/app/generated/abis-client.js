@@ -4899,7 +4899,95 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Finish the coil the line is running: stamps the run's end weight/status + process_wt, rolls the weight through process_coil + the coil, and finishes the job when every coil on it is spent.
+     * A supervisor authorises one shop-floor override with their PIN. Records the attempt whether or not it is granted; the granted id is single-use.
+     * @return OK
+     */
+    requestSupervisorOverride(body) {
+        let url_ = this.baseUrl + "/api/das/supervisor-override";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processRequestSupervisorOverride(_response);
+        });
+    }
+    processRequestSupervisorOverride(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = SupervisorOverrideResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * The overrides a supervisor PIN can authorise, with what each one allows.
+     */
+    listSupervisorOverrideActions() {
+        let url_ = this.baseUrl + "/api/das/supervisor-override/actions";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processListSupervisorOverrideActions(_response);
+        });
+    }
+    processListSupervisorOverrideActions(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Finish the coil the line is running: stamps the run's end weight/status + process_wt, rolls the weight through process_coil + the coil, and finishes the job when every coil on it is spent. Carries a supervisor override id when the coil is closed out of balance.
      * @return OK
      */
     endCoilRun(lineNum, body) {
@@ -16363,6 +16451,248 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Whether a user holds a shop-floor override PIN, and whether it is locked out (requires User Control).
+     * @return OK
+     */
+    getSupervisorPin(userId) {
+        let url_ = this.baseUrl + "/api/security/users/{userId}/supervisor-pin";
+        if (userId === undefined || userId === null)
+            throw new globalThis.Error("The parameter 'userId' must be defined.");
+        url_ = url_.replace("{userId}", encodeURIComponent("" + userId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetSupervisorPin(_response);
+        });
+    }
+    processGetSupervisorPin(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = SupervisorPinStatus.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 403) {
+            return response.text().then((_responseText) => {
+                return throwException("Forbidden", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Give a user a shop-floor override PIN, or replace theirs (requires User Control). Also clears any lockout.
+     * @return No Content
+     */
+    setSupervisorPin(userId, body) {
+        let url_ = this.baseUrl + "/api/security/users/{userId}/supervisor-pin";
+        if (userId === undefined || userId === null)
+            throw new globalThis.Error("The parameter 'userId' must be defined.");
+        url_ = url_.replace("{userId}", encodeURIComponent("" + userId));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processSetSupervisorPin(_response);
+        });
+    }
+    processSetSupervisorPin(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 403) {
+            return response.text().then((_responseText) => {
+                return throwException("Forbidden", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Take a user's override PIN away — they can no longer authorise overrides (requires User Control). The override history is kept.
+     * @return No Content
+     */
+    clearSupervisorPin(userId) {
+        let url_ = this.baseUrl + "/api/security/users/{userId}/supervisor-pin";
+        if (userId === undefined || userId === null)
+            throw new globalThis.Error("The parameter 'userId' must be defined.");
+        url_ = url_.replace("{userId}", encodeURIComponent("" + userId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "DELETE",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processClearSupervisorPin(_response);
+        });
+    }
+    processClearSupervisorPin(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 204) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 403) {
+            return response.text().then((_responseText) => {
+                return throwException("Forbidden", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * The override log — who authorised what, where and when, INCLUDING refusals (requires User Control).
+     * @param page (optional)
+     * @param pageSize (optional)
+     * @param login (optional)
+     * @param outcome (optional)
+     * @return OK
+     */
+    listSupervisorOverrides(page, pageSize, login, outcome) {
+        let url_ = this.baseUrl + "/api/security/supervisor-overrides?";
+        if (page === null)
+            throw new globalThis.Error("The parameter 'page' cannot be null.");
+        else if (page !== undefined)
+            url_ += "page=" + encodeURIComponent("" + page) + "&";
+        if (pageSize === null)
+            throw new globalThis.Error("The parameter 'pageSize' cannot be null.");
+        else if (pageSize !== undefined)
+            url_ += "pageSize=" + encodeURIComponent("" + pageSize) + "&";
+        if (login === null)
+            throw new globalThis.Error("The parameter 'login' cannot be null.");
+        else if (login !== undefined)
+            url_ += "login=" + encodeURIComponent("" + login) + "&";
+        if (outcome === null)
+            throw new globalThis.Error("The parameter 'outcome' cannot be null.");
+        else if (outcome !== undefined)
+            url_ += "outcome=" + encodeURIComponent("" + outcome) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processListSupervisorOverrides(_response);
+        });
+    }
+    processListSupervisorOverrides(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = SupervisorOverrideRecordPagedResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 403) {
+            return response.text().then((_responseText) => {
+                return throwException("Forbidden", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Set a user's privilege on a feature (0 = ReadOnly, 1 = Write; requires User Control).
      * @return No Content
      */
@@ -22256,6 +22586,7 @@ export class CoilRunEndWrite {
             this.coilAbcNum = _data["coilAbcNum"];
             this.abJobNum = _data["abJobNum"];
             this.note = _data["note"];
+            this.supervisorOverrideId = _data["supervisorOverrideId"];
         }
     }
     static fromJS(data) {
@@ -22271,6 +22602,7 @@ export class CoilRunEndWrite {
         data["coilAbcNum"] = this.coilAbcNum;
         data["abJobNum"] = this.abJobNum;
         data["note"] = this.note;
+        data["supervisorOverrideId"] = this.supervisorOverrideId;
         return data;
     }
 }
@@ -30795,6 +31127,32 @@ export class SetPasswordRequest {
         return data;
     }
 }
+export class SetSupervisorPinRequest {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.pin = _data["pin"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new SetSupervisorPinRequest();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["pin"] = this.pin;
+        return data;
+    }
+}
 export class ShapeDimension {
     constructor(data) {
         if (data) {
@@ -31868,6 +32226,206 @@ export class SubsystemEquipment {
         data["sysEquipmentId"] = this.sysEquipmentId;
         data["groupDepartmentId"] = this.groupDepartmentId;
         data["subsystemEquipmentName"] = this.subsystemEquipmentName;
+        return data;
+    }
+}
+export class SupervisorOverrideRecord {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.overrideId = _data["overrideId"];
+            this.action = _data["action"];
+            this.actionDescription = _data["actionDescription"];
+            this.loginId = _data["loginId"];
+            this.supervisorName = _data["supervisorName"];
+            this.outcome = _data["outcome"];
+            this.lineNum = _data["lineNum"];
+            this.abJobNum = _data["abJobNum"];
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.panel = _data["panel"];
+            this.reason = _data["reason"];
+            this.consumedUtc = _data["consumedUtc"] ? new Date(_data["consumedUtc"].toString()) : undefined;
+            this.createdUtc = _data["createdUtc"] ? new Date(_data["createdUtc"].toString()) : undefined;
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new SupervisorOverrideRecord();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["overrideId"] = this.overrideId;
+        data["action"] = this.action;
+        data["actionDescription"] = this.actionDescription;
+        data["loginId"] = this.loginId;
+        data["supervisorName"] = this.supervisorName;
+        data["outcome"] = this.outcome;
+        data["lineNum"] = this.lineNum;
+        data["abJobNum"] = this.abJobNum;
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["panel"] = this.panel;
+        data["reason"] = this.reason;
+        data["consumedUtc"] = this.consumedUtc ? this.consumedUtc.toISOString() : undefined;
+        data["createdUtc"] = this.createdUtc ? this.createdUtc.toISOString() : undefined;
+        return data;
+    }
+}
+export class SupervisorOverrideRecordPagedResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            if (Array.isArray(_data["items"])) {
+                this.items = [];
+                for (let item of _data["items"])
+                    this.items.push(SupervisorOverrideRecord.fromJS(item));
+            }
+            this.page = _data["page"];
+            this.pageSize = _data["pageSize"];
+            this.totalCount = _data["totalCount"];
+            this.totalPages = _data["totalPages"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new SupervisorOverrideRecordPagedResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        if (Array.isArray(this.items)) {
+            data["items"] = [];
+            for (let item of this.items)
+                data["items"].push(item ? item.toJSON() : undefined);
+        }
+        data["page"] = this.page;
+        data["pageSize"] = this.pageSize;
+        data["totalCount"] = this.totalCount;
+        data["totalPages"] = this.totalPages;
+        return data;
+    }
+}
+export class SupervisorOverrideRequest {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.action = _data["action"];
+            this.loginId = _data["loginId"];
+            this.pin = _data["pin"];
+            this.lineNum = _data["lineNum"];
+            this.abJobNum = _data["abJobNum"];
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.panel = _data["panel"];
+            this.reason = _data["reason"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new SupervisorOverrideRequest();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["action"] = this.action;
+        data["loginId"] = this.loginId;
+        data["pin"] = this.pin;
+        data["lineNum"] = this.lineNum;
+        data["abJobNum"] = this.abJobNum;
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["panel"] = this.panel;
+        data["reason"] = this.reason;
+        return data;
+    }
+}
+export class SupervisorOverrideResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.granted = _data["granted"];
+            this.overrideId = _data["overrideId"];
+            this.lockedUntilUtc = _data["lockedUntilUtc"] ? new Date(_data["lockedUntilUtc"].toString()) : undefined;
+            this.message = _data["message"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new SupervisorOverrideResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["granted"] = this.granted;
+        data["overrideId"] = this.overrideId;
+        data["lockedUntilUtc"] = this.lockedUntilUtc ? this.lockedUntilUtc.toISOString() : undefined;
+        data["message"] = this.message;
+        return data;
+    }
+}
+export class SupervisorPinStatus {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.loginId = _data["loginId"];
+            this.hasPin = _data["hasPin"];
+            this.failedCount = _data["failedCount"];
+            this.lockedUntilUtc = _data["lockedUntilUtc"] ? new Date(_data["lockedUntilUtc"].toString()) : undefined;
+            this.updatedUtc = _data["updatedUtc"] ? new Date(_data["updatedUtc"].toString()) : undefined;
+            this.updatedBy = _data["updatedBy"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new SupervisorPinStatus();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["loginId"] = this.loginId;
+        data["hasPin"] = this.hasPin;
+        data["failedCount"] = this.failedCount;
+        data["lockedUntilUtc"] = this.lockedUntilUtc ? this.lockedUntilUtc.toISOString() : undefined;
+        data["updatedUtc"] = this.updatedUtc ? this.updatedUtc.toISOString() : undefined;
+        data["updatedBy"] = this.updatedBy;
         return data;
     }
 }

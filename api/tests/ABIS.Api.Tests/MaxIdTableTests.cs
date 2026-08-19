@@ -58,11 +58,37 @@ public sealed class MaxIdTableTests
         return tables;
     }
 
+    /// <summary>
+    /// Tables ABIS itself creates, whose <c>CREATE TABLE</c> in <see cref="Abis.Api.Data.AbisSchema"/>
+    /// declares a primary key.
+    ///
+    /// <para>These cannot be checked against the live snapshot, because the snapshot is a capture of a
+    /// database they have not been provisioned to yet — a brand-new ABIS-owned table is absent from it
+    /// by definition. Checking them against it would make this guard fire on every new table until
+    /// someone re-captured the schema, which trains people to add a row to the snapshot by hand, and a
+    /// hand-edited snapshot of a live database is worse than no snapshot at all.</para>
+    ///
+    /// <para>For a table ABIS provisions, the DDL <i>is</i> the authority. Legacy tables keep being
+    /// checked against the live database, where the authority is the database.</para>
+    /// </summary>
+    private static HashSet<string> AbisOwnedTablesWithPrimaryKey()
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var ddl in Abis.Api.Data.AbisSchema.BuildOwnedDdl())
+        {
+            var create = Regex.Match(ddl, @"CREATE\s+TABLE\s+([A-Za-z_][A-Za-z0-9_]*)", RegexOptions.IgnoreCase);
+            if (create.Success && Regex.IsMatch(ddl, @"PRIMARY\s+KEY", RegexOptions.IgnoreCase))
+                set.Add(create.Groups[1].Value);
+        }
+        return set;
+    }
+
     [Fact]
     public void Every_table_that_mints_its_id_with_MAX_plus_1_has_a_primary_key()
     {
         var pk = TablesWithPrimaryKey();
-        var missing = MaxIdTables().Where(t => !pk.Contains(t)).OrderBy(t => t).ToList();
+        var owned = AbisOwnedTablesWithPrimaryKey();
+        var missing = MaxIdTables().Where(t => !pk.Contains(t) && !owned.Contains(t)).OrderBy(t => t).ToList();
 
         Assert.True(missing.Count == 0,
             $"{missing.Count} table(s) in Database:MaxIdTables have NO primary key on the live schema. " +
@@ -81,6 +107,18 @@ public sealed class MaxIdTableTests
         Assert.True(pk.Count > 300, $"Only {pk.Count} tables have a PK in the snapshot — that is far too few.");
         foreach (var t in new[] { "maint_log", "security_user", "abis_truck_appointment", "sheet_skid", "coil" })
             Assert.Contains(t, pk);
+    }
+
+    [Fact]
+    public void The_ABIS_owned_DDL_really_declares_primary_keys()
+    {
+        // The escape hatch above only holds if AbisSchema's DDL is actually being parsed. A regex that
+        // matched nothing would let any ABIS-owned table through unchecked, which is the failure mode
+        // that would matter — it is exactly the tables ABIS is free to get wrong.
+        var owned = AbisOwnedTablesWithPrimaryKey();
+        Assert.True(owned.Count > 5, $"Only {owned.Count} ABIS-owned tables parsed a PRIMARY KEY — the DDL scan is not working.");
+        Assert.Contains("abis_supervisor_override", owned);
+        Assert.Contains("abis_truck_appointment", owned);
     }
 
     [Fact]

@@ -227,25 +227,31 @@
   ⚠ **Needs the edge on .170/.175 REDEPLOYED** — `/conveyor` postdates the deployed build → 404 (the board
   then says "edge line feed unreachable" and falls back to DB-only, which is correct but empty).
   Still TODO: the 11 **shape displays**.
-- [ ] **M — NEEDS A PLANT DECISION BEFORE IT IS BUILT.** Supervisor/role PIN gating (exit / override /
-  drop-coil / maintenance).
-  <br>**What legacy actually does** (`w_super_validation.srw` / `w_super_validation_offline.srw`, opened
-  from `w_da_sheet.wf_super_validation`): a modal titled *"enter supervisor password"* compares the typed
-  text against `is_shift_super_password` — **in plain text**, `if parent.st_password.text = is_pw`.
-  <br>**And that password is:**
-  `ProfileString(gs_downtime_ini_file, "OPCItems", "is_shift_super_password", "1234")` — a single SHARED
-  secret read from an INI file on the DAS PC, **defaulting to `1234`**. It is not per-supervisor, not in
-  the database, and not hashed. Every line's panel can hold a different one, or the default.
-  <br>**So this cannot be ported as-is.** Reproducing it would mean shipping a shared plaintext
-  credential with a guessable default into a system that already has AD-backed sign-in and
-  server-enforced RBAC. Parity is the floor, not the ceiling — but *whether* an override is gated is a
-  plant behaviour, so the gate stays; only HOW it authenticates should change.
-  <br>**The decision needed:** the DAS console is a shop-floor kiosk, and a supervisor override is
-  exactly the case where someone walks up mid-shift. Options: (a) keep a shared PIN, stored hashed and
-  configurable per line; (b) a per-supervisor PIN against `security_user`; (c) the supervisor signs in
-  with their AD account and the existing RBAC decides. (c) is the most defensible and needs no new
-  secret store, but it is slower at a panel with gloves on. **Ask the plant which they want before
-  building any of them.**
+- [x] **M** Supervisor override PIN — **BUILT** (plant chose option (b), 2026-08-08). Full detail in [docs/SUPERVISOR_PIN.md](SUPERVISOR_PIN.md).
+  <br>**What legacy does** (`w_super_validation.srw` / `_offline`, opened from
+  `w_da_sheet.wf_super_validation`): compares the typed digits **in plain text**,
+  `if parent.st_password.text = is_pw`, where `is_pw` is
+  `ProfileString(gs_downtime_ini_file, "OPCItems", "is_shift_super_password", "1234")` — one SHARED
+  secret in an INI file on each DAS PC, **defaulting to `1234`**, with unlimited attempts. Its window
+  even has a "Shift supervisor" name field, which is never populated and reads `none` forever.
+  <br>*Whether* an override is gated is plant behaviour and is kept where legacy puts it; *how* it
+  authenticates is replaced by a per-supervisor PIN — hashed (the existing PBKDF2 path), rate-limited
+  with lockout, and **attributed**.
+  <br>**The gates are the four live call sites**, not the four this backlog entry used to guess at.
+  The substantive one is closing a coil whose weights do not balance: legacy computes
+  `ir_hl_percent` and above **0.5%** disables the save until a supervisor authorises it
+  (`u_tabpg_end_coil.sru:757`). So the PIN's real subject is *who agreed that this coil's missing
+  metal could be written off.* The others are the shift-end override, the Operation Panel, and the
+  offline sheet.
+  <br>**Holding a PIN is the eligibility** — there is no second "is supervisor" flag to drift, and no
+  new `SECURITY_APPLICATION` feature was invented (issuing one is gated on the real `User Control`).
+  The PIN is a **separate secret from the sign-in password, in its own table**: four digits typed on a
+  shared panel in front of an operator must not open an application session.
+  <br>**Still owed:** the console offers the override as a button the operator presses (legacy's
+  `cb_override`); it does not yet *detect* the >0.5% condition and demand one, because that needs a
+  per-open-run skid+scrap roll-up the console does not assemble yet. The arithmetic itself is ported
+  and tested (`endCoilBalancePercent`). Server-side enforcement of the threshold is likewise not
+  there — legacy does not have it either, its check being client-side.
 - [ ] **M** Serial scale zero command + scrap-scale/gauge separation
 - [x] **M** Live job sheet / e-folder — **BUILT.** `GET /prod-folder/jobs/{job}/job-sheet` returns the
   whole PRODUCTION ORDER (spec, shape dimensions with tolerances, coil totals, partial-skid usage,

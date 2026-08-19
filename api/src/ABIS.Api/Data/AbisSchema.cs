@@ -131,6 +131,53 @@ public static class AbisSchema
           updated_by   VARCHAR2(64),
           CONSTRAINT pk_abis_plc_fault_code PRIMARY KEY (line_num, fault_code))
         """,
+        // ---- Supervisor override (replaces legacy's shared plaintext PIN) ---------------------
+        //
+        // Legacy gates a handful of shop-floor overrides behind w_super_validation, which compares the
+        // typed digits IN PLAIN TEXT against ProfileString(gs_downtime_ini_file, "OPCItems",
+        // "is_shift_super_password", "1234") — one shared secret, in an INI file on each DAS PC,
+        // defaulting to 1234. WHETHER an override is gated is plant behaviour and is kept; HOW it
+        // authenticates cannot be reproduced. The plant chose a per-supervisor PIN (2026-08-08).
+        //
+        // This is a SEPARATE SECRET from the sign-in password, in its own table, and nothing accepts it
+        // as one. Reusing abis_user_credential.password_hash would have been fewer tables and would have
+        // meant four digits, typed on a shop-floor panel in front of whoever is standing there, granting
+        // a full application session. The hashing is the same PBKDF2 path either way.
+        //
+        // Lockout state lives on the row because it is per-supervisor: a short PIN is brute-forcible in
+        // a way a password is not.
+        """
+        CREATE TABLE abis_supervisor_pin (
+          login_id         VARCHAR2(64)   NOT NULL,
+          pin_hash         VARCHAR2(200)  NOT NULL,
+          failed_count     NUMBER(3)      DEFAULT 0 NOT NULL,
+          locked_until_utc DATE,
+          updated_utc      DATE,
+          updated_by       VARCHAR2(64),
+          CONSTRAINT pk_abis_supervisor_pin PRIMARY KEY (login_id))
+        """,
+        "CREATE UNIQUE INDEX ux_abis_super_pin_login ON abis_supervisor_pin (UPPER(login_id))",
+        // Every attempt, granted or not. This is most of the point: the shared 1234 could never say WHO
+        // authorised closing a coil whose weights did not balance, and that is the decision worth being
+        // able to look up afterwards. Denials are recorded too — they are what makes a per-panel
+        // brute-force visible at all.
+        """
+        CREATE TABLE abis_supervisor_override (
+          override_id  NUMBER(12)     NOT NULL,
+          action       VARCHAR2(40)   NOT NULL,
+          login_id     VARCHAR2(64)   NOT NULL,
+          outcome      VARCHAR2(16)   NOT NULL,
+          line_num     NUMBER(5),
+          ab_job_num   NUMBER(12),
+          coil_abc_num NUMBER(12),
+          panel        VARCHAR2(64),
+          reason       VARCHAR2(500),
+          consumed_utc DATE,
+          created_utc  DATE           NOT NULL,
+          CONSTRAINT pk_abis_supervisor_override PRIMARY KEY (override_id))
+        """,
+        "CREATE INDEX ix_abis_super_override_login ON abis_supervisor_override (login_id)",
+        "CREATE INDEX ix_abis_super_override_created ON abis_supervisor_override (created_utc)",
         // Sales quotes (legacy w_sales_main / w_new_quote / w_edit_quote). NOT abis_-prefixed because
         // these keep the authoritative legacy column names (d_sales_quote_modify), but the legacy schema
         // RETIRED these tables — they exist in no current database — so ABIS re-provisions and owns them.

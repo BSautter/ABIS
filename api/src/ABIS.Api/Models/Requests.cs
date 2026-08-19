@@ -1085,6 +1085,44 @@ public sealed class SetPasswordRequest
     public string? Password { get; set; }
 }
 
+/// <summary>Body for POST /api/security/users/{userId}/supervisor-pin — an administrator gives a user
+/// a shop-floor override PIN, or replaces the one they have. Holding a PIN is what makes someone a
+/// supervisor for override purposes, so this is the grant.</summary>
+public sealed class SetSupervisorPinRequest
+{
+    /// <summary>The PIN, digits only. See <see cref="Abis.Api.Security.SupervisorOverride.ValidatePin"/>
+    /// for what is refused and why "1234" is refused by name.</summary>
+    public string? Pin { get; set; }
+}
+
+/// <summary>Body for POST /api/das/supervisor-override — a supervisor authorises one shop-floor
+/// override at a panel, in front of the operator asking for it.</summary>
+public sealed class SupervisorOverrideRequest
+{
+    /// <summary>Which override is being authorised — a key of
+    /// <see cref="Abis.Api.Security.SupervisorOverride.Actions"/>. Recorded verbatim, so the audit says
+    /// what was allowed rather than merely that something was.</summary>
+    public string? Action { get; set; }
+
+    /// <summary>The supervisor's own login. Named rather than inferred from the session: the operator
+    /// is signed in at this panel, not the supervisor who walked over to it.</summary>
+    public string? LoginId { get; set; }
+
+    public string? Pin { get; set; }
+
+    // Context — what the override was for. Nullable because not every action has all of it.
+    public long? LineNum { get; set; }
+    public long? AbJobNum { get; set; }
+    public long? CoilAbcNum { get; set; }
+
+    /// <summary>Which station this was authorised at. Free text from the client, so it is a label for
+    /// a human reading the log, not an identity — see the endpoint's remarks.</summary>
+    public string? Panel { get; set; }
+
+    /// <summary>Why the override was needed — for the balance override, the discrepancy itself.</summary>
+    public string? Reason { get; set; }
+}
+
 // ---- DAS Operation Panel (the line's live board writes, legacy w_da_sheet) ----
 
 /// <summary>Body for POST /api/das/lines/{lineNum}/current-job — the Operation Panel points a line
@@ -1133,6 +1171,14 @@ public sealed class CoilRunEndWrite
     public long? CoilAbcNum { get; set; }
     public long? AbJobNum { get; set; }
     public string? Note { get; set; }
+
+    /// <summary>The id of a granted supervisor override, when this coil is being closed out of
+    /// balance. Legacy's equivalent is the in-memory <c>ii_super = 1</c> flag, which vanishes with the
+    /// window; recording the id here is what ties the closed coil to the supervisor who allowed it.
+    /// <para><b>The 0.5% rule is still enforced by the console, not here</b> — the server does not
+    /// recompute the discrepancy, so a caller that omits this simply records no authorisation. See the
+    /// endpoint's remarks.</para></summary>
+    public long? SupervisorOverrideId { get; set; }
 }
 
 /// <summary>Body for PUT /api/das/lines/{lineNum}/queue/{abJobNum} — add or edit one job in a line's

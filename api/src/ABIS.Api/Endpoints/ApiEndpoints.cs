@@ -1735,6 +1735,42 @@ public static class ApiEndpoints
            .WithSummary("Start running a coil on a line: opens its shift_coil run and puts the coil on the board (idempotent per shift/job/coil).")
            .Produces<CoilRunResult>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
 
+        // A supervisor authorises ONE override, at the panel, in front of the operator asking for it.
+        //
+        // The supervisor's login is named in the body rather than taken from the session: the person
+        // signed in at a DAS station is the operator, and the supervisor who walks over to it is
+        // someone else. That is the whole shape of this interaction, and it is why the PIN is a
+        // separate secret from the sign-in password — it is typed on a shared panel with someone
+        // watching, so it must not be able to open a session.
+        //
+        // `panel` is a label the client supplies, not an identity. It is recorded because "which
+        // station" is the first question anyone asks of the log, and it is trusted no further than
+        // that.
+        api.MapPost("/das/supervisor-override", async (SupervisorOverrideRequest body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (!SupervisorOverride.IsKnownAction(body.Action))
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["action"] = [$"action must be one of: {string.Join(", ", SupervisorOverride.Actions.Keys)}."]
+                    });
+                if (string.IsNullOrWhiteSpace(body.LoginId))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["loginId"] = ["The supervisor's login is required."] });
+
+                var (result, _) = await repo.TrySupervisorOverrideAsync(body, ct);
+                // 200 either way: a refusal is an answer about the PIN, not a failure of the request,
+                // and the panel needs the lockout time to show. The audit row is written for both.
+                return Results.Ok(result);
+            })
+           .WithName("RequestSupervisorOverride").WithTags("DAS")
+           .WithSummary("A supervisor authorises one shop-floor override with their PIN. Records the attempt whether or not it is granted; the granted id is single-use.")
+           .Produces<SupervisorOverrideResult>().ProducesValidationProblem()
+           .RequireRateLimiting("auth-login");
+
+        api.MapGet("/das/supervisor-override/actions", () => Results.Ok(
+                SupervisorOverride.Actions.Select(a => new { action = a.Key, description = a.Value })))
+           .WithName("ListSupervisorOverrideActions").WithTags("DAS")
+           .WithSummary("The overrides a supervisor PIN can authorise, with what each one allows.");
+
         api.MapPost("/das/lines/{lineNum:long}/coil-run/end", async (long lineNum, CoilRunEndWrite body, IAbisRepository repo, CancellationToken ct) =>
             {
                 if (!await repo.LineExistsAsync(lineNum, ct))
@@ -1743,13 +1779,27 @@ public static class ApiEndpoints
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["endWeight"] = ["endWeight is required (the weight left on the coil)."] });
                 if (endWeight < 0)
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["endWeight"] = ["endWeight cannot be negative."] });
+
+                // A supervisor authorisation, if this coil is being closed out of balance. Spent BEFORE
+                // the write, so a replayed or bogus id is refused rather than being noticed after the
+                // weights have already rolled through process_coil and the coil.
+                //
+                // What this does NOT do is recompute the discrepancy and insist on an authorisation.
+                // Legacy does not either — its 0.5% test lives in the end-coil tab page and the flag it
+                // sets is client-side memory (u_tabpg_end_coil.sru:757). Moving that rule server-side
+                // means reproducing the skid + scrap roll-up the console does, which is its own change;
+                // until then this records the authorisation faithfully and enforces nothing extra.
+                if (body.SupervisorOverrideId is { } overrideId && !await repo.ConsumeSupervisorOverrideAsync(overrideId, ct))
+                    return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Override not usable",
+                        detail: "That supervisor override is unknown, was refused, or has already been used. Ask for a new one.");
+
                 return await repo.EndCoilRunAsync(lineNum, body.CoilAbcNum, body.AbJobNum, endWeight, body.EndStatus, body.Note, ct) is { } result
                     ? Results.Ok(result)
                     : Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "No coil run to end",
                         detail: $"Line {lineNum} has no recorded run for the coil/job on its board.");
             })
            .WithName("EndCoilRun").WithTags("DAS")
-           .WithSummary("Finish the coil the line is running: stamps the run's end weight/status + process_wt, rolls the weight through process_coil + the coil, and finishes the job when every coil on it is spent.")
+           .WithSummary("Finish the coil the line is running: stamps the run's end weight/status + process_wt, rolls the weight through process_coil + the coil, and finishes the job when every coil on it is spent. Carries a supervisor override id when the coil is closed out of balance.")
            .Produces<CoilRunResult>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
 
         api.MapGet("/das/lines/{lineNum:long}/live", async (long lineNum, IAbisRepository repo, CancellationToken ct) =>
@@ -3900,6 +3950,63 @@ public static class ApiEndpoints
            .WithName("SetUserPassword").WithTags("Security")
            .WithSummary("Set/reset a user's initial password (requires User Control; the user must change it on next sign-in).")
            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status403Forbidden).ProducesValidationProblem();
+
+        // ---- Supervisor override PIN ------------------------------------------------------------
+        //
+        // Giving someone a PIN is what makes them a supervisor for override purposes — there is no
+        // second "is supervisor" flag to drift out of step with it, and no new SECURITY_APPLICATION
+        // feature was invented for it. (Inventing feature names that do not exist on the live database
+        // is how four phantom features once hid whole pages and 403'd real work.) Issuing one is gated
+        // by "User Control", the same real feature as the other security-admin writes.
+        api.MapGet("/security/users/{userId:long}/supervisor-pin", async (long userId, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, "User Control", 0, ct) is { } deny) return deny;
+                var user = await repo.GetSecurityUserAsync(userId, ct);
+                if (user is null || string.IsNullOrWhiteSpace(user.LoginId)) return Results.NotFound();
+                // Whether they hold one and whether it is locked — never the hash.
+                return Results.Ok(await repo.GetSupervisorPinStatusAsync(user.LoginId, ct)
+                    ?? new SupervisorPinStatus { LoginId = user.LoginId, HasPin = false });
+            })
+           .WithName("GetSupervisorPin").WithTags("Security")
+           .WithSummary("Whether a user holds a shop-floor override PIN, and whether it is locked out (requires User Control).")
+           .Produces<SupervisorPinStatus>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status403Forbidden);
+
+        api.MapPost("/security/users/{userId:long}/supervisor-pin", async (long userId, SetSupervisorPinRequest body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny) return deny;
+                if (SupervisorOverride.ValidatePin(body.Pin) is { } problem)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["pin"] = [problem] });
+                var user = await repo.GetSecurityUserAsync(userId, ct);
+                if (user is null || string.IsNullOrWhiteSpace(user.LoginId)) return Results.NotFound();
+                await repo.SetSupervisorPinAsync(user.LoginId, PasswordHashing.Hash(body.Pin!), ResolveLogin(ctx), ct);
+                return Results.NoContent();
+            })
+           .WithName("SetSupervisorPin").WithTags("Security")
+           .WithSummary("Give a user a shop-floor override PIN, or replace theirs (requires User Control). Also clears any lockout.")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status403Forbidden).ProducesValidationProblem();
+
+        api.MapDelete("/security/users/{userId:long}/supervisor-pin", async (long userId, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, "User Control", 1, ct) is { } deny) return deny;
+                var user = await repo.GetSecurityUserAsync(userId, ct);
+                if (user is null || string.IsNullOrWhiteSpace(user.LoginId)) return Results.NotFound();
+                // The history stays. Taking someone's PIN away must not erase what they authorised
+                // while they held it.
+                return await repo.ClearSupervisorPinAsync(user.LoginId, ct) ? Results.NoContent() : Results.NotFound();
+            })
+           .WithName("ClearSupervisorPin").WithTags("Security")
+           .WithSummary("Take a user's override PIN away — they can no longer authorise overrides (requires User Control). The override history is kept.")
+           .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status403Forbidden);
+
+        api.MapGet("/security/supervisor-overrides", async (HttpContext ctx, IAbisRepository repo, CancellationToken ct,
+                int page = 1, int pageSize = 25, string? login = null, string? outcome = null) =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, "User Control", 0, ct) is { } deny) return deny;
+                return Results.Ok(await repo.GetSupervisorOverridesAsync(page, pageSize, login, outcome, ct));
+            })
+           .WithName("ListSupervisorOverrides").WithTags("Security")
+           .WithSummary("The override log — who authorised what, where and when, INCLUDING refusals (requires User Control).")
+           .Produces<PagedResult<SupervisorOverrideRecord>>().Produces(StatusCodes.Status403Forbidden);
 
         // Edit an application user (name / status / notes; and login if it moves). "User Control" gated.
         api.MapPut("/security/users/{userId:long}", async (long userId, SecurityUserWrite body, HttpContext ctx, IAbisRepository repo, CancellationToken ct) =>
