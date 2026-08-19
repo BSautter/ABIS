@@ -19,6 +19,7 @@ import { renderSketch } from './sketch.js';
 import { printJobSheet, renderJobSheet } from './job-sheet.js';
 import { requestSupervisorOverride, endCoilBalancePercent, needsBalanceOverride, END_COIL_BALANCE_TOLERANCE_PERCENT } from './supervisor-pin.js';
 import { decideConveyorWeight } from './skid-weight.js';
+import { piecesThisSkid, nextBaseline } from './piece-count.js';
 const $ = (sel) => document.querySelector(sel);
 const client = () => new AbisClient('', { fetch: authFetch });
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -701,8 +702,10 @@ async function saveSkid() {
             skidPieces: typed ? Number(typed) : (auto ?? undefined),
         }));
         lastSkid = created.sheetSkidNum ?? null;
-        if (pieceCurrent != null)
-            pieceBaseline = pieceCurrent; // advance: the next skid counts from 0
+        // Advance the zero point — including to null when the counter is unknown. Keeping the OLD
+        // baseline through an outage would make the next skid's delta span both skids and over-count it
+        // by roughly a whole skid, silently. See ./piece-count.
+        pieceBaseline = nextBaseline(pieceCurrent);
         const stackNote = !typed && auto != null ? ` (${auto.toLocaleString()} pcs from stacker)` : '';
         setOk(`✓ Saved sheet skid #${created.sheetSkidNum}${stackNote}.`);
         ['#skDisplay', '#skNet', '#skTare', '#skPieces'].forEach((i) => setV(i, ''));
@@ -862,13 +865,10 @@ async function pollRunState(bases, tag) {
 }
 // ---- Stacker piece count (edge /piece-count → live count + auto-fill pieces-per-skid) ----
 const setPieceInd = (m) => { $('#pieceInd').textContent = `Stacker: ${m}`; };
-// Pieces on the skid in progress = current counter − the baseline captured at the last save. A
-// counter reset/rollback (current < baseline) reads null so we never auto-fill a negative/garbage count.
+// Pieces on the skid in progress. The rules — and why every uncertain case is null rather than a
+// number — live in ./piece-count, where they are tested.
 function pieceThisSkid() {
-    if (pieceCurrent == null || pieceBaseline == null)
-        return null;
-    const d = pieceCurrent - pieceBaseline;
-    return d >= 0 ? d : null;
+    return piecesThisSkid(pieceCurrent, pieceBaseline);
 }
 // Poll the stacker counter alongside run-state; seed the baseline on the first good read so the skid
 // in progress starts at 0. Never acts on an unknown read — the pieces field stays the operator's.
@@ -880,6 +880,10 @@ async function pollPieceCount(bases, tag) {
     }
     const s = await fetchPieceCount(bases, tag);
     if (!s.reachable) {
+        // Drop the last reading. It may be minutes old and bears no relation to what is on the skid now,
+        // and it does not merely mislead the indicator: a stale count AUTO-FILLS the skid's piece count
+        // on save, and that figure reaches the customer on a packing ticket and the 856 ASN.
+        pieceCurrent = null;
         setPieceInd('edge unreachable');
         return;
     }

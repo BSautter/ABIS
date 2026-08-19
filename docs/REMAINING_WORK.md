@@ -998,7 +998,16 @@ function `f_add_system_log_tran`, whose body is not vendored), and the Instron "
 - [x] **L** Invoice **tare** bucket — done (#260): `GetInvoiceComputationAsync` tare now excludes voided skids (`skid_sheet_status <> 6`) so it matches `SkidCount`.
 - [x] **L** Stacker board — done (#260): `job_status NOT IN (0,3)` → `IN (1,2,4)` (matches its comment; robust to NULL/new codes).
 - [x] **L** On-hand-coil + skid-count `IS NULL` guards — done (#260): `OnHandCoilPredicate` + every `skid_sheet_status <> 6` now guard NULL (`IS NULL OR …`).
-- [ ] **L** `pollPieceCount`: clear `pieceCurrent` on a transient edge outage so a stale count isn't shown — `das-console.ts`
+- [x] **L→M** `pollPieceCount` stale count — **DONE.** Graded L as a display nit; it was not. The
+  stale reading does not merely mislead the indicator, it **auto-fills the skid's piece count on
+  save** (`skidPieces: typed ? … : (auto ?? undefined)`), and skid pieces reach the customer on a
+  packing ticket and the 856 ASN and feed invoicing. A count minutes old could be written as a real
+  one. `pieceCurrent` is now cleared on an unreachable edge.
+  <br>A second bug found alongside it: the baseline advanced only `if (pieceCurrent != null)`, so a
+  skid saved during an outage kept the OLD zero point and the **next** skid's delta spanned both,
+  over-counting by roughly a whole skid — silently, in the direction that over-bills. The baseline now
+  advances to whatever the counter reads, null included, which re-baselines on the next good read.
+  <br>Rules extracted to `clientapp/src/piece-count.ts` with tests, following `skid-weight.ts`.
 - [ ] **L** Committed `wwwroot/…/generated/abis-client.js` drifts vs a fresh gen — regen periodically or CI-enforce
 
 - [x] **M** **DAS floor board: plant card order + BL 60 hidden — done (#356).**
