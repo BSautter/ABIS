@@ -84,6 +84,24 @@ jobs:
           npm --prefix clientapp ci
           npm --prefix clientapp run gen
           npm --prefix clientapp run build
+      # The UI is SERVED from committed build output (wwwroot/ui/app), so a stale bundle means the
+      # browser runs code that is not the source in this repo. CI already regenerates and rebuilds it
+      # a step above; until now it never checked the result.
+      #
+      # It had drifted: the committed abis-client.js was missing getCoilBalance and
+      # getSupervisorPinCoverage — 218 lines behind a fresh generation — because a PR that only ran
+      # `npm run build` recompiled a stale abis-client.ts. Nothing broke, since both callers use
+      # authFetch directly, but the typed client silently lacked methods its own API had.
+      - name: Verify the committed UI bundle matches a fresh build
+        run: |
+          if ! git diff --exit-code -- src/ABIS.Api/wwwroot/ui/app; then
+            echo "::error::The committed UI bundle in wwwroot/ui/app is STALE — the browser would run"
+            echo "::error::code that differs from the source in this repo. Fix it with:"
+            echo "::error::    cd api && dotnet tool run swagger tofile --output openapi.json src/ABIS.Api/bin/Release/net8.0/ABIS.Api.dll v1"
+            echo "::error::    npm --prefix clientapp run all"
+            echo "::error::then commit the changed files under api/src/ABIS.Api/wwwroot/ui/app."
+            exit 1
+          fi
       # Client unit tests (vitest + jsdom). The client had NO test harness until now: it was covered
       # only by tsc and the API-level e2e, so browser logic — what gets written into a weight, which
       # line a card belongs to, whether a drawing is fetched with auth — was verified by hand.

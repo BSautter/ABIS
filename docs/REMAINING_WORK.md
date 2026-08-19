@@ -1008,7 +1008,14 @@ function `f_add_system_log_tran`, whose body is not vendored), and the Instron "
   over-counting by roughly a whole skid — silently, in the direction that over-bills. The baseline now
   advances to whatever the counter reads, null included, which re-baselines on the next good read.
   <br>Rules extracted to `clientapp/src/piece-count.ts` with tests, following `skid-weight.ts`.
-- [ ] **L** Committed `wwwroot/…/generated/abis-client.js` drifts vs a fresh gen — regen periodically or CI-enforce
+- [x] **L** Committed `wwwroot/…/generated/abis-client.js` drift — **CI-ENFORCED.** It had already
+  drifted: the committed bundle was **218 lines behind** a fresh generation, missing `getCoilBalance`
+  and `getSupervisorPinCoverage`, because a PR that ran only `npm run build` recompiled a stale
+  `abis-client.ts`. Nothing broke — both callers use `authFetch` directly — but the typed client
+  silently lacked methods its own API had.
+  <br>CI already regenerated and rebuilt the bundle; it never checked the result. It does now, and the
+  failure message carries the exact commands to fix it. The guard covers **all** of `wwwroot/ui/app`,
+  not just the generated client, since the whole directory is served build output.
 
 - [x] **M** **DAS floor board: plant card order + BL 60 hidden — done (#356).**
   The board ordered by `line_num`; the plant reads the floor as `BL 84, BL 78, BL 110, BL 108, BL 36,

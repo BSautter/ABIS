@@ -4954,6 +4954,58 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * The coil's original weight and everything made or scrapped from it — the terms of the end-coil balance check that decides whether closing it needs a supervisor override.
+     * @return OK
+     */
+    getCoilBalance(coilAbcNum) {
+        let url_ = this.baseUrl + "/api/das/coils/{coilAbcNum}/balance";
+        if (coilAbcNum === undefined || coilAbcNum === null)
+            throw new globalThis.Error("The parameter 'coilAbcNum' must be defined.");
+        url_ = url_.replace("{coilAbcNum}", encodeURIComponent("" + coilAbcNum));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetCoilBalance(_response);
+        });
+    }
+    processGetCoilBalance(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = CoilBalance.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * The overrides a supervisor PIN can authorise, with what each one allows.
      */
     listSupervisorOverrideActions() {
@@ -16624,6 +16676,60 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Who in a group holds a shop-floor override PIN and who does not — defaults to IT, whose members must all have one (requires User Control).
+     * @param group (optional)
+     * @return OK
+     */
+    getSupervisorPinCoverage(group) {
+        let url_ = this.baseUrl + "/api/security/supervisor-pin-coverage?";
+        if (group === null)
+            throw new globalThis.Error("The parameter 'group' cannot be null.");
+        else if (group !== undefined)
+            url_ += "group=" + encodeURIComponent("" + group) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetSupervisorPinCoverage(_response);
+        });
+    }
+    processGetSupervisorPinCoverage(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = SupervisorPinCoverage.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 403) {
+            return response.text().then((_responseText) => {
+                return throwException("Forbidden", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * The override log — who authorised what, where and when, INCLUDING refusals (requires User Control).
      * @param page (optional)
      * @param pageSize (optional)
@@ -21763,6 +21869,38 @@ export class CoilActualWeightWrite {
     toJSON(data) {
         data = typeof data === 'object' ? data : {};
         data["weight"] = this.weight;
+        return data;
+    }
+}
+export class CoilBalance {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.originalNetWt = _data["originalNetWt"];
+            this.skidTotal = _data["skidTotal"];
+            this.scrapTotal = _data["scrapTotal"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CoilBalance();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["originalNetWt"] = this.originalNetWt;
+        data["skidTotal"] = this.skidTotal;
+        data["scrapTotal"] = this.scrapTotal;
         return data;
     }
 }
@@ -32390,6 +32528,86 @@ export class SupervisorOverrideResult {
         data["overrideId"] = this.overrideId;
         data["lockedUntilUtc"] = this.lockedUntilUtc ? this.lockedUntilUtc.toISOString() : undefined;
         data["message"] = this.message;
+        return data;
+    }
+}
+export class SupervisorPinCoverage {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.groupName = _data["groupName"];
+            this.groupExists = _data["groupExists"];
+            if (Array.isArray(_data["members"])) {
+                this.members = [];
+                for (let item of _data["members"])
+                    this.members.push(SupervisorPinCoverageRow.fromJS(item));
+            }
+            this.activeWithoutPin = _data["activeWithoutPin"];
+            this.activeWithPin = _data["activeWithPin"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new SupervisorPinCoverage();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["groupName"] = this.groupName;
+        data["groupExists"] = this.groupExists;
+        if (Array.isArray(this.members)) {
+            data["members"] = [];
+            for (let item of this.members)
+                data["members"].push(item ? item.toJSON() : undefined);
+        }
+        data["activeWithoutPin"] = this.activeWithoutPin;
+        data["activeWithPin"] = this.activeWithPin;
+        return data;
+    }
+}
+export class SupervisorPinCoverageRow {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.userId = _data["userId"];
+            this.loginId = _data["loginId"];
+            this.userName = _data["userName"];
+            this.userStatus = _data["userStatus"];
+            this.hasPin = _data["hasPin"];
+            this.lockedUntilUtc = _data["lockedUntilUtc"] ? new Date(_data["lockedUntilUtc"].toString()) : undefined;
+            this.pinSetUtc = _data["pinSetUtc"] ? new Date(_data["pinSetUtc"].toString()) : undefined;
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new SupervisorPinCoverageRow();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["userId"] = this.userId;
+        data["loginId"] = this.loginId;
+        data["userName"] = this.userName;
+        data["userStatus"] = this.userStatus;
+        data["hasPin"] = this.hasPin;
+        data["lockedUntilUtc"] = this.lockedUntilUtc ? this.lockedUntilUtc.toISOString() : undefined;
+        data["pinSetUtc"] = this.pinSetUtc ? this.pinSetUtc.toISOString() : undefined;
         return data;
     }
 }
