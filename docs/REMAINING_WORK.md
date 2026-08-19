@@ -642,7 +642,22 @@
   sequence value burned. Legacy's UPDATE is unscoped (`WHERE COIL_NUMBER = …`) so minting again
   OVERWRITES and orphans the earlier label — preserved faithfully, but `replacedAbcNum` reports it
   instead of it being silent.
-- [ ] **H** Lookup by scanned customer coil (`coil_org_num`); QR capture → `BARCODE_STRING` upsert
+- [~] **H** Lookup by scanned customer coil (`coil_org_num`); QR capture → `BARCODE_STRING` upsert.
+  **QR capture DONE:** `POST/GET /receiving/scan/qr` stores and reads the mill's QR against an inbound
+  coil (legacy `addqrcode`, `coil_receiving.pl:495`). The barcode goes through the SAME parse as the
+  coil scan, so one gun read serves both.
+  <br>**Legacy's three acceptance rules are ported verbatim** — payload longer than 67 chars, contains
+  a `$`, coil number longer than 2 — because they are a shape test for the mill's own payload and
+  nothing in the source explains where 67 came from. Loosening one on a guess lets a mis-scan be
+  stored as a coil's certificate reference; tightening one rejects scans made every day.
+  <br>Two deliberate departures: an over-long scan is **refused rather than truncated** (the column is
+  `VARCHAR2(4000)`, and a cut-short QR string still looks like a code), and the refusal **names which
+  rule failed** where legacy says only "Invalid QR Code" — an operator holding a scanner needs to know
+  whether to rescan, reposition or call someone.
+  <br>Legacy's UPDATE is scoped to the coil number alone and the same number can appear on several BOL
+  lines; that is preserved, but `rowsUpdated` is returned so a scan that stamped four rows says four.
+  <br>**Still open:** the `coil_org_num` inventory lookup (finding a RECEIVED coil by its customer
+  number, distinct from the inbound advance notice this searches).
 - [ ] **M** S-header strip+validate; coil-defect email notification
 - *(Done: scan→verify→label handheld page + HTML coil label.)*
 

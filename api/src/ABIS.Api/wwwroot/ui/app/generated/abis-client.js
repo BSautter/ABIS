@@ -12812,6 +12812,119 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Store the mill's QR code against an inbound coil from the handheld (legacy addqrcode). Refuses a scan that is not the mill's payload shape, naming the rule that failed; 404 when no inbound coil carries that number.
+     * @return OK
+     */
+    saveInboundCoilQr(body) {
+        let url_ = this.baseUrl + "/api/receiving/scan/qr";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processSaveInboundCoilQr(_response);
+        });
+    }
+    processSaveInboundCoilQr(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * The QR code already stored against an inbound coil, so the handheld can show what a coil already carries before overwriting it.
+     * @param barcode (optional)
+     * @return OK
+     */
+    getInboundCoilQr(barcode) {
+        let url_ = this.baseUrl + "/api/receiving/scan/qr?";
+        if (barcode === null)
+            throw new globalThis.Error("The parameter 'barcode' cannot be null.");
+        else if (barcode !== undefined)
+            url_ += "barcode=" + encodeURIComponent("" + barcode) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {}
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetInboundCoilQr(_response);
+        });
+    }
+    processGetInboundCoilQr(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Mint an ABC number for a scanned inbound coil and print its label (legacy handheld). The printer is checked BEFORE anything is minted — 503 and no mint when it is unreachable, because an ABC number with no printed label leaves a coil untagged on the dock. 409 when the coil is not on any inbound receiving list. `replacedAbcNum` reports a previous number this overwrote (legacy's update is unscoped), so a superseded label isn't silent.
      * @return OK
      */
@@ -25517,6 +25630,34 @@ export class InboundCoilMintResult {
         data["reason"] = this.reason;
         data["replacedAbcNum"] = this.replacedAbcNum;
         data["rowsUpdated"] = this.rowsUpdated;
+        return data;
+    }
+}
+export class InboundCoilQrRequest {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.barcode = _data["barcode"];
+            this.qrCode = _data["qrCode"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new InboundCoilQrRequest();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["barcode"] = this.barcode;
+        data["qrCode"] = this.qrCode;
         return data;
     }
 }

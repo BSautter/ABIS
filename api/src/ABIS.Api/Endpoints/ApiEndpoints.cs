@@ -1116,6 +1116,53 @@ public static class ApiEndpoints
            .WithSummary("Resolve a barcode scanned on the handheld RF receiving gun (legacy coil_receiving_12.pl): strips the leading 'S' header, maps the fixed 000000 label to coil number 'NO BARCODE', returns any ABC numbers already minted for that customer coil plus the mill's advance notice. Outcome is Mint (none yet), AlreadyMinted (reprint OR mint another — legacy offers both) or Unreadable. Read-only: minting is a separate action.")
            .Produces<InboundCoilScan>();
 
+        // Capture the mill's QR code against an inbound coil — legacy's addqrcode.
+        //
+        // The barcode goes through the SAME parse as the coil scan, so one gun read serves both: the
+        // handheld strips the leading 'S' header identically rather than the operator having to know
+        // which field wants which form.
+        //
+        // Legacy answers a bare "Invalid QR Code" for every refusal. This says WHICH rule failed —
+        // an operator holding a scanner needs to know whether to rescan, reposition, or call someone,
+        // and "invalid" tells them none of that.
+        api.MapPost("/receiving/scan/qr", async (InboundCoilQrRequest body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var scan = HandheldBarcode.Parse(body.Barcode);
+                if (!scan.Valid)
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    { ["barcode"] = ["The scan was empty, so there is no coil to attach a QR code to."] });
+
+                if (HandheldQrCode.Validate(scan.CoilNumber, body.QrCode) is { } problem)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["qrCode"] = [problem] });
+
+                var rows = await repo.SaveInboundCoilQrAsync(scan.CoilNumber, body.QrCode!, ct);
+                if (rows == 0)
+                    return Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "No inbound coil",
+                        detail: $"No inbound coil carries the number {scan.CoilNumber}, so the QR code was not stored. " +
+                                "A QR code saved against nothing cannot be told apart from one never scanned.");
+
+                // rowsUpdated is reported because legacy's UPDATE is scoped to the coil number alone
+                // and the same number can appear on several BOL lines — a scan that stamped four rows
+                // should say four.
+                return Results.Ok(new { coilNumber = scan.CoilNumber, rowsUpdated = rows });
+            })
+           .WithName("SaveInboundCoilQr").WithTags("Receiving")
+           .WithSummary("Store the mill's QR code against an inbound coil from the handheld (legacy addqrcode). Refuses a scan that is not the mill's payload shape, naming the rule that failed; 404 when no inbound coil carries that number.")
+           .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
+        api.MapGet("/receiving/scan/qr", async (string? barcode, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var scan = HandheldBarcode.Parse(barcode);
+                if (!scan.Valid) return Results.ValidationProblem(new Dictionary<string, string[]>
+                { ["barcode"] = ["The scan was empty."] });
+                return await repo.GetInboundCoilQrAsync(scan.CoilNumber, ct) is { } qr
+                    ? Results.Ok(new { coilNumber = scan.CoilNumber, qrCode = qr })
+                    : Results.NotFound();
+            })
+           .WithName("GetInboundCoilQr").WithTags("Receiving")
+           .WithSummary("The QR code already stored against an inbound coil, so the handheld can show what a coil already carries before overwriting it.")
+           .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status404NotFound).ProducesValidationProblem();
+
         api.MapPost("/receiving/scan/mint", async (InboundCoilMintRequest body, IAbisRepository repo,
                                                    Abis.Api.Documents.ICoilLabelPrinter printer, CancellationToken ct) =>
             {

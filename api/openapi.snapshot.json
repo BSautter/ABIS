@@ -9906,6 +9906,83 @@
         }
       }
     },
+    "/api/receiving/scan/qr": {
+      "post": {
+        "tags": [
+          "Receiving"
+        ],
+        "summary": "Store the mill's QR code against an inbound coil from the handheld (legacy addqrcode). Refuses a scan that is not the mill's payload shape, naming the rule that failed; 404 when no inbound coil carries that number.",
+        "operationId": "SaveInboundCoilQr",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboundCoilQrRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Receiving"
+        ],
+        "summary": "The QR code already stored against an inbound coil, so the handheld can show what a coil already carries before overwriting it.",
+        "operationId": "GetInboundCoilQr",
+        "parameters": [
+          {
+            "name": "barcode",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/receiving/scan/mint": {
       "post": {
         "tags": [
@@ -20768,6 +20845,20 @@
           "rowsUpdated": {
             "type": "integer",
             "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "InboundCoilQrRequest": {
+        "type": "object",
+        "properties": {
+          "barcode": {
+            "type": "string",
+            "nullable": true
+          },
+          "qrCode": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false

@@ -1085,6 +1085,19 @@ public sealed class SetPasswordRequest
     public string? Password { get; set; }
 }
 
+/// <summary>Body for POST /api/receiving/scan/qr — the handheld captures the mill's QR code against
+/// an inbound coil (legacy <c>addqrcode</c> in the receiving CGI).</summary>
+public sealed class InboundCoilQrRequest
+{
+    /// <summary>The customer coil number, as scanned. A leading <c>S</c> barcode header is stripped
+    /// the same way the coil scan strips it, so the same gun read works for both.</summary>
+    public string? Barcode { get; set; }
+
+    /// <summary>The QR payload, stored verbatim. See <see cref="Abis.Api.Data.HandheldQrCode"/> for
+    /// what is refused and why the rules are copied rather than reasoned about.</summary>
+    public string? QrCode { get; set; }
+}
+
 /// <summary>Body for POST /api/security/users/{userId}/supervisor-pin — an administrator gives a user
 /// a shop-floor override PIN, or replaces the one they have. Holding a PIN is what makes someone a
 /// supervisor for override purposes, so this is the grant.</summary>

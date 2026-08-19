@@ -183,6 +183,8 @@ public interface IAbisRepository
 
     // Supervisor override — the shop-floor gate that replaces legacy's shared plaintext PIN.
     Task<CoilBalance?> GetCoilBalanceAsync(long coilAbcNum, CancellationToken ct);
+    Task<int> SaveInboundCoilQrAsync(string coilNumber, string qrCode, CancellationToken ct);
+    Task<string?> GetInboundCoilQrAsync(string coilNumber, CancellationToken ct);
     Task<SupervisorPinStatus?> GetSupervisorPinStatusAsync(string login, CancellationToken ct);
     Task<SupervisorPinCoverage> GetSupervisorPinCoverageAsync(string groupName, CancellationToken ct);
     Task SetSupervisorPinAsync(string login, string pinHash, string? updatedBy, CancellationToken ct);

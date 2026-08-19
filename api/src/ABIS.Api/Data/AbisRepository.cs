@@ -3566,6 +3566,37 @@ public sealed class AbisRepository : IAbisRepository
                 """, new { login, hash = passwordHash, mc, now, updby = updatedBy }, cancellationToken: ct));
     }
 
+    /// <summary>
+    /// Store a mill QR code against an inbound coil — legacy's <c>addqrcode</c>.
+    ///
+    /// <para><b>The UPDATE is scoped to the coil NUMBER only</b>, exactly as legacy's is
+    /// (<c>WHERE COIL_NUMBER = ...</c>). The same customer coil number can appear on more than one
+    /// <c>inbound_coil_status</c> row — one per BOL line — and legacy stamps every one of them. That
+    /// is preserved, but the count is RETURNED rather than left silent, so a scan that touched four
+    /// rows says so instead of looking like it touched one.</para>
+    ///
+    /// <para>Returns 0 when no inbound row carries that coil number, which the endpoint turns into a
+    /// 404: a QR code stored against nothing is indistinguishable from one never scanned.</para>
+    /// </summary>
+    public async Task<int> SaveInboundCoilQrAsync(string coilNumber, string qrCode, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE inbound_coil_status SET barcode_string = :qr WHERE coil_number = :coil",
+            new { qr = qrCode, coil = coilNumber.Trim() }, cancellationToken: ct));
+    }
+
+    /// <summary>The QR code already stored against an inbound coil, or null when it has none.</summary>
+    public async Task<string?> GetInboundCoilQrAsync(string coilNumber, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await conn.QueryFirstOrDefaultAsync<string?>(new CommandDefinition(
+            """
+            SELECT barcode_string FROM inbound_coil_status
+            WHERE coil_number = :coil AND barcode_string IS NOT NULL
+            """, new { coil = coilNumber.Trim() }, cancellationToken: ct));
+    }
+
     // ---- Supervisor override (replaces legacy's shared plaintext PIN) ---------------------------
 
     /// <summary>Whether a login holds an override PIN, and its lockout state. Never returns the hash.</summary>
