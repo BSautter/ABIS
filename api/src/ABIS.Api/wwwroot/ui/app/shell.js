@@ -465,7 +465,31 @@ function loginGate() {
 }
 /** Build the shell chrome, gate the nav to the caller's grants, and return the empty
  *  content element the page renders into. Call once at page startup. */
-// Fill the sidebar version badge from the running app (GET / returns the assembly version), so it
+/**
+ * The sidebar badge's text for a version string from `GET /`.
+ *
+ * The server may hand back either shape, and the badge has to read right for both:
+ *
+ *   `v0.9.0-1-g7fb71c0`   a git-describe string — what a packaged build reports
+ *   `0.9.0.0`             a bare four-part assembly version — the fallback
+ *
+ * <b>Any leading `v` is stripped before one is added back.</b> This badge used to hardcode the
+ * prefix, which was right while the server reported `0.8.2.0` and wrong the moment it started
+ * reporting the tag: it rendered `vv0.9.0-1-g7fb71c0`.
+ *
+ * The four-part form loses its meaningless trailing component, as it always did. A git-describe
+ * string is left **exactly** as it is — the commit distance and sha are the whole reason it is more
+ * useful than a tag, and the old blanket `.split('.').slice(0,3)` would have eaten them given a
+ * describe string with more dots in it.
+ */
+export function versionBadge(raw) {
+    const bare = String(raw ?? '').trim().replace(/^v/i, '');
+    if (!bare)
+        return '';
+    const trimmed = /^\d+\.\d+\.\d+\.\d+$/.test(bare) ? bare.split('.').slice(0, 3).join('.') : bare;
+    return `v${trimmed}`;
+}
+// Fill the sidebar version badge from the running app (GET / returns the running version), so it
 // tracks the deployed build instead of a hardcoded string. Best-effort; leaves the placeholder on failure.
 async function loadVersion() {
     try {
@@ -473,10 +497,10 @@ async function loadVersion() {
         if (!r.ok)
             return;
         const j = await r.json();
-        const v = String(j.version ?? '').split('.').slice(0, 3).join('.'); // 0.4.11.0 → 0.4.11
+        const text = versionBadge(j.version);
         const el = document.querySelector('#shVersion');
-        if (el && v)
-            el.textContent = `v${v}`;
+        if (el && text)
+            el.textContent = text;
     }
     catch { /* leave the placeholder */ }
 }
