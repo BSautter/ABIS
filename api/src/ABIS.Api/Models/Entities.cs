@@ -1666,6 +1666,37 @@ public sealed class SupervisorPinStatus
     public string? UpdatedBy { get; set; }
 }
 
+/// <summary>One member of a group, and whether they hold an override PIN — a row of the coverage
+/// report behind the plant's rule that <b>everyone in IT must have one</b> (2026-08-19).</summary>
+public sealed class SupervisorPinCoverageRow
+{
+    public long UserId { get; set; }
+    public string? LoginId { get; set; }
+    public string? UserName { get; set; }
+    /// <summary>0 = inactive. A leaver still carried in the group is reported but not counted as a
+    /// gap — chasing them for a PIN is noise, and it is the ACTIVE shortfall that matters.</summary>
+    public int? UserStatus { get; set; }
+    public bool HasPin { get; set; }
+    public DateTime? LockedUntilUtc { get; set; }
+    public DateTime? PinSetUtc { get; set; }
+}
+
+/// <summary>Who in a group holds an override PIN and who does not.
+/// <para>The group is resolved <b>by name</b>, never by id: on <c>.230</c> IT is group 10 today, but a
+/// Data Pump refresh imports whatever prod has, and <c>tools/grant_it_group.sql</c> already carries
+/// that scar. Reporting against the wrong group would be both wrong and quiet.</para></summary>
+public sealed class SupervisorPinCoverage
+{
+    public string GroupName { get; set; } = "";
+    /// <summary>False when no group of that name exists — distinct from a group with no members, and
+    /// a distinction worth keeping: one is a typo, the other is an empty team.</summary>
+    public bool GroupExists { get; set; }
+    public List<SupervisorPinCoverageRow> Members { get; } = [];
+    /// <summary>Active members with no PIN — the number that has to reach zero.</summary>
+    public int ActiveWithoutPin => Members.Count(m => m.UserStatus != 0 && !m.HasPin);
+    public int ActiveWithPin => Members.Count(m => m.UserStatus != 0 && m.HasPin);
+}
+
 /// <summary>One override attempt — <b>granted or not</b> (table <c>abis_supervisor_override</c>).
 /// <para>Legacy records nothing at all here: its gate is an in-memory <c>ii_super</c> flag that dies
 /// with the window, and the shared PIN could not have identified anyone anyway. The denials are kept

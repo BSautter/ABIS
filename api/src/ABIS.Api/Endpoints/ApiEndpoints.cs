@@ -4010,6 +4010,26 @@ public static class ApiEndpoints
            .WithSummary("Take a user's override PIN away — they can no longer authorise overrides (requires User Control). The override history is kept.")
            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status403Forbidden);
 
+        // Who in a group holds an override PIN, and who does not.
+        //
+        // The plant's rule (2026-08-19) is that EVERY member of the IT group must have one, which is
+        // why that is the default. It is a report, not an enforcement: this endpoint never issues a
+        // PIN. A PIN its holder did not choose and does not know is not a credential, it is a locked
+        // door with the key thrown away — an administrator sets each one with the person there.
+        //
+        // Inactive members are listed but excluded from the shortfall. A leaver still carried in the
+        // group is not a gap to chase, and counting them would leave a number that never reaches zero
+        // and so gets ignored.
+        api.MapGet("/security/supervisor-pin-coverage", async (HttpContext ctx, IAbisRepository repo, CancellationToken ct,
+                string group = "IT") =>
+            {
+                if (await RequireFeatureAsync(ctx, repo, "User Control", 0, ct) is { } deny) return deny;
+                return Results.Ok(await repo.GetSupervisorPinCoverageAsync(group, ct));
+            })
+           .WithName("GetSupervisorPinCoverage").WithTags("Security")
+           .WithSummary("Who in a group holds a shop-floor override PIN and who does not — defaults to IT, whose members must all have one (requires User Control).")
+           .Produces<SupervisorPinCoverage>().Produces(StatusCodes.Status403Forbidden);
+
         api.MapGet("/security/supervisor-overrides", async (HttpContext ctx, IAbisRepository repo, CancellationToken ct,
                 int page = 1, int pageSize = 25, string? login = null, string? outcome = null) =>
             {

@@ -12805,6 +12805,43 @@
         }
       }
     },
+    "/api/security/supervisor-pin-coverage": {
+      "get": {
+        "tags": [
+          "Security"
+        ],
+        "summary": "Who in a group holds a shop-floor override PIN and who does not — defaults to IT, whose members must all have one (requires User Control).",
+        "operationId": "GetSupervisorPinCoverage",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "IT"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupervisorPinCoverage"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/security/supervisor-overrides": {
       "get": {
         "tags": [
@@ -28237,6 +28274,73 @@
           },
           "message": {
             "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "SupervisorPinCoverage": {
+        "type": "object",
+        "properties": {
+          "groupName": {
+            "type": "string",
+            "nullable": true
+          },
+          "groupExists": {
+            "type": "boolean"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SupervisorPinCoverageRow"
+            },
+            "nullable": true,
+            "readOnly": true
+          },
+          "activeWithoutPin": {
+            "type": "integer",
+            "format": "int32",
+            "readOnly": true
+          },
+          "activeWithPin": {
+            "type": "integer",
+            "format": "int32",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "SupervisorPinCoverageRow": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "loginId": {
+            "type": "string",
+            "nullable": true
+          },
+          "userName": {
+            "type": "string",
+            "nullable": true
+          },
+          "userStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "hasPin": {
+            "type": "boolean"
+          },
+          "lockedUntilUtc": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "pinSetUtc": {
+            "type": "string",
+            "format": "date-time",
             "nullable": true
           }
         },

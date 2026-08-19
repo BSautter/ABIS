@@ -107,6 +107,20 @@ supervisor by guessing their login. Re-issuing a PIN clears the lockout — that
 
 The endpoint additionally sits behind the existing `auth-login` throttle (10/minute per client).
 
+### Who must hold one
+
+**Plant rule, 2026-08-19: every member of the `IT` group.** Five active members on `.230`.
+
+`GET /api/security/supervisor-pin-coverage?group=IT` reports who does and who does not, and the
+Security page shows the shortfall standing on the Users tab. It is a **report, never an issuer** — a
+PIN its holder did not choose and does not know is not a credential, so an administrator sets each one
+with the person there.
+
+The group is matched on `UPPER(TRIM(group_name))`, never on an id: IT is group 10 on `.230` today, but
+a Data Pump refresh imports whatever prod has — `tools/grant_it_group.sql` carries the same scar in a
+comment. Inactive members are listed but excluded from the shortfall; a leaver still carried in the
+group is not a gap to chase, and a number that never reaches zero stops being read.
+
 ### Who may hold one
 
 **Holding a PIN is the eligibility.** There is no separate "is supervisor" flag to drift out of step

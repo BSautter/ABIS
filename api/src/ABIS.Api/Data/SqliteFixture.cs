@@ -2227,21 +2227,34 @@ public static class SqliteFixture
             new[]
             {
                 new { UserGroupId = 10L, GroupName = "Operators", GroupNotes = "Shop-floor operators" },
-                new { UserGroupId = 11L, GroupName = "Admins", GroupNotes = "System administrators" }
+                new { UserGroupId = 11L, GroupName = "Admins", GroupNotes = "System administrators" },
+                // The plant's IT group — 5 active members on .230, where its id is 10. Everything that
+                // resolves it does so BY NAME, because the id is whatever prod has after a Data Pump
+                // refresh (tools/grant_it_group.sql learned that the hard way). Seeded with padding so
+                // the TRIM in that resolution is exercised rather than assumed.
+                new { UserGroupId = 12L, GroupName = " it ", GroupNotes = "IT — holds every feature" }
             });
         conn.Execute(
             "INSERT INTO security_user (user_id, login_id, user_last_name, user_first_name, user_status) VALUES (:UserId, :LoginId, :UserLastName, :UserFirstName, :UserStatus)",
             new[]
             {
                 new { UserId = 9001L, LoginId = "jsmith", UserLastName = "Smith", UserFirstName = "John", UserStatus = (int?)1 },
-                new { UserId = 9002L, LoginId = "mlee", UserLastName = "Lee", UserFirstName = "Maria", UserStatus = (int?)1 }
+                new { UserId = 9002L, LoginId = "mlee", UserLastName = "Lee", UserFirstName = "Maria", UserStatus = (int?)1 },
+                // Inactive. A leaver still carried in the group must not be chased for a PIN.
+                new { UserId = 9003L, LoginId = "kpatel", UserLastName = "Patel", UserFirstName = "Kiran", UserStatus = (int?)0 }
             });
         conn.Execute(
             "INSERT INTO security_user_group (user_id, user_group_id) VALUES (:UserId, :UserGroupId)",
             new[]
             {
                 new { UserId = 9001L, UserGroupId = 10L }, // jsmith -> Operators
-                new { UserId = 9002L, UserGroupId = 11L }  // mlee   -> Admins
+                new { UserId = 9002L, UserGroupId = 11L }, // mlee   -> Admins
+                // IT must all hold an override PIN (plant rule, 2026-08-19). mlee does, jsmith does
+                // not, kpatel is INACTIVE — three members, three different answers, which is what
+                // makes the coverage report worth reading.
+                new { UserId = 9002L, UserGroupId = 12L },
+                new { UserId = 9001L, UserGroupId = 12L },
+                new { UserId = 9003L, UserGroupId = 12L }
             });
         conn.Execute(
             "INSERT INTO security_group_application (application_id, user_group_id, group_application_privilege) VALUES (:ApplicationId, :UserGroupId, :GroupApplicationPrivilege)",

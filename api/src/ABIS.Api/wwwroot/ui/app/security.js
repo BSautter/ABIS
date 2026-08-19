@@ -40,6 +40,13 @@ function scaffold() {
               <tbody id="tUsers"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
             </table></div>
           </div>
+          <!-- The plant's rule (2026-08-19): everyone in IT must hold a shop-floor override PIN.
+               Shown as a standing shortfall rather than buried in each user's detail, because the
+               question is "is anyone missing one", not "does this person have one". -->
+          <div class="card" id="pinCovCard">
+            <header><h2>Override PIN coverage — IT</h2><span class="sub" id="pinCovSub">checking…</span></header>
+            <div class="body"><div id="pinCov"></div></div>
+          </div>
           <div class="card">
             <header><h2>New user</h2></header>
             <div class="body">
@@ -356,6 +363,52 @@ async function setPassword() {
         setBusy(false);
     }
 }
+// ---- Override PIN coverage (the IT group must all hold one) ------------------------------------
+async function loadPinCoverage() {
+    const box = $('#pinCov');
+    const sub = $('#pinCovSub');
+    try {
+        const r = await authFetch('/api/security/supervisor-pin-coverage?group=IT');
+        if (!r.ok) {
+            sub.textContent = '';
+            box.innerHTML = '<span class="muted">Coverage unavailable.</span>';
+            return;
+        }
+        const c = await r.json();
+        if (!c.groupExists) {
+            // Not the same as "everyone has one" — an empty list from a typo'd name would read that way.
+            sub.textContent = '';
+            box.innerHTML = '<span class="muted">No security group named <b>IT</b> on this database.</span>';
+            return;
+        }
+        sub.textContent = c.activeWithoutPin === 0
+            ? `all ${c.activeWithPin} covered`
+            : `${c.activeWithoutPin} without a PIN`;
+        const rows = c.members.map((m) => {
+            const inactive = m.userStatus === 0;
+            const locked = m.lockedUntilUtc && new Date(m.lockedUntilUtc) > new Date();
+            const state = !m.hasPin
+                ? `<span class="chip ${inactive ? 'mut' : 'bad'}">no PIN</span>`
+                : locked ? '<span class="chip bad">locked</span>' : '<span class="chip ok">has PIN</span>';
+            return `<tr class="click" data-id="${m.userId}">
+        <td class="mono">${esc(m.loginId)}</td><td>${esc(m.userName)}</td>
+        <td>${inactive ? '<span class="chip mut">inactive</span>' : state}</td></tr>`;
+        }).join('');
+        box.innerHTML = `<div style="overflow-x:auto"><table class="tbl" style="min-width:320px">
+        <thead><tr><th>Login</th><th>Name</th><th>Override PIN</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="3" class="muted">No members.</td></tr>'}</tbody></table></div>
+      <p class="muted" style="margin:8px 0 0;font-size:12px">
+        Everyone in IT should hold a PIN. Click a row to open that user and set one — PINs are set
+        with the person present; nobody can use a PIN they were not told.
+        ${c.members.some((m) => m.userStatus === 0) ? 'Inactive members are listed but not counted.' : ''}
+      </p>`;
+        box.querySelectorAll('tr.click').forEach((tr) => tr.addEventListener('click', () => void openUser(Number(tr.dataset.id))));
+    }
+    catch {
+        sub.textContent = '';
+        box.innerHTML = '<span class="muted">Coverage unavailable.</span>';
+    }
+}
 // ---- Shop-floor override PIN ------------------------------------------------------------------
 // Giving someone a PIN is what makes them a supervisor for override purposes — there is no separate
 // "is supervisor" flag, so nothing can drift out of step with it. Gated server-side on "User
@@ -408,7 +461,7 @@ async function setPin() {
         if (await send(`/api/security/users/${curUser}/supervisor-pin`, 'POST', { pin })) {
             $('#setPin').value = '';
             $('#pinOk').textContent = '✓ PIN set — they can authorise shop-floor overrides.';
-            await loadPinState();
+            await Promise.all([loadPinState(), loadPinCoverage()]);
         }
     }
     finally {
@@ -427,7 +480,7 @@ async function clearPin() {
     try {
         if (await send(`/api/security/users/${curUser}/supervisor-pin`, 'DELETE', undefined)) {
             $('#pinOk').textContent = '✓ PIN removed.';
-            await loadPinState();
+            await Promise.all([loadPinState(), loadPinCoverage()]);
         }
     }
     finally {
@@ -722,5 +775,5 @@ function showTab(name) {
     $('#btnGrpGrant').addEventListener('click', () => void setGroupGrant());
     $('#btnNewFeature').addEventListener('click', () => void createFeature());
     showTab('users');
-    await Promise.all([loadUsers(), loadFeatureOptions()]);
+    await Promise.all([loadUsers(), loadFeatureOptions(), loadPinCoverage()]);
 })();

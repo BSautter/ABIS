@@ -3583,6 +3583,43 @@ public sealed class AbisRepository : IAbisRepository
         return row;
     }
 
+    /// <summary>
+    /// Who in <paramref name="groupName"/> holds an override PIN — the plant's rule is that everyone
+    /// in <b>IT</b> must (2026-08-19).
+    ///
+    /// <para>The group is matched on <c>UPPER(TRIM(group_name))</c>, never on an id.
+    /// <c>tools/grant_it_group.sql</c> carries the same lesson in a comment: IT is group 10 on
+    /// <c>.230</c> today, but a Data Pump refresh imports whatever prod has, and a report built
+    /// against a stale id would be confidently wrong about who is covered.</para>
+    /// </summary>
+    public async Task<SupervisorPinCoverage> GetSupervisorPinCoverageAsync(string groupName, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var coverage = new SupervisorPinCoverage { GroupName = groupName };
+
+        coverage.GroupExists = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT COUNT(*) FROM security_group WHERE UPPER(TRIM(group_name)) = UPPER(TRIM(:g))",
+            new { g = groupName }, cancellationToken: ct)) > 0;
+        if (!coverage.GroupExists) return coverage;
+
+        var rows = await conn.QueryAsync<SupervisorPinCoverageRow>(new CommandDefinition(
+            """
+            SELECT u.user_id AS UserId, u.login_id AS LoginId,
+                   (u.user_first_name || ' ' || u.user_last_name) AS UserName,
+                   u.user_status AS UserStatus,
+                   p.locked_until_utc AS LockedUntilUtc, p.updated_utc AS PinSetUtc,
+                   CASE WHEN p.login_id IS NULL THEN 0 ELSE 1 END AS HasPin
+            FROM security_group g
+            JOIN security_user_group sug ON sug.user_group_id = g.user_group_id
+            JOIN security_user u ON u.user_id = sug.user_id
+            LEFT JOIN abis_supervisor_pin p ON LOWER(p.login_id) = LOWER(u.login_id)
+            WHERE UPPER(TRIM(g.group_name)) = UPPER(TRIM(:g))
+            ORDER BY u.user_status DESC, u.login_id
+            """, new { g = groupName }, cancellationToken: ct));
+        coverage.Members.AddRange(rows);
+        return coverage;
+    }
+
     /// <summary>Set or replace a login's PIN. Resets the lockout: an administrator issuing a new PIN is
     /// the intended way out of one, and leaving the counter set would keep a supervisor locked out of a
     /// PIN they have only just been given.</summary>
