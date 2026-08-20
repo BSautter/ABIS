@@ -12,7 +12,12 @@
 # them, so it keeps working unchanged as those land.
 #
 # Usage:
-#   bash build-release.sh [--version X.Y.Z]
+#   bash build-release.sh [--version X.Y.Z] [--app-out DIR]
+#
+# --app-out keeps a copy of the published app where the caller asks, instead of
+# letting it die with the staging directory. The release workflow hands that copy to
+# build-deb.sh --from, so the tarball and the .deb are the SAME build rather than two
+# separate compilations of the same source that merely ought to agree.
 #
 # Version resolution (when --version is omitted):
 #   git describe --tags --always --dirty  ->  e.g. v1.2.3, v1.2.3-4-g1a2b3c, 1a2b3c
@@ -30,12 +35,17 @@ RID="linux-x64"
 
 # --- parse args --------------------------------------------------------------
 RAW_VERSION=""
+APP_OUT=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --version)
       RAW_VERSION="${2:-}"; shift 2 ;;
     --version=*)
       RAW_VERSION="${1#*=}"; shift ;;
+    --app-out)
+      APP_OUT="${2:-}"; shift 2 ;;
+    --app-out=*)
+      APP_OUT="${1#*=}"; shift ;;
     -h|--help)
       grep '^#' "$0" | grep -v '^#!' | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)
@@ -93,6 +103,16 @@ dotnet publish "$API_PROJECT" \
 # Ensure the Linux apphost ships executable. A cross-publish from Windows leaves
 # it at 0644; on Linux CI dotnet already marks it +x (this is then a no-op).
 chmod +x "${PKG_DIR}/app/ABIS.Api"
+
+# Hand the published tree to the caller (the release workflow passes it to
+# build-deb.sh --from). A ~50 MB copy costs a second; publishing a second time costs
+# minutes, and yields a DIFFERENT binary from the one already in the tarball.
+if [[ -n "$APP_OUT" ]]; then
+  echo "==> copying the published app to ${APP_OUT}"
+  rm -rf "$APP_OUT"
+  mkdir -p "$APP_OUT"
+  cp -R "${PKG_DIR}/app/." "${APP_OUT}/"
+fi
 
 # --- bundle deploy assets (present from Phase 2 onward) ----------------------
 if [[ -d "${SCRIPT_DIR}/deploy" ]]; then

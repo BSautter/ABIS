@@ -13,6 +13,17 @@ That fires `.github/workflows/release.yml`, which runs the API suite, builds the
 writes `SHA256SUMS`, and publishes a GitHub Release. **The suite runs before packaging on purpose** —
 an untested artifact must never reach the plant's server.
 
+The app is **published once and packaged twice**: `build-release.sh --app-out DIR` keeps its published
+tree, and `build-deb.sh --from DIR` packages that same tree. Before 2026-08-20 each script ran its own
+identical `dotnet publish`, so a release compiled the self-contained app twice — the slowest part of
+the job, and it meant the tarball and the `.deb` were two separate builds that merely ought to agree
+rather than the same software in two wrappers. Run either script on its own and it still publishes for
+itself, so an ad-hoc local build needs no extra flags.
+
+Restore, build and test are three steps rather than one so the job summary says *which* was slow. The
+job also carries `timeout-minutes: 45` — well above a healthy run (~10 minutes) and far below GitHub's
+6-hour default, because a release that hangs invites someone to cancel it part-way through publishing.
+
 ## When to tag: at the end of a batch
 
 **Tag when a coherent piece of work is finished, not on a calendar.** A batch is a thing you could

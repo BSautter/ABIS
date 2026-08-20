@@ -13,6 +13,11 @@ jobs:
   release:
     name: Build + publish release tarball
     runs-on: ubuntu-latest
+    # A release that hangs is worse than one that fails: it runs for GitHub's 6-hour
+    # default while someone watches, and the temptation is to cancel it — possibly
+    # part-way through publishing. v0.9.3 took 22m50s against v0.9.2's 7m49s and
+    # looked stuck. Bound it well above a healthy run (~10 min) and far below 6 hours.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,17 +33,35 @@ jobs:
           restore-keys: nuget-${{ runner.os }}-
 
       # Never ship an untested artifact: run the API suite before packaging.
+      #
+      # Restore / build / test are three steps, not one, so the per-step timings in the
+      # job summary say WHICH of them was slow. Folded together they cannot: when the
+      # v0.9.3 release took 22m50s, "Test (API)" was compiling the whole solution in
+      # Release as well as running the suite, and there was no way to tell from the
+      # outside which half the time went to. This is the same shape ci.yml already uses.
+      - name: Restore
+        working-directory: api
+        run: dotnet restore ABIS.Api.sln
+
+      - name: Build (Release)
+        working-directory: api
+        run: dotnet build ABIS.Api.sln -c Release --no-restore
+
       - name: Test (API)
         working-directory: api
-        run: |
-          dotnet restore ABIS.Api.sln
-          dotnet test ABIS.Api.sln -c Release
+        run: dotnet test ABIS.Api.sln -c Release --no-build
 
+      # ONE publish, packaged twice. These two scripts previously ran the identical
+      # `dotnet publish` (same project, profile, and version stamps — only -o differed),
+      # so every release compiled the self-contained app twice. That is not only the
+      # slowest part of the job: it means the tarball and the .deb were two separate
+      # builds that merely ought to agree, when they are meant to BE the same software.
+      # build-release.sh keeps its published tree; build-deb.sh packages that tree.
       - name: Build release tarball
-        run: bash build-release.sh --version "${GITHUB_REF_NAME}"
+        run: bash build-release.sh --version "${GITHUB_REF_NAME}" --app-out "${RUNNER_TEMP}/abis-app"
 
       - name: Build .deb package
-        run: bash build-deb.sh --version "${GITHUB_REF_NAME}"
+        run: bash build-deb.sh --version "${GITHUB_REF_NAME}" --from "${RUNNER_TEMP}/abis-app"
 
       - name: Checksums
         run: ( cd dist && sha256sum *.tar.gz *.deb > SHA256SUMS )

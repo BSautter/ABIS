@@ -10,7 +10,13 @@
 #
 # Must run on a Debian/Ubuntu host (needs dpkg-deb) with the .NET 8 SDK.
 #
-#   bash build-deb.sh [--version X.Y.Z]
+#   bash build-deb.sh [--version X.Y.Z] [--from <published-app-dir>]
+#
+# --from packages an app directory that has ALREADY been published (by
+# build-release.sh) instead of publishing again. The release workflow uses it so the
+# tarball and the .deb are the SAME build, rather than two separate compilations of
+# the same source that merely ought to agree. Without it the script publishes for
+# itself, so an ad-hoc local `bash build-deb.sh` still works on its own.
 #
 set -euo pipefail
 
@@ -23,10 +29,13 @@ ARCH="amd64"
 
 # --- args / version ----------------------------------------------------------
 RAW_VERSION=""
+FROM_DIR=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --version)   RAW_VERSION="${2:-}"; shift 2 ;;
     --version=*) RAW_VERSION="${1#*=}"; shift ;;
+    --from)      FROM_DIR="${2:-}"; shift 2 ;;
+    --from=*)    FROM_DIR="${1#*=}"; shift ;;
     -h|--help)   grep '^#' "$0" | grep -v '^#!' | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)           echo "error: unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -59,7 +68,21 @@ if ! [[ "$DEB_VERSION" =~ ^[0-9] ]]; then
 fi
 
 command -v dpkg-deb >/dev/null 2>&1 || { echo "error: dpkg-deb not found — build on a Debian/Ubuntu host or in CI." >&2; exit 1; }
-command -v dotnet   >/dev/null 2>&1 || { echo "error: dotnet SDK not found." >&2; exit 1; }
+# The SDK is only needed when this script publishes for itself.
+if [[ -z "$FROM_DIR" ]]; then
+  command -v dotnet >/dev/null 2>&1 || { echo "error: dotnet SDK not found." >&2; exit 1; }
+elif [[ ! -f "${FROM_DIR}/ABIS.Api" ]]; then
+  # Fail here rather than shipping a .deb with an empty /opt/abis/app, which installs
+  # cleanly and then fails to start on the plant's server.
+  #
+  # -f, not -x. The apphost's execute bit is exactly the thing that does NOT survive a
+  # cross-publish from Windows — which is why the chmod below exists at all — so testing
+  # for it would refuse a perfectly good tree whenever the pair is run from an MSYS
+  # shell. (Verified: it does. The question this guard asks is "is there a published app
+  # here", and -f is that question.)
+  echo "error: --from '${FROM_DIR}' does not contain ABIS.Api — is that a published app directory?" >&2
+  exit 1
+fi
 
 PKG_NAME="abis_${DEB_VERSION}_${ARCH}"
 STAGE_DIR="$(mktemp -d)"
@@ -81,12 +104,17 @@ mkdir -p "${PKGROOT}/opt/abis/app" \
          "${PKGROOT}/usr/share/doc/abis" \
          "${PKGROOT}/DEBIAN"
 
-echo "==> dotnet publish (self-contained ${PUBLISH_PROFILE})"
-dotnet publish "$API_PROJECT" -c Release \
-  "-p:PublishProfile=${PUBLISH_PROFILE}" \
-  "-p:Version=${NUMERIC_VERSION}" \
-  "-p:InformationalVersion=${RAW_VERSION}" \
-  -o "${PKGROOT}/opt/abis/app"
+if [[ -n "$FROM_DIR" ]]; then
+  echo "==> reusing the app already published to ${FROM_DIR}"
+  cp -R "${FROM_DIR}/." "${PKGROOT}/opt/abis/app/"
+else
+  echo "==> dotnet publish (self-contained ${PUBLISH_PROFILE})"
+  dotnet publish "$API_PROJECT" -c Release \
+    "-p:PublishProfile=${PUBLISH_PROFILE}" \
+    "-p:Version=${NUMERIC_VERSION}" \
+    "-p:InformationalVersion=${RAW_VERSION}" \
+    -o "${PKGROOT}/opt/abis/app"
+fi
 chmod +x "${PKGROOT}/opt/abis/app/ABIS.Api"
 
 echo "==> staging package files"
