@@ -8,6 +8,7 @@
 // Compiled by tsc to wwwroot/ui/app/truck-scheduling.js; served at /ui/truck-scheduling.html.
 import { authFetch } from './auth.js';
 import { initShell } from './shell.js';
+import { slotStarts, slotLabel, slotWindow } from './truck-slots.js';
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const setErr = (m) => { $('#err').textContent = m; };
@@ -296,8 +297,9 @@ function scaffold() {
             <div class="fld" id="nPickWrap"><label id="nPickLbl">Building</label><select id="nPick"></select></div>
           </div>
           <div class="frow" style="margin-top:8px">
-            <div class="fld"><label>Window start</label><input id="nStart" type="datetime-local" /></div>
-            <div class="fld"><label>Window end</label><input id="nEnd" type="datetime-local" /></div>
+            <div class="fld"><label>Date <span style="color:var(--crit)">*</span></label><input id="nDate" type="date" /></div>
+            <div class="fld"><label>Check-in window <span style="color:var(--crit)">*</span></label>
+              <select id="nSlot" style="width:150px"><option value="">— pick —</option>${slotStarts().map((t) => `<option value="${t}">${slotLabel(t)}</option>`).join('')}</select></div>
           </div>
           <div class="frow" style="margin-top:8px">
             <div class="fld"><label>Driver</label><input id="nDriver" maxlength="80" style="width:130px" /></div>
@@ -469,6 +471,15 @@ async function schedule() {
         setErr(`Pick which ${dest.pickLabel.toLowerCase()}.`);
         return;
     }
+    if (!v('#nDate')) {
+        setErr('Pick the date.');
+        return;
+    }
+    if (!v('#nSlot')) {
+        setErr('Pick a check-in window.');
+        return;
+    }
+    const win = slotWindow(v('#nDate'), v('#nSlot'));
     setBusy(true);
     const carrierSel = $('#nCarrier');
     const body = {
@@ -476,8 +487,8 @@ async function schedule() {
         carrierId: carrierSel.value ? Number(carrierSel.value) : null,
         carrierName: carrierSel.value ? carrierSel.selectedOptions[0]?.textContent : null,
         dock: dockLabel(dest.key, pick),
-        scheduledStart: v('#nStart') ? new Date(v('#nStart')).toISOString() : null,
-        scheduledEnd: v('#nEnd') ? new Date(v('#nEnd')).toISOString() : null,
+        scheduledStart: win.start.toISOString(),
+        scheduledEnd: win.end.toISOString(),
         refType: v('#nRefId') ? (v('#nDir') === 'INBOUND' ? 'RECEIVING' : 'SHIPMENT') : null,
         refId: v('#nRefId') || null,
         driverName: v('#nDriver') || null, tractorNum: v('#nTractor') || null,
@@ -500,7 +511,8 @@ async function schedule() {
         const a = await r.json();
         setOk(`✓ Scheduled appointment #${a.appointmentId}.`);
         resetDest();
-        ['#nStart', '#nEnd', '#nDriver', '#nTractor', '#nTrailer', '#nSeal', '#nQty', '#nRefId', '#nNotes'].forEach((i) => setV(i, ''));
+        // The date stays put: a scheduler booking a day's trucks books several in a row.
+        ['#nSlot', '#nDriver', '#nTractor', '#nTrailer', '#nSeal', '#nQty', '#nRefId', '#nNotes'].forEach((i) => setV(i, ''));
         await load();
     }
     catch (e) {

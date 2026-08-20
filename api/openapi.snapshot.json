@@ -6703,6 +6703,33 @@
         }
       }
     },
+    "/api/lookups/sectors": {
+      "get": {
+        "tags": [
+          "Lookups"
+        ],
+        "summary": "The market sectors an order line can be classified into (table SECTOR) — the domain behind order_item.sector and legacy's d_dddw_sector dropdown.",
+        "operationId": "GetSectors",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Sector"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/lookups/customer-types": {
       "get": {
         "tags": [
@@ -7915,7 +7942,7 @@
         "tags": [
           "OrderItems"
         ],
-        "summary": "Replace an order line item (by order + line number). Supports If-Match.",
+        "summary": "Replace an order line item (by order + line number). Supports If-Match. Sector is required; 409 with code 'mixed-sectors' when it differs from the order's other lines — re-submit with confirm=true.",
         "operationId": "UpdateOrderItem",
         "parameters": [
           {
@@ -7961,6 +7988,9 @@
           "404": {
             "description": "Not Found"
           },
+          "409": {
+            "description": "Conflict"
+          },
           "412": {
             "description": "Precondition Failed"
           },
@@ -7985,7 +8015,7 @@
         "tags": [
           "OrderItems"
         ],
-        "summary": "Add a line item to an order (line number assigned per order).",
+        "summary": "Add a line item to an order (line number assigned per order). Sector is required; 409 with code 'mixed-sectors' when it differs from the order's other lines — re-submit with confirm=true (legacy \"Unusual combination of sectors detected\" Yes/No).",
         "operationId": "CreateOrderItem",
         "parameters": [
           {
@@ -8018,6 +8048,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Conflict"
           },
           "400": {
             "description": "Bad Request",
@@ -8448,7 +8481,7 @@
         "tags": [
           "Orders"
         ],
-        "summary": "Create an order header and its line items in one transaction.",
+        "summary": "Create an order header and its line items in one transaction. Every line needs a sector; 409 with code 'mixed-sectors' when the lines disagree — re-submit with confirm=true on any line.",
         "operationId": "CreateOrderWithItems",
         "requestBody": {
           "content": {
@@ -8470,6 +8503,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Conflict"
           },
           "400": {
             "description": "Bad Request",
@@ -23737,6 +23773,9 @@
           "billtoAlbl": {
             "type": "string",
             "nullable": true
+          },
+          "confirm": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -27100,6 +27139,20 @@
             "nullable": true
           },
           "scrapDefect": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Sector": {
+        "type": "object",
+        "properties": {
+          "sectorCode": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sectorDesc": {
             "type": "string",
             "nullable": true
           }

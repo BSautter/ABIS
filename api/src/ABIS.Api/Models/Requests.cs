@@ -402,6 +402,16 @@ public sealed class OrderItemWrite : ITrimNormalizable
     public string? FinishedGoodsMaterialNum { get; set; }
     public string? CustProdLineId { get; set; }
     public string? BilltoAlbl { get; set; }
+
+    /// <summary>Proceed even though this line's <see cref="Sector"/> differs from the other lines on
+    /// the order — legacy's "Unusual combination of sectors detected … Would you like to continue?"
+    /// answered Yes. A request flag, not a column: it is never persisted, and the same pattern as
+    /// <see cref="OrderCoilAssignRequest.Confirm"/>.
+    ///
+    /// <para>It rides in the body rather than as a query parameter on purpose. Adding a parameter to a
+    /// client-exposed endpoint changes the generated client's method arity and silently breaks every
+    /// positional caller — a trap this project has already been bitten by.</para></summary>
+    public bool Confirm { get; set; }
 }
 
 /// <summary>Create an order header together with its line items in one

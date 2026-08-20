@@ -543,6 +543,13 @@ public interface IAbisRepository
     Task<IReadOnlyList<EquipmentType>> GetEquipmentTypesAsync(CancellationToken ct);
     Task<IReadOnlyList<CustomerType>> GetCustomerTypesAsync(CancellationToken ct);
 
+    /// <summary>The sector domain (table <c>SECTOR</c>) behind <c>order_item.sector</c>.</summary>
+    Task<IReadOnlyList<Sector>> GetSectorsAsync(CancellationToken ct);
+
+    /// <summary>Every line's sector on one order, optionally excluding a line being replaced — the
+    /// input to legacy's "mix of sectors" check. Returns one entry per line, nulls included.</summary>
+    Task<IReadOnlyList<int?>> GetOrderItemSectorsAsync(long orderAbcNum, long? excludeOrderItemNum, CancellationToken ct);
+
     // ---- Audit / action log --------------------------------------------
     Task WriteAuditAsync(string source, bool success, string? notes, CancellationToken ct);
     Task<PagedResult<AuditEntry>> GetAuditLogAsync(int page, int pageSize, string? source, string? orderBy, CancellationToken ct);

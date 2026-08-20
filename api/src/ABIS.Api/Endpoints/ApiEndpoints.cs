@@ -641,12 +641,14 @@ public static class ApiEndpoints
             {
                 if (Validate(body) is { } problems)
                     return Results.ValidationProblem(problems);
+                if (await SectorConflictAsync(body, repo, ct) is { } sectorConflict)
+                    return sectorConflict;
                 var created = await repo.CreateOrderWithItemsAsync(body, ct);
                 return Results.Created($"/api/orders/{created.Order.OrderAbcNum}", created);
             })
            .WithName("CreateOrderWithItems").WithTags("Orders")
-           .WithSummary("Create an order header and its line items in one transaction.")
-           .Produces<OrderDetail>(StatusCodes.Status201Created).ProducesValidationProblem();
+           .WithSummary("Create an order header and its line items in one transaction. Every line needs a sector; 409 with code 'mixed-sectors' when the lines disagree — re-submit with confirm=true on any line.")
+           .Produces<OrderDetail>(StatusCodes.Status201Created).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
 
         // Duplicate an existing order (header + line items + each item's blank geometry) into a new order.
         api.MapPost("/orders/{orderAbcNum:long}/copy", async (long orderAbcNum, IAbisRepository repo, CancellationToken ct) =>
@@ -737,14 +739,16 @@ public static class ApiEndpoints
                 var tolerance = await repo.GetEdgeTrimToleranceAsync(ct);
                 if (Validate(body, tolerance) is { } problems)
                     return Results.ValidationProblem(problems);
+                if (await SectorConflictAsync(body, orderAbcNum, null, repo, ct) is { } sectorConflict)
+                    return sectorConflict;
                 NormalizeTrimAndPieces(body);
                 await SettleEdgeTrimOverrideAsync(body, orderAbcNum, tolerance, ctx, repo, ct);
                 var created = await repo.CreateOrderItemAsync(orderAbcNum, body, ct);
                 return Results.Created($"/api/orders/{orderAbcNum}/items/{created.OrderItemNum}", created);
             })
            .WithName("CreateOrderItem").WithTags("OrderItems")
-           .WithSummary("Add a line item to an order (line number assigned per order).")
-           .Produces<OrderItem>(StatusCodes.Status201Created).ProducesValidationProblem();
+           .WithSummary("Add a line item to an order (line number assigned per order). Sector is required; 409 with code 'mixed-sectors' when it differs from the order's other lines — re-submit with confirm=true (legacy \"Unusual combination of sectors detected\" Yes/No).")
+           .Produces<OrderItem>(StatusCodes.Status201Created).Produces(StatusCodes.Status409Conflict).ProducesValidationProblem();
 
         api.MapPut("/orders/{orderAbcNum:long}/items/{orderItemNum:long}", async (long orderAbcNum, long orderItemNum, OrderItemWrite body, IAbisRepository repo, HttpContext ctx, IOptions<JsonOptions> json, CancellationToken ct) =>
             {
@@ -752,13 +756,15 @@ public static class ApiEndpoints
                 var tolerance = await repo.GetEdgeTrimToleranceAsync(ct);
                 if (Validate(body, tolerance) is { } problems)
                     return Results.ValidationProblem(problems);
+                if (await SectorConflictAsync(body, orderAbcNum, orderItemNum, repo, ct) is { } sectorConflict)
+                    return sectorConflict;
                 NormalizeTrimAndPieces(body);
                 await SettleEdgeTrimOverrideAsync(body, orderAbcNum, tolerance, ctx, repo, ct);
                 return await WithIfMatch(ctx, json, () => repo.GetOrderItemAsync(orderAbcNum, orderItemNum, ct), () => repo.UpdateOrderItemAsync(orderAbcNum, orderItemNum, body, ct));
             })
            .WithName("UpdateOrderItem").WithTags("OrderItems")
-           .WithSummary("Replace an order line item (by order + line number). Supports If-Match.")
-           .Produces<OrderItem>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status412PreconditionFailed).ProducesValidationProblem();
+           .WithSummary("Replace an order line item (by order + line number). Supports If-Match. Sector is required; 409 with code 'mixed-sectors' when it differs from the order's other lines — re-submit with confirm=true.")
+           .Produces<OrderItem>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict).Produces(StatusCodes.Status412PreconditionFailed).ProducesValidationProblem();
 
         // ---- Order-item blank geometry (the shape's dimensions) --------
         api.MapGet("/orders/{orderAbcNum:long}/items/{orderItemNum:long}/shape", async (long orderAbcNum, long orderItemNum, IAbisRepository repo, CancellationToken ct) =>
@@ -4398,6 +4404,12 @@ public static class ApiEndpoints
            .WithSummary("List shipping equipment type codes (referenced by shipments).")
            .Produces<IEnumerable<EquipmentType>>();
 
+        api.MapGet("/lookups/sectors", async (IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetSectorsAsync(ct)))
+           .WithName("GetSectors").WithTags("Lookups")
+           .WithSummary("The market sectors an order line can be classified into (table SECTOR) — the domain behind order_item.sector and legacy's d_dddw_sector dropdown.")
+           .Produces<IReadOnlyList<Sector>>();
+
         api.MapGet("/lookups/customer-types", async (IAbisRepository repo, CancellationToken ct) =>
                 Results.Ok(await repo.GetCustomerTypesAsync(ct)))
            .WithName("ListCustomerTypes").WithTags("Lookups")
@@ -4620,6 +4632,73 @@ public static class ApiEndpoints
         await repo.WriteSystemLogAsync(
             $"Edge-trim tolerance overridden on order {orderAbcNum}: trims {difference!.Value:0.00} in off, " +
             $"outside the {tolerance.LowerInches:0.00}-{tolerance.UpperInches:0.00} in band. Overridden by {login}.", ct);
+    }
+
+    /// <summary>
+    /// Legacy's second sector rule — the one that is a question, not an error. Returns the response to
+    /// send, or null when the write may proceed.
+    ///
+    /// <para>Two checks, in the order legacy's dropdown made unnecessary and an API makes essential:</para>
+    /// <list type="number">
+    /// <item>The code has to exist in <c>SECTOR</c>. Legacy's operator picked from <c>d_dddw_sector</c>
+    /// and could not type a number; an API caller can, and <c>order_item.sector</c> has no foreign key
+    /// to stop it. A bad code would persist silently and only surface as a blank on a report.</item>
+    /// <item>If this line's sector differs from the order's other lines, that is legacy's "Unusual
+    /// combination of sectors detected … Would you like to continue?" — a <b>409</b> naming the sectors,
+    /// clearing on <c>confirm: true</c>. Legacy defaults that box to <b>No</b>, so refusing until the
+    /// caller says otherwise is the faithful default.</item>
+    /// </list>
+    ///
+    /// <para>This runs per line-item write because that is the operation which can create a mix in this
+    /// API; legacy runs it once over the whole grid at save because that is when its operator commits.
+    /// Same rule, applied at each side's real commit point.</para>
+    /// </summary>
+    private static async Task<IResult?> SectorConflictAsync(
+        OrderItemWrite body, long orderAbcNum, long? replacingOrderItemNum, IAbisRepository repo, CancellationToken ct)
+    {
+        var domain = await repo.GetSectorsAsync(ct);
+        if (body.Sector is { } code && domain.Count > 0 && domain.All(s => s.SectorCode != code))
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["sector"] = [$"Unknown sector {code}. See /api/lookups/sectors."],
+            });
+
+        var others = await repo.GetOrderItemSectorsAsync(orderAbcNum, replacingOrderItemNum, ct);
+        var all = others.Append(body.Sector).ToList();
+        if (!SectorRules.IsMixed(all) || body.Confirm) return null;
+
+        return Results.Conflict(new
+        {
+            code = "mixed-sectors",
+            sectors = all.Where(s => s is not null).Select(s => s!.Value).Distinct().OrderBy(s => s).ToArray(),
+            message = SectorRules.MixedSectorMessage(all, c => domain.FirstOrDefault(s => s.SectorCode == c)?.SectorDesc),
+        });
+    }
+
+    /// <summary>The same mix check for the whole-order create, where every line arrives at once — this
+    /// is the shape legacy actually validates, its grid at save time.</summary>
+    private static async Task<IResult?> SectorConflictAsync(
+        OrderCreateWithItems body, IAbisRepository repo, CancellationToken ct)
+    {
+        var domain = await repo.GetSectorsAsync(ct);
+        for (var i = 0; i < body.Items.Count; i++)
+            if (body.Items[i].Sector is { } code && domain.Count > 0 && domain.All(s => s.SectorCode != code))
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    [$"items[{i}].sector"] = [$"Unknown sector {code}. See /api/lookups/sectors."],
+                });
+
+        var all = body.Items.Select(i => i.Sector).ToList();
+        // Confirmation is per-order here, so any line carrying it answers for the order — the operator
+        // saw one Yes/No box, not one per line.
+        if (!SectorRules.IsMixed(all) || body.Items.Any(i => i.Confirm)) return null;
+
+        return Results.Conflict(new
+        {
+            code = "mixed-sectors",
+            sectors = all.Where(s => s is not null).Select(s => s!.Value).Distinct().OrderBy(s => s).ToArray(),
+            message = SectorRules.MixedSectorMessage(all, c => domain.FirstOrDefault(s => s.SectorCode == c)?.SectorDesc),
+        });
     }
 
     private static void StampTrimOverrideUser(ITrimNormalizable body, HttpContext ctx)
@@ -4941,6 +5020,13 @@ public static class ApiEndpoints
         AddEdgeTrimErrors(e, body.TrimmingRequired, body.IncomingCoilWidth, body.TrimmedCoilWidth,
             body.TrimTypeCode, body.TrimmedWidthOverridden, body.TrimmedWidthOverrideUser,
             tolerance ?? EdgeTrim.LegacyFallback);
+
+        // Sector is required on every order line (legacy w_order_entry.srw:483-489 — a StopSign box,
+        // "Sector must be selected", and the save is refused). Verified against live data before
+        // porting the block: sector became mandatory in 2017 and has been populated on every order
+        // line since — 0 nulls in ~15,000 items over nine years. See Data/SectorRules.
+        if (SectorRules.MissingSectorError(body.Sector) is { } sectorError)
+            e["sector"] = [sectorError];
         return e.Count == 0 ? null : e;
     }
 

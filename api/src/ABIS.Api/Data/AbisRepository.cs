@@ -10542,6 +10542,31 @@ public sealed class AbisRepository : IAbisRepository
         return rows.AsList();
     }
 
+    public async Task<IReadOnlyList<Sector>> GetSectorsAsync(CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<Sector>(new CommandDefinition(
+            "SELECT sector_code AS SectorCode, sector_desc AS SectorDesc FROM sector ORDER BY sector_code",
+            cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    /// <summary>Every line's sector on one order, for the mix check. <paramref name="excludeOrderItemNum"/>
+    /// drops the line currently being replaced so a PUT is judged on the sector it is about to have, not
+    /// the one it is losing.</summary>
+    public async Task<IReadOnlyList<int?>> GetOrderItemSectorsAsync(long orderAbcNum, long? excludeOrderItemNum, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var rows = await conn.QueryAsync<int?>(new CommandDefinition(
+            """
+            SELECT sector
+              FROM order_item
+             WHERE order_abc_num = :orderAbcNum
+               AND (:excludeItem IS NULL OR order_item_num <> :excludeItem)
+            """, new { orderAbcNum, excludeItem = excludeOrderItemNum }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
     /// <summary>Next id for an insert, run inside the caller's transaction. The
     /// dialect-specific SQL (MAX+1 on SQLite, a sequence NEXTVAL on Oracle) comes
     /// from the connection factory. Table/column are internal constants.</summary>

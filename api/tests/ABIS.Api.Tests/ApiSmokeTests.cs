@@ -177,25 +177,25 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
     {
         static object Item(double? inc, double? trm) => new
         {
-            enduserPartNum = "PN-TRIM", sheetType = "RECTANGLE",
+            enduserPartNum = "PN-TRIM", sheetType = "RECTANGLE", sector = 1,
             trimmingRequired = "Y", incomingCoilWidth = inc, trimmedCoilWidth = trm, trimTypeCode = 1,
         };
-        // Under tolerance (0.1" < 1.5"), over tolerance (13" > 12"), and incoming < trimmed -> 400.
+        // Under tolerance (0.1" < the live 0.75" lower limit), over tolerance (13" > 12"), and incoming < trimmed -> 400.
         Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/orders/9001/items", Item(48.0, 47.9))).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/orders/9001/items", Item(60.0, 47.0))).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/orders/9001/items", Item(40.0, 45.0))).StatusCode);
         // Trimming required but widths missing -> 400.
         Assert.Equal(HttpStatusCode.BadRequest,
-            (await _client.PostAsJsonAsync("/api/orders/9001/items", new { enduserPartNum = "PN-TRIM", sheetType = "RECTANGLE", trimmingRequired = "Y" })).StatusCode);
+            (await _client.PostAsJsonAsync("/api/orders/9001/items", new { enduserPartNum = "PN-TRIM", sheetType = "RECTANGLE", sector = 1, trimmingRequired = "Y" })).StatusCode);
         // Valid trim (2.0" within tolerance) -> 201; trimming not required -> widths irrelevant -> 201.
         Assert.Equal(HttpStatusCode.Created, (await _client.PostAsJsonAsync("/api/orders/9001/items", Item(48.0, 46.0))).StatusCode);
         Assert.Equal(HttpStatusCode.Created,
-            (await _client.PostAsJsonAsync("/api/orders/9001/items", new { enduserPartNum = "PN-NOTRIM", sheetType = "RECTANGLE", trimmingRequired = "N" })).StatusCode);
+            (await _client.PostAsJsonAsync("/api/orders/9001/items", new { enduserPartNum = "PN-NOTRIM", sheetType = "RECTANGLE", sector = 1, trimmingRequired = "N" })).StatusCode);
         // Out-of-tolerance is OVERRIDABLE: override flag without a user -> 400; with a user -> 201.
         Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/orders/9001/items",
-            new { enduserPartNum = "PN-TRIM", sheetType = "RECTANGLE", trimmingRequired = "Y", incomingCoilWidth = 60.0, trimmedCoilWidth = 47.0, trimTypeCode = 1, trimmedWidthOverridden = "Y" })).StatusCode);
+            new { enduserPartNum = "PN-TRIM", sheetType = "RECTANGLE", sector = 1, trimmingRequired = "Y", incomingCoilWidth = 60.0, trimmedCoilWidth = 47.0, trimTypeCode = 1, trimmedWidthOverridden = "Y" })).StatusCode);
         Assert.Equal(HttpStatusCode.Created, (await _client.PostAsJsonAsync("/api/orders/9001/items",
-            new { enduserPartNum = "PN-TRIM", sheetType = "RECTANGLE", trimmingRequired = "Y", incomingCoilWidth = 60.0, trimmedCoilWidth = 47.0, trimTypeCode = 1, trimmedWidthOverridden = "Y", trimmedWidthOverrideUser = "qa" })).StatusCode);
+            new { enduserPartNum = "PN-TRIM", sheetType = "RECTANGLE", sector = 1, trimmingRequired = "Y", incomingCoilWidth = 60.0, trimmedCoilWidth = 47.0, trimTypeCode = 1, trimmedWidthOverridden = "Y", trimmedWidthOverrideUser = "qa" })).StatusCode);
     }
 
     [Fact]
@@ -841,7 +841,7 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
             customerId = 4001, enduserPartNum = "PN-PART-TRIM", sheetType = "RECTANGLE",
             trimmingRequired = "Y", incomingCoilWidth = inc, trimmedCoilWidth = trm, trimTypeCode = 1,
         };
-        // Under tolerance (0.1" < 1.5"), over tolerance (13" > 12"), and incoming < trimmed -> 400.
+        // Under tolerance (0.1" < the live 0.75" lower limit), over tolerance (13" > 12"), and incoming < trimmed -> 400.
         Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/parts", Part(48.0, 47.9))).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/parts", Part(60.0, 47.0))).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/parts", Part(40.0, 45.0))).StatusCode);
@@ -1556,7 +1556,7 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
         var orderResp = await _client.PostAsJsonAsync("/api/orders/with-items", new
         {
             order = new { origCustomerId = 4001, origCustomerPo = "PO-OVR" },
-            items = new[] { new { enduserPartNum = "PN-SEED", sheetType = "FLAT" } },
+            items = new[] { new { enduserPartNum = "PN-SEED", sheetType = "FLAT", sector = 1 } },
         });
         Assert.Equal(HttpStatusCode.Created, orderResp.StatusCode);
         var orderId = (await orderResp.Content.ReadFromJsonAsync<JsonElement>())
@@ -1569,7 +1569,7 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
         {
             Content = JsonContent.Create(new
             {
-                enduserPartNum = "PN-OVR", sheetType = "RECTANGLE",
+                enduserPartNum = "PN-OVR", sheetType = "RECTANGLE", sector = 1,
                 trimmingRequired = "Y", incomingCoilWidth = 60.0, trimmedCoilWidth = 47.0, trimTypeCode = 1,
                 trimmedWidthOverridden = "Y", trimmedWidthOverrideUser = "SPOOFED",
             }),
@@ -1585,7 +1585,7 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
         {
             Content = JsonContent.Create(new
             {
-                enduserPartNum = "PN-OVR2", sheetType = "RECTANGLE",
+                enduserPartNum = "PN-OVR2", sheetType = "RECTANGLE", sector = 1,
                 trimmingRequired = "Y", incomingCoilWidth = 60.0, trimmedCoilWidth = 47.0, trimTypeCode = 1,
                 trimmedWidthOverridden = "Y",
             }),
@@ -1930,8 +1930,8 @@ public sealed class ApiSmokeTests : IClassFixture<ApiSmokeTests.ApiFactory>
             order = new { origCustomerId = 4001, origCustomerPo = "PO-HTTP-COMBO" },
             items = new[]
             {
-                new { enduserPartNum = "PN-X", alloy2 = "3003", sheetType = "FLAT" },
-                new { enduserPartNum = "PN-Y", alloy2 = "5052", sheetType = "FLAT" }
+                new { enduserPartNum = "PN-X", alloy2 = "3003", sheetType = "FLAT", sector = 1 },
+                new { enduserPartNum = "PN-Y", alloy2 = "5052", sheetType = "FLAT", sector = 1 }
             }
         });
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);

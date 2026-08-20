@@ -1311,6 +1311,15 @@ public sealed class CustomerType
     public string? CustomerTypeDescription { get; set; }
 }
 
+/// <summary>A market sector an order line is classified into (table <c>SECTOR</c>) — the domain behind
+/// <c>order_item.sector</c> and the legacy <c>d_dddw_sector</c> dropdown. Two rows live on the plant
+/// database: 1 Automotive, 2 Commercial.</summary>
+public sealed class Sector
+{
+    public int SectorCode { get; set; }
+    public string? SectorDesc { get; set; }
+}
+
 /// <summary>One outbound EDI transaction sent to a trading partner (table
 /// <c>outbound_edi_transaction</c>) — the X12 send ledger. The binary
 /// <c>edi_file_raw</c> (LONG RAW) payload is not exposed via this read model.</summary>

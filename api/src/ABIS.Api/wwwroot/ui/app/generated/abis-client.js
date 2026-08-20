@@ -8654,6 +8654,57 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * The market sectors an order line can be classified into (table SECTOR) — the domain behind order_item.sector and legacy's d_dddw_sector dropdown.
+     * @return OK
+     */
+    getSectors() {
+        let url_ = this.baseUrl + "/api/lookups/sectors";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetSectors(_response);
+        });
+    }
+    processGetSectors(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(Sector.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * List customer classifications (referenced by customers).
      * @return OK
      */
@@ -10298,7 +10349,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Replace an order line item (by order + line number). Supports If-Match.
+     * Replace an order line item (by order + line number). Supports If-Match. Sector is required; 409 with code 'mixed-sectors' when it differs from the order's other lines — re-submit with confirm=true.
      * @return OK
      */
     updateOrderItem(orderAbcNum, orderItemNum, body) {
@@ -10356,6 +10407,11 @@ export class AbisClient {
                 return throwException("Not Found", status, _responseText, _headers);
             });
         }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
         else if (status === 412) {
             return response.text().then((_responseText) => {
                 return throwException("Precondition Failed", status, _responseText, _headers);
@@ -10369,7 +10425,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Add a line item to an order (line number assigned per order).
+     * Add a line item to an order (line number assigned per order). Sector is required; 409 with code 'mixed-sectors' when it differs from the order's other lines — re-submit with confirm=true (legacy "Unusual combination of sectors detected" Yes/No).
      * @return Created
      */
     createOrderItem(orderAbcNum, body) {
@@ -10417,6 +10473,11 @@ export class AbisClient {
         else if (status === 401) {
             return response.text().then((_responseText) => {
                 return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -10911,7 +10972,7 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
-     * Create an order header and its line items in one transaction.
+     * Create an order header and its line items in one transaction. Every line needs a sector; 409 with code 'mixed-sectors' when the lines disagree — re-submit with confirm=true on any line.
      * @return Created
      */
     createOrderWithItems(body) {
@@ -10956,6 +11017,11 @@ export class AbisClient {
         else if (status === 401) {
             return response.text().then((_responseText) => {
                 return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
             });
         }
         else if (status !== 200 && status !== 204) {
@@ -28228,6 +28294,7 @@ export class OrderItemWrite {
             this.finishedGoodsMaterialNum = _data["finishedGoodsMaterialNum"];
             this.custProdLineId = _data["custProdLineId"];
             this.billtoAlbl = _data["billtoAlbl"];
+            this.confirm = _data["confirm"];
         }
     }
     static fromJS(data) {
@@ -28303,6 +28370,7 @@ export class OrderItemWrite {
         data["finishedGoodsMaterialNum"] = this.finishedGoodsMaterialNum;
         data["custProdLineId"] = this.custProdLineId;
         data["billtoAlbl"] = this.billtoAlbl;
+        data["confirm"] = this.confirm;
         return data;
     }
 }
@@ -31284,6 +31352,34 @@ export class ScrapType {
         data["scrapTypeId"] = this.scrapTypeId;
         data["scrapCode"] = this.scrapCode;
         data["scrapDefect"] = this.scrapDefect;
+        return data;
+    }
+}
+export class Sector {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.sectorCode = _data["sectorCode"];
+            this.sectorDesc = _data["sectorDesc"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new Sector();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["sectorCode"] = this.sectorCode;
+        data["sectorDesc"] = this.sectorDesc;
         return data;
     }
 }

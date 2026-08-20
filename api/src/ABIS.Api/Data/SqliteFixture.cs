@@ -124,6 +124,7 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS transportation_method;
             DROP TABLE IF EXISTS equipment_type;
             DROP TABLE IF EXISTS customer_type;
+            DROP TABLE IF EXISTS sector;
             DROP TABLE IF EXISTS outbound_edi_transaction;
             DROP TABLE IF EXISTS abis_edi_payload;
             DROP TABLE IF EXISTS abis_edi_870_mark;
@@ -754,6 +755,11 @@ public static class SqliteFixture
 
             CREATE TABLE customer_type (
                 customer_type TEXT PRIMARY KEY, customer_type_description TEXT);
+
+            -- The sector domain behind order_item.sector (legacy d_dddw_sector). Live has exactly
+            -- these two rows; sector_desc is NOT NULL there.
+            CREATE TABLE sector (
+                sector_code INTEGER PRIMARY KEY, sector_desc TEXT NOT NULL);
 
             CREATE TABLE outbound_edi_transaction (
                 edi_file_id INTEGER PRIMARY KEY, duns_from TEXT NOT NULL, duns_to TEXT NOT NULL,
@@ -2051,6 +2057,17 @@ public static class SqliteFixture
             {
                 new { CustomerType = "OEM", CustomerTypeDescription = "Original equipment manufacturer" },
                 new { CustomerType = "DIST", CustomerTypeDescription = "Distributor" }
+            });
+
+        // The real domain, verbatim off .230 — only 1 and 2 exist, so a test asserting that 3 is
+        // rejected is asserting the plant's actual domain, not an invented one.
+        conn.Execute("""
+            INSERT INTO sector (sector_code, sector_desc) VALUES (:SectorCode, :SectorDesc)
+            """,
+            new[]
+            {
+                new { SectorCode = 1, SectorDesc = "Automotive" },
+                new { SectorCode = 2, SectorDesc = "Commercial" }
             });
 
         conn.Execute("""

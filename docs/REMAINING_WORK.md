@@ -333,8 +333,17 @@
 - [x] **H** Assign customer coils to an order — done (#253): `GET/POST /orders/{id}/coils` + `DELETE /orders/{id}/coils/{coil}` + `GET /orders/{id}/available-coils` (legacy `ORDER_COIL` / `w_order_entry_coil_list`). Re-adding to the same order is blocked; a coil already on another order needs `confirm=true` (the dup-org warning, `otherOrderAbcNum`). Order-entry detail gained an assigned-coils panel + available-coil picker.
 - [~] **H** Part revisions (version + re-point open items) — still TODO; **routing sequences per part — done (#258)**: `GET/POST /parts/{id}/routings` + `DELETE /parts/{id}/routings/{seq}/{line}/{die}/{shape}` over legacy `ROUTING` (line/die/shape + SPM & efficiency standards + edge-trim/stacker; all-column PK → edit = delete + re-add). Routings travel with a part copy and are cleared on part delete. Routing panel on the Parts page.
 - [~] **M** **Part copy/delete + obsolete-in-use guard — done (#256)**: `POST /parts/{id}/copy` (part + blank geometry, INSERT…SELECT) + `DELETE /parts/{id}` refused with 409 when referenced by any order line (order_item.part_num_id), with Duplicate/Delete buttons on the Parts page. **Order copy/duplicate — done (#255)**: `POST /orders/{id}/copy` clones header + items + geometry. **Order-entry part picker — done (#265)**: the New-order line's Part # field autocompletes from the customer's parts (datalist) and, on selection, prefills alloy/sheet/gauge/pieces + tags the line with its part_num_id. Still TODO here: end-user change cascade (largely covered by order-edit's enduserId)
-- [~] **H/M** Sector consistency validation; edge-trim tolerance gate + override + `f_add_system_log_tran` audit.
-  **Trim gate FIXED and the audit BUILT; sector consistency still open.**
+- [x] **H/M** Sector consistency validation; edge-trim tolerance gate + override + `f_add_system_log_tran` audit.
+  **Both halves now DONE.**
+  <br>**Sector (#—, 2026-08-20).** Legacy states the whole rule in one comment: *"Column sector must be
+  populated, and sector for all items should be the same."* A missing sector is a hard error (400); a mix
+  is a **question**, not an error — 409 `mixed-sectors` naming the sectors, clearing on `confirm: true`,
+  because legacy's box is Yes/No defaulting to No. Measured on live data before porting the block, and it
+  reconciles exactly (unlike the end-coil balance gate): sector became mandatory in **2017** and has been
+  populated on **every** line since — 0 nulls in ~15,000 items over nine years — and a mix occurs on only
+  **15 of 48,314** orders. Added `GET /lookups/sectors` (the domain had no endpoint) and an order-entry
+  picker; a blank sector is deliberately NOT counted as a distinct value, so editing a pre-2017 order whose
+  other lines predate the rule does not raise a spurious mix warning.
   <br>**The gate was already here and was wrong.** `AddEdgeTrimErrors` hardcoded the band as
   `1.5"–12"` — the value legacy falls back to when it *cannot read* `edge_trim_tolearance`. The live
   band on `.230` is **0.75"–12.00"**, so the shipped code demanded an override on every trim between

@@ -93,7 +93,7 @@ test('createOrderWithItems writes via typed DTOs and returns a typed OrderDetail
       orderType: 1, term: 'NET30', salesOrder: 'SO-E2E', custOrderNote: 'rush',
     }),
     items: [new OrderItemWrite({
-      enduserPartNum: 'PN-E2E', alloy2: '3003', sheetType: 'FLAT', gauge: 0.05,
+      enduserPartNum: 'PN-E2E', alloy2: '3003', sheetType: 'FLAT', gauge: 0.05, sector: 1,
       quantity: 1000, quantityPlus: 50, quantityMinus: 25, itemStatus: 1, maxSkidWt: 4000,
       unitPrice: 1.2345, itemNote: 'line note', packagingSpec1: 'wrap', partNumId: 6001,
       // trimming_required='Y' now enforces the edge-trim tolerance, so supply valid trim data

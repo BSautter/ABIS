@@ -18,6 +18,24 @@ let currentDetail = null; // the loaded order detail (header + customer + items)
 const custParts = new Map(); // the new-order customer's parts, keyed by part # (the picker source)
 // Load the parts belonging to the customer typed into the New-order form; populate the shared
 // datalist so a line's Part # field autocompletes and prefills the spec on selection.
+// The sector domain (table SECTOR). Legacy order entry picks it from a dropdown and refuses to save
+// a line without one — sector has been mandatory since 2017 and is filled in on every order line
+// written since, so the picker must never be a free-text box.
+let sectors = [];
+function sectorOptions(selected) {
+    const sel = selected == null ? '' : String(selected);
+    return `<option value="">— pick —</option>` + sectors.map((x) => `<option value="${esc(x.sectorCode)}"${String(x.sectorCode) === sel ? ' selected' : ''}>${esc(x.sectorDesc ?? x.sectorCode)}</option>`).join('');
+}
+/// A 409 from the sector gate: a mix of sectors on one order. Legacy asks Yes/No and defaults to No,
+/// so this asks too, and only retries when the operator says yes.
+async function acceptedMixedSectors(r) {
+    const b = await r.json().catch(() => null);
+    if (b?.code !== 'mixed-sectors')
+        return false;
+    return window.confirm(`${b.message ?? 'There is a mix of sectors in this order.'}
+
+Continue?`);
+}
 async function loadCustomerParts() {
     custParts.clear();
     const list = $('#partList');
@@ -275,6 +293,7 @@ function renderEditForm() {
       <td><input class="li-part" value="${esc(it.enduserPartNum)}" style="width:110px" /></td>
       <td><input class="li-alloy" value="${esc(it.alloy2)}" style="width:70px" /></td>
       <td><input class="li-sheet" value="${esc(it.sheetType)}" style="width:80px" /></td>
+      <td><select class="li-sector" style="width:120px">${sectorOptions(it.sector)}</select></td>
       <td><input class="li-gauge" type="number" step="0.001" value="${esc(it.gauge)}" style="width:80px" /></td>
       <td><input class="li-qty" type="number" value="${esc(it.quantity)}" style="width:75px" /></td>
       <td><button class="btn sm" data-save-line="${esc(it.orderItemNum)}" type="button">Save</button></td>
@@ -339,15 +358,20 @@ async function saveLine(itemNum) {
         enduserPartNum: g('.li-part') || null,
         alloy2: g('.li-alloy') || null,
         sheetType: g('.li-sheet') || null,
+        sector: Number(row.querySelector('.li-sector').value) || null,
         gauge: g('.li-gauge') ? Number(g('.li-gauge')) : null,
         quantity: g('.li-qty') ? Number(g('.li-qty')) : null,
     };
+    const put = (confirm) => authFetch(`/api/orders/${o.orderAbcNum}/items/${itemNum}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, confirm }),
+    });
     try {
-        const r = await authFetch(`/api/orders/${o.orderAbcNum}/items/${itemNum}`, {
-            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-        });
+        let r = await put(false);
+        if (r.status === 409 && await acceptedMixedSectors(r))
+            r = await put(true);
         if (!r.ok) {
-            setErr(`Line ${itemNum} save failed (${r.status}).`);
+            const b = await r.json().catch(() => null);
+            setErr(b?.message ?? `Line ${itemNum} save failed (${r.status}).`);
             return;
         }
         await loadOrder(o.orderAbcNum);
@@ -364,6 +388,7 @@ function lineRow() {
     <div class="fld"><label>Part #</label><input class="ePart" list="partList" style="width:130px" placeholder="pick or type" /></div>
     <div class="fld"><label>Alloy</label><select class="eAlloy">${alloys.map((a) => `<option>${esc(a)}</option>`).join('')}</select></div>
     <div class="fld"><label>Sheet</label><input class="eSheet" value="FLAT" style="width:80px" /></div>
+    <div class="fld"><label>Sector</label><select class="eSector" style="width:120px">${sectorOptions(null)}</select></div>
     <div class="fld"><label>Gauge</label><input class="eGauge" type="number" step="0.001" style="width:80px" /></div>
     <div class="fld"><label>Pieces</label><input class="ePieces" type="number" style="width:75px" /></div>
     <div class="fld"><label>Qty</label><input class="eQty" type="number" style="width:75px" /></div>
@@ -386,6 +411,7 @@ function lineRow() {
         set('.eSheet', p.sheetType);
         set('.eGauge', p.gauge);
         set('.ePieces', p.piecesSkid);
+        set('.eSector', p.sector);
     });
     return div;
 }
@@ -405,6 +431,7 @@ async function createOrder() {
             enduserPartNum: row.querySelector('.ePart').value.trim() || undefined,
             alloy2: row.querySelector('.eAlloy').value || undefined,
             sheetType: row.querySelector('.eSheet').value.trim() || undefined,
+            sector: Number(row.querySelector('.eSector').value) || undefined,
             gauge: Number(row.querySelector('.eGauge').value) || undefined,
             piecesSkid: Number(row.querySelector('.ePieces').value) || undefined,
             quantity: Number(row.querySelector('.eQty').value) || undefined,
@@ -417,8 +444,25 @@ async function createOrder() {
         setBusy(false);
         return;
     }
+    // authFetch rather than the typed client so the mixed-sector 409 can be read and re-offered;
+    // the request objects still build (and serialize) the body.
+    const post = (confirm) => {
+        items.forEach((i) => { i.confirm = confirm; });
+        return authFetch('/api/orders/with-items', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(new OrderCreateWithItems({ order, items })),
+        });
+    };
     try {
-        const created = await client().createOrderWithItems(new OrderCreateWithItems({ order, items }));
+        let r = await post(false);
+        if (r.status === 409 && await acceptedMixedSectors(r))
+            r = await post(true);
+        if (!r.ok) {
+            const b = await r.json().catch(() => null);
+            setErr(b?.message ?? `Create failed (${r.status}).`);
+            return;
+        }
+        const created = await r.json();
         $('#newResult').textContent = `✓ Created order ${created.order?.orderAbcNum} with ${created.items?.length ?? 0} line(s).`;
         await search();
         if (created.order?.orderAbcNum)
@@ -439,6 +483,12 @@ async function createOrder() {
     }
     catch {
         alloys = [];
+    }
+    try {
+        sectors = await (await authFetch('/api/lookups/sectors')).json();
+    }
+    catch {
+        sectors = [];
     }
     $('#lines').appendChild(lineRow());
     $('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); void search(); });

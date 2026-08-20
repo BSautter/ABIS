@@ -22,6 +22,27 @@ const custParts = new Map<string, any>();   // the new-order customer's parts, k
 
 // Load the parts belonging to the customer typed into the New-order form; populate the shared
 // datalist so a line's Part # field autocompletes and prefills the spec on selection.
+// The sector domain (table SECTOR). Legacy order entry picks it from a dropdown and refuses to save
+// a line without one — sector has been mandatory since 2017 and is filled in on every order line
+// written since, so the picker must never be a free-text box.
+let sectors: { sectorCode: number; sectorDesc?: string }[] = [];
+
+function sectorOptions(selected: unknown): string {
+  const sel = selected == null ? '' : String(selected);
+  return `<option value="">— pick —</option>` + sectors.map((x) =>
+    `<option value="${esc(x.sectorCode)}"${String(x.sectorCode) === sel ? ' selected' : ''}>${esc(x.sectorDesc ?? x.sectorCode)}</option>`).join('');
+}
+
+/// A 409 from the sector gate: a mix of sectors on one order. Legacy asks Yes/No and defaults to No,
+/// so this asks too, and only retries when the operator says yes.
+async function acceptedMixedSectors(r: Response): Promise<boolean> {
+  const b = await r.json().catch(() => null) as { code?: string; message?: string } | null;
+  if (b?.code !== 'mixed-sectors') return false;
+  return window.confirm(`${b.message ?? 'There is a mix of sectors in this order.'}
+
+Continue?`);
+}
+
 async function loadCustomerParts(): Promise<void> {
   custParts.clear();
   const list = $('#partList'); if (list) list.innerHTML = '';
@@ -240,6 +261,7 @@ function renderEditForm(): void {
       <td><input class="li-part" value="${esc(it.enduserPartNum)}" style="width:110px" /></td>
       <td><input class="li-alloy" value="${esc(it.alloy2)}" style="width:70px" /></td>
       <td><input class="li-sheet" value="${esc(it.sheetType)}" style="width:80px" /></td>
+      <td><select class="li-sector" style="width:120px">${sectorOptions(it.sector)}</select></td>
       <td><input class="li-gauge" type="number" step="0.001" value="${esc(it.gauge)}" style="width:80px" /></td>
       <td><input class="li-qty" type="number" value="${esc(it.quantity)}" style="width:75px" /></td>
       <td><button class="btn sm" data-save-line="${esc(it.orderItemNum)}" type="button">Save</button></td>
@@ -300,14 +322,21 @@ async function saveLine(itemNum: number): Promise<void> {
     enduserPartNum: g('.li-part') || null,
     alloy2: g('.li-alloy') || null,
     sheetType: g('.li-sheet') || null,
+    sector: Number((row.querySelector('.li-sector') as HTMLSelectElement).value) || null,
     gauge: g('.li-gauge') ? Number(g('.li-gauge')) : null,
     quantity: g('.li-qty') ? Number(g('.li-qty')) : null,
   };
+  const put = (confirm: boolean) => authFetch(`/api/orders/${o.orderAbcNum}/items/${itemNum}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, confirm }),
+  });
   try {
-    const r = await authFetch(`/api/orders/${o.orderAbcNum}/items/${itemNum}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-    });
-    if (!r.ok) { setErr(`Line ${itemNum} save failed (${r.status}).`); return; }
+    let r = await put(false);
+    if (r.status === 409 && await acceptedMixedSectors(r)) r = await put(true);
+    if (!r.ok) {
+      const b = await r.json().catch(() => null) as { message?: string } | null;
+      setErr(b?.message ?? `Line ${itemNum} save failed (${r.status}).`);
+      return;
+    }
     await loadOrder(o.orderAbcNum);
   } catch (e) { setErr(`Line save failed: ${(e as Error).message}`); }
 }
@@ -320,6 +349,7 @@ function lineRow(): HTMLDivElement {
     <div class="fld"><label>Part #</label><input class="ePart" list="partList" style="width:130px" placeholder="pick or type" /></div>
     <div class="fld"><label>Alloy</label><select class="eAlloy">${alloys.map((a) => `<option>${esc(a)}</option>`).join('')}</select></div>
     <div class="fld"><label>Sheet</label><input class="eSheet" value="FLAT" style="width:80px" /></div>
+    <div class="fld"><label>Sector</label><select class="eSector" style="width:120px">${sectorOptions(null)}</select></div>
     <div class="fld"><label>Gauge</label><input class="eGauge" type="number" step="0.001" style="width:80px" /></div>
     <div class="fld"><label>Pieces</label><input class="ePieces" type="number" style="width:75px" /></div>
     <div class="fld"><label>Qty</label><input class="eQty" type="number" style="width:75px" /></div>
@@ -335,6 +365,7 @@ function lineRow(): HTMLDivElement {
     div.dataset.partNumId = String(p.partNumId);
     const set = (sel: string, v: unknown) => { const el = div.querySelector(sel) as HTMLInputElement; if (el && v != null) el.value = String(v); };
     set('.eAlloy', p.alloy); set('.eSheet', p.sheetType); set('.eGauge', p.gauge); set('.ePieces', p.piecesSkid);
+    set('.eSector', p.sector);
   });
   return div;
 }
@@ -354,6 +385,7 @@ async function createOrder(): Promise<void> {
       enduserPartNum: (row.querySelector('.ePart') as HTMLInputElement).value.trim() || undefined,
       alloy2: (row.querySelector('.eAlloy') as HTMLSelectElement).value || undefined,
       sheetType: (row.querySelector('.eSheet') as HTMLInputElement).value.trim() || undefined,
+      sector: Number((row.querySelector('.eSector') as HTMLSelectElement).value) || undefined,
       gauge: Number((row.querySelector('.eGauge') as HTMLInputElement).value) || undefined,
       piecesSkid: Number((row.querySelector('.ePieces') as HTMLInputElement).value) || undefined,
       quantity: Number((row.querySelector('.eQty') as HTMLInputElement).value) || undefined,
@@ -362,8 +394,24 @@ async function createOrder(): Promise<void> {
     });
   });
   if (items.length === 0) { setErr('Add at least one line item.'); setBusy(false); return; }
+  // authFetch rather than the typed client so the mixed-sector 409 can be read and re-offered;
+  // the request objects still build (and serialize) the body.
+  const post = (confirm: boolean) => {
+    items.forEach((i) => { i.confirm = confirm; });
+    return authFetch('/api/orders/with-items', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(new OrderCreateWithItems({ order, items })),
+    });
+  };
   try {
-    const created = await client().createOrderWithItems(new OrderCreateWithItems({ order, items }));
+    let r = await post(false);
+    if (r.status === 409 && await acceptedMixedSectors(r)) r = await post(true);
+    if (!r.ok) {
+      const b = await r.json().catch(() => null) as { message?: string } | null;
+      setErr(b?.message ?? `Create failed (${r.status}).`);
+      return;
+    }
+    const created = await r.json();
     $('#newResult').textContent = `✓ Created order ${created.order?.orderAbcNum} with ${created.items?.length ?? 0} line(s).`;
     await search();
     if (created.order?.orderAbcNum) await loadOrder(created.order.orderAbcNum);
@@ -375,6 +423,7 @@ async function createOrder(): Promise<void> {
   const main = await initShell({ active: 'order-entry' });
   main.innerHTML = scaffold();
   try { alloys = await client().listAlloys(); } catch { alloys = []; }
+  try { sectors = await (await authFetch('/api/lookups/sectors')).json(); } catch { sectors = []; }
   $('#lines').appendChild(lineRow());
   $<HTMLFormElement>('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); void search(); });
   $('#btnAddLine').addEventListener('click', () => $('#lines').appendChild(lineRow()));

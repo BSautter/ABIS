@@ -110,6 +110,7 @@ public sealed class EdgeTrimGateEndpointTests : IClassFixture<EdgeTrimGateEndpoi
     private static object Line(decimal diff, string? overridden = null) => new
     {
         enduserPartNum = "PN-3003-A",   // required by OrderItemWrite validation, before the gate runs
+        sector = 1,                     // likewise — sector is required on every order line
         sheetType = "RECTANGLE",
         trimmingRequired = "Y",
         incomingCoilWidth = 50.00m,
@@ -174,7 +175,7 @@ public sealed class EdgeTrimGateEndpointTests : IClassFixture<EdgeTrimGateEndpoi
         // does not exist.
         var res = await Save(new
         {
-            enduserPartNum = "PN-3003-A",
+            enduserPartNum = "PN-3003-A", sector = 1,
             sheetType = "RECTANGLE", trimmingRequired = "Y",
             incomingCoilWidth = 48.00m, trimmedCoilWidth = 60.00m, trimTypeCode = 2,
             trimmedWidthOverridden = "Y",
@@ -186,7 +187,7 @@ public sealed class EdgeTrimGateEndpointTests : IClassFixture<EdgeTrimGateEndpoi
     [Fact]
     public async Task A_line_that_is_NOT_trimmed_is_not_gated_at_all()
     {
-        var res = await Save(new { enduserPartNum = "PN-3003-A", sheetType = "RECTANGLE", trimmingRequired = "N" });
+        var res = await Save(new { enduserPartNum = "PN-3003-A", sector = 1, sheetType = "RECTANGLE", trimmingRequired = "N" });
         Assert.Equal(System.Net.HttpStatusCode.OK, res.StatusCode);
     }
 
