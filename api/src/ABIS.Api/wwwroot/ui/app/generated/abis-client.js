@@ -13150,6 +13150,57 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Email the follow-up list that a coil arrived with a defect (legacy P_SEND_EMAIL_COIL_DEFECT). The barcode goes through the same leading-S parse as the receiving scan. OFF by default via Notifications:CoilDefect:Enabled, and every send still passes through Email:OverrideRecipient, so this answers 200 with sent=false rather than mailing anyone until both are deliberately configured.
+     * @return OK
+     */
+    sendCoilDefectNotice(body) {
+        let url_ = this.baseUrl + "/api/receiving/scan/defect-notice";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processSendCoilDefectNotice(_response);
+        });
+    }
+    processSendCoilDefectNotice(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                return;
+            });
+        }
+        else if (status === 400) {
+            return response.text().then((_responseText) => {
+                let result400 = null;
+                let resultData400 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result400 = HttpValidationProblemDetails.fromJS(resultData400);
+                return throwException("Bad Request", status, _responseText, _headers, result400);
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Store the mill's QR code against an inbound coil from the handheld (legacy addqrcode). Refuses a scan that is not the mill's payload shape, naming the rule that failed; 404 when no inbound coil carries that number.
      * @return OK
      */
@@ -22497,6 +22548,32 @@ export class CoilBulkStatusWrite {
             for (let item of this.coilAbcNums)
                 data["coilAbcNums"].push(item);
         }
+        return data;
+    }
+}
+export class CoilDefectNoticeRequest {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.coilOrgNum = _data["coilOrgNum"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new CoilDefectNoticeRequest();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["coilOrgNum"] = this.coilOrgNum;
         return data;
     }
 }

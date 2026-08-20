@@ -713,7 +713,21 @@
   writes one and reads the other looks correct on almost every coil and is wrong on the rest. They are
   kept as separate methods, each faithful to the path that owns it. Making the handheld write both
   would be a behaviour change and is the plant's call, not a refactor.
-- [ ] **M** S-header strip+validate; coil-defect email notification
+- [x] **M** S-header strip+validate; coil-defect email notification — **both halves resolved.**
+  <br>**The coil-defect email is BUILT**: `POST /receiving/scan/defect-notice`, the handheld's "email"
+  action. Legacy hands it to `P_SEND_EMAIL_COIL_DEFECT`, a stored procedure that opens `UTL_SMTP`
+  itself and mails **six hard-coded addresses**. Reimplemented over `IEmailSender` instead of calling
+  the proc, so it cannot bypass `Email:OverrideRecipient`, and the recipient list is configuration
+  (`Notifications:CoilDefect`) rather than something needing a DBA and a proc recompile. Body is
+  word-for-word including the `MM/DD/YYYY, HH24:MI` stamp; **a subject was added** — the proc writes
+  no `Subject:` header at all, so every one of these arrived blank-subjected. OFF by default.
+  <br>**The "validate" half is DELIBERATELY NOT BUILT, and that is the finding.** Legacy's rule is
+  strip-a-leading-`S`-if-present, and its rejection branch is *disabled*: the `is NOT valid` line is
+  commented out in **all 23** active CGI copies, and the `else` that remains is a Perl no-op — a
+  `my $coil_org_num` that shadows the outer variable and goes out of scope immediately. It was once
+  live (still uncommented in the `save/` archive copies) and was turned off. Porting it would refuse
+  scans the plant accepts today — the same trap as the edge-trim band and the end-coil gate. If the
+  plant wants non-`S` scans rejected, that is a decision to take deliberately, not a port.
 - *(Done: scan→verify→label handheld page + HTML coil label.)*
 
 ### C5. Quality

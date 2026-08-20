@@ -10147,6 +10147,43 @@
         }
       }
     },
+    "/api/receiving/scan/defect-notice": {
+      "post": {
+        "tags": [
+          "Receiving"
+        ],
+        "summary": "Email the follow-up list that a coil arrived with a defect (legacy P_SEND_EMAIL_COIL_DEFECT). The barcode goes through the same leading-S parse as the receiving scan. OFF by default via Notifications:CoilDefect:Enabled, and every send still passes through Email:OverrideRecipient, so this answers 200 with sent=false rather than mailing anyone until both are deliberately configured.",
+        "operationId": "SendCoilDefectNotice",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoilDefectNoticeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/receiving/scan/qr": {
       "post": {
         "tags": [
@@ -17629,6 +17666,16 @@
               "type": "integer",
               "format": "int64"
             },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CoilDefectNoticeRequest": {
+        "type": "object",
+        "properties": {
+          "coilOrgNum": {
+            "type": "string",
             "nullable": true
           }
         },

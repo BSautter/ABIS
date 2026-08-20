@@ -124,6 +124,12 @@ var reportStallOptions = builder.Configuration.GetSection(Abis.Api.Health.Report
                              .Get<Abis.Api.Health.ReportStallOptions>() ?? new Abis.Api.Health.ReportStallOptions();
 builder.Services.AddSingleton(reportStallOptions);
 
+// Coil-received-with-defect notification (the handheld's "email" action). OFF by default; the
+// recipient list defaults to the six addresses legacy hard-codes inside P_SEND_EMAIL_COIL_DEFECT.
+var coilDefectOptions = builder.Configuration.GetSection(Abis.Api.Email.CoilDefectNoticeOptions.SectionName)
+                            .Get<Abis.Api.Email.CoilDefectNoticeOptions>() ?? new Abis.Api.Email.CoilDefectNoticeOptions();
+builder.Services.AddSingleton(coilDefectOptions);
+
 // Outbound email. In the test phase Email:OverrideRecipient redirects EVERY email (automated / triggered /
 // manual) to one inbox so nothing reaches a real recipient; no SMTP host = log-only. Enforced in SmtpEmailSender.
 builder.Services.Configure<Abis.Api.Email.EmailOptions>(builder.Configuration.GetSection(Abis.Api.Email.EmailOptions.SectionName));

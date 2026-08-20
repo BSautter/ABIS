@@ -1171,6 +1171,44 @@ public static class ApiEndpoints
            .WithSummary("Resolve a barcode scanned on the handheld RF receiving gun (legacy coil_receiving_12.pl): strips the leading 'S' header, maps the fixed 000000 label to coil number 'NO BARCODE', returns any ABC numbers already minted for that customer coil plus the mill's advance notice. Outcome is Mint (none yet), AlreadyMinted (reprint OR mint another — legacy offers both) or Unreadable. Read-only: minting is a separate action.")
            .Produces<InboundCoilScan>();
 
+        // Tell the follow-up list a coil arrived damaged - the handheld's "email" action.
+        //
+        // Legacy hands this to P_SEND_EMAIL_COIL_DEFECT, a stored procedure that opens UTL_SMTP itself and
+        // mails six hard-coded addresses. Reimplemented over IEmailSender rather than by calling the proc,
+        // for two reasons: every email in this app goes through that one seam so the test-recipient
+        // override cannot be bypassed, and the recipient list becomes configuration instead of something
+        // that needs a DBA and a proc recompile to change.
+        //
+        // OFF by default (Notifications:CoilDefect:Enabled). Nothing here should start mailing six people
+        // the first time it is deployed.
+        api.MapPost("/receiving/scan/defect-notice",
+                async (CoilDefectNoticeRequest body, Abis.Api.Email.CoilDefectNoticeOptions opts,
+                       Abis.Api.Email.IEmailSender email, CancellationToken ct) =>
+            {
+                // The same parse as the coil scan: one gun read serves both fields.
+                var scan = HandheldBarcode.Parse(body.CoilOrgNum);
+                var coil = scan.CoilNumber;
+                if (!scan.Valid)
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["coilOrgNum"] = ["A customer coil number is required."],
+                    });
+
+                if (!opts.Enabled)
+                    return Results.Ok(new { sent = false, coilOrgNum = coil, recipients = Array.Empty<string>(),
+                        detail = "Coil-defect notification is disabled (Notifications:CoilDefect:Enabled)." });
+                if (opts.Recipients.Count == 0)
+                    return Results.Ok(new { sent = false, coilOrgNum = coil, recipients = Array.Empty<string>(),
+                        detail = "Coil-defect notification has no recipients configured." });
+
+                var result = await email.SendAsync(
+                    Abis.Api.Email.CoilDefectNotice.Build(coil, opts.Recipients, DateTime.Now), ct);
+                return Results.Ok(new { sent = result.Sent, coilOrgNum = coil,
+                    recipients = result.ActualRecipients, detail = result.Detail });
+            })
+           .WithName("SendCoilDefectNotice").WithTags("Receiving")
+           .WithSummary("Email the follow-up list that a coil arrived with a defect (legacy P_SEND_EMAIL_COIL_DEFECT). The barcode goes through the same leading-S parse as the receiving scan. OFF by default via Notifications:CoilDefect:Enabled, and every send still passes through Email:OverrideRecipient, so this answers 200 with sent=false rather than mailing anyone until both are deliberately configured.")
+           .Produces(StatusCodes.Status200OK).ProducesValidationProblem();
         // Capture the mill's QR code against an inbound coil — legacy's addqrcode.
         //
         // The barcode goes through the SAME parse as the coil scan, so one gun read serves both: the

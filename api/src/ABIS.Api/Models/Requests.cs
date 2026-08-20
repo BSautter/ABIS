@@ -420,6 +420,15 @@ public sealed class OrderItemWrite : ITrimNormalizable
 /// <summary>Create a revision of a part (legacy <c>ue_create_revision</c>): the part and its blank
 /// geometry are copied to a fresh <c>part_num_id</c> marked active, and one routing may be MOVED from
 /// the old part to the new one.</summary>
+/// <summary>Tell the follow-up list that a coil arrived with a defect — the handheld's "email" action
+/// (legacy <c>coil_receiving_12.pl</c> -&gt; <c>P_SEND_EMAIL_COIL_DEFECT</c>).</summary>
+public sealed class CoilDefectNoticeRequest
+{
+    /// <summary>The CUSTOMER coil number, as scanned. A leading barcode "S" header is stripped, the same
+    /// way the receiving scan does it, so one gun read serves both.</summary>
+    public string? CoilOrgNum { get; set; }
+}
+
 /// <summary>One defect line being booked on a coil's recovery scrap worksheet.</summary>
 public sealed class RecoveryWorksheetLine
 {
