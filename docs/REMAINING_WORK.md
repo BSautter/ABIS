@@ -22,6 +22,16 @@
   Commonwealth(1980)/Constellium(2776)/Arconic(2784); **870** Novelis(1153/1459/2950)/Aleris(1980)/Constellium(2776,
   per-coil); **856** Novelis/Constellium/Arconic; **846** Cleveland-Cliffs(3061). Golden byte-tests where a production
   `.edi` existed (856/861/870). Admin UI for the profiles shipped.
+- [~] **Cleveland-Cliffs Outside Processing** — the guides landed 2026-08-20 and the picture changed: Cliffs is not
+  one 846, it is a **23-guide program with a 19-case certification plan** (810/846/856/861/863/867/870, both
+  directions), and it has **never gone live** — customer 3061 has zero orders and zero coils, the cron entries are
+  commented out and marked "TEST ONLY", and every archived output is the empty placeholder. So **no golden exists
+  for any Cliffs document** and the guides are the spec. The 846 is now reconciled against the guide (BIA06 action
+  code, `N1*MF` not `SU`, heat number, no bare qualifiers); everything else is unbuilt. Full map, the six open
+  decisions (starting with: the DUNS we hold for 3061 matches **none** of Cliffs' four works) and the build order:
+  **[EDI_CLIFFS.md](EDI_CLIFFS.md)**. Note this is the first work that would need an **inbound** EDI parser.
+  Its two hard blockers (the works DUNS, and the ISA/GS envelope for every set but the 846) are in
+  **[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)** along with everything else waiting on a human answer.
 - [x] **H** 997 functional-ack matching + aging bell alert (#206/#207) — `Edi997Parser` + `/edi/997/waiting` + `/edi/997/ingest`.
 
 **Deferred out of 0.5 (accepted at close — NOT built; carried on the backlog):**

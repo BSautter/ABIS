@@ -1895,6 +1895,9 @@ public sealed class Edi846SkidItem
     public string? Table67 { get; set; }
     /// <summary>AISI table 70 material status (abis_x12_skid) — the PID*S*MA value.</summary>
     public string? Table70 { get; set; }
+    /// <summary>The heat / lot number (<c>coil.lot_num</c>) — the LIN <c>HN</c> qualifier, guide-required
+    /// and absent from the ported LIN until 2026-08-20.</summary>
+    public string? LotNum { get; set; }
     public decimal? NetWt { get; set; }
 }
 
@@ -1910,6 +1913,9 @@ public sealed class Edi846CoilItem
     public string? ProductionDescCode { get; set; }
     /// <summary>AISI table 70 material status (abis_x12_coil by coil status) — the PID*S*MA value.</summary>
     public string? Table70 { get; set; }
+    /// <summary>The heat / lot number (<c>coil.lot_num</c>) — the LIN <c>HN</c> qualifier, guide-required
+    /// and absent from the ported LIN until 2026-08-20.</summary>
+    public string? LotNum { get; set; }
     public decimal? NetWtBalance { get; set; }
 }
 

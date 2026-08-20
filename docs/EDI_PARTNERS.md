@@ -37,9 +37,17 @@ off-repo (maintainer's Desktop). The 846 / 856 / 863 / 997 goldens there are the
 | Reynolds | f_edi_reynolds_870 (PB) | ⬜ |
 
 ## 846 — Inventory Advice
+
+> **Cleveland-Cliffs is a whole program, not one document.** They run an Outside Processing EDI suite — 23
+> implementation guides and a 19-case certification plan spanning 810 / 846 / 856 / 861 / 863 / 867 / 870, in
+> both directions. And it has **never gone live**: customer 3061 has zero orders and zero coils, the cron
+> entries are commented out and marked "TEST ONLY", and every archived output is the empty placeholder — so
+> **no golden file exists for any Cliffs document**. The full map, the open decisions and the build order are
+> in **[EDI_CLIFFS.md](EDI_CLIFFS.md)**; the rows below cover only the 846.
+
 | Partner | Customer id | Source proc | Status |
 |---|---|---|---|
-| Cleveland-Cliffs CCSC | 3061 | p_846_cleveland_cliff_ccsc | 🔶 #53 |
+| Cleveland-Cliffs CCSC | 3061 | p_846_cleveland_cliff_ccsc | ✅ built, reconciled to the guide 2026-08-20 — see **[EDI_CLIFFS.md](EDI_CLIFFS.md)** |
 | Novelis Kingston | 1153 | P_EDI_846_FOR_NOVELIS_KINGSTON | ⬜ |
 | Novelis Oswego | 1459 | P_EDI_846_FOR_NOVELIS_OSWEGO | ⬜ |
 

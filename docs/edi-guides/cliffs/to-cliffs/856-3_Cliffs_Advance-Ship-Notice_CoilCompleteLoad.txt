@@ -1,0 +1,1175 @@
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Shipping Notice
+856 - 3
+Example 856-3, Inbound from Processor (Processor Sourced Coil) Complete Load
+
+Segment Sequence and Looping used in 856-3.
+Note: All segments required, unless otherwise indicated.
+
+HEADER
+ST
+BSN
+DTM - 011
+
+DETAIL - SHIPMENT
+HL
+MEA - CT
+TD1 (Gross)
+TD1 (Net)
+TD1 (Chargeable Dunnage)
+TD1 (NON-Chargeable Dunnage)
+TD1 (Consolidated)
+TD5
+TD3
+REF - MA
+REF - BM
+REF - MB
+REF - AO (OPTIONAL - based upon customer requirements)
+FOB
+
+      LOOP - N1
+      N1 - MF
+      N1 - OU or WH (Dependent on what processor does with material - process or warehouse)
+      N1 - SF
+      N1 - ST
+
+DETAIL - ORDER
+HL
+LIN - VO
+PRF
+PKG - B5101 (OPTIONAL - based upon customer requirements)
+PKG - B5102 (OPTIONAL - based upon customer requirements)
+PKG - B5103 (OPTIONAL - based upon customer requirements)
+PKG - B5104 (OPTIONAL - based upon customer requirements)
+PKG - B5105 (OPTIONAL - based upon customer requirements)
+REF - PM
+REF - PO
+
+DETAIL - ITEM
+HL
+LIN - SN
+PID - MAC
+PID - MA
+PID - QAS (OPTIONAL - based upon customer requirements)
+MEA - WT / WT (Actual)
+MEA - WT / WT (Theoretical)
+
+Detail Specifications  856 - 3 - IIR3         Printed: 02/26/21 9:49 AM
+                               1       Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Shipping Notice
+856 - 3
+Example 856-3, Inbound from Processor (Processor Sourced Coil) Complete Load
+
+DETAIL - ITEM (cont'd)
+
+MEA - PD / TH
+
+MEA - PD / WD
+
+MEA - PD / LN
+
+MEA - PD / OD (OPTIONAL - based upon customer requirements)
+
+MEA - PD / ID (OPTIONAL - based upon customer requirements)
+
+MEA - CT
+
+REF - SE
+
+REF - LS               (OPTIONAL)
+
+DTM - 206
+
+DTM - 105              (OPTIONAL - based upon customer requirements)
+
+SUMMARY
+CTT
+SE
+
+MAINTENANCE LOG
+
+Change Date Description of Change
+
+9/24/2015              Added another TD1 segment to all ASN mapping for Consolidated weight of all BOLs on vehicle.
+                       If there is chargeable dunnage on one or more of the BOLs the Consolidated weight should contain
+                       the total of all Gross weights.
+
+2/17/2021 Branding changes for Cleveland-Cliffs.
+
+Detail Specifications              856 - 3 - IIR3                            Printed: 02/26/21 9:49 AM
+                                           2                          Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Shipping Notice
+856 - 3
+Example 856-3, Inbound from Processor (Processor Sourced Coil) Complete Load
+
+HEADER
+
+Transaction Set Header
+
+ST*856*0001
+
+        Transaction Set Identifier Code (143)
+
+        ST01           856   Ship Notice / Manifest
+
+        Transaction Set Control Number (329)
+
+        ST02           0001
+
+Beginning Segment for Ship Notice
+
+BSN*00*906751*19960219*1754
+
+        Transaction Set Purpose Code (353)
+
+        BSN01 00             Original                  `01' Cancel, `05' Replace
+
+        Shipment Identification (396)
+
+        BSN02 906751         Mill Shipper or Manifest Number, Same as REF-MA
+
+        Date (373)
+
+        BSN03 19960219       Transaction Create Date (CCYYMMDD format)
+
+        Time (337)
+
+        BSN04 1754           Transaction Create Time (HHMM format)
+
+Date/Time Reference
+
+DTM*011*19960219*1652*ET
+
+        Date/Time Qualifier (374)
+
+        DTM01 011            Shipped
+
+        Date (373)
+
+        DTM02 19960124       Activity Date (CCYYMMDD format)
+
+        Time (337)
+
+        DTM03 1652           Activity Time (HHMM format)
+
+        Time Code (623)
+
+        DTM04 ET             Eastern Time              `CT' if Central Time, `MT' if Mountain Time or
+
+                                                       `PT' if Pacific Time
+
+DETAIL - Shipment
+
+Hierarchical Level
+
+HL*1**S*1
+
+        Hierarchical ID Number (628)
+
+        HL01           1
+
+        Hierarchical Level Code (735)
+
+        HL03           S     Shipment
+
+        Hierarchical Child Code (736)
+
+        HL04           1
+
+Measurements
+
+MEA*CT*NOR*1*SX
+
+        Measurement Reference ID Code (737)
+
+        MEA01 CT             Counts
+
+        Measurement Qualifier (738)
+
+        MEA02 NOR            Number of References
+
+        Measurement Value (739)
+
+        MEA03 1              Count of Steel Producer's shipments on vehicle
+
+        Unit or Basis for Measurement (355)
+
+        MEA04 SX             Shipment
+
+Detail Specifications                  856 - 3 - IIR3                Printed: 02/26/21 9:49 AM
+                                               3              Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Shipping Notice
+856 - 3
+Example 856-3, Inbound from Processor (Processor Sourced Coil) Complete Load
+
+Carrier Details (Quantity & Weight)
+
+TD1*COL52*1****G*25630*LB
+
+Packaging Code (103)
+
+TD101 COL52                Coils
+
+Lading Quantity (80)
+
+TD102 1                    Quantity on Load
+
+Weight Qualifier (187)
+
+TD106 G                    Gross Weight
+
+Weight (81)
+
+TD107 25630                Weight
+
+Unit or Basis for Measurement Code (355)
+
+TD108 LB                   Pounds
+
+Carrier Details (Quantity & Weight)
+
+TD1*COL52*1****N*25310*LB
+
+Packaging Code (103)
+
+TD101 COL52                Coils
+
+Lading Quantity (80)
+
+TD102 1                    Quantity on Load
+
+Weight Qualifier (187)
+
+TD106 N                    Net Weight
+
+Weight (81)
+
+TD107 25310                Weight
+
+Unit or Basis for Measurement Code (355)
+
+TD108 LB                   Pounds
+
+Carrier Details (Quantity & Weight)
+
+TD1*COL52*1****CD*220*LB
+
+Packaging Code (103)
+
+TD101 COL52                Coils
+
+Lading Quantity (80)
+
+TD102 1                    Quantity on Load
+
+Weight Qualifier (187)
+
+TD106 CD                   Chargeable Dunnage
+
+Weight (81)
+
+TD107 220              Weight
+
+Unit or Basis for Measurement Code (355)
+
+TD108 LB                   Pounds
+
+Carrier Details (Quantity & Weight)
+
+TD1*COL52*1****ND*100*LB
+
+Packaging Code (103)
+
+TD101 COL52                Coils
+
+Lading Quantity (80)
+
+TD102 1                    Quantity on Load
+
+Weight Qualifier (187)
+
+TD106 ND                   Non Chargeable Dunnage
+
+Weight (81)
+
+TD107 100              Weight
+
+Unit or Basis for Measurement Code (355)
+
+TD108 LB                   Pounds
+
+Detail Specifications                856 - 3 - IIR3         Printed: 02/26/21 9:49 AM
+                                             4       Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Shipping Notice
+856 - 3
+Example 856-3, Inbound from Processor (Processor Sourced Coil) Complete Load
+
+Carrier Details (Quantity & Weight)
+
+TD1*COL52*1****A*25630*LB
+
+Packaging Code (103)
+
+TD101 COL52                  Coils
+
+Lading Quantity (80)
+
+TD102 1                      Quantity on Load
+
+Weight Qualifier (187)
+
+TD106 A                      Consolidated Weight
+
+Weight (81)
+
+TD107 25630                  Weight
+
+Unit or Basis for Measurement Code (355)
+
+TD108 LB                     Pounds
+
+Carrier Details (Routing Sequence/Transit Time)
+
+TD5*B*2*HTLI*M*HTL, Inc*CL
+
+Routing Sequence Code (133)
+
+TD501 B                      Origin Carrier Any Mode
+
+Identification Code Qualifier (66)
+
+TD502 2                      SCAC Code                 or `91' for Rail
+
+Identification Code (67)
+
+TD503 HTLI                   Carriers SCAC Code
+
+Transportation Method/Type Code (91)
+
+TD504 M                      Motor                     `R' Rail, `B' Barge
+
+Routing (387)
+
+TD505 HTL, Inc.              Carrier's Name or if rail, Rail Route
+
+Shipment/Order Status Code (368)
+
+TD506 CL                     Complete
+
+Carrier Details (Equipment)
+
+TD3*TL**T-2202
+
+Equipment Description Code (40)
+
+TD301 TL                     Trailer                   `RR' Rail Car, `BR' Barge
+
+Equipment Number (207)
+
+TD303 T-2202                 Car or Trailer Identification
+
+Reference Numbers
+   REF*MA*906751
+         Reference Number Qualifier (128)
+         REF01 MA
+         Reference Number (127)
+         REF02 906751 Reference Number - Mill Shipper or Manifest Number
+
+Reference Numbers
+
+REF*BM*164340
+
+Reference Number Qualifier (128)
+
+REF01 BM               Bill of Lading Number (OP Assigned)
+
+Reference Number (127)
+
+REF02 164340
+
+Reference Numbers
+
+REF*MB*50-CB4242
+
+Reference Number Qualifier (128)
+
+REF01 MB               Master Bill of Lading
+
+Reference Number (127)
+
+REF02 50-CB4242
+
+Reference Numbers
+
+REF*AO*10
+
+Reference Number Qualifier (128)
+
+REF01 AO               Appointment Number
+
+Reference Number (127)
+
+REF02 10
+
+Detail Specifications                  856 - 3 - IIR3              Printed: 02/26/21 9:49 AM
+                                               5            Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Shipping Notice
+856 - 3
+Example 856-3, Inbound from Processor (Processor Sourced Coil) Complete Load
+
+F.O.B. Related Instructions
+
+FOB*PP
+
+      Shipment Method of Payment (146)
+
+      FOB01 PP                    Transportation Liability - Prepaid
+
+Name
+
+N1*MF**1*005159199
+
+      Entity Identifier Code (98)
+
+      N101             MF         Steel Producer
+
+      Identification Code Qualifier (66)
+
+      N103             1          DUNs Number
+
+      Identification Code (67)
+
+      N104             005159199  D&B number of Steel Producer
+
+                                  `005159199' Cleveland-Cliffs Steel LLC (Indiana Harbor)
+
+                                  `613460476' Cleveland-Cliffs Kote Inc.
+
+                                  `003913423' Cleveland-Cliffs Burns Harbor LLC
+
+                                  `122373918' Cleveland-Cliffs Cleveland Works LLC
+
+Name
+
+N1*OU**1*001288075
+
+      Entity Identifier Code (98)
+
+      N101             OU         Outside Processor        or `WH' for Warehouse
+
+      Identification Code Qualifier (66)
+
+      N103             1          DUNs Number
+
+      Identification Code (67)
+
+      N104             001288075  D&B number of Processor
+
+Name
+
+N1*SF**1*004029294
+
+      Entity Identifier Code (98)
+
+      N101             SF         Shipped From
+
+      Identification Code Qualifier (66)
+
+      N103             1          DUNs Number
+
+      Identification Code (67)
+
+      N104             004029294  D&B number of Processor
+
+Name
+
+N1*ST**1*005135892
+
+      Entity Identifier Code (98)
+
+      N101             ST         Ship To
+
+      Identification Code Qualifier (66)
+
+      N103             1
+
+      Identification Code (67)
+
+      N104             005135892  D&B Number of next Processor or Customer
+
+DETAIL - Order
+
+Hierarchical Level
+
+HL*2*1*O*1
+
+      Hierarchical ID Number (628)
+
+      HL01             2
+
+      Hierarchical Parent ID Number (734)
+
+      HL02             1
+
+      Hierarchical Level Code (735)
+
+      HL03             O          Order
+
+      Hierarchical Child Code (736)
+
+      HL04             1
+
+Detail Specifications                      856 - 3 - IIR3                    Printed: 02/26/21 9:49 AM
+                                                   6                  Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Shipping Notice
+856 - 3
+Example 856-3, Inbound from Processor (Processor Sourced Coil) Complete Load
+
+Item Detail Identification
+
+LIN**VO*2037674*VN*01
+
+Product/Service ID Qualifier (235)
+
+LIN02 VO                    Vendor's Order Number - Intended Cliffs Ship Order #
+
+Product/Service ID (234)
+
+LIN03 2037674               Cliffs Order Number      Indiana Harbor or Kote example: 2037674
+
+                                                     Burns Harbor example: BH83515005A
+
+                                                     Cleveland example: CS2844
+
+Product/Service ID Qualifier (235)
+
+LIN04 VN                    Vendor's Item Number (from Vendor Order)
+
+Product/Service ID (234)
+
+LIN05 01                    Item Number              Indiana Harbor or Kote will always be `01'
+
+                                                     Burns Harbor will correspond to order
+
+                                                     Cleveland will always be `01'
+
+Purchase Order Reference
+
+PRF*161-75831***19960119
+
+Purchase Order Number
+
+PRF01 161-75831             Purchase Order Number
+
+Purchase Order Date (323)
+
+PRF04 19960119              Purchase Order Date (CCYYMMDD format)
+
+Packaging Loading Marking Reference
+
+PKG*F*67*ST*B5101*123-parts
+
+Item Description Type (349)
+
+PKG01 F                     Free-form
+
+Package Characteristic Code          (753)
+
+PKG02 67                    Tagging, Bar-code instructions
+
+Agency Qualifier Code (559)
+
+PKG03 ST                    American Iron and Steel Institute
+
+Package Description Code (754)
+
+PKG04 B5101                 B5 Tag, Box 10, Line 1
+
+Description                 (352)
+
+PKG05 123-parts
+
+Packaging Loading Marking Reference
+
+PKG*F*67*ST*B5102*123-parts
+
+Item Description Type (349)
+
+PKG01 F                     Free-form
+
+Package Characteristic Code          (753)
+
+PKG02 67                    Tagging, Bar-code instructions
+
+Agency Qualifier Code (559)
+
+PKG03 ST                    American Iron and Steel Institute
+
+Package Description Code (754)
+
+PKG04 B5102                 B5 Tag, Box 10, Line 2
+
+Description                 (352)
+
+PKG05 123-parts
+
+Packaging Loading Marking Reference
+
+PKG*F*67*ST*B5103*123-parts
+
+Item Description Type (349)
+
+PKG01 F                     Free-form
+
+Package Characteristic Code          (753)
+
+PKG02 67                    Tagging, Bar-code instructions
+
+Agency Qualifier Code (559)
+
+PKG03 ST                    American Iron and Steel Institute
+
+Package Description Code (754)
+
+PKG04 B5103                 B5 Tag, Box 10, Line 3
+
+Description                 (352)
+
+PKG05 123-parts
+
+Detail Specifications                856 - 3 - IIR3                   Printed: 02/26/21 9:49 AM
+                                             7                 Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Shipping Notice
+856 - 3
+Example 856-3, Inbound from Processor (Processor Sourced Coil) Complete Load
+
+Packaging Loading Marking Reference
+
+PKG*F*67*ST*B5104*123-parts
+
+Item Description Type (349)
+
+PKG01 F                   Free-form
+
+Package Characteristic Code          (753)
+
+PKG02 67                  Tagging, Bar-code instructions
+
+Agency Qualifier Code (559)
+
+PKG03 ST                  American Iron and Steel Institute
+
+Package Description Code (754)
+
+PKG04 B5104               B5 Tag, Box 10, Line 4
+
+Description               (352)
+
+PKG05 123-parts
+
+Packaging Loading Marking Reference
+
+PKG*F*67*ST*B5105*123-parts
+
+Item Description Type (349)
+
+PKG01 F                   Free-form
+
+Package Characteristic Code          (753)
+
+PKG02 67                  Tagging, Bar-code instructions
+
+Agency Qualifier Code (559)
+
+PKG03 ST                  American Iron and Steel Institute
+
+Package Description Code (754)
+
+PKG04 B5105               B5 Tag, Box 10, Line 5
+
+Description               (352)
+
+PKG05 123-parts
+
+Reference Numbers
+
+REF*PM*Q964400457
+
+Reference Number Qualifier (128)
+
+REF01 PM                  Customer Part Number
+
+Reference Number (127)
+
+REF02 Q964400457
+
+Reference Numbers
+
+REF*PO*161-75831
+
+Reference Number Qualifier (128)
+
+REF01 PO                  Customer Purchase Order Number
+
+Reference Number (127)
+
+REF02 161-75831
+
+DETAIL - Item
+
+Hierarchical Level
+
+HL*3*2*I
+
+Hierarchical ID Number (628)
+
+HL01                   3
+
+Hierarchical Parent ID Number (734)
+
+HL02                   2
+
+Hierarchical Level Code (735)
+
+HL03                   I  Item
+
+Detail Specifications                856 - 3 - IIR3                 Printed: 02/26/21 9:49 AM
+                                             8               Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Shipping Notice
+856 - 3
+Example 856-3, Inbound from Processor (Processor Sourced Coil) Complete Load
+
+Item Detail Identification
+
+LIN**VO*2037674*VN*01*SN*855-43996*HN*624309
+
+Product/Service ID Qualifier (235)
+
+LIN02 VO                     Vendor's Order Number - Intended Cliffs Ship Order #
+
+Product/Service ID (234)
+
+LIN03 2037674                Cliffs Order Number      Indiana Harbor or Kote example: 2037674
+
+                                                      Burns Harbor example: BH83515005A
+
+                                                      Cleveland example: CS2844
+
+Product/Service ID Qualifier (235)
+
+LIN04 VN                     Vendor's Item Number (from Vendor Order)
+
+Product/Service ID (234)
+
+LIN05 01                     Item Number              Indiana Harbor or Kote will always be `01'
+
+                                                      Burns Harbor will correspond to order
+
+                                                      Cleveland will always be `01'
+
+Product/Service ID Qualifier (235)
+
+LIN06 SN                     Serial Number - Steel Producer's Material Identification
+
+Product/Service ID (234)
+
+LIN07 855-43996              Cliffs Coil Number       Indiana Harbor example: 855-43996
+
+                                                      Burns Harbor example: 143100P21
+
+                                                      Cleveland example: 5662973
+
+Product/Service ID Qualifier (235)
+
+LIN08 HN                     Heat Number
+
+Product/Service ID (234)
+
+LIN09 624309                 Cliffs Heat Number       Indiana Harbor or Kote example: 624309
+
+                                                      Burns Harbor example: 832Y34320
+
+                                                      Cleveland example: 4142806
+
+Product/Item Identification
+
+PID*S*MAC*ST*01***67
+
+Item Description Type (349)
+
+PID01 S
+
+Product/Process Characteristic Code (750)
+
+PID02 MAC                    Material Classification
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 01                     Prime
+
+Source Subqualifier (822)
+
+PID07 67                     Steel Table #67 (AISI material classification codes)
+
+Product/Item Identification
+
+PID*S*MA*ST*1***70
+
+Item Description Type (349)
+
+PID01 S
+
+Product/Process Characteristic Code (750)
+
+PID02 MA                     Material Status - Outside Processor
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 1                      Ready To Ship
+
+Source Subqualifier (822)
+
+PID07 70                     Steel Table #70 (AISI material status-O.P. codes)
+
+Detail Specifications               856 - 3 - IIR3           Printed: 02/26/21 9:49 AM
+                                            9         Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Shipping Notice
+856 - 3
+Example 856-3, Inbound from Processor (Processor Sourced Coil) Complete Load
+
+Product/Item Identification
+
+PID*S*QAS*ST*4***68
+
+Item Description Type (349)
+
+PID01 S
+
+Product/Process Characteristic Code (750)
+
+PID02 QAS                    Material Classification QA
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code Tables
+
+Production Description Code (751)
+
+PID04 4                      Do Not Process Without QA Release
+
+Source Subqualifier (822)
+
+PID07 68                     Steel Table #68 (AISI material status-Quality Assurance codes)
+
+Measurements
+
+MEA*WT*WT*25310*01
+
+Measurement Reference ID Code (737)
+
+MEA01 WT                     Weights
+
+Measurement Qualifier (738)
+
+MEA02 WT                     Weight
+
+Measurement Value (739)
+
+MEA03 25310
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 01                     Pounds
+
+Measurements
+
+MEA*WT*WT*25300*24
+
+Measurement Reference ID Code (737)
+
+MEA01 WT                     Weights
+
+Measurement Qualifier (738)
+
+MEA02 WT                     Weight
+
+Measurement Value (739)
+
+MEA03 25300
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 24                     Theoretical Pounds
+
+Measurements
+
+MEA*PD*TH*.0920*ED
+
+Measurement Reference ID Code (737)
+
+MEA01 PD                     Actual Dimensions
+
+Measurement Qualifier (738)
+
+MEA02 TH                     Thickness
+
+Measurement Value (739)
+
+MEA03 .0920
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 ED                     Inches, Decimal-Nominal
+
+Measurements
+
+MEA*PD*WD*16.7500*IN
+
+Measurement Reference ID Code (737)
+
+MEA01 PD                     Actual Dimensions
+
+Measurement Qualifier (738)
+
+MEA02 WD                     Width
+
+Measurement Value (739)
+
+MEA03 16.7500
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 IN                     Inches
+
+Detail Specifications                 856 - 3 - IIR3                   Printed: 02/26/21 9:49 AM
+                                             10                 Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Shipping Notice
+856 - 3
+Example 856-3, Inbound from Processor (Processor Sourced Coil) Complete Load
+
+Measurements
+
+MEA*PD*LN*1369*LF
+
+Measurement Reference ID Code (737)
+
+MEA01 PD                Actual Dimensions
+
+Measurement Qualifier (738)
+
+MEA02 LN                Length
+
+Measurement Value (739)
+
+MEA03 1369
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 LF                Lineal Feet
+
+Measurements
+
+MEA*PD*OD*31.44*ED
+
+Measurement Reference ID Code (737)
+
+MEA01 PD                Actual Dimensions
+
+Measurement Qualifier (738)
+
+MEA02 OD                Outside Diameter
+
+Measurement Value (739)
+
+MEA03 31.44
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 ED                Inches, Decimal-Nominal
+
+Measurements
+
+MEA*PD*ID*20*ED
+
+Measurement Reference ID Code (737)
+
+MEA01 PD                Actual Dimensions
+
+Measurement Qualifier (738)
+
+MEA02 ID                Inside Diameter
+
+Measurement Value (739)
+
+MEA03 20
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 ED                Inches, Decimal-Nominal
+
+Measurements
+
+MEA*CT**1*PC
+
+Measurement Reference ID Code (737)
+
+MEA01 CT                Counts
+
+Measurement Value (739)
+
+MEA03 1
+
+Unit or Basis for Measurement (355)
+
+MEA04 PC                Piece
+
+Reference Numbers
+
+REF*SE*CF540326
+
+Reference Number Qualifier (128)
+
+REF01 SE                Serial Number - Outside Processor Material Identification
+
+Reference Number (127)
+
+REF02 CF540326
+
+Reference Numbers
+
+REF*LS*CF540326
+
+Reference Number Qualifier (128)
+
+REF01 LS                Bar-Coded Serial Number
+
+Reference Number (127)
+
+REF02 CF540326
+
+Detail Specifications           856 - 3 - IIR3          Printed: 02/26/21 9:49 AM
+                                       11        Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Shipping Notice
+856 - 3
+Example 856-3, Inbound from Processor (Processor Sourced Coil) Complete Load
+
+Date/Time Reference
+
+DTM*206*19960126*1200*ET
+
+         Date/Time Qualifier (374)
+
+         DTM01 206           OP Status
+
+         Date (373)
+
+         DTM02 19960126      OP Status Date (CCYYMMDD format)
+
+         Time (337)
+
+         DTM03 1200          OP Status Time (HHMM format)
+
+         Time Code (623)
+
+         DTM04 ET            Eastern Time            `CT' if Central Time, `MT' if Mountain Time or
+
+                                                     `PT' if Pacific Time
+
+Date/Time Reference
+
+DTM*105*20000119
+
+         Date/Time Qualifier (374)
+
+         DTM01 105           QA Status
+
+         Date (373)
+
+         DTM02 20000119      QA Status Date (CCYYMMDD format)
+
+SUMMARY
+
+Transaction Totals
+
+CTT*3
+
+         Number of Line Items (354)
+
+         CTT01 3             Total Number of HL Segments
+
+                             One Shipment (S), One Order (O), One Item (I)
+
+Transaction Set Trailer
+
+SE*45*0001
+
+         Number of Included Segments (96)
+
+         SE01          45    Total number of segments in the transaction
+
+                             including the ST and SE segments
+
+         Transaction Set Control Number (329)
+
+         SE02          0001  Transaction Set Control Number. Same as ST02
+
+                             in the Transaction Set Header segment.
+
+Detail Specifications                856 - 3 - IIR3                   Printed: 02/26/21 9:49 AM
+                                            12                 Last Revision Date: 02/19/2021
+

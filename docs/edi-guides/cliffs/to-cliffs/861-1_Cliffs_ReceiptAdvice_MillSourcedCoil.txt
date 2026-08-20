@@ -1,0 +1,954 @@
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Receipt Advice
+861- 1
+Example 861-1, Receipt of Mill Source (Coil) ASN with Damage and Scaled Weight
+Difference
+
+Segment Sequence and Looping
+Note: All segments required, unless otherwise indicated.
+
+HEADER
+ST
+BRA
+REF
+DTM
+
+      LOOP - N1
+      N1 - MF
+      N1 - OU
+
+DETAIL - ITEM
+
+RCD
+
+LIN
+
+PID - MAC
+
+PID - MA
+
+PID - DAF (Paired with DAC segment may occur up to 5 times)
+
+PID - DAC (Paired with DAF segment may occur up to 5 times)
+
+PID - QAS (REQUIRED when material is received from steel producer on QA status)
+
+REF - SE
+
+DTM - 206
+
+DTM - 105 (REQUIRED when material is sent with QA status)
+
+MEA - WT/WT (Actual)
+
+MEA - WT/WT (Theoretical)
+
+MEA - PD/TH (English)
+
+MEA - PD/TH (Metric) (OPTIONAL - based upon customer requirements)
+
+MEA - PD/WD (English)
+
+MEA - PD/WD (Metric) (OPTIONAL - based upon customer requirements)
+
+MEA - PD/LN (English)
+
+MEA - PD/LN (Metric) (OPTIONAL - based upon customer requirements)
+
+MEA - PD/OD            (OPTIONAL - based upon customer requirements)
+
+MEA - PD/ID            (OPTIONAL - based upon customer requirements)
+
+MEA - CT
+
+SUMMARY
+CTT
+SE
+
+MAINTENANCE LOG
+ Change Date Description of Change
+
+   2/17/2021 Branding changes for Cleveland-Cliffs.
+
+Detail Specifications      861 - 1 - IIR2                                    Printed: 02/26/21 9:55 AM
+                                   1                                  Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Receipt Advice
+861- 1
+Example 861-1, Receipt of Mill Source (Coil) ASN with Damage and Scaled Weight
+Difference
+
+HEADER
+
+Transaction Set Header
+
+ST*861*0001
+
+        Transaction Set Identifier Code (143)
+
+        ST01           861        Receiving Advice
+
+        Transaction Set Control Number (329)
+
+        ST02           0001
+
+Beginning Segment for Receiving Advice
+
+BRA*861*19960214*00*1*0841
+
+        Reference Number (127)
+
+        BRA01 861
+
+        Date (373)
+
+        BRA02 19960214            Transaction Create Date (CCYYMMDD format)
+
+        Transaction Set Purpose Code (353)
+
+        BRA03 00                  Original
+
+        Receiving Advice Type Code (962)
+
+        BRA04 1                   Receiving Dock Advice
+
+        Time (337)
+
+        BRA05 0841                Transaction Create Time (HHMM format)
+
+Reference Numbers
+
+REF*MA*F393592
+
+        Reference Number Qualifier (128)
+
+        REF01 MA                  Shipper or Manifest Number
+
+        Reference Number (127)
+
+        REF02 F393592
+
+Date/Time Reference
+
+DTM*050*19960214*0841*ET
+
+        Date/Time Qualifier (374)
+
+        DTM01 050                 Received
+
+        Date (373)
+
+        DTM02 19960214            Receipt Date (CCYYMMDD format)
+
+        Time (337)
+
+        DTM03 0841                Receipt Time (HHMM format)
+
+        Time Code (623)
+
+        DTM04 ET                  Eastern Time      `CT' if Central Time, `MT' if Mountain Time or
+
+                                                    `PT' if Pacific Time
+
+LOOP - N1
+
+Name
+
+N1*MF**1*005159199
+
+        Entity Identifier Code (98)
+
+        N101           MF         Steel Producer
+
+        Identification Code Qualifier (66)
+
+        N103           1          DUNs Number
+
+        Identification Code (67)
+
+        N104           005159199  D&B number of Steel Producer
+
+                                  `005159199' Cleveland-Cliffs Steel LLC (Indiana Harbor)
+
+                                  `613460476' Cleveland-Cliffs Kote Inc.
+
+                                  `003913423' Cleveland-Cliffs Burns Harbor LLC
+
+                                  `122373918' Cleveland-Cliffs Cleveland Works LLC
+
+Detail Specifications                       861 - 1 - IIR2               Printed: 02/26/21 9:55 AM
+                                                    2             Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Receipt Advice
+861- 1
+Example 861-1, Receipt of Mill Source (Coil) ASN with Damage and Scaled Weight
+Difference
+
+Name
+
+N1*OU**1*147757470
+
+      Entity Identifier Code (98)
+
+      N101             OU         Outside Processor
+
+      Identification Code Qualifier (66)
+
+      N103             1          DUNs Number
+
+      Identification Code (67)
+
+      N104             147757470  D&B number of Processor
+
+DETAIL - Item
+
+Receiving Conditions
+
+RCD**1*UN
+
+      Quantity Units Received or Accepted (663)
+
+      RCD02 1
+
+      Unit or Basis for Measurement Code (355)
+
+      RCD03 UN                    Units
+
+Item Detail Identification
+
+LIN**VO*3425969*VN*01*SN*856-23145*HN*268234
+
+      Product/Service ID Qualifier (235)
+
+      LIN02 VO                    Vendor's Order Number - Intended Cliffs Ship Order #
+
+      Product/Service ID (234)
+
+      LIN03 3425969               Cliffs Order Number      Indiana Harbor or Kote example: 3425969
+
+                                                           Burns Harbor example: BH83515005A
+
+                                                           Cleveland example: CS2844
+
+      Product/Service ID Qualifier (235)
+
+      LIN04 VN                    Vendor's Item Number (from Vendor Order)
+
+      Product/Service ID (234)
+
+      LIN05 01                    Item Number              Indiana Harbor or Kote will always be `01'
+
+                                                           Burns Harbor will correspond to order
+
+                                                           Cleveland will always be `01'
+
+      Product/Service ID Qualifier (235)
+
+      LIN06 SN                    Serial Number - Steel Producer's Material Identification
+
+      Product/Service ID (234)
+
+      LIN07 856-23145             Cliffs Coil Number       Indiana Harbor example: 856-23145
+
+                                                           Burns Harbor example: 143100P21
+
+                                                           Cleveland example: 5662973
+
+      Product/Service ID Qualifier (235)
+
+      LIN08 HN                    Heat Number
+
+      Product/Service ID (234)
+
+      LIN09 268234                Cliffs Heat Number       Indiana Harbor or Kote example: 268234
+
+                                                           Burns Harbor example: 832Y34320
+
+                                                           Cleveland example: 4142806
+
+Product/Item Identification
+
+PID*S*MAC*ST*01***67
+
+      Item Description Type (349)
+
+      PID01 S                     Structured
+
+      Product/Process Characteristic Code (750)
+
+      PID02 MAC                   Material Classification
+
+      Agency Qualifier Code (559)
+
+      PID03 ST                    Steel Code tables
+
+      Production Description Code (751)
+
+      PID04 01                    Prime
+
+      Source Subqualifier (822)
+
+      PID07 67                    Steel Table #67 (AISI material classification codes)
+
+Detail Specifications                    861 - 1 - IIR2           Printed: 02/26/21 9:55 AM
+                                                 3         Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Receipt Advice
+861- 1
+Example 861-1, Receipt of Mill Source (Coil) ASN with Damage and Scaled Weight
+Difference
+
+Product/Item Identification
+
+PID*S*MA*ST*2***70
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 MA                     OP Status
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 2                      Hold For Inspection
+
+Source Subqualifier (822)
+
+PID07 70                     Steel Table #70 (AISI material status-O.P. codes)
+
+Product/Item Identification
+
+PID*S*DAF*ST*1***72                             Required when PID04 on PID*MA is 2.
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 DAF                    Damage Fault
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 1                      Steel Producer
+
+Source Subqualifier (822)
+
+PID07 72                     Steel Table #72 (AISI Reason codes - fault)
+
+Product/Item Identification
+
+PID*S*DAC*ST*113***73                           Required when PID04 on PID*MA is 2.
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 DAC                    Damage Code
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 113                    Inner Lap Damage
+
+Source Subqualifier (822)
+
+PID07 73                     Steel Table #73 (AISI Reason codes)
+
+Product/Item Identification
+
+PID*S*DAF*ST*1***72                             Required when PID04 on PID*MA is 2.
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 DAF                    Damage Fault
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 1                      Steel Producer
+
+Source Subqualifier (822)
+
+PID07 72                     Steel Table #72 (AISI Reason codes - fault)
+
+Detail Specifications        861 - 1 - IIR2              Printed: 02/26/21 9:55 AM
+                                     4            Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Receipt Advice
+861- 1
+Example 861-1, Receipt of Mill Source (Coil) ASN with Damage and Scaled Weight
+Difference
+
+Product/Item Identification
+
+PID*S*DAC*ST*140***73                           Required when PID04 on PID*MA is 2.
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 DAC                    Damage Code
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 140                    Coil Telescoped - Winding
+
+Source Subqualifier (822)
+
+PID07 73                     Steel Table #73 (AISI Reason codes)
+
+Product/Item Identification
+
+PID*S*DAF*ST*1***72                             Required when PID04 on PID*MA is 2.
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 DAF                    Damage Fault
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 1                      Steel Producer
+
+Source Subqualifier (822)
+
+PID07 72                     Steel Table #72 (AISI Reason codes - fault)
+
+Product/Item Identification
+
+PID*S*DAC*ST*122***73                           Required when PID04 on PID*MA is 2.
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 DAC                    Damage Code
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 122                    Rust - Patch
+
+Source Subqualifier (822)
+
+PID07 73                     Steel Table #73 (AISI Reason codes)
+
+Product/Item Identification
+
+PID*S*DAF*ST*1***72                             Required when PID04 on PID*MA is 2.
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 DAF                    Damage Fault
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 1                      Steel Producer
+
+Source Subqualifier (822)
+
+PID07 72                     Steel Table #72 (AISI Reason codes - fault)
+
+Detail Specifications        861 - 1 - IIR2                    Printed: 02/26/21 9:55 AM
+                                     5                  Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Receipt Advice
+861- 1
+Example 861-1, Receipt of Mill Source (Coil) ASN with Damage and Scaled Weight
+Difference
+
+Product/Item Identification
+
+PID*S*DAC*ST*116***73                           Required when PID04 on PID*MA is 2.
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 DAC                    Damage Code
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 116                    Marks
+
+Source Subqualifier (822)
+
+PID07 73                     Steel Table #73 (AISI Reason codes)
+
+Product/Item Identification
+
+PID*S*DAF*ST*1***72                             Required when PID04 on PID*MA is 2.
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 DAF                    Damage Fault
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 1                      Steel Producer
+
+Source Subqualifier (822)
+
+PID07 72                     Steel Table #72 (AISI Reason codes - fault)
+
+Product/Item Identification
+
+PID*S*DAC*ST*149***73                           Required when PID04 on PID*MA is 2.
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 DAC                    Damage Code
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 149                    Burrs
+
+Source Subqualifier (822)
+
+PID07 73                     Steel Table #73 (AISI Reason codes)
+
+Product/Item Identification
+
+PID*S*QAS*ST*4***68
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 QAS                    Material Classification
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 4                      Do Not Process Without QA Release
+
+Source Subqualifier (822)
+
+PID07 68                     Steel Table #68 (AISI material status-Quality Assurance codes)
+
+Reference Numbers
+
+REF*SE*301617-00
+
+Reference Number Qualifier (128)
+
+REF01 SE                     OP Material Identity
+
+Reference Number (127)
+
+REF02 301617-00
+
+Detail Specifications               861 - 1 - IIR2                     Printed: 02/26/21 9:55 AM
+                                            6                   Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Receipt Advice
+861- 1
+Example 861-1, Receipt of Mill Source (Coil) ASN with Damage and Scaled Weight
+Difference
+
+Date/Time Reference
+
+DTM*206*19960214*1423*ET
+
+       Date/Time Qualifier (374)
+
+       DTM01 206            OP Status
+
+       Date (373)
+
+       DTM02 19960214       OP Status Date (CCYYMMDD format)
+
+       Time (337)
+
+       DTM03 1423           OP Status Time (HHMM format)
+
+       Time Code (623)
+
+       DTM04 ET             Eastern Time         `CT' if Central Time, `MT' if Mountain Time or
+
+                                                 `PT' if Pacific Time
+
+Date/Time Reference
+
+DTM*105*19960214
+
+       Date/Time Qualifier (374)
+
+       DTM01 105            QA Status
+
+       Date (373)
+
+       DTM02 19960214       QA Status Date (CCYYMMDD format)
+
+Measurements
+
+MEA*WT*WT*69050*01*550**32
+
+Measurement Reference ID Code (737)
+
+MEA01 WT                    Weights
+
+       Measurement Qualifier (738)
+
+       MEA02 WT             Weight
+
+       Measurement Value (739)
+
+       MEA03 69050
+
+       Unit or Basis for Measurement Code (355)
+
+       MEA04 01             Pounds               or `50' for Actual Kilograms
+
+       Range Minimum (740)
+
+       MEA05 550            Loss
+
+       Range Minimum (935)
+
+       MEA07 32             Measurement Significance Code `31' Calculated, `32' Scale Weighed
+
+Note:  MEA06 and MEA07 used to report scale weight gain.
+       MEA05 and MEA07 used to report scale weight loss.
+
+Measurements
+
+MEA*WT*WT*69000*24
+
+       Measurement Reference ID Code (737)
+
+       MEA01 WT             Weights
+
+       Measurement Qualifier (738)
+
+       MEA02 WT             Weight
+
+       Measurement Value (739)
+
+       MEA03 69000
+
+       Unit or Basis for Measurement Code (355)
+
+       MEA04 24             Theoretical Weight       or `53' for Theoretical Kilograms
+
+Measurements
+
+MEA*PD*TH*00.074*ED
+
+       Measurement Reference ID Code (737)
+
+       MEA01 PD             Actual Dimensions
+
+       Measurement Qualifier (738)
+
+       MEA02 TH             Thickness
+
+       Measurement Value (739)
+
+       MEA03 00.074
+
+       Unit or Basis for Measurement Code (355)
+
+       MEA04 ED             Inches, Decimal-Nominal
+
+Detail Specifications                861 - 1 - IIR2                  Printed: 02/26/21 9:55 AM
+                                             7                Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Receipt Advice
+861- 1
+Example 861-1, Receipt of Mill Source (Coil) ASN with Damage and Scaled Weight
+Difference
+
+Measurements
+
+MEA*PD*TH*01.88*MB
+
+Measurement Reference ID Code (737)
+
+MEA01 PD               Actual Dimensions
+
+Measurement Qualifier (738)
+
+MEA02 TH               Thickness
+
+Measurement Value (739)
+
+MEA03 01.88
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 MB               Millimeter-Nominal
+
+Measurements
+
+MEA*PD*WD*49.9999*E8
+
+Measurement Reference ID Code (737)
+
+MEA01 PD               Actual Dimensions
+
+Measurement Qualifier (738)
+
+MEA02 WD               Width
+
+Measurement Value (739)
+
+MEA03 34.5000
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 E8               Inches, Decimal-Actual  or `ED' Inches, Decimal-Nominal
+
+Measurements
+
+MEA*PD*WD*1270*M2
+
+Measurement Reference ID Code (737)
+
+MEA01 PD               Actual Dimensions
+
+Measurement Qualifier (738)
+
+MEA02 WD               Width
+
+Measurement Value (739)
+
+MEA03 1270
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 M2               Millimeter-Actual
+
+Measurements
+
+MEA*PD*LN*2400*LF
+
+Measurement Reference ID Code (737)
+
+MEA01 PD               Actual Dimensions
+
+Measurement Qualifier (738)
+
+MEA02 LN               Length
+
+Measurement Value (739)
+
+MEA03 2400
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 LF               Lineal Feet
+
+Measurements
+
+MEA*PD*LN*731*LM
+
+Measurement Reference ID Code (737)
+
+MEA01 PD               Actual Dimensions
+
+Measurement Qualifier (738)
+
+MEA02 LN               Length
+
+Measurement Value (739)
+
+MEA03 731
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 LM               Linear Meter
+
+Detail Specifications          861 - 1 - IIR2         Printed: 02/26/21 9:55 AM
+                                       8       Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Receipt Advice
+861- 1
+Example 861-1, Receipt of Mill Source (Coil) ASN with Damage and Scaled Weight
+Difference
+
+Measurements
+
+MEA*PD*OD*31.44*ED
+
+         Measurement Reference ID Code (737)
+
+         MEA01 PD            Actual Dimensions
+
+         Measurement Qualifier (738)
+
+         MEA02 OD            Outside Diameter
+
+         Measurement Value (739)
+
+         MEA03 31.44
+
+         Unit or Basis for Measurement Code (355)
+
+         MEA04 ED            Inches, Decimal-Nominal
+
+Measurements
+
+MEA*PD*ID*20*ED
+
+         Measurement Reference ID Code (737)
+
+         MEA01 PD            Actual Dimensions
+
+         Measurement Qualifier (738)
+
+         MEA02 ID            Inside Diameter
+
+         Measurement Value (739)
+
+         MEA03 20
+
+         Unit or Basis for Measurement Code (355)
+
+         MEA04 ED            Inches, Decimal-Nominal
+
+Measurements
+
+MEA*CT**1*PC
+
+         Measurement Reference ID Code (737)
+
+         MEA01 CT            Counts
+
+         Measurement Value (739)
+
+         MEA03 1
+
+         Unit or Basis for Measurement Code (355)
+
+         MEA04 PC            Number of Pieces
+
+SUMMARY
+
+Transaction Totals
+   CTT*1
+         Number of Line Items (354)
+         CTT01 1
+
+Transaction Set Trailer
+
+SE*31*0001
+
+         Number of Included Segments (96)
+
+         SE01          31    Total number of segments in the transaction
+
+                             including the ST and SE segments
+
+         Transaction Set Control Number (329)
+
+         SE02          0001  Transaction Set Control Number. Same as ST02
+
+                             in the Transaction Set Header segment.
+
+Detail Specifications                 861 - 1 - IIR2                  Printed: 02/26/21 9:55 AM
+                                              9                Last Revision Date: 02/19/2021
+

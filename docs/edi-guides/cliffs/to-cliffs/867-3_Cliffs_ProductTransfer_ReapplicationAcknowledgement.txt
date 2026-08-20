@@ -1,0 +1,375 @@
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Product Transfer
+867 - 3
+Example 867-3, Reapplication Acknowledgement
+
+Segment Sequence and Looping
+Note: All segments required, unless otherwise indicated.
+
+HEADER
+ST
+BPT
+DTM - 007
+
+LOOP - N1              (Dependent on what processor does with material - process or warehouse)
+N1 - MF
+N1 - OU or WH
+
+DETAIL AREA
+PTD
+REF - PM (OPTIONAL)
+REF - PO (OPTIONAL)
+
+LOOP - PTD/QTY
+QTY
+LIN
+PID - MAC
+PID - AT
+REF - SE
+DTM - 007
+
+SUMMARY
+CTT
+SE
+
+Used by OP to Acknowledgement SP Reapplication.
+
+MAINTENANCE LOG
+ Change Date Description of Change
+
+   2/17/2021 Branding changes for Cleveland-Cliffs.
+
+Detail Specifications  867 - 3 - IIR2                          Printed: 02/26/21 10:02 AM
+                               1                          Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Product Transfer
+867 - 3
+Example 867-3, Reapplication Acknowledgement
+
+HEADER
+
+Transaction Set Header
+
+ST*867*0001
+
+        Transaction Set Identifier Code (143)
+
+        ST01           867        Product Transfer & Resale
+
+        Transaction Set Control Number (329)
+
+        ST02           0001
+
+Beginning Segment for Transfer and Resale
+
+BPT*06*867*19960119*01
+
+        Transaction Purpose Code (353)
+
+        BPT01 06                  Confirmation
+
+        Reference Number (127)
+
+        BPT02 867                 Reference Number
+
+        Date (373)
+
+        BPT03 19960119            Transaction Create Date (CCYYMMDD format)
+
+        Report Type Code (755)
+
+        BPT04 01                  Product Transfer
+
+Date/Time Reference
+
+DTM*007*19960119*0856*ET
+
+        Date/Time Qualifier (374)
+
+        DTM01 007                 Effective
+
+        Date (373)
+
+        DTM02 19960119            Effective Date (CCYYMMDD format)
+
+        Time (337)
+
+        DTM03 0856                Effective Time (HHMM format)
+
+        Time Code (623)
+
+        DTM04 ET                  Eastern Time       `CT' if Central Time, `MT' if Mountain Time or
+
+                                                     `PT' if Pacific Time
+
+LOOP - N1
+
+Name
+
+N1*MF**1*005159199
+
+        Entity Identifier Code (98)
+
+        N101           MF         Steel Producer
+
+        Identification Code Qualifier (66)
+
+        N103           1          DUNs Number
+
+        Identification Code (67)
+
+        N104           005159199  D&B number of Steel Producer
+
+                                  `005159199' Cleveland-Cliffs Steel LLC (Indiana Harbor)
+
+                                  `613460476' Cleveland-Cliffs Kote Inc.
+
+                                  `003913423' Cleveland-Cliffs Burns Harbor LLC
+
+                                  `122373918' Cleveland-Cliffs Cleveland Works LLC
+
+Name
+
+N1*OU**1*147757470
+
+        Entity Identifier Code (98)
+
+        N101           OU         Outside Processor     or `WH' for Warehouse (Burns Harbor only)
+
+        Identification Code Qualifier (66)
+
+        N103           1          DUNs Number
+
+        Identification Code (67)
+
+        N104           147757470  D&B number of Processor
+
+Detail Specifications                   867 - 3 - IIR2                   Printed: 02/26/21 10:02 AM
+                                                2                   Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Product Transfer
+867 - 3
+Example 867-3, Reapplication Acknowledgement
+
+DETAIL Area
+
+Product Transfer and Resale Detail
+
+PTD*RA
+
+Product Transfer Type Code (521)
+
+PTD01 RA                    Reapplication of Order
+
+Reference Numbers
+
+REF*PM*05109002AA
+
+Reference Number Qualifier (128)
+
+REF01 PM                    Customer Part Number
+
+Reference Number (127)
+
+REF02 05109002AA
+
+Reference Numbers
+
+REF*PO*G056801142
+
+Reference Number Qualifier (128)
+
+REF01 PO                    Purchase Order Number
+
+Reference Number (127)
+
+REF02 G056801142
+
+LOOP - PTD/QTY
+
+Quantity
+   QTY*01*1
+         Quantity Qualifier (673)
+         QTY01 01
+         Quantity (380)
+         QTY02 1
+
+Item Detail Identification
+
+LIN**VO*1084366*VN*01*SN*855-61605*HN*015694
+
+Product/Service ID Qualifier (235)
+
+LIN02 VO                    Vendor's Order Number - Intended Cliffs Ship Order #
+
+Product/Service ID (234)
+
+LIN03 1084366               Cliffs Order Number     Indiana Harbor or Kote example: 1084366
+
+                                                    Burns Harbor example: BH83515005A
+
+                                                    Cleveland example: CS2844
+
+Product/Service ID Qualifier (235)
+
+LIN04 VN                    Vendor's Item Number (from Vendor Order)
+
+Product/Service ID (234)
+
+LIN05 01                    Item Number             Indiana Harbor or Kote will always be `01'
+
+                                                    Burns Harbor will correspond to order
+
+                                                    Cleveland will always be `01'
+
+Product/Service ID Qualifier (235)
+
+LIN06 SN                    Serial Number - Steel Producer's Material Identification
+
+Product/Service ID (234)
+
+LIN07 855-61605             Cliffs Coil Number      Indiana Harbor example: 855-61605
+
+                                                    Burns Harbor example: 143100P21
+
+                                                    Cleveland example: 5662973
+
+Product/Service ID Qualifier (235)
+
+LIN08 HN                    Heat Number
+
+Product/Service ID (234)
+
+LIN09 015694                Cliffs Heat Number      Indiana Harbor or Kote example: 015694
+
+                                                    Burns Harbor example: 832Y34320
+
+                                                    Cleveland example: 4142806
+
+Detail Specifications               867 - 3 - IIR2       Printed: 02/26/21 10:02 AM
+                                            3       Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Product Transfer
+867 - 3
+Example 867-3, Reapplication Acknowledgement
+
+Product/Item Identification
+
+PID*S*MAC*ST*01***67
+
+         Item Description Type (349)
+
+         PID01 S
+
+         Product/Process Characteristic Code (750)
+
+         PID02 MAC               Material Classification
+
+         Agency Qualifier Code (559)
+
+         PID03 ST                Steel Code tables
+
+         Production Description Code (751)
+
+         PID04 01                Prime
+
+         Source Subqualifier (822)
+
+         PID07 67                Steel Table #67 (AISI material classification codes)
+
+Product/Item Identification
+
+PID*S*AT*ST*A***75
+
+         Item Description Type (349)
+
+         PID01 S
+
+         Product/Process Characteristic Code (750)
+
+         PID02 AT                Process Action Taken
+
+         Agency Qualifier Code (559)
+
+         PID03 ST                Steel Code tables
+
+         Production Description Code (751)
+
+         PID04 A                 Reapplication Accepted or "R" Reapplication Rejected
+
+         Source Subqualifier (822)
+
+         PID07 75                Steel Table #75 (AISI Reapplication Action codes)
+
+Reference Numbers
+
+REF*SE*292642-01
+
+         Reference Number Qualifier (128)
+
+         REF01 SE                OP Material Identity
+
+         Reference Number (127)
+
+         REF02 292642-01
+
+Date/Time Reference
+
+DTM*007*19960119*0856*ET
+
+         Date/Time Qualifier (374)
+
+         DTM01 007               Effective
+
+         Date (373)
+
+         DTM02 19960119          Effective Date (CCYYMMDD format)
+
+         Time (337)
+
+         DTM03 0856              Effective Time (HHMM format)
+
+         Time Code (623)
+
+         DTM04 ET                Eastern Time       `CT' if Central Time, `MT' if Mountain Time or
+
+                                                    `PT' if Pacific Time
+
+Summary
+
+Transaction Totals
+   CTT*1
+         Number of Line Items (354)
+         CTT01 1
+
+Transaction Set Trailer
+
+SE*13*0001
+
+         Number of Included Segments (96)
+
+         SE01          17        Total number of segments in the transaction
+
+                                 including the ST and SE segments
+
+         Transaction Set Control Number (329)
+
+         SE02          0001      Transaction Set Control Number. Same as ST02
+
+                                 in the Transaction Set Header segment.
+
+Detail Specifications                   867 - 3 - IIR2                  Printed: 02/26/21 10:02 AM
+                                                4                  Last Revision Date: 02/19/2021
+

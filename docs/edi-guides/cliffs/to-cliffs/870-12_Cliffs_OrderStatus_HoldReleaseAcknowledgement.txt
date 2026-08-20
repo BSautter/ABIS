@@ -1,0 +1,823 @@
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Order Status
+870 - 12
+Example 870-12, Hold / Release Acknowledgement
+
+Segment Sequence and Looping
+Note: All segments required, unless otherwise indicated.
+
+HEADER                 (Dependent on what processor does with material - process or warehouse)
+ST
+BSR
+
+      LOOP-N1
+      N1 - MF
+      N1 - OU or WH
+
+DETAIL - ORDER
+HL
+PRF
+
+DETAIL - ITEM
+
+HL
+
+REF - SE
+
+DTM - 007
+
+DTM - 206
+
+DTM - 105 (OPTIONAL - based upon customer requirements)
+
+DTM - 207 (OPTIONAL - based upon customer requirements)
+
+PO1
+
+PID - MAC
+
+PID - QAS (OPTIONAL - based upon customer requirements)
+
+PID - CMS (OPTIONAL - based upon customer requirements)
+
+PID - MA
+
+PID - AT
+
+PID - 02   (OPTIONAL - only sent when applicable)
+
+PID - DAF (OPTIONAL - paired with DAC segment may occur up to 5 times)
+
+PID - DAC (OPTIONAL - paired with DAF segment may occur up to 5 times)
+
+SUMMARY
+CTT
+SE
+
+MAINTENANCE LOG
+ Change Date Description of Change
+
+   2/17/2021 Branding changes for Cleveland-Cliffs.
+
+Detail Specifications  870 - 2 - IIR2                          Printed: 02/26/21 10:11 AM
+                               1                          Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Order Status
+870 - 12
+Example 870-12, Hold / Release Acknowledgement
+
+HEADER
+
+Transaction Set Header
+
+ST*870*0001
+
+        Transaction Set Identifier Code (143)
+
+        ST01           870        Order Status - Hold / Release Transaction
+
+        Transaction Set Control Number (329)
+
+        ST02           0001
+
+Beginning Segment for Order Status Report
+
+BSR*2*AO*870HR*19960119***04300000****06
+
+        Status Report Code (850)
+
+        BSR01 2                   Prearranged Schedule
+
+        Order / Item Code (847)
+
+        BSR02 AO                  All Orders - Items With Changed Status
+
+        Reference Number (127)
+
+        BSR03 870HR
+
+        Date (373)
+
+        BSR04 19960119            Transaction Creation Date (CCYYMMDD format)
+
+        Time (337)
+
+        BSR07 04300000            Transaction Creation Time (HHMM0000 format)
+
+        Transaction Set Purpose Code (353)
+
+        BSR11 06                  Confirmation
+
+Name
+
+N1*MF**1*005159199
+
+        Entity Identifier Code (98)
+
+        N101           MF         Steel Producer
+
+        Identification Code Qualifier (66)
+
+        N103           1          DUNs Number
+
+        Identification Code (67)
+
+        N104           005159199  D&B number of Steel Producer
+
+                                  `005159199' Cleveland-Cliffs Steel LLC (Indiana Harbor)
+
+                                  `613460476' Cleveland-Cliffs Kote Inc.
+
+                                  `003913423' Cleveland-Cliffs Burns Harbor LLC
+
+                                  `122373918' Cleveland-Cliffs Cleveland Works LLC
+
+Name
+
+N1*OU**1*057389710
+
+        Entity Identifier Code (98)
+
+        N101           OU         Outside Processor      or `WH' for Warehouse
+
+        Identification Code Qualifier (66)
+
+        N103           1          DUNs Number
+
+        Identification Code (67)
+
+        N104           057389710  D&B number of Processor
+
+DETAIL - Order
+
+Hierarchical Level
+
+HL*1**O*1
+
+        Hierarchical ID Number (628)
+
+        HL01           1
+
+        Hierarchical Level Code (735)
+
+        HL03           O          Order
+
+        Hierarchical Child Code (736)
+
+        HL04           1
+
+Purchase Order Reference
+
+PRF*PO-1234***20071201
+
+        Purchase Order Number (324)
+
+        PRF01 PO-1234             Purchase Order Number
+
+        Purchase Order Date (323)
+
+        PRF04 20071201            Purchase Order Date (CCYYMMDD format)
+
+Detail Specifications                    870 - 2 - IIR2              Printed: 02/26/21 10:11 AM
+                                                 2              Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Order Status
+870 - 12
+Example 870-12, Hold / Release Acknowledgement
+
+DETAIL - Item
+
+Hierarchical Level
+
+HL*2*1*I
+
+Hierarchical ID Number (628)
+
+HL01                   2
+
+Hierarchical Parent ID Number (734)
+
+HL02                   1
+
+Hierarchical Level Code (735)
+
+HL03                   I  Item
+
+Reference Numbers
+
+REF*SE*01080000053703
+
+Reference Number Qualifier (128)
+
+REF01 SE                  Serial Number - Processors Current Material ID
+
+Reference Number (127)
+
+REF02 01080000053703
+
+Date/Time Reference
+
+DTM*007*19960119*0817*ET
+
+Date/Time Qualifier (374)
+
+DTM01 007                 Effective
+
+Date (373)
+
+DTM02 19960119            Effective Date (CCYYMMDD format)
+
+TIME (337)
+
+DTM03 0817                Effective Time (HHMM format)
+
+Time Code (623)
+
+DTM04 ET                  Eastern Time          `CT' if Central Time, `MT' if Mountain Time or
+
+                                                `PT' if Pacific Time
+
+Date/Time Reference
+
+DTM*206*19960119*0827*ET
+
+Date/Time Qualifier (374)
+
+DTM01 206                 OP Status
+
+Date (373)
+
+DTM02 19960119            OP Status Date (CCYYMMDD format)
+
+TIME (337)
+
+DTM03 0827                OP Status Time (HHMM format)
+
+Time Code (623)
+
+DTM04 ET                  Eastern Time          `CT' if Central Time, `MT' if Mountain Time or
+
+                                                `PT' if Pacific Time
+
+Date/Time Reference
+
+DTM*207*19960119*0827*ET
+
+Date/Time Qualifier (374)
+
+DTM01 207                 Commercial Status
+
+Date (373)
+
+DTM02 19960119            Commercial Status Date (CCYYMMDD format)
+
+TIME (337)
+
+DTM03 0827                Commercial Status Time (HHMM format)
+
+Time Code (623)
+
+DTM04 ET                  Eastern Time          `CT' if Central Time, `MT' if Mountain Time or
+
+                                                `PT' if Pacific Time
+
+Date/Time Reference
+
+DTM*105*19960119
+
+Date/Time Qualifier (374)
+
+DTM01 105                 QA Status
+
+Date (373)
+
+DTM02 19960119            QA Status Date (CCYYMMDD format)
+
+Detail Specifications           870 - 2 - IIR2                   Printed: 02/26/21 10:11 AM
+                                        3                   Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Order Status
+870 - 12
+Example 870-12, Hold / Release Acknowledgement
+
+Baseline Item Data
+
+PO1******VO*1084366*VN*01*SN*855-61605*HN*015694*GC*LFQ
+
+Product/Service ID Qualifier (235)
+
+PO106 VO                     Vendor's Order Number - Intended Cliffs Ship Order #
+
+Product/Service ID (234)
+
+PO107 1084366                Cliffs Order Number      Indiana Harbor or Kote example: 1084366
+
+                                                      Burns Harbor example: BH83515005A
+
+                                                      Cleveland example: CS2844
+
+Product/Service ID Qualifier (235)
+
+PO108 VN                     Vendor's Item Number (from Vendor Order)
+
+Product/Service ID (234)
+
+PO109 01                     Item Number              Indiana Harbor or Kote will always be `01'
+
+                                                      Burns Harbor will correspond to order
+
+                                                      Cleveland will always be `01'
+
+Product/Service ID Qualifier (235)
+
+PO110 SN                     Serial Number - Steel Producer's Material Identification
+
+Product/Service ID (234)
+
+PO111 855-61605              Cliffs Coil Number       Indiana Harbor example: 855-61605
+
+                                                      Burns Harbor example: 143100P21
+
+                                                      Cleveland example: 5662973
+
+Product/Service ID Qualifier (235)
+
+PO112 HN                     Heat Number
+
+Product/Service ID (234)
+
+PO113 015694                 Cliffs Heat Number       Indiana Harbor or Kote example: 015694
+
+                                                      Burns Harbor example: 832Y34320
+
+                                                      Cleveland example: 4142806
+
+Product/Service ID Qualifier (235)
+
+PO114 GC                     Grade Code
+
+Product/Service ID (234)
+
+PO115 LFQ                    Cliffs Grade Code        Burns Harbor example: LFQ
+
+                                                      Indiana Harbor or Kote example: XXXX
+
+                                                      Cleveland example: 9311
+
+Product/Item Identification
+
+PID*S*MAC*ST*01***67
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 MAC                    Material Classification
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 01                     Prime
+
+Source Subqualifier (822)
+
+PID07 67                     Steel Table #67 (AISI material classification codes)
+
+Product/Item Identification
+
+PID*S*QAS*ST*2***68
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 QAS                    Quality Status
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 2                      Hold for Inspection
+
+Source Subqualifier (822)
+
+PID07 68                     Steel Table #68 (AISI Material Status-Quality Assurance codes)
+
+Detail Specifications               870 - 2 - IIR2            Printed: 02/26/21 10:11 AM
+                                            4            Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Order Status
+870 - 12
+Example 870-12, Hold / Release Acknowledgement
+
+Product/Item Identification
+
+PID*S*CMS*ST*2***69
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 CMS                    Commercial Status
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 2                      Credit Hold
+
+Source Subqualifier (822)
+
+PID07 69                     Steel Table #69 (AISI Material Status-Commercial codes)
+
+Product/Item Identification
+
+PID*S*MA*ST*2***70
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 MA                     Outside Processor Status
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 2                      Hold for Inspection
+
+Source Subqualifier (822)
+
+PID07 70                     Steel Table #70 (AISI material status-O.P. codes)
+
+Product/Item Identification
+
+PID*S*AT*ST*A***75
+
+Item Description Type (349)
+
+PID01 S
+
+Product/Process Characteristic Code (750)
+
+PID02 AT                     Process Action Taken
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 A                      Reapplication Accepted or "R" Reapplication Rejected
+
+Source Subqualifier (822)
+
+PID07 75                     Steel Table #75 (AISI Reapplication Action codes)
+
+Product/Item Identification
+
+PID*F*02***Hold per Joe User
+
+Item Description Type (349)
+
+PID01 F                      Free-form
+
+Product/Process Characteristic Code (750)
+
+PID02 02                     General Product Form
+
+Description            (352)
+
+PID05 Hold per Joe User
+
+Product/Item Identification
+
+PID*S*DAF*ST*1***72
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 DAF                    Damage Fault
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 1                      Steel Producer
+
+Source Subqualifier (822)
+
+PID07 72                     Steel Table #72 (AISI Reason codes - fault)
+
+Detail Specifications         870 - 2 - IIR2                Printed: 02/26/21 10:11 AM
+                                      5                Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Order Status
+870 - 12
+Example 870-12, Hold / Release Acknowledgement
+
+Product/Item Identification
+
+PID*S*DAC*ST*129***73
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 DAC                    Damage Code
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 129                    Stain
+
+Source Subqualifier (822)
+
+PID07 73                     Steel Table #73 (AISI Reason codes)
+
+Product/Item Identification
+
+PID*S*DAF*ST*1***72
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 DAF                    Damage Fault
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 1                      Steel Producer
+
+Source Subqualifier (822)
+
+PID07 72                     Steel Table #72 (AISI Reason codes - fault)
+
+Product/Item Identification
+
+PID*S*DAC*ST*122***73
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 DAC                    Damage Code
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 122                    Rust - Patch
+
+Source Subqualifier (822)
+
+PID07 73                     Steel Table #73 (AISI Reason codes)
+
+Product/Item Identification
+
+PID*S*DAF*ST*3***72
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 DAF                    Damage Fault
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 3                      Current OP
+
+Source Subqualifier (822)
+
+PID07 72                     Steel Table #72 (AISI Reason codes - fault)
+
+Detail Specifications               870 - 2 - IIR2                     Printed: 02/26/21 10:11 AM
+                                            6                     Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Order Status
+870 - 12
+Example 870-12, Hold / Release Acknowledgement
+
+Product/Item Identification
+
+PID*S*DAC*ST*105***73
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 DAC                    Damage Code
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 105                    Dirt/Smut
+
+Source Subqualifier (822)
+
+PID07 73                     Steel Table #73 (AISI Reason codes)
+
+Product/Item Identification
+
+PID*S*DAF*ST*3***72
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 DAF                    Damage Fault
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 3                      Current OP
+
+Source Subqualifier (822)
+
+PID07 72                     Steel Table #72 (AISI Reason codes - fault)
+
+Product/Item Identification
+
+PID*S*DAC*ST*411***73
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 DAC                    Damage Code
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 411                    Drag Marks
+
+Source Subqualifier (822)
+
+PID07 73                     Steel Table #73 (AISI Reason codes)
+
+Product/Item Identification
+
+PID*S*DAF*ST*2***72
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 DAF                    Damage Fault
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 2                      Carrier
+
+Source Subqualifier (822)
+
+PID07 72                     Steel Table #72 (AISI Reason codes - fault)
+
+Detail Specifications                 870 - 2 - IIR2                   Printed: 02/26/21 10:11 AM
+                                              7                   Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Order Status
+870 - 12
+Example 870-12, Hold / Release Acknowledgement
+
+Product/Item Identification
+
+PID*S*DAC*ST*101***73
+
+Item Description Type (349)
+
+PID01 S                      Structured
+
+Product/Process Characteristic Code (750)
+
+PID02 DAC                    Damage Code
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 101                    Chain Damage
+
+Source Subqualifier (822)
+
+PID07 73                     Steel Table #73 (AISI Reason codes)
+
+Summary Area
+
+Transaction Totals
+
+CTT*2
+
+Number of Line Items (354)
+
+CTT01 2                      Total Number of HL Segments
+
+Transaction Set Trailer
+
+SE*20*0001
+
+Number of Included Segments (96)
+
+SE01                   18    Total number of segments in the transaction
+
+                             including the ST and SE segments
+
+Transaction Set Control Number (329)
+
+SE02                   0001  Transaction Set Control Number. Same as ST02
+
+                             in the Transaction Set Header segment.
+
+Detail Specifications        870 - 2 - IIR2                            Printed: 02/26/21 10:11 AM
+                                     8                            Last Revision Date: 02/19/2021
+

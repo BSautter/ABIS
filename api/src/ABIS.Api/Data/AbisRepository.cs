@@ -7389,7 +7389,8 @@ public sealed class AbisRepository : IAbisRepository
         var skids = (await conn.QueryAsync<Edi846SkidItem>(new CommandDefinition(
             """
             SELECT s.sheet_skid_num AS SheetSkidNum, c.vo AS Vo, c.customer_po AS CustomerPo, c.coil_org_num AS CoilOrgNum,
-                   x.table67_material_class AS Table67, x.table70_material_status_op AS Table70, psi.prod_item_net_wt AS NetWt
+                   x.table67_material_class AS Table67, x.table70_material_status_op AS Table70, c.lot_num AS LotNum,
+                   psi.prod_item_net_wt AS NetWt
               FROM sheet_skid s
               JOIN sheet_skid_detail d ON d.sheet_skid_num = s.sheet_skid_num
               JOIN production_sheet_item psi ON psi.prod_item_num = d.prod_item_num
@@ -7405,7 +7406,8 @@ public sealed class AbisRepository : IAbisRepository
         var coils = (await conn.QueryAsync<Edi846CoilItem>(new CommandDefinition(
             """
             SELECT c.coil_abc_num AS CoilAbcNum, c.vo AS Vo, c.customer_po AS CustomerPo, c.coil_org_num AS CoilOrgNum,
-                   c.production_desc_code AS ProductionDescCode, x.table70_material_status_op AS Table70, c.net_wt_balance AS NetWtBalance
+                   c.production_desc_code AS ProductionDescCode, x.table70_material_status_op AS Table70, c.lot_num AS LotNum,
+                   c.net_wt_balance AS NetWtBalance
               FROM coil c
               LEFT JOIN abis_x12_coil x ON x.abis_coil_status = c.coil_status
              WHERE c.customer_id = :cust

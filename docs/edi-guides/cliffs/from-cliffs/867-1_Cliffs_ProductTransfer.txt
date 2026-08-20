@@ -1,0 +1,536 @@
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Product Transfer
+867 - 1
+Example 867-1, Reapplication / Mill Source
+
+Segment Sequence and Looping
+Note: All segments required, unless otherwise indicated.
+
+HEADER
+ST
+BPT
+DTM
+
+      LOOP - N1
+      N1-MF
+      N1-OU or WH (Dependent on what processor does with material - process or warehouse)
+
+DETAIL AREA
+PTD
+REF - PM
+REF - PO
+PRF
+PKG - B5101 (OPTIONAL - based upon customer requirements)
+PKG - B5102 (OPTIONAL - based upon customer requirements)
+PKG - B5103 (OPTIONAL - based upon customer requirements)
+PKG - B5104 (OPTIONAL - based upon customer requirements)
+PKG - B5105 (OPTIONAL - based upon customer requirements)
+
+      LOOP - PTD/QTY
+      QTY
+      LIN
+      PID - MAC
+      PID - AT
+      PID - 02 (OPTIONAL - if comments need to be communicated)
+      REF - SE
+      DTM - 007
+
+SUMMARY
+CTT
+SE
+
+MAINTENANCE LOG
+ Change Date Description of Change
+
+   2/17/2021 Branding changes for Cleveland-Cliffs.
+
+Detail Specifications  867 - 1 - IIR2         Printed: 02/26/21 9:58 AM
+                               1       Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Product Transfer
+867 - 1
+Example 867-1, Reapplication / Mill Source
+
+HEADER
+
+Transaction Set Header
+
+ST*867*0001
+
+        Transaction Set Identifier Code (143)
+
+        ST01           867        Product Transfer & Resale
+
+        Transaction Set Control Number (329)
+
+        ST02           0001
+
+Beginning Segment for Transfer and Resale
+
+BPT*00*867*19960119*01
+
+        Transaction Purpose Code (353)
+
+        BPT01 00                  Original
+
+        Reference Number (127)
+
+        BPT02 867                 Reference Number
+
+        Date (373)
+
+        BPT03 19960119            Transaction Create Date (CCYYMMDD format)
+
+        Report Type Code (755)
+
+        BPT04 01                  Product Transfer
+
+Date/Time Reference
+
+DTM*007*20000119*091635*ET
+
+        Date/Time Qualifier (374)
+
+        DTM01 007                 Effective
+
+        Date (373)
+
+        DTM02          20000119   Effective Date (CCYYMMDD format)
+
+        Time (337)
+
+        DTM03 091635              Effective Time (HHMMSS format)
+
+        Date/Time Qualifier (374)
+
+        DTM04 ET                  Eastern Time       or `CT', `MT' or `PT'
+
+LOOP - N1
+
+Name
+
+N1*MF**1*003913423
+
+        Entity Identifier Code (98)
+
+        N101           MF         Steel Producer
+
+        Identification Code Qualifier (66)
+
+        N103           1          DUNs Number
+
+        Identification Code (67)
+
+        N104           003913423  D&B number of Steel Producer
+
+                                  `005159199' Cleveland-Cliffs Steel LLC (Indiana Harbor)
+
+                                  `613460476' Cleveland-Cliffs Kote Inc.
+
+                                  `003913423' Cleveland-Cliffs Burns Harbor LLC
+
+                                  `122373918' Cleveland-Cliffs Cleveland Works LLC
+
+Name
+
+N1*OU**1*147757470
+
+        Entity Identifier Code (98)
+
+        N101           OU         Outside Processor         or `WH' for Warehouse
+
+        Identification Code Qualifier (66)
+
+        N103           1          DUNs Number
+
+        Identification Code (67)
+
+        N104           147757470  D&B number of Processor
+
+Detail Specifications                       867 - 1 - IIR2                 Printed: 02/26/21 9:58 AM
+                                                    2               Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Product Transfer
+867 - 1
+Example 867-1, Reapplication / Mill Source
+
+DETAIL Area
+
+Product Transfer and Resale Detail
+
+PTD*RA
+
+Product Transfer Type Code (521)
+
+PTD01 RA                   Reapplication of Order
+
+Reference Numbers
+
+REF*PM*05109002AA
+
+Reference Number Qualifier (128)
+
+REF01 PM                   Customer Part Number
+
+Reference Number (127)
+
+REF02 05109002AA
+
+Reference Numbers
+
+REF*PO*G056801142
+
+Reference Number Qualifier (128)
+
+REF01 PO                   Customer Purchase Order Number
+
+Reference Number (127)
+
+REF02 G056801142
+
+Purchase Order Reference
+
+PRF*G056801142***20071219
+
+Purchase Order Number (324)
+
+PRF01 G056801142 Customer Purchase Order Number
+
+Purchase Order Date (323)
+
+PRF04 20071219             Customer Purchase Order Date (CCYYMMDD format)
+
+Packaging Loading Marking Reference
+
+PKG*F*67*ST*B5101*05109002AA
+
+Item Description Type         (349)
+
+PKG01 F                    Free-form
+
+Package Characteristic Code          (753)
+
+PKG02 67                   Tagging, Bar-code instructions
+
+Agency Qualifier Code (559)
+
+PKG03 ST                   American Iron and Steel Institute
+
+Package Description Code (754)
+
+PKG04 B5101                B5 Tag, Box 10, Line 1
+
+Description                (352)
+
+PKG05 05109002AA
+
+Packaging Loading Marking Reference
+
+PKG*F*67*ST*B5102*123-parts
+
+Item Description Type         (349)
+
+PKG01 F                    Free-form
+
+Package Characteristic Code          (753)
+
+PKG02 67                   Tagging, Bar-code instructions
+
+Agency Qualifier Code (559)
+
+PKG03 ST                   American Iron and Steel Institute
+
+Package Description Code (754)
+
+PKG04 B5102                B5 Tag, Box 10, Line 2
+
+Description                (352)
+
+PKG05 123-parts
+
+Detail Specifications                867 - 1 - IIR2                  Printed: 02/26/21 9:58 AM
+                                             3                Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Product Transfer
+867 - 1
+Example 867-1, Reapplication / Mill Source
+
+Packaging Loading Marking Reference
+
+PKG*F*67*ST*B5103*123-parts
+
+Item Description Type              (349)
+
+PKG01 F                Free-form
+
+Package Characteristic Code          (753)
+
+PKG02 67               Tagging, Bar-code instructions
+
+Agency Qualifier Code (559)
+
+PKG03 ST               American Iron and Steel Institute
+
+Package Description Code (754)
+
+PKG04 B5103            B5 Tag, Box 10, Line 3
+
+Description            (352)
+
+PKG05 123-parts
+
+Packaging Loading Marking Reference
+
+PKG*F*67*ST*B5104*123-parts
+
+Item Description Type              (349)
+
+PKG01 F                Free-form
+
+Package Characteristic Code          (753)
+
+PKG02 67               Tagging, Bar-code instructions
+
+Agency Qualifier Code (559)
+
+PKG03 ST               American Iron and Steel Institute
+
+Package Description Code (754)
+
+PKG04 B5104            B5 Tag, Box 10, Line 4
+
+Description            (352)
+
+PKG05 123-parts
+
+Packaging Loading Marking Reference
+
+PKG*F*67*ST*B5105*123-parts
+
+Item Description Type              (349)
+
+PKG01 F                Free-form
+
+Package Characteristic Code          (753)
+
+PKG02 67               Tagging, Bar-code instructions
+
+Agency Qualifier Code (559)
+
+PKG03 ST               American Iron and Steel Institute
+
+Package Description Code (754)
+
+PKG04 B5105            B5 Tag, Box 10, Line 5
+
+Description            (352)
+
+PKG05 123-parts
+
+LOOP - PTD/QTY
+
+Quantity
+   QTY*01*1
+         Quantity Qualifier (673)
+         QTY01 01
+         Quantity (380)
+         QTY02 1
+
+Detail Specifications                867 - 1 - IIR2              Printed: 02/26/21 9:58 AM
+                                             4            Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Product Transfer
+867 - 1
+Example 867-1, Reapplication / Mill Source
+
+Item Detail Identification
+
+LIN**VO*81442906A*VN*01*SN*872048*HN*833W69760
+
+Product/Service ID Qualifier (235)
+
+LIN02 VO                     Vendor's Order Number - Intended Cliffs Ship Order #
+
+Product/Service ID (234)
+
+LIN03 81442906A
+
+Product/Service ID Qualifier (235)
+
+LIN04 VN                     Vendor's Item Number (from Vendor Order)
+
+Product/Service ID (234)
+
+LIN05 01                     Item Number              Indiana Harbor or Kote will always be `01'
+
+                                                      Burns Harbor will correspond to order
+
+                                                      Cleveland will always be `01'
+
+Product/Service ID Qualifier (235)
+
+LIN06 SN                     Serial Number - Steel Producer's Material Identification
+
+Product/Service ID (234)
+
+LIN07 872048
+
+Product/Service ID Qualifier (235)
+
+LIN08 HN                     Heat Number
+
+Product/Service ID (234)
+
+LIN09 833W69760
+
+Product/Item Identification
+
+PID*S*MAC*ST*01***67
+
+Item Description Type (349)
+
+PID01 S
+
+Product/Process Characteristic Code (750)
+
+PID02 MAC                    Material Classification
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 01                     Prime
+
+Source Subqualifier (822)
+
+PID07 67                     Steel Table #67 (AISI material classification codes)
+
+Product/Item Identification
+
+PID*S*AT*ST*E***75
+
+Item Description Type (349)
+
+PID01 S
+
+Product/Process Characteristic Code (750)
+
+PID02 AT                     Process Action Taken
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID04 E                      OP to Acknowledge Every SP Reapplication Request
+
+Source Subqualifier (822)
+
+PID07 75                     Steel Table #75 (AISI Reapplication Action codes)
+
+Product/Item Identification
+
+PID*F*02*ST**OK CROSS APP PER ISR.
+
+Item Description Type (349)
+
+PID01 F
+
+Product/Process Characteristic Code (750)
+
+PID02 02                     General Product Form
+
+Agency Qualifier Code (559)
+
+PID03 ST                     Steel Code tables
+
+Production Description Code (751)
+
+PID05 OK CROSS APP PER ISR.
+
+Detail Specifications               867 - 1 - IIR2           Printed: 02/26/21 9:58 AM
+                                            5         Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Product Transfer
+867 - 1
+Example 867-1, Reapplication / Mill Source
+
+Reference Numbers
+
+REF*SE*872048
+
+         Reference Number Qualifier (128)
+
+         REF01 SE                OP Material Identity
+
+         Reference Number (127)
+
+         REF02 872048
+
+Date/Time Reference
+
+DTM*007*20000119*091635*ET
+
+         Date/Time Qualifier (374)
+
+         DTM01 007               Effective
+
+         Date (373)
+
+         DTM02         20000119  Effective Date (CCYYMMDD format)
+
+         Time (337)
+
+         DTM03 091635            Effective Time (HHMMSS format)
+
+         Date/Time Qualifier (374)
+
+         DTM04 ET                Eastern Time  or `CT', `MT' or `PT'
+
+SUMMARY
+
+Transaction Totals
+   CTT*1
+         Number of Line Items (354)
+         CTT01 1
+
+Transaction Set Trailer
+
+SE*20*0001
+
+         Number of Included Segments (96)
+
+         SE01          20        Total number of segments in the transaction
+
+                                 including the ST and SE segments
+
+         Transaction Set Control Number (329)
+
+         SE02          0001      Transaction Set Control Number. Same as ST02
+
+                                 in the Transaction Set Header segment.
+
+Detail Specifications                867 - 1 - IIR2                       Printed: 02/26/21 9:58 AM
+                                             6                     Last Revision Date: 02/19/2021
+

@@ -1,0 +1,1211 @@
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Test Reports
+863 - 1
+Example 863-1, Outbound to Processor Test Results and Chemistry Reporting
+
+Segment Sequence and Looping
+Note: All segments required, unless otherwise indicated.
+
+HEADER
+
+ST
+
+BTR
+
+NTE                    (OPTIONAL - there could be multiple NTE segments)
+
+REF - SI
+
+DTM - 011
+
+    LOOP - N1
+
+    N1 - MF
+
+    N1 - OU
+
+    PER
+
+DETAIL - ITEM
+     LOOP - LIN
+     LIN - VO
+     PID (OPTIONAL - Based upon customer requirements; there could be multiple
+     PIDs)
+     REF - C3 (OPTIONAL - Based upon customer requirements)
+     REF - C 1 (OPTIONAL - Based upon customer requirements)
+     REF - SE
+     CID
+     MEA - PD / TH
+     MEA - PD / WD
+     MEA - PD / WT
+
+     LOOP - LIN/CID/PSD/TMD/MEA (Mechanicals)
+     (Loop will repeat for each additional test)
+     CID
+     PSD
+     TMD
+     MEA - TR
+     DTM - 119 (This segment appears only once at the end of all Mechanical loops)
+
+     LOOP - LIN/CID/PSD/TMD/MEA (Coating)
+     CID
+     PSD
+     TMD
+     MEA - TR
+     DTM - 119 (This segment appears only once at the end of all Coating loops)
+
+Detail Specifications  863 - 1 - IIR2                            Printed: 02/26/21 9:58 AM
+                               1                          Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Test Reports
+863 - 1
+Example 863-1, Outbound to Processor Test Results and Chemistry Reporting
+
+          LOOP - LIN/CID/MEA (Chemistries)
+          CID
+          MEA - CH / ZC
+          MEA - CH / ZMN
+          MEA - CH / ZP
+          MEA - CH / ZS
+          MEA - CH / ZSI
+          MEA - CH / ZCU
+          MEA - CH / ZNI
+          MEA - CH / ZMO
+          MEA - CH / ZCR
+          MEA - CH / ZCB
+          MEA - CH / ZV
+          MEA - CH / ZAL
+          MEA - CH / ZSN
+          MEA - CH / ZTI
+          MEA - CH / ZN
+
+SUMMARY
+CTT
+SE
+
+MAINTENANCE LOG
+ Change Date Description of Change
+
+   2/17/2021 Branding changes for Cleveland-Cliffs.
+
+Detail Specifications  863 - 1 - IIR2         Printed: 02/26/21 9:58 AM
+                               2       Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Test Reports
+863 - 1
+Example 863-1, Outbound to Processor Test Results and Chemistry Reporting
+
+HEADER
+
+Transaction Set Header
+
+ST*863*000003327
+
+        Transaction Set Identifier Code (143)
+
+        ST01           863        Test Report
+
+        Transaction Set Control Number (329)
+
+        ST02           000003327  Transaction Set Control Number
+
+Beginning Segment for Test Results
+
+BTR*00*20040311*0327*RT*F750395
+
+        Status Report Code (353)
+
+        BTR01 00                  Original                  `01' Cancellation, `05' Replace or `07' Duplicate
+
+        Date (373)
+
+        BTR02 20040311            Transaction Creation Date (CCYYMMDD format)
+
+        Time (337)
+
+        BTR03 0327                Transaction Creation Time (HHMM format)
+
+        Report Type Code (755)
+
+        BTR04 RT                  Report of Tests and Analysis Report
+
+        Reference Number (127)
+
+        BTR05 F750395             Reference Number - Mill Shipper Number
+
+Segment for Optional Notes
+   NTE**WE HEREBY CEFTIFY HEAT ANLYSIS AND ...
+         Description (352)
+         NTE02 WE HEREBY CEFTIFY HEAT ANLYSIS AND ...
+
+Reference Numbers
+
+REF*SI*F750395
+
+        Reference Number Qualifier (128)
+
+        REF01 SI
+
+        Reference Number (127)
+
+        REF02 F750395             Ship Notice / Manifest Number (Producer Assigned)
+
+Date/Time Reference
+
+DTM*011*20040311*0718*ET
+
+        Date/Time Qualifier (374)
+
+        DTM01 011                 Shipped
+
+        Date (373)
+
+        DTM02 20040311            Activity Date (CCYYMMDD format)
+
+        Time (337)
+
+        DTM03 0718                Activity Time (HHMM format)
+
+        Time Code (623)
+
+        DTM04 ET                  Eastern Time              `CT' if Central Time, `MT' if Mountain Time or
+
+                                                            `PT' if Pacific Time
+
+LOOP - N1
+
+Name
+
+N1*MF**1*613460476
+
+        Entity Identifier Code (98)
+
+        N101           MF         Steel Producer
+
+        Identification Code Qualifier (66)
+
+        N103           1          DUNs Number
+
+        Identification Code (67)
+
+        N104           613460476  D&B number of Steel Producer
+
+                                  `005159199' Cleveland-Cliffs Steel LLC (Indiana Harbor)
+
+                                  `613460476' Cleveland-Cliffs Kote Inc.
+
+                                  `003913423' Cleveland-Cliffs Burns Harbor LLC
+
+                                  `122373918' Cleveland-Cliffs Cleveland Works LLC
+
+Detail Specifications                       863 - 1 - IIR2                Printed: 02/26/21 9:58 AM
+                                                    3              Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Test Reports
+863 - 1
+Example 863-1, Outbound to Processor Test Results and Chemistry Reporting
+
+Name
+
+N1*OU**1*808711010
+
+      Entity Identifier Code (98)
+
+      N101             OU         Outside Processor
+
+      Identification Code Qualifier (66)
+
+      N103             1          DUNs Number
+
+      Identification Code (67)
+
+      N104             808711010  D&B number for Processor
+
+Name
+
+PER*CE*GINA FAITH
+
+      Entity Identifier Code (98)
+
+      PER101 CE                   Certifier
+
+      Identification Code Qualifier (66)
+
+      PER102 GINA FAITH Name
+
+DETAIL - Item
+LOOP - LIN
+
+Item Detail Identification
+
+LIN**VO*2876856*VN*01*HN*467981*SN*960-05014*PO*SI0000197A*BP*S50001
+
+      Product/Service ID Qualifier (235)
+
+      LIN02 VO                    Vendor's Order Number - Intended Cliffs Ship Order #
+
+      Product/Service ID (234)
+
+      LIN03 2876856               Cliffs Order Number       Indiana Harbor or Kote example: 2876856
+
+                                                            Burns Harbor example: BH83515005A
+
+                                                            Cleveland example: CS2844
+
+      Product/Service ID Qualifier (235)
+
+      LIN04 VN                    Vendor's Item Number (from Vendor Order)
+
+      Product/Service ID (234)
+
+      LIN05 01                    Item Number               Indiana Harbor or Kote will always be `01'
+
+                                                            Burns Harbor will correspond to order
+
+                                                            Cleveland will always be `01'
+
+      Product/Service ID (234)
+
+      LIN06 HN                    Heat Number
+
+      Product/Service ID (234)
+
+      LIN07 467981                Cliffs Heat Number        Indiana Harbor or Kote example: 467981
+
+                                                            Burns Harbor example: 832Y34320
+
+                                                            Cleveland example: 4142806
+
+      Product/Service ID (234)
+
+      LIN08 SN                    Serial Number - Steel Producer's Material Identification
+
+      Product/Service ID (234)
+
+      LIN09 960-05014             Cliffs Coil Number        Indiana Harbor example: 960-05014
+
+                                                            Burns Harbor example: 143100P21
+
+                                                            Cleveland example: 5662973
+
+      Product/Service ID (234)
+
+      LIN10 PO                    Purchase Order Number
+
+      Product/Service ID (234)
+
+      LIN11 SI0000197A
+
+      Product/Service ID (234)
+
+      LIN12 BP                    Buyer's Part Number
+
+      Product/Service ID (234)
+
+      LIN13 S50001
+
+Product/Item Description
+
+PID*F*11***CLIFFS KOTE / GALVEX DURG GALVANNEAL SHEET STEEL / COILS / EDDS / 45/45
+
+      Item Description Type (349)
+
+      PID01 F                     Free Form
+
+      Product/Process Characteristic Code (750)
+
+      PID02 11
+
+      Description (352)
+
+      PID05 CLIFFS KOTE / GALVEX DURG GALVANNEAL SHEET STEEL / COILS / EDDS / 45/45
+
+Detail Specifications              863 - 1 - IIR2                  Printed: 02/26/21 9:58 AM
+                                           4                Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Test Reports
+863 - 1
+Example 863-1, Outbound to Processor Test Results and Chemistry Reporting
+
+Reference Numbers
+
+REF*C3*JAC270C 45/45
+
+Reference Number Qualifier (128)
+
+REF01 C3                    Customer Specification Number
+
+Reference Number (127)
+
+REF02 JAC270C 45/45
+
+Reference Numbers
+
+REF*C1*MSA 2009
+
+Reference Number Qualifier (128)
+
+REF01 C1                    Customer Material Specification Number
+
+Reference Number (127)
+
+REF02 MSA 2009
+
+Reference Numbers
+
+REF*SE*960-05014
+
+Reference Number Qualifier (128)
+
+REF01 SE
+
+Reference Number (127)
+
+REF02 960-05014             Reference Number
+
+Characteristics / Class ID
+
+CID**69
+
+Product/Process Characteristic Code (750)
+
+CID02 69                    Physical
+
+Measurements
+
+MEA*PD*TH*.71*ED
+
+Measurement Reference ID Code (737)
+
+MEA01 PD                    Physical Dimensions
+
+Measurement Qualifier (738)
+
+MEA02 TH                    Thickness
+
+Measurement Value (739)
+
+MEA03 .71
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 ED                    Inches-Decimal, Nominal
+
+Measurements
+
+MEA*PD*WD*1400*IN
+
+Measurement Reference ID Code (737)
+
+MEA01 PD                    Physical Dimensions
+
+Measurement Qualifier (738)
+
+MEA02 WD                    Width
+
+Measurement Value (739)
+
+MEA03 1400
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 IN                    Inches
+
+Measurements
+
+MEA*PD*WT*21615*01
+
+Measurement Reference ID Code (737)
+
+MEA01 PD                    Physical Dimensions
+
+Measurement Qualifier (738)
+
+MEA02 WT                    Weight
+
+Measurement Value (739)
+
+MEA03 21615
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 01                    Actual Pounds
+
+Detail Specifications                 863 - 1 - IIR2              Printed: 02/26/21 9:58 AM
+                                              5            Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Test Reports
+863 - 1
+Example 863-1, Outbound to Processor Test Results and Chemistry Reporting
+
+LOOP - LIN/CID/PSD/TMD/MEA (Mechanicals)
+
+Characteristics / Class ID
+
+CID**71
+
+Product/Process Characteristic Code (750)
+
+CID02 71                     Mechanical
+
+Physical Sample Description
+
+PSD*02*****01*11
+
+Sample Process Status Code (939)
+
+PSD01 02                     Product Development Stage of Testing
+
+Sample Direction Code (943)
+
+PSD06 01                     Testing of Sample Collection Direction
+
+Position Code (943)
+
+PSD07 11                     Front                   `12' Back
+
+Test Method
+
+TMD*32*ST*093
+
+Product/Process Characteristic Code (750)
+
+TMD01 32                     General Class of Product or Process Characteristic
+
+Agency Qualifier Code (559)
+
+TMD02 ST                     American Iron & Steel Institute
+
+Product Description Code (751)
+
+TMD03 093                    Yield Strength
+
+Measurements
+
+MEA*TR*YB*154*M8
+
+Measurement Reference ID Code (737)
+
+MEA01 TR                     Test Results
+
+Measurement Qualifier (738)
+
+MEA02 YB
+
+Measurement Value (739)
+
+MEA03 154
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 M8                     Mega Pascals
+
+Characteristics / Class ID
+
+CID**71
+
+Product/Process Characteristic Code (750)
+
+CID02 71                     Mechanical
+
+Physical Sample Description
+
+PSD*02*****01*11
+
+Sample Process Status Code (939)
+
+PSD01 02                     Product Development Stage of Testing
+
+Sample Direction Code (943)
+
+PSD06 01                     Testing of Sample Collection Direction
+
+Position Code (943)
+
+PSD07 11                     Front                   `12' Back
+
+Test Method
+
+TMD*32*ST*090
+
+Product/Process Characteristic Code (750)
+
+TMD01 32                     General Class of Product or Process Characteristic
+
+Agency Qualifier Code (559)
+
+TMD02 ST                     American Iron & Steel Institute
+
+Product Description Code (751)
+
+TMD03 090                    Tensile Strength (UTS)
+
+Detail Specifications               863 - 1 - IIR2                     Printed: 02/26/21 9:58 AM
+                                            6                   Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Test Reports
+863 - 1
+Example 863-1, Outbound to Processor Test Results and Chemistry Reporting
+
+Measurements
+
+MEA*TR*TF*302*M8
+
+Measurement Reference ID Code (737)
+
+MEA01 TR                     Test Results
+
+Measurement Qualifier (738)
+
+MEA02 TF
+
+Measurement Value (739)
+
+MEA03 302
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 M8                     Mega Pascals
+
+Characteristics / Class ID
+
+CID**71
+
+Product/Process Characteristic Code (750)
+
+CID02 71                     Mechanical
+
+Physical Sample Description
+
+PSD*02*****01*11
+
+Sample Process Status Code (939)
+
+PSD01 02                     Product Development Stage of Testing
+
+Sample Direction Code (943)
+
+PSD06 01                     Testing of Sample Collection Direction
+
+Position Code (943)
+
+PSD07 11                     Front                    `12' Back
+
+Test Method
+
+TMD*32*ST*094
+
+Product/Process Characteristic Code (750)
+
+TMD01 32                     General Class of Product or Process Characteristic
+
+Agency Qualifier Code (559)
+
+TMD02 ST                     American Iron & Steel Institute
+
+Product Description Code (751)
+
+TMD03 094                    Elongation
+
+Measurements
+
+MEA*TR*EA*47*P1
+
+Measurement Reference ID Code (737)
+
+MEA01 TR                     Test Results
+
+Measurement Qualifier (738)
+
+MEA02 EA
+
+Measurement Value (739)
+
+MEA03 47
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 P1                     Percent
+
+Measurements
+
+MEA*TR*EA*50*MM
+
+Measurement Reference ID Code (737)
+
+MEA01 TR                     Test Results
+
+Measurement Qualifier (738)
+
+MEA02 EA
+
+Measurement Value (739)
+
+MEA03 50
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 MM                     Millimeters
+
+Characteristics / Class ID
+
+CID**71
+
+Product/Process Characteristic Code (750)
+
+CID02 71                     Mechanical
+
+Detail Specifications                 863 - 1 - IIR2                    Printed: 02/26/21 9:58 AM
+                                              7                  Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Test Reports
+863 - 1
+Example 863-1, Outbound to Processor Test Results and Chemistry Reporting
+
+Physical Sample Description
+
+PSD*02*****01*11
+
+Sample Process Status Code (939)
+
+PSD01 02                     Product Development Stage of Testing
+
+Sample Direction Code (943)
+
+PSD06 01                     Testing of Sample Collection Direction
+
+Position Code (943)
+
+PSD07 11                     Front                    `12' Back
+
+Test Method
+
+TMD*32*ST*170
+
+Product/Process Characteristic Code (750)
+
+TMD01 32                     General Class of Product or Process Characteristic
+
+Agency Qualifier Code (559)
+
+TMD02 ST                     American Iron & Steel Institute
+
+Product Description Code (751)
+
+TMD03 170                    R-Bar
+
+Measurements
+
+MEA*TR**1.728*69
+
+Measurement Reference ID Code (737)
+
+MEA01 TR                     Test Results
+
+Measurement Value (739)
+
+MEA03 1.728
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 69                     Test Specific Scale
+
+Date/Time Reference
+
+DTM*119*20040311
+
+Date/Time Qualifier (374)
+
+DTM01 119
+
+Date (373)
+
+DTM02 20040311               Activity Date (CCYYMMDD format)
+
+LOOP - LIN/CID/PSD/TMD/MEA (Coating)
+
+Characteristics / Class ID
+
+CID**69
+
+Product/Process Characteristic Code (750)
+
+CID02 69                     Coating
+
+Physical Sample Description
+
+PSD*02******12
+
+Sample Process Status Code (939)
+
+PSD01 02                     Product Development Stage of Testing
+
+Position Code (943)
+
+PSD07 12                     Back                     `11' Front
+
+Measurements
+
+MEA*TR*CTG*40*M8*****R3
+
+Measurement Reference ID Code (737)
+
+MEA01 TR                     Test Results
+
+Measurement Qualifier (738)
+
+MEA02 CTG
+
+Measurement Value (739)
+
+MEA03 40
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 M8                     Mega Pascals
+
+Surface/Layer/Position Code (752)
+
+MEA09 R3                     Top (Back/Tail)          `R1' Top (Front/Head), `R2' Bottom (Front/Head),
+                                                      `R4' Bottom (Back/Tail)
+
+Detail Specifications                 863 - 1 - IIR2                     Printed: 02/26/21 9:58 AM
+                                              8                   Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Test Reports
+863 - 1
+Example 863-1, Outbound to Processor Test Results and Chemistry Reporting
+
+Measurements
+
+MEA*TR*CTG*39*M8*****R4
+
+Measurement Reference ID Code (737)
+
+MEA01 TR                    Test Results
+
+Measurement Qualifier (738)
+
+MEA02 CTG
+
+Measurement Value (739)
+
+MEA03 39
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 M8                    Mega Pascals
+
+Surface/Layer/Position Code (752)
+
+MEA09 R4                    Bottom (Back/Tail)       `R1' Top (Front/Head), `R2' Bottom (Front/Head),
+                                                     `R3' Top (Back/Tail)
+
+Date/Time Reference
+
+DTM*119*20040311
+
+Date/Time Qualifier (374)
+
+DTM01 119
+
+Date (373)
+
+DTM02 20040311              Activity Date (CCYYMMDD format)
+
+LOOP - LIN/CID/MEA (Chemistries)
+
+Characteristics / Class ID
+
+CID**68
+
+Product/Process Characteristic Code (750)
+
+CID02 68                    Chemistry
+
+Measurements
+
+MEA*CH*ZC*.002*P1
+
+Measurement Reference ID Code (737)
+
+MEA01 CH                    Chemistry
+
+Measurement Qualifier (738)
+
+MEA02 ZC                    Carbon
+
+Measurement Value (739)
+
+MEA03 .002
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 P1                    Percent
+
+Measurements
+
+MEA*CH*ZMN*.15*P1
+
+Measurement Reference ID Code (737)
+
+MEA01 CH                    Chemistry
+
+Measurement Qualifier (738)
+
+MEA02 ZMN                   Manganese
+
+Measurement Value (739)
+
+MEA03 .15
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 P1                    Percent
+
+Measurements
+
+MEA*CH*ZP*.006*P1
+
+Measurement Reference ID Code (737)
+
+MEA01 CH                    Chemistry
+
+Measurement Qualifier (738)
+
+MEA02 ZP                    Phosphorus
+
+Measurement Value (739)
+
+MEA03 .006
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 P1                    Percent
+
+Detail Specifications                863 - 1 - IIR2                 Printed: 02/26/21 9:58 AM
+                                             9               Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Test Reports
+863 - 1
+Example 863-1, Outbound to Processor Test Results and Chemistry Reporting
+
+Measurements
+
+MEA*CH*ZS*.008*P1
+
+Measurement Reference ID Code (737)
+
+MEA01 CH               Chemistry
+
+Measurement Qualifier (738)
+
+MEA02 ZS               Sulphur
+
+Measurement Value (739)
+
+MEA03 .008
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 P1               Percent
+
+Measurements
+
+MEA*CH*ZSI**P1**.02
+
+Measurement Reference ID Code (737)
+
+MEA01 CH               Chemistry
+
+Measurement Qualifier (738)
+
+MEA02 ZSI              Silicon
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 P1               Percent
+
+Range Maximum (741)
+
+MEA06 .02              Maximum of Measurement Range
+
+Measurements
+
+MEA*TR*ZCU*.03*P1
+
+Measurement Reference ID Code (737)
+
+MEA01 CH               Chemistry
+
+Measurement Qualifier (738)
+
+MEA02 ZCU              Copper
+
+Measurement Value (739)
+
+MEA03 .03
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 P1               Percent
+
+Measurements
+
+MEA*TR*ZNI*.02*P1
+
+Measurement Reference ID Code (737)
+
+MEA01 CH               Chemistry
+
+Measurement Qualifier (738)
+
+MEA02 ZNI              Nickle
+
+Measurement Value (739)
+
+MEA03 .02
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 P1               Percent
+
+Measurements
+
+MEA*CH*ZMO**P1**.02
+
+Measurement Reference ID Code (737)
+
+MEA01 CH               Chemistry
+
+Measurement Qualifier (738)
+
+MEA02 ZMO              Molybdenum
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 P1               Percent
+
+Range Maximum (741)
+
+MEA06 .02              Maximum of Measurement Range
+
+Detail Specifications           863 - 1 - IIR2              Printed: 02/26/21 9:58 AM
+                                       10            Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Test Reports
+863 - 1
+Example 863-1, Outbound to Processor Test Results and Chemistry Reporting
+
+Measurements
+
+MEA*CH*ZCR*.03*P1
+
+Measurement Reference ID Code (737)
+
+MEA01 CH               Chemistry
+
+Measurement Qualifier (738)
+
+MEA02 ZCR              Chromium
+
+Measurement Value (739)
+
+MEA03 .03
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 P1               Percent
+
+Measurements
+
+MEA*CH*ZSN**P1**.02
+
+Measurement Reference ID Code (737)
+
+MEA01 CH               Chemistry
+
+Measurement Qualifier (738)
+
+MEA02 ZSN              Tin
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 P1               Percent
+
+Range Maximum (741)
+
+MEA06 .02              Maximum of Measurement Range
+
+Measurements
+
+MEA*CH*ZAL*.042*P1
+
+Measurement Reference ID Code (737)
+
+MEA01 CH               Chemistry
+
+Measurement Qualifier (738)
+
+MEA02 ZAL              Aluminum
+
+Measurement Value (739)
+
+MEA03 .042
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 P1               Percent
+
+Measurements
+
+MEA*CH*ZN*.004*P1
+
+Measurement Reference ID Code (737)
+
+MEA01 CH               Chemistry
+
+Measurement Qualifier (738)
+
+MEA02 ZN               Nitrogen
+
+Measurement Value (739)
+
+MEA03 .004
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 P1               Percent
+
+Measurements
+
+MEA*CH*ZTA*.030*P1
+
+Measurement Reference ID Code (737)
+
+MEA01 CH               Chemistry
+
+Measurement Qualifier (738)
+
+MEA02 ZTA              Titanium
+
+Measurement Value (739)
+
+MEA03 .030
+
+Unit or Basis for Measurement Code (355)
+
+MEA04 P1               Percent
+
+Detail Specifications            863 - 1 - IIR2             Printed: 02/26/21 9:58 AM
+                                        11           Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Test Reports
+863 - 1
+Example 863-1, Outbound to Processor Test Results and Chemistry Reporting
+
+Measurements
+
+MEA*CH*ZCB*.034*P1
+
+         Measurement Reference ID Code (737)
+
+         MEA01 CH            Chemistry
+
+         Measurement Qualifier (738)
+
+         MEA02 ZCB           Columbium
+
+         Measurement Value (739)
+
+         MEA03 .034
+
+         Unit or Basis for Measurement Code (355)
+
+         MEA04 P1            Percent
+
+Measurements
+
+MEA*CH*ZNB*.034*P1
+
+         Measurement Reference ID Code (737)
+
+         MEA01 CH            Chemistry
+
+         Measurement Qualifier (738)
+
+         MEA02 ZNB           Niobium
+
+         Measurement Value (739)
+
+         MEA03 .034
+
+         Unit or Basis for Measurement Code (355)
+
+         MEA04 P1            Percent
+
+SUMMARY
+
+Transaction Totals
+
+CTT*1
+
+         Number of Line Items (354)
+
+         CTT01 1             Total Number of Line Items
+
+Transaction Set Trailer
+
+SE*57*0001
+
+         Number of Included Segments (96)
+
+         SE01          57    Total number of segments in the transaction
+
+                             including the ST and SE segments
+
+         Transaction Set Control Number (329)
+
+         SE02          0001  Transaction Set Control Number. Same as ST02
+
+                             in the Transaction Set Header segment.
+
+Detail Specifications                 863 - 1 - IIR2                  Printed: 02/26/21 9:58 AM
+                                             12                Last Revision Date: 02/19/2021
+

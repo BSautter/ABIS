@@ -1,0 +1,291 @@
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Invoice
+810 - 1
+Example 810-1, Invoice from Processor
+
+Segment Sequence and Looping
+Note: All segments required, unless otherwise indicated.
+
+HEADER
+ST
+BIG
+REF - PK
+N1 - BT
+N1 - OU
+ITD
+DTM - 011
+
+DETAIL AREA - these two segments repeat for each process for each material ID on the invoice
+IT1
+REF - SE
+
+SUMMARY
+TDS
+CTT
+SE
+
+MAINTENANCE LOG
+ Change Date Description of Change
+
+   2/17/2021 Branding changes for Cleveland-Cliffs.
+
+Detail Specifications  810 - 1 - IIR0         Printed: 02/26/21 9:40 AM
+                               1       Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Invoice
+810 - 1
+Example 810-1, Invoice from Processor
+
+HEADER
+
+Transaction Set Header
+
+ST*810*0001
+
+        Transaction Set Identifier Code (143)
+
+        ST01           810        Invoice
+
+        Transaction Set Control Number (329)
+
+        ST02           0001       Transaction Number
+
+Beginning Segment for Invoice
+
+BIG*20110701*1331425*****PR*00
+
+        Date (373)
+
+        BIG01 20110701            Transaction Create Date (CCYYMMDD format)
+
+        Invoice Number (76)
+
+        BIG02 1331425             Invoice Number
+
+        Transaction Type Code (640)
+
+        BIG07 PR                  Product (or Service)
+
+        Transaction Set Purpose Code (353)
+
+        BIG08 00                  Original           or `05' Replace
+
+Reference Numbers
+
+REF*PK*3012711401
+
+        Reference Number Qualifier (128)
+
+        REF01 PK                  Packing Slip Number from processor
+
+        Reference Number (127)
+
+        REF02 3012711401
+
+Name
+
+N1*BT**1*003913423
+
+        Entity Identifier Code (98)
+
+        N101           BT         Bill-to-Party
+
+        Identification Code Qualifier (66)
+
+        N103           1          DUNs Number
+
+        Identification Code (67)
+
+        N104           003913423  D&B number of AM Plant
+
+                                  `005159199' Cleveland-Cliffs Steel LLC (Indiana Harbor)
+
+                                  `613460476' Cleveland-Cliffs Kote Inc.
+
+                                  `003913423' Cleveland-Cliffs Burns Harbor LLC
+
+                                  `122373918' Cleveland-Cliffs Cleveland Works LLC
+
+Name
+
+N1*OU**1*877706366
+
+        Entity Identifier Code (98)
+
+        N101           OU         Outside Processor
+
+        Identification Code Qualifier (66)
+
+        N103           1          DUNs Number
+
+        Identification Code (67)
+
+        N104           877706366  D&B number of Processor
+
+Terms of Sale/Deferred Terms of Sale
+
+ITD*01*3*****30
+
+        Terms Type Code (336)
+
+        ITD01 01                  Basic
+
+        Terms Basis Date Code (333)
+
+        ITD02 3                   Invoice Date
+
+        Terms Net Days (386)
+
+        ITD07 30                  Number of Days until total invoice amount is due
+
+                                  (discount not applicable)
+
+Detail Specifications                       810 - 1 - IIR0                   Printed: 02/26/21 9:40 AM
+                                                    2                 Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Invoice
+810 - 1
+Example 810-1, Invoice from Processor
+
+Date/Time Reference
+
+DTM*011*20110701*0916
+
+         Date/Time Qualifier (374)
+
+         DTM01 011               Shipped Date Qualifier
+
+         Date (373)
+
+         DTM02 20110701          Shipped Date (CCYYMMDD format)
+
+         Time (337)
+
+         DTM03 0916              Shipped Time (HHMM format)
+
+DETAIL Area - NOTE: the two segments below repeat for each process for each material ID on the invoice
+
+Baseline Item Data (Invoice)
+
+IT1**6610*01*.0082*UM*SN*C747844J01*PO*YH53553026B*SV*Slit*SH*05
+
+         Quantity Invoiced (358)
+
+         IT102 6610              Number of Units Invoiced (supplier units)
+
+         Unit or Basis for Measurement Code (355)
+
+         IT103 01                Code representing units (01 = pounds)
+
+         Unit Price (212)
+
+         IT104 .0082             Price per unit of product, service, etc.
+
+         Basis of Unit Price Code (639)
+
+         IT105 UM                Code representing type of unit price (UM = price per unit of measure)
+
+         Product/Service ID Qualifier (235)
+
+         IT106 SN                Serial Number
+
+         Product/Service ID (234)
+
+         IT107 C747844J01 Material ID of Supplier
+
+         Product/Service ID Qualifier (235)
+
+         IT108 PO                Purchase Order
+
+         Product/Service ID (234)
+
+         IT109 YH53553026B Purchase Order of Supplier
+
+         Product/Service ID Qualifier (235)
+
+         IT110 SV                Service Rendered
+
+         Product/Service ID (234)
+
+         IT111 Slit              Description of service or process
+
+         Product/Service ID Qualifier (235)
+
+         IT112 SH                Service Requested
+
+         Product/Service ID (234)
+
+         IT113 05                AISI Process Code for service or process
+
+Reference Numbers
+
+REF*SE*359926703
+
+         Reference Number Qualifier (128)
+
+         REF01 SE                OP Material Identity
+
+         Reference Number (127)
+
+         REF02 359926703         Material ID
+
+SUMMARY
+
+Total Monetary Value Summary
+
+TDS*72091
+
+         Amount (610)
+
+         TDS01 72091             Total amount of invoice (including charges, less
+
+                                 allowances) before terms discount (if discount is
+
+                                 applicable).
+
+Transaction Totals
+
+CTT*12
+
+         Number of Line Items (354)
+
+         CTT01 12                Number of line items in transaction
+
+Detail Specifications                    810 - 1 - IIR0                      Printed: 02/26/21 9:40 AM
+                                                 3                    Last Revision Date: 02/19/2021
+X12 Implementation Guideline - Cleveland-Cliffs Steel - Outside Processing
+
+For use with the following Cleveland-Cliffs plants: Burns Harbor, Cleveland, Indiana Harbor, & Kote.
+
+Invoice
+810 - 1
+Example 810-1, Invoice from Processor
+
+Transaction Set Trailer
+
+SE*34*0001
+
+Number of Included Segments (96)
+
+SE01                   34    Total number of segments in the transaction
+
+                             including the ST and SE segments
+
+Transaction Set Control Number (329)
+
+SE02                   0001  Transaction Set Control Number. Same as ST02
+
+                             in the Transaction Set Header segment
+
+Detail Specifications        810 - 1 - IIR0                           Printed: 02/26/21 9:40 AM
+                                     4                         Last Revision Date: 02/19/2021
+
