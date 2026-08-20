@@ -10,6 +10,93 @@ new ABIS can replace old ABIS and alpha testing begins.
 
 ---
 
+## v0.9.2 — 2026-08-20
+
+Three commits. Two gates that were quietly wrong, and Cleveland-Cliffs turning out to be a much
+bigger thing than the backlog said.
+
+### The edge-trim gate was enforcing a band the plant does not use
+
+`AddEdgeTrimErrors` hardcoded the trimmer tolerance as **1.5"–12"**. That is the value legacy falls
+back to when it *cannot read* `edge_trim_tolearance` — not the band the plant runs, which is
+**0.75"–12.00"**. The source's own comment trail records the drift (`< 1` → `< 0.75`, 2016-12 →
+`1.50–12.00`, 2017-06), and the table was later set back. So order entry was demanding an override on
+every trim between 0.75" and 1.5" that the plant accepts today, on real orders, while looking
+entirely correct. The band is now read from the table, for order items **and** part masters.
+
+Two of legacy's behaviours came with it. An override now writes `system_log` naming who overrode it,
+how far outside they were, and against which order — previously the flag said an override happened
+and nothing said who. And a line coming **back inside** the band has its override **cleared**; without
+that, a line overridden once keeps the flag forever and the job sheet goes on printing *"CONTACT
+FOREMAN BEFORE RUNNING"* in red on an item somebody already corrected. A warning that outlives its
+fault is one the floor learns to ignore. (#414)
+
+### `resync_sequences.sql` had never actually worked
+
+The script that exists to repair post-refresh sequence drift builds three positional arrays. `seqs`
+carried **24** entries; `tbls` and `cols` carried **21**. The loop raised `ORA-06533` on the last
+three, and its own `WHEN OTHERS` printed a bland **"SKIPPED"** — indistinguishable from a sequence
+that genuinely does not exist.
+
+The three it dropped were exactly the three added in 2026-07 *because they had been found badly
+behind*: `PROD_ITEM_NUM` (1,403), `BILL_OF_LADING` (167), `SHEET_PACKAGING_TICKET` (827,368). It has
+therefore never fixed the worst of the drift, while reporting success every time. Fixed, with a
+length guard that raises instead of limping and a test that fails on the original defect. (#414)
+
+### Cleveland-Cliffs is a 23-guide program, not one document
+
+Their implementation guides arrived and changed the picture. The partner matrix carried Cliffs as a
+single 846; it is an **Outside Processing program** — 810 / 846 / 856 / 861 / 863 / 867 / 870, in both
+directions, with a **19-case certification plan**.
+
+And it has never gone live. Customer 3061 has **zero orders and zero coils**, both 846 cron entries on
+db01 are commented out and annotated `TEST ONLY`, and every archived Cleveland-Cliffs file is the
+empty `Nothing to report.` placeholder — because the cursors point at a customer with no rows. So no
+golden file exists or can exist, and this project's usual rule (*a real production `.edi` beats a
+guide*) has nothing to stand on. The guides are the spec.
+
+With one exception, which is now pinned in code and by a test: every published Cliffs example carries
+the AISI table number in `PID07`, and the live proc has those exact lines commented out under *"Email
+from Lisa received on Mon 5/18/2026 2:14 PM — Remove PID06 from PID\*S\*MA and \*MAC segments"*. A dated
+instruction from the partner's own analyst outranks a guide published in 2021.
+
+The 846 is now reconciled against the guide: the missing `BIA06` action code, `N1*MF` rather than
+`N1*SU`, the heat number, and — least cosmetic of the four — blank qualifier pairs dropped instead of
+emitted bare. That last one was not hypothetical: `coil.customer_po` is NULL on all 216 on-hand coils,
+so the port was emitting `LIN*1*VO*x*PO**SN*y` on **every line**, an X12 syntax error that would
+997-reject the whole set. (#415)
+
+### Also
+
+- A primary-key collision now answers **409**, not 500 (#413).
+- **[`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md)** — one register for all 15 items blocked on a
+  human answer, each with what is blocked, what is needed, and what happens under each answer.
+- **[`docs/EDI_CLIFFS.md`](docs/EDI_CLIFFS.md)** plus text extractions of all 23 Cliffs guides, split
+  by *our* direction (the supplied folders are named from Cliffs' point of view, which is the
+  opposite). Two Cliffs sources that were live on `.230` but missing from the repo are now vendored —
+  including `F_861_CLEVELAND_CLIFF_CCSC`, which is **INVALID** and is a Novelis copy-paste, kept as
+  evidence rather than as a spec.
+
+### Known limitations
+
+**Nothing Cleveland-Cliffs is transmittable, and two answers gate the rest.** Only the 846 is built,
+it has never transmitted, and there is no golden to check it against. Everything past it waits on
+which Cliffs works we process for — the DUNS we hold, `606072130`, matches **none** of their four —
+and on the ISA/GS envelope for the other sets, which comes from a trading-partner setup sheet we were
+never given. Cliffs would also be the first partner needing an **inbound** EDI parser; we have nothing
+inbound beyond the 997.
+
+The 409 in #413 is **half the fix by design**: the collision is reported correctly but not *retried*,
+which would mean re-running mint-and-insert as a unit across ~14 create paths.
+
+Carried forward unchanged: **the end-coil balance gate still warns rather than blocks** (6.3% median
+against a 0.5% tolerance over 926 coils; it needs someone watching a live end-coil — reported not
+running on 2026-08-20). No supervisor override has been used yet. The deployed UI still reads the
+non-prod `.230` sandbox rather than live plant data. And the two 4x6 tags and the Certificate of
+Conformance still have never printed.
+
+---
+
 ## v0.9.1 — 2026-08-19
 
 Seven commits since `v0.9.0`, the same day. Two production-affecting fixes, two guards against
