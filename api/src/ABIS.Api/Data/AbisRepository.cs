@@ -4893,6 +4893,190 @@ public sealed class AbisRepository : IAbisRepository
         return new DeleteResult(DeleteOutcome.Deleted);
     }
 
+    // ---- Part lifecycle: obsolete + revise (legacy part_num/w_part_num_management.srw:472/529/852/893) ----
+    //
+    // These two are one workflow in legacy: the Obsolete button sets item_status = 0, commits, and then
+    // IMMEDIATELY asks "Do you want to create a revision of this part?". They are separate calls here
+    // because an API should not bundle two writes behind one verb - but the UI offers them in that order,
+    // because that is the sequence the plant works in.
+
+    /// <summary>Order lines still pointing at a part, in a status that is not Done or Cancelled —
+    /// legacy's <c>d_order_item_4part</c> retrieve, filter and status decode, verbatim.</summary>
+    public async Task<IReadOnlyList<PartOrderItemRef>> GetPartOrderItemsAsync(long partNumId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        return await LoadPartOrderItemsAsync(conn, null, partNumId, ct);
+    }
+
+    private static async Task<IReadOnlyList<PartOrderItemRef>> LoadPartOrderItemsAsync(
+        DbConnection conn, DbTransaction? tx, long partNumId, CancellationToken ct)
+    {
+        // The CASE is legacy's, including its '??????' fallback: a status outside the four known codes
+        // is a data problem worth showing rather than hiding behind a prettier word.
+        var rows = await conn.QueryAsync<PartOrderItemRef>(new CommandDefinition(
+            """
+            SELECT oi.order_abc_num AS OrderAbcNum, oi.order_item_num AS OrderItemNum,
+                   p.customer_id AS CustomerId, c.customer_short_name AS CustomerShortName,
+                   p.part_num_id AS PartNumId, p.item_desc AS ItemDesc, oi.item_status AS ItemStatus,
+                   CASE oi.item_status
+                     WHEN 0 THEN 'Done'
+                     WHEN 2 THEN 'New'
+                     WHEN 3 THEN 'Canceled'
+                     WHEN 4 THEN 'OnHold'
+                     ELSE '??????'
+                   END AS ItemStatusDesc
+              FROM part_num p
+              JOIN order_item oi ON oi.part_num_id = p.part_num_id
+              JOIN customer c ON c.customer_id = p.customer_id
+             WHERE p.part_num_id = :partNumId
+               AND oi.item_status NOT IN (0, 3)
+             ORDER BY oi.order_abc_num, oi.order_item_num
+            """, new { partNumId }, transaction: tx, cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    /// <summary>
+    /// Retire a part: <c>item_status = 0</c>. Legacy refuses only when the part is <b>already</b>
+    /// obsolete ("Can't obsolete an non-active part").
+    ///
+    /// <para><b>The order-line list is a warning, and that is deliberate — not an oversight in the
+    /// port.</b> Legacy gathers the lines still pointing at the part, shows them, and then obsoletes
+    /// anyway: the guard's own `Return -1` is commented out under the note
+    /// <c>//Do not stop processing ... for now</c> (Alex Gerlants, 2025-03-11, ticket
+    /// 2331_Order_Item_4Obsolete_Part). Reading the function name alone would suggest a block, and
+    /// turning it into one here would refuse work the plant does today. If it should block, that is a
+    /// decision for the plant, and it is one line.</para>
+    /// </summary>
+    public async Task<PartObsoleteResult> ObsoletePartAsync(long partNumId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        var status = await conn.QueryFirstOrDefaultAsync<int?>(new CommandDefinition(
+            "SELECT item_status FROM part_num WHERE part_num_id = :partNumId", new { partNumId }, cancellationToken: ct));
+
+        // A part row always carries a status, so "no row" and "row with a null status" both mean there is
+        // nothing to retire — but only the first is a 404. QueryFirstOrDefault<int?> cannot tell them
+        // apart, so ask separately rather than reporting a missing part as an existing inactive one.
+        if (status is null)
+        {
+            var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+                "SELECT COUNT(*) FROM part_num WHERE part_num_id = :partNumId", new { partNumId }, cancellationToken: ct));
+            if (exists == 0) return new PartObsoleteResult { Outcome = PartLifecycleOutcome.NotFound, PartNumId = partNumId };
+        }
+        if (status == 0)
+            return new PartObsoleteResult { Outcome = PartLifecycleOutcome.AlreadyObsolete, PartNumId = partNumId };
+
+        var blocking = await LoadPartOrderItemsAsync(conn, null, partNumId, ct);
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE part_num SET item_status = 0 WHERE part_num_id = :partNumId",
+            new { partNumId }, transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+
+        return new PartObsoleteResult
+        {
+            Outcome = PartLifecycleOutcome.Ok,
+            PartNumId = partNumId,
+            BlockingOrderItems = blocking,
+        };
+    }
+
+    /// <summary>
+    /// Create a revision: the part and its blank geometry are copied to a fresh <c>part_num_id</c>, and
+    /// the copy is marked active (<c>item_status = 1</c>) whatever the source's status was — which is
+    /// the point, since the source has usually just been retired.
+    ///
+    /// <para><b>Routings MOVE, they do not copy — the one place this differs from
+    /// <see cref="CopyPartAsync"/>.</b> Legacy's <c>wf_update_routing_4revision_part</c> is an
+    /// <c>UPDATE routing SET part_num_id = new</c>, so the routing leaves the old part. That is the
+    /// right shape for a revision (there is one real routing and the successor inherits it) and the
+    /// wrong shape for a duplicate (both parts are live and each needs its own), so the two operations
+    /// must not share code here however similar they look.</para>
+    ///
+    /// <para>With exactly one routing legacy moves it without asking which; with several it opens a
+    /// picker. <see cref="PartLifecycleOutcome.NeedsRoutingChoice"/> is that picker.</para>
+    /// </summary>
+    public async Task<PartRevisionResult> RevisePartAsync(long partNumId, bool moveRouting, long? routingSequence, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        // A plain scalar, NOT QueryFirstOrDefaultAsync<(long, int)>: Dapper does not map columns onto
+        // ValueTuple element names, so a tuple read here would silently come back as zeros — the same
+        // defect that made GetEdgeTrimToleranceAsync fall through to its fallback on every call.
+        var exists = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM part_num WHERE part_num_id = :partNumId", new { partNumId }, cancellationToken: ct));
+        if (exists == 0) return new PartRevisionResult { Outcome = PartLifecycleOutcome.NotFound };
+        var customerId = await conn.ExecuteScalarAsync<long?>(new CommandDefinition(
+            "SELECT customer_id FROM part_num WHERE part_num_id = :partNumId", new { partNumId }, cancellationToken: ct));
+
+        // RoutingCols selects die/line names, so it needs those joins — reuse the loader that has them
+        // rather than a second, subtly different query. (Selecting RoutingCols from `routing r` alone
+        // compiles fine and fails at runtime with "no such column: d.die_name".)
+        var routings = await GetRoutingsByPartAsync(partNumId, ct);
+
+        long? moving = null;
+        if (moveRouting && routings.Count > 0)
+        {
+            if (routingSequence is { } chosen)
+            {
+                if (routings.All(r => r.RoutingSequence != chosen))
+                    return new PartRevisionResult { Outcome = PartLifecycleOutcome.NeedsRoutingChoice, RoutingChoices = routings };
+                moving = chosen;
+            }
+            else if (routings.Count == 1) moving = routings[0].RoutingSequence;
+            else return new PartRevisionResult { Outcome = PartLifecycleOutcome.NeedsRoutingChoice, RoutingChoices = routings };
+        }
+
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var newId = await NextIdAsync(conn, tx, "part_num", "part_num_id", ct);
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            $"INSERT INTO part_num (part_num_id, {PartCopyCols}) SELECT :newId, {PartCopyCols} FROM part_num WHERE part_num_id = :src",
+            new { newId, src = partNumId }, transaction: tx, cancellationToken: ct));
+
+        // item_status rides in PartCopyCols, so the copy inherits the source's status — including the 0
+        // it was just set to. Legacy sets the new row to 1 explicitly; so do we, after the copy.
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE part_num SET item_status = 1 WHERE part_num_id = :newId",
+            new { newId }, transaction: tx, cancellationToken: ct));
+
+        foreach (var def in ShapeGeometry.All)
+        {
+            var geomCols = new List<string>();
+            foreach (var dm in def.Dims)
+            {
+                geomCols.Add(dm.ValueCol);
+                if (dm.PlusCol is not null) geomCols.Add(dm.PlusCol);
+                if (dm.MinusCol is not null) geomCols.Add(dm.MinusCol);
+            }
+            var cols = string.Join(", ", geomCols);
+            await conn.ExecuteAsync(new CommandDefinition(
+                $"INSERT INTO {def.PartTable} (part_num_id, {cols}) SELECT :newId, {cols} FROM {def.PartTable} WHERE part_num_id = :src",
+                new { newId, src = partNumId }, transaction: tx, cancellationToken: ct));
+        }
+
+        if (moving is { } seq)
+            await conn.ExecuteAsync(new CommandDefinition(
+                """
+                UPDATE routing
+                   SET part_num_id = :newId
+                 WHERE routing_sequence = :seq
+                   AND customer_id = :customerId
+                   AND part_num_id = :src
+                """,
+                new { newId, seq, customerId, src = partNumId },
+                transaction: tx, cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
+
+        return new PartRevisionResult
+        {
+            Outcome = PartLifecycleOutcome.Ok,
+            Part = await GetPartAsync(newId, ct),
+            PreviousPartNumId = partNumId,
+            MovedRoutingSequence = moving,
+        };
+    }
+
     // ---- Part routing (legacy ROUTING) ----
 
     private const string RoutingCols =

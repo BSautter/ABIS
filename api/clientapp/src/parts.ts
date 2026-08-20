@@ -83,6 +83,8 @@ function scaffold(): string {
           <button class="btn sm" id="btnSave" type="button">Save</button>
           <button class="btn sm ghost" id="btnNew" type="button">New</button>
           <button class="btn sm ghost" id="btnCopy" type="button">Duplicate</button>
+          <button class="btn sm ghost" id="btnObsolete" type="button">Obsolete</button>
+          <button class="btn sm ghost" id="btnRevise" type="button">Revise</button>
           <button class="btn sm ghost" id="btnDelete" type="button" style="color:var(--crit)">Delete</button>
           <span id="ok" class="ok-note"></span>
         </div>
@@ -284,6 +286,90 @@ async function copyPart(): Promise<void> {
   finally { setBusy(false); }
 }
 
+// Retire the loaded part (item_status = 0). Legacy shows the order lines still pointing at it and
+// then obsoletes ANYWAY - its own guard is commented out under "Do not stop processing ... for now" -
+// so this warns in the confirmation rather than refusing, and the operator decides.
+async function obsoletePart(): Promise<void> {
+  if (editingId == null) { setErr('Load a part first to obsolete it.'); return; }
+  setErr(''); setOk('');
+  let warning = '';
+  try {
+    const open = await (await authFetch(`/api/parts/${editingId}/order-items`)).json() as {
+      orderAbcNum: number; orderItemNum: number; itemStatusDesc?: string;
+    }[];
+    if (open.length) {
+      warning = [
+        '',
+        `${open.length} order line(s) still point at this part and are not Done or Cancelled:`,
+        ...open.map((o) => `  Order ${o.orderAbcNum}, item ${o.orderItemNum} - ${o.itemStatusDesc ?? '?'}`),
+      ].join('\n');
+    }
+  } catch { /* the warning is best-effort; never block the action on it */ }
+
+  if (!window.confirm(`Obsolete part #${editingId}?${warning}`)) return;
+  setBusy(true);
+  try {
+    const r = await authFetch(`/api/parts/${editingId}/obsolete`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    });
+    if (!r.ok) {
+      const b = await r.json().catch(() => null) as { message?: string } | null;
+      setErr(b?.message ?? `Obsolete failed (${r.status}).`);
+      return;
+    }
+    const done = editingId;
+    await search();
+    await loadPart(done);
+    setOk(`✓ Part #${done} is obsolete.` + (warning ? ' Open order lines were left as they are.' : ''));
+  } catch (e) { setErr(`Obsolete failed: ${(e as Error).message}`); }
+  finally { setBusy(false); }
+}
+
+// Supersede the loaded part: copy it + its geometry to a new ACTIVE part_num_id, optionally MOVING a
+// routing across (a revision inherits the routing; a Duplicate gives each part its own). Legacy asks
+// both questions in sequence, so this does too.
+async function revisePart(): Promise<void> {
+  if (editingId == null) { setErr('Load a part first to revise it.'); return; }
+  if (!window.confirm(`Do you want to create a revision of part #${editingId}?`)) return;
+  const moveRouting = window.confirm('Would you like to use the old part ID routing for the new part ID?');
+  setErr(''); setOk(''); setBusy(true);
+  try {
+    const post = (routingSequence?: number) => authFetch(`/api/parts/${editingId}/revise`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ moveRouting, routingSequence }),
+    });
+    let r = await post();
+    if (r.status === 409) {
+      // Several routings - legacy opens a picker to choose which one moves.
+      const b = await r.json().catch(() => null) as {
+        code?: string; message?: string;
+        routings?: { routingSequence: number; lineDesc?: string; dieName?: string }[];
+      } | null;
+      if (b?.code !== 'routing-choice-required' || !b.routings?.length) {
+        setErr(b?.message ?? 'Revise failed (409).'); return;
+      }
+      const list = b.routings.map((x) => `  ${x.routingSequence} - ${x.dieName ?? '?'} on ${x.lineDesc ?? '?'}`);
+      const picked = window.prompt(
+        [`This part has ${b.routings.length} routings. Which one moves to the revision?`, '', ...list, '',
+         'Enter the routing sequence:'].join('\n'),
+        String(b.routings[0].routingSequence));
+      if (!picked) return;
+      r = await post(Number(picked));
+    }
+    if (!r.ok) {
+      const b = await r.json().catch(() => null) as { message?: string } | null;
+      setErr(b?.message ?? `Revise failed (${r.status}).`);
+      return;
+    }
+    const body = await r.json() as { part?: { partNumId?: number }; movedRoutingSequence?: number | null };
+    await search();
+    if (body.part?.partNumId) await loadPart(body.part.partNumId);
+    setOk(`✓ Revision created as part #${body.part?.partNumId}.`
+      + (body.movedRoutingSequence != null ? ` Routing ${body.movedRoutingSequence} moved across.` : ''));
+  } catch (e) { setErr(`Revise failed: ${(e as Error).message}`); }
+  finally { setBusy(false); }
+}
+
 // Delete the loaded part — refused by the server (409) if it's applied to any order.
 async function deletePart(): Promise<void> {
   if (editingId == null) { setErr('Load a part first to delete it.'); return; }
@@ -309,6 +395,8 @@ async function deletePart(): Promise<void> {
   $('#btnNew').addEventListener('click', newPart);
   $('#btnSave').addEventListener('click', () => void save());
   $('#btnCopy').addEventListener('click', () => void copyPart());
+  $('#btnObsolete').addEventListener('click', () => void obsoletePart());
+  $('#btnRevise').addEventListener('click', () => void revisePart());
   $('#btnDelete').addEventListener('click', () => void deletePart());
   newPart();
   await search();

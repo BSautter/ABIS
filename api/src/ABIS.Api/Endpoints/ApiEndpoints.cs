@@ -887,6 +887,51 @@ public static class ApiEndpoints
            .WithSummary("Delete a part and its blank geometry. 409 if the part is referenced by any order line (order_item.part_num_id).")
            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
 
+        // ---- Part lifecycle: obsolete + revise (legacy w_part_num_management) --------
+        //
+        // In legacy these are one button: Obsolete sets item_status = 0, commits, and then immediately
+        // asks "Do you want to create a revision of this part?". Two calls here, because an API should
+        // not bundle two writes behind one verb — but the UI offers them in that order.
+
+        api.MapGet("/parts/{partNumId:long}/order-items", async (long partNumId, IAbisRepository repo, CancellationToken ct) =>
+                Results.Ok(await repo.GetPartOrderItemsAsync(partNumId, ct)))
+           .WithName("GetPartOrderItems").WithTags("Parts")
+           .WithSummary("Order lines still pointing at this part in a status other than Done (0) or Cancelled (3) — legacy d_order_item_4part. What obsoleting it would leave behind; call this to warn before POST /parts/{id}/obsolete.")
+           .Produces<IReadOnlyList<PartOrderItemRef>>();
+
+        api.MapPost("/parts/{partNumId:long}/obsolete", async (long partNumId, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var r = await repo.ObsoletePartAsync(partNumId, ct);
+                return r.Outcome switch
+                {
+                    PartLifecycleOutcome.NotFound => Results.NotFound(new { message = $"Part {partNumId} not found." }),
+                    // Legacy: "Can't obsolete an non-active part."
+                    PartLifecycleOutcome.AlreadyObsolete => Results.Conflict(new { code = "already-obsolete",
+                        message = $"Part {partNumId} is already obsolete." }),
+                    _ => Results.Ok(r),
+                };
+            })
+           .WithName("ObsoletePart").WithTags("Parts")
+           .WithSummary("Retire a part (item_status = 0). 409 when it is already obsolete. Order lines still pointing at it are returned as a WARNING, not a refusal — legacy gathers them, shows them and obsoletes anyway (its own guard is commented out under \"Do not stop processing ... for now\").")
+           .Produces<PartObsoleteResult>().Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
+
+        api.MapPost("/parts/{partNumId:long}/revise", async (long partNumId, PartReviseRequest body, IAbisRepository repo, CancellationToken ct) =>
+            {
+                var r = await repo.RevisePartAsync(partNumId, body.MoveRouting, body.RoutingSequence, ct);
+                return r.Outcome switch
+                {
+                    PartLifecycleOutcome.NotFound => Results.NotFound(new { message = $"Part {partNumId} not found." }),
+                    // Legacy opens w_routing_4customer_and_part to ask which routing to move; this is that.
+                    PartLifecycleOutcome.NeedsRoutingChoice => Results.Conflict(new { code = "routing-choice-required",
+                        routings = r.RoutingChoices,
+                        message = $"Part {partNumId} has {r.RoutingChoices.Count} routings. Re-submit with routingSequence naming the one to move." }),
+                    _ => Results.Created($"/api/parts/{r.Part!.PartNumId}", r),
+                };
+            })
+           .WithName("RevisePart").WithTags("Parts")
+           .WithSummary("Create a revision of a part: the part + its blank geometry are copied to a fresh part_num_id marked ACTIVE, and with moveRouting=true one routing MOVES from the old part to the new (legacy updates the routing's part_num_id rather than copying it — unlike /copy, where both parts stay live and each needs its own). 409 'routing-choice-required' when the part has several routings and none is named.")
+           .Produces<PartRevisionResult>(StatusCodes.Status201Created).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict);
+
         // Part routing (legacy ROUTING) — how a part runs (line/die/shape + SPM & efficiency standards).
         api.MapGet("/parts/{partNumId:long}/routings", async (long partNumId, IAbisRepository repo, CancellationToken ct) =>
                 Results.Ok(await repo.GetRoutingsByPartAsync(partNumId, ct)))

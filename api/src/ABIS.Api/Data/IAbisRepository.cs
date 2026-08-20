@@ -272,6 +272,16 @@ public interface IAbisRepository
     Task<Part?> UpdatePartAsync(long partNumId, PartWrite body, CancellationToken ct);
     Task<Part?> CopyPartAsync(long sourcePartNumId, CancellationToken ct);
     Task<DeleteResult> DeletePartAsync(long partNumId, CancellationToken ct);
+
+    /// <summary>Order lines still pointing at this part in a status other than Done or Cancelled —
+    /// legacy <c>d_order_item_4part</c>, the list shown before obsoleting.</summary>
+    Task<IReadOnlyList<PartOrderItemRef>> GetPartOrderItemsAsync(long partNumId, CancellationToken ct);
+
+    /// <summary>Retire a part (<c>item_status = 0</c>) — legacy <c>ue_obsolete</c>.</summary>
+    Task<PartObsoleteResult> ObsoletePartAsync(long partNumId, CancellationToken ct);
+
+    /// <summary>Create a revision of a part — legacy <c>ue_create_revision</c>.</summary>
+    Task<PartRevisionResult> RevisePartAsync(long partNumId, bool moveRouting, long? routingSequence, CancellationToken ct);
     Task<IReadOnlyList<Routing>> GetRoutingsByPartAsync(long partNumId, CancellationToken ct);
     Task<RoutingOutcome> AddRoutingAsync(long partNumId, RoutingWrite body, CancellationToken ct);
     Task<bool> DeleteRoutingAsync(long partNumId, long routingSequence, long lineNum, long dieId, string sheetType, CancellationToken ct);

@@ -11784,6 +11784,177 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * Order lines still pointing at this part in a status other than Done (0) or Cancelled (3) — legacy d_order_item_4part. What obsoleting it would leave behind; call this to warn before POST /parts/{id}/obsolete.
+     * @return OK
+     */
+    getPartOrderItems(partNumId) {
+        let url_ = this.baseUrl + "/api/parts/{partNumId}/order-items";
+        if (partNumId === undefined || partNumId === null)
+            throw new globalThis.Error("The parameter 'partNumId' must be defined.");
+        url_ = url_.replace("{partNumId}", encodeURIComponent("" + partNumId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetPartOrderItems(_response);
+        });
+    }
+    processGetPartOrderItems(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                if (Array.isArray(resultData200)) {
+                    result200 = [];
+                    for (let item of resultData200)
+                        result200.push(PartOrderItemRef.fromJS(item));
+                }
+                else {
+                    result200 = null;
+                }
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Retire a part (item_status = 0). 409 when it is already obsolete. Order lines still pointing at it are returned as a WARNING, not a refusal — legacy gathers them, shows them and obsoletes anyway (its own guard is commented out under "Do not stop processing ... for now").
+     * @return OK
+     */
+    obsoletePart(partNumId) {
+        let url_ = this.baseUrl + "/api/parts/{partNumId}/obsolete";
+        if (partNumId === undefined || partNumId === null)
+            throw new globalThis.Error("The parameter 'partNumId' must be defined.");
+        url_ = url_.replace("{partNumId}", encodeURIComponent("" + partNumId));
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "POST",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processObsoletePart(_response);
+        });
+    }
+    processObsoletePart(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = PartObsoleteResult.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Create a revision of a part: the part + its blank geometry are copied to a fresh part_num_id marked ACTIVE, and with moveRouting=true one routing MOVES from the old part to the new (legacy updates the routing's part_num_id rather than copying it — unlike /copy, where both parts stay live and each needs its own). 409 'routing-choice-required' when the part has several routings and none is named.
+     * @return Created
+     */
+    revisePart(partNumId, body) {
+        let url_ = this.baseUrl + "/api/parts/{partNumId}/revise";
+        if (partNumId === undefined || partNumId === null)
+            throw new globalThis.Error("The parameter 'partNumId' must be defined.");
+        url_ = url_.replace("{partNumId}", encodeURIComponent("" + partNumId));
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processRevisePart(_response);
+        });
+    }
+    processRevisePart(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 201) {
+            return response.text().then((_responseText) => {
+                let result201 = null;
+                let resultData201 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result201 = PartRevisionResult.fromJS(resultData201);
+                return result201;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status === 404) {
+            return response.text().then((_responseText) => {
+                return throwException("Not Found", status, _responseText, _headers);
+            });
+        }
+        else if (status === 409) {
+            return response.text().then((_responseText) => {
+                return throwException("Conflict", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * A part's routings (line/die/shape + SPM/efficiency standards + edge-trim/stacker flags), enriched with die + line names.
      * @return OK
      */
@@ -28594,6 +28765,91 @@ export class Part {
         return data;
     }
 }
+export var PartLifecycleOutcome;
+(function (PartLifecycleOutcome) {
+    PartLifecycleOutcome[PartLifecycleOutcome["_0"] = 0] = "_0";
+    PartLifecycleOutcome[PartLifecycleOutcome["_1"] = 1] = "_1";
+    PartLifecycleOutcome[PartLifecycleOutcome["_2"] = 2] = "_2";
+    PartLifecycleOutcome[PartLifecycleOutcome["_3"] = 3] = "_3";
+})(PartLifecycleOutcome || (PartLifecycleOutcome = {}));
+export class PartObsoleteResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.outcome = _data["outcome"];
+            this.partNumId = _data["partNumId"];
+            if (Array.isArray(_data["blockingOrderItems"])) {
+                this.blockingOrderItems = [];
+                for (let item of _data["blockingOrderItems"])
+                    this.blockingOrderItems.push(PartOrderItemRef.fromJS(item));
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new PartObsoleteResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["outcome"] = this.outcome;
+        data["partNumId"] = this.partNumId;
+        if (Array.isArray(this.blockingOrderItems)) {
+            data["blockingOrderItems"] = [];
+            for (let item of this.blockingOrderItems)
+                data["blockingOrderItems"].push(item ? item.toJSON() : undefined);
+        }
+        return data;
+    }
+}
+export class PartOrderItemRef {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.orderAbcNum = _data["orderAbcNum"];
+            this.orderItemNum = _data["orderItemNum"];
+            this.customerId = _data["customerId"];
+            this.customerShortName = _data["customerShortName"];
+            this.partNumId = _data["partNumId"];
+            this.itemDesc = _data["itemDesc"];
+            this.itemStatus = _data["itemStatus"];
+            this.itemStatusDesc = _data["itemStatusDesc"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new PartOrderItemRef();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["orderAbcNum"] = this.orderAbcNum;
+        data["orderItemNum"] = this.orderItemNum;
+        data["customerId"] = this.customerId;
+        data["customerShortName"] = this.customerShortName;
+        data["partNumId"] = this.partNumId;
+        data["itemDesc"] = this.itemDesc;
+        data["itemStatus"] = this.itemStatus;
+        data["itemStatusDesc"] = this.itemStatusDesc;
+        return data;
+    }
+}
 export class PartPagedResult {
     constructor(data) {
         if (data) {
@@ -28633,6 +28889,76 @@ export class PartPagedResult {
         data["pageSize"] = this.pageSize;
         data["totalCount"] = this.totalCount;
         data["totalPages"] = this.totalPages;
+        return data;
+    }
+}
+export class PartReviseRequest {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.moveRouting = _data["moveRouting"];
+            this.routingSequence = _data["routingSequence"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new PartReviseRequest();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["moveRouting"] = this.moveRouting;
+        data["routingSequence"] = this.routingSequence;
+        return data;
+    }
+}
+export class PartRevisionResult {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.outcome = _data["outcome"];
+            this.part = _data["part"] ? Part.fromJS(_data["part"]) : undefined;
+            this.previousPartNumId = _data["previousPartNumId"];
+            this.movedRoutingSequence = _data["movedRoutingSequence"];
+            if (Array.isArray(_data["routingChoices"])) {
+                this.routingChoices = [];
+                for (let item of _data["routingChoices"])
+                    this.routingChoices.push(Routing.fromJS(item));
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new PartRevisionResult();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["outcome"] = this.outcome;
+        data["part"] = this.part ? this.part.toJSON() : undefined;
+        data["previousPartNumId"] = this.previousPartNumId;
+        data["movedRoutingSequence"] = this.movedRoutingSequence;
+        if (Array.isArray(this.routingChoices)) {
+            data["routingChoices"] = [];
+            for (let item of this.routingChoices)
+                data["routingChoices"].push(item ? item.toJSON() : undefined);
+        }
         return data;
     }
 }

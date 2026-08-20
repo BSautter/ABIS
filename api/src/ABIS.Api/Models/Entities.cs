@@ -557,6 +557,49 @@ public sealed record MakeScrapResult(bool Found, long ScrapSkidNum);
 /// to the right HTTP status: 204 Deleted, 404 NotFound, 409 InUse.</summary>
 public enum DeleteOutcome { Deleted, NotFound, InUse }
 
+// ---- Part lifecycle: obsolete + revise (legacy part_num/w_part_num_management.srw) ----
+
+/// <summary>An order line still pointing at a part somebody is obsoleting — legacy's
+/// <c>d_order_item_4part</c>. "Still" means <c>item_status NOT IN (0, 3)</c>: Done and Cancelled are
+/// the two states that make a part safe to retire.</summary>
+public sealed class PartOrderItemRef
+{
+    public long OrderAbcNum { get; set; }
+    public long OrderItemNum { get; set; }
+    public long CustomerId { get; set; }
+    public string? CustomerShortName { get; set; }
+    public long PartNumId { get; set; }
+    public string? ItemDesc { get; set; }
+    public int? ItemStatus { get; set; }
+    /// <summary>The status decoded the way legacy's CASE does it: 0 Done, 2 New, 3 Canceled, 4 OnHold,
+    /// anything else "??????" — its literal fallback, kept because a code outside the four is a data
+    /// problem worth seeing rather than hiding behind a prettier word.</summary>
+    public string? ItemStatusDesc { get; set; }
+}
+
+public enum PartLifecycleOutcome { Ok, NotFound, AlreadyObsolete, NeedsRoutingChoice }
+
+/// <summary>Result of obsoleting a part. <see cref="BlockingOrderItems"/> is a <b>warning</b>, not a
+/// refusal — see <c>AbisRepository.ObsoletePartAsync</c> for why legacy stopped short of blocking.</summary>
+public sealed class PartObsoleteResult
+{
+    public PartLifecycleOutcome Outcome { get; set; }
+    public long PartNumId { get; set; }
+    public IReadOnlyList<PartOrderItemRef> BlockingOrderItems { get; set; } = Array.Empty<PartOrderItemRef>();
+}
+
+/// <summary>Result of revising a part: the new part, and which routing (if any) moved onto it.</summary>
+public sealed class PartRevisionResult
+{
+    public PartLifecycleOutcome Outcome { get; set; }
+    public Part? Part { get; set; }
+    public long? PreviousPartNumId { get; set; }
+    public long? MovedRoutingSequence { get; set; }
+    /// <summary>Set when the part has more than one routing and the caller did not say which to move —
+    /// the API equivalent of legacy opening <c>w_routing_4customer_and_part</c> to ask.</summary>
+    public IReadOnlyList<Routing> RoutingChoices { get; set; } = Array.Empty<Routing>();
+}
+
 public sealed record DeleteResult(DeleteOutcome Outcome, string? Reason = null);
 
 /// <summary>Result of a bulk coil status change: which coils were updated and which were skipped

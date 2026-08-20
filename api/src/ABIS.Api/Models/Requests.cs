@@ -417,6 +417,21 @@ public sealed class OrderItemWrite : ITrimNormalizable
 /// <summary>Create an order header together with its line items in one
 /// transaction (the order-entry "save" operation). The server assigns the order
 /// id and stamps it onto each item.</summary>
+/// <summary>Create a revision of a part (legacy <c>ue_create_revision</c>): the part and its blank
+/// geometry are copied to a fresh <c>part_num_id</c> marked active, and one routing may be MOVED from
+/// the old part to the new one.</summary>
+public sealed class PartReviseRequest
+{
+    /// <summary>Legacy asks "Would you like to use the old part ID routing for the new part ID?".
+    /// Default false, matching the API convention that a side effect is opted into.</summary>
+    public bool MoveRouting { get; set; }
+
+    /// <summary>Which routing to move, when the part has more than one. With exactly one routing this
+    /// can be omitted — legacy moves it without asking. With several and none named, the call answers
+    /// 409 listing the choices, which is what legacy's picker window does.</summary>
+    public long? RoutingSequence { get; set; }
+}
+
 public sealed class OrderCreateWithItems
 {
     public required CustomerOrderWrite Order { get; set; }

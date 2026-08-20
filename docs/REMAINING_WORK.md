@@ -331,7 +331,22 @@
 - [ ] **C** Quote editor (`PUT /sales/quotes` + tabbed spec/pricing/inventory/shipment body) + save/reload + print + email
 - [x] **H** Order edit-in-UI — done (#249): order-detail Edit toggle wires the existing `PUT /orders/{o}` + item PUT (editable header + per-line part/alloy/sheet/gauge/qty; full-replace-safe via spread)
 - [x] **H** Assign customer coils to an order — done (#253): `GET/POST /orders/{id}/coils` + `DELETE /orders/{id}/coils/{coil}` + `GET /orders/{id}/available-coils` (legacy `ORDER_COIL` / `w_order_entry_coil_list`). Re-adding to the same order is blocked; a coil already on another order needs `confirm=true` (the dup-org warning, `otherOrderAbcNum`). Order-entry detail gained an assigned-coils panel + available-coil picker.
-- [~] **H** Part revisions (version + re-point open items) — still TODO; **routing sequences per part — done (#258)**: `GET/POST /parts/{id}/routings` + `DELETE /parts/{id}/routings/{seq}/{line}/{die}/{shape}` over legacy `ROUTING` (line/die/shape + SPM & efficiency standards + edge-trim/stacker; all-column PK → edit = delete + re-add). Routings travel with a part copy and are cleared on part delete. Routing panel on the Parts page.
+- [x] **H** Part revisions — **DONE**. `POST /parts/{id}/obsolete` (item_status = 0; 409 when already
+  obsolete) + `POST /parts/{id}/revise` (part + blank geometry copied to a fresh **active** id) +
+  `GET /parts/{id}/order-items`, with Obsolete/Revise on the Parts page. Ported from
+  `w_part_num_management.srw` — `ue_obsolete`/`ue_create_revision`/`wf_check_order_item`/
+  `wf_update_routing_4revision_part`.
+  <br>**Two things the source says that the function names do not.** Open order lines are a
+  **warning, not a refusal**: legacy's own `Return -1` is commented out under *"Do not stop
+  processing ... for now"* (2025-03-11). And a revision **MOVES** a routing (`UPDATE routing SET
+  part_num_id`), where `/copy` duplicates it — right for a successor, wrong for a duplicate, so the
+  two must not share code.
+  <br>**Measured on `.230` 2026-08-20:** 9,213 parts obsolete vs 666 active (retiring is the norm,
+  not the exception); **63 of the 666 active parts (9.5%)** would warn, worst case 6 open lines — so
+  blocking would refuse about one retirement in ten; **231 of 892 parts with routings have more than
+  one**, so the "which routing moves?" picker is a routine path, not an edge case. 0 order lines
+  carry a NULL `item_status`, so the `NOT IN (0,3)` three-valued-logic exclusion is moot on real data.
+  <br>Previously noted here and still true: **routing sequences per part — done (#258)**: `GET/POST /parts/{id}/routings` + `DELETE /parts/{id}/routings/{seq}/{line}/{die}/{shape}` over legacy `ROUTING` (line/die/shape + SPM & efficiency standards + edge-trim/stacker; all-column PK → edit = delete + re-add). Routings travel with a part copy and are cleared on part delete. Routing panel on the Parts page.
 - [~] **M** **Part copy/delete + obsolete-in-use guard — done (#256)**: `POST /parts/{id}/copy` (part + blank geometry, INSERT…SELECT) + `DELETE /parts/{id}` refused with 409 when referenced by any order line (order_item.part_num_id), with Duplicate/Delete buttons on the Parts page. **Order copy/duplicate — done (#255)**: `POST /orders/{id}/copy` clones header + items + geometry. **Order-entry part picker — done (#265)**: the New-order line's Part # field autocompletes from the customer's parts (datalist) and, on selection, prefills alloy/sheet/gauge/pieces + tags the line with its part_num_id. Still TODO here: end-user change cascade (largely covered by order-edit's enduserId)
 - [x] **H/M** Sector consistency validation; edge-trim tolerance gate + override + `f_add_system_log_tran` audit.
   **Both halves now DONE.**

@@ -9111,6 +9111,136 @@
         }
       }
     },
+    "/api/parts/{partNumId}/order-items": {
+      "get": {
+        "tags": [
+          "Parts"
+        ],
+        "summary": "Order lines still pointing at this part in a status other than Done (0) or Cancelled (3) — legacy d_order_item_4part. What obsoleting it would leave behind; call this to warn before POST /parts/{id}/obsolete.",
+        "operationId": "GetPartOrderItems",
+        "parameters": [
+          {
+            "name": "partNumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PartOrderItemRef"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/parts/{partNumId}/obsolete": {
+      "post": {
+        "tags": [
+          "Parts"
+        ],
+        "summary": "Retire a part (item_status = 0). 409 when it is already obsolete. Order lines still pointing at it are returned as a WARNING, not a refusal — legacy gathers them, shows them and obsoletes anyway (its own guard is commented out under \"Do not stop processing ... for now\").",
+        "operationId": "ObsoletePart",
+        "parameters": [
+          {
+            "name": "partNumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartObsoleteResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/parts/{partNumId}/revise": {
+      "post": {
+        "tags": [
+          "Parts"
+        ],
+        "summary": "Create a revision of a part: the part + its blank geometry are copied to a fresh part_num_id marked ACTIVE, and with moveRouting=true one routing MOVES from the old part to the new (legacy updates the routing's part_num_id rather than copying it — unlike /copy, where both parts stay live and each needs its own). 409 'routing-choice-required' when the part has several routings and none is named.",
+        "operationId": "RevisePart",
+        "parameters": [
+          {
+            "name": "partNumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PartReviseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartRevisionResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/parts/{partNumId}/routings": {
       "get": {
         "tags": [
@@ -24123,6 +24253,75 @@
         },
         "additionalProperties": false
       },
+      "PartLifecycleOutcome": {
+        "enum": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "type": "integer",
+        "format": "int32"
+      },
+      "PartObsoleteResult": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "$ref": "#/components/schemas/PartLifecycleOutcome"
+          },
+          "partNumId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "blockingOrderItems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PartOrderItemRef"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PartOrderItemRef": {
+        "type": "object",
+        "properties": {
+          "orderAbcNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "orderItemNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "customerId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "customerShortName": {
+            "type": "string",
+            "nullable": true
+          },
+          "partNumId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "itemDesc": {
+            "type": "string",
+            "nullable": true
+          },
+          "itemStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "itemStatusDesc": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "PartPagedResult": {
         "required": [
           "items",
@@ -24155,6 +24354,49 @@
             "type": "integer",
             "format": "int32",
             "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PartReviseRequest": {
+        "type": "object",
+        "properties": {
+          "moveRouting": {
+            "type": "boolean"
+          },
+          "routingSequence": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PartRevisionResult": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "$ref": "#/components/schemas/PartLifecycleOutcome"
+          },
+          "part": {
+            "$ref": "#/components/schemas/Part"
+          },
+          "previousPartNumId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "movedRoutingSequence": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "routingChoices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Routing"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false
