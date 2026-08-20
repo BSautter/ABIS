@@ -14104,6 +14104,117 @@ export class AbisClient {
         return Promise.resolve(null);
     }
     /**
+     * A coil's recovery scrap worksheet for one job: the customer's configured defects — narrowed to the autoparts-flagged ones when the job's part is an autopart — each carrying its booked weight and pieces, or zero. Values come from the office worksheet when it holds ANY row for this coil+job (it supersedes rather than merges), otherwise from the DAS capture, summed per defect. `source` says which.
+     * @return OK
+     */
+    getRecoveryWorksheet(abJobNum, coilAbcNum, customerId) {
+        let url_ = this.baseUrl + "/api/recovery/jobs/{abJobNum}/coils/{coilAbcNum}/worksheet?";
+        if (abJobNum === undefined || abJobNum === null)
+            throw new globalThis.Error("The parameter 'abJobNum' must be defined.");
+        url_ = url_.replace("{abJobNum}", encodeURIComponent("" + abJobNum));
+        if (coilAbcNum === undefined || coilAbcNum === null)
+            throw new globalThis.Error("The parameter 'coilAbcNum' must be defined.");
+        url_ = url_.replace("{coilAbcNum}", encodeURIComponent("" + coilAbcNum));
+        if (customerId === undefined || customerId === null)
+            throw new globalThis.Error("The parameter 'customerId' must be defined and cannot be null.");
+        else
+            url_ += "customerId=" + encodeURIComponent("" + customerId) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        let options_ = {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processGetRecoveryWorksheet(_response);
+        });
+    }
+    processGetRecoveryWorksheet(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = RecoveryWorksheet.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
+     * Save a coil's recovery scrap worksheet. A defect already booked is updated to whatever is sent, INCLUDING zero; one not yet booked is inserted only when weight or pieces is non-zero. Nothing is deleted - so a coil the office has touched stays office-sourced even if every figure is zeroed. Returns the re-read worksheet.
+     * @return OK
+     */
+    saveRecoveryWorksheet(abJobNum, coilAbcNum, customerId, body) {
+        let url_ = this.baseUrl + "/api/recovery/jobs/{abJobNum}/coils/{coilAbcNum}/worksheet?";
+        if (abJobNum === undefined || abJobNum === null)
+            throw new globalThis.Error("The parameter 'abJobNum' must be defined.");
+        url_ = url_.replace("{abJobNum}", encodeURIComponent("" + abJobNum));
+        if (coilAbcNum === undefined || coilAbcNum === null)
+            throw new globalThis.Error("The parameter 'coilAbcNum' must be defined.");
+        url_ = url_.replace("{coilAbcNum}", encodeURIComponent("" + coilAbcNum));
+        if (customerId === undefined || customerId === null)
+            throw new globalThis.Error("The parameter 'customerId' must be defined and cannot be null.");
+        else
+            url_ += "customerId=" + encodeURIComponent("" + customerId) + "&";
+        url_ = url_.replace(/[?&]$/, "");
+        const content_ = JSON.stringify(body);
+        let options_ = {
+            body: content_,
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        };
+        return this.http.fetch(url_, options_).then((_response) => {
+            return this.processSaveRecoveryWorksheet(_response);
+        });
+    }
+    processSaveRecoveryWorksheet(response) {
+        const status = response.status;
+        let _headers = {};
+        if (response.headers && response.headers.forEach) {
+            response.headers.forEach((v, k) => _headers[k] = v);
+        }
+        ;
+        if (status === 200) {
+            return response.text().then((_responseText) => {
+                let result200 = null;
+                let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = RecoveryWorksheet.fromJS(resultData200);
+                return result200;
+            });
+        }
+        else if (status === 401) {
+            return response.text().then((_responseText) => {
+                return throwException("Unauthorized", status, _responseText, _headers);
+            });
+        }
+        else if (status !== 200 && status !== 204) {
+            return response.text().then((_responseText) => {
+                return throwException("An unexpected server error occurred.", status, _responseText, _headers);
+            });
+        }
+        return Promise.resolve(null);
+    }
+    /**
      * Daily recovery report for a job: each recovery coil's ship / scrap / rejected weights and yield. Weights come from the live f_get_coil_* functions on Oracle.
      * @return OK
      */
@@ -30696,6 +30807,150 @@ export class RecoveryScrapDefectRow {
         data["netWt"] = this.netWt;
         data["pieces"] = this.pieces;
         data["pct"] = this.pct;
+        return data;
+    }
+}
+export class RecoveryWorksheet {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.abJobNum = _data["abJobNum"];
+            this.coilAbcNum = _data["coilAbcNum"];
+            this.customerId = _data["customerId"];
+            this.autoparts = _data["autoparts"];
+            this.source = _data["source"];
+            if (Array.isArray(_data["rows"])) {
+                this.rows = [];
+                for (let item of _data["rows"])
+                    this.rows.push(RecoveryWorksheetRow.fromJS(item));
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new RecoveryWorksheet();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["abJobNum"] = this.abJobNum;
+        data["coilAbcNum"] = this.coilAbcNum;
+        data["customerId"] = this.customerId;
+        data["autoparts"] = this.autoparts;
+        data["source"] = this.source;
+        if (Array.isArray(this.rows)) {
+            data["rows"] = [];
+            for (let item of this.rows)
+                data["rows"].push(item ? item.toJSON() : undefined);
+        }
+        return data;
+    }
+}
+export class RecoveryWorksheetLine {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.scrapTypeId = _data["scrapTypeId"];
+            this.netWt = _data["netWt"];
+            this.pieces = _data["pieces"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new RecoveryWorksheetLine();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["scrapTypeId"] = this.scrapTypeId;
+        data["netWt"] = this.netWt;
+        data["pieces"] = this.pieces;
+        return data;
+    }
+}
+export class RecoveryWorksheetRow {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            this.scrapTypeId = _data["scrapTypeId"];
+            this.scrapCode = _data["scrapCode"];
+            this.scrapDefect = _data["scrapDefect"];
+            this.abcOrMill = _data["abcOrMill"];
+            this.netWt = _data["netWt"];
+            this.pieces = _data["pieces"];
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new RecoveryWorksheetRow();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        data["scrapTypeId"] = this.scrapTypeId;
+        data["scrapCode"] = this.scrapCode;
+        data["scrapDefect"] = this.scrapDefect;
+        data["abcOrMill"] = this.abcOrMill;
+        data["netWt"] = this.netWt;
+        data["pieces"] = this.pieces;
+        return data;
+    }
+}
+export class RecoveryWorksheetWrite {
+    constructor(data) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    this[property] = data[property];
+            }
+        }
+    }
+    init(_data) {
+        if (_data) {
+            if (Array.isArray(_data["lines"])) {
+                this.lines = [];
+                for (let item of _data["lines"])
+                    this.lines.push(RecoveryWorksheetLine.fromJS(item));
+            }
+        }
+    }
+    static fromJS(data) {
+        data = typeof data === 'object' ? data : {};
+        let result = new RecoveryWorksheetWrite();
+        result.init(data);
+        return result;
+    }
+    toJSON(data) {
+        data = typeof data === 'object' ? data : {};
+        if (Array.isArray(this.lines)) {
+            data["lines"] = [];
+            for (let item of this.lines)
+                data["lines"].push(item ? item.toJSON() : undefined);
+        }
         return data;
     }
 }

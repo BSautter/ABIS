@@ -4039,6 +4039,172 @@ public sealed class AbisRepository : IAbisRepository
         return rows.AsList();
     }
 
+    /// <summary>
+    /// A coil's recovery scrap worksheet for one job - legacy <c>quality/w_recovery.srw</c>, the
+    /// dw_defects retrieve event (840-945). Three rules, and two of them are business decisions rather
+    /// than plumbing:
+    ///
+    /// <para><b>1. The office supersedes the floor.</b> If <c>recovery_scrap_worksheet</c> holds any row
+    /// for this coil+job, those figures are used; only when it holds none does the worksheet fall back to
+    /// the DAS capture in <c>quality_scrap_worksheet</c>. Legacy decides this with a COUNT before it
+    /// reads anything, so a single office row for one defect suppresses the DAS numbers for ALL of them -
+    /// the quality office's sheet replaces the floor's, it does not merge with it.</para>
+    ///
+    /// <para><b>2. The autoparts filter.</b> The job's part decides which of the customer's defects appear:
+    /// an autopart shows only those flagged <c>autoparts</c>, anything else shows all of them. A job with
+    /// no part master counts as not-an-autopart - legacy sets its flag to 0 explicitly for both the
+    /// null-part and null-flag cases rather than letting it fall through.</para>
+    ///
+    /// <para><b>3. Every configured defect appears</b>, carrying zero when nothing is booked against it.
+    /// The worksheet is a form to fill in, not a list of what happened - a defect that is missing cannot
+    /// be entered.</para>
+    ///
+    /// <para>The DAS side SUMs and groups: <c>quality_scrap_worksheet</c> is keyed by scrap type AND
+    /// od/mill/skid, so one defect legitimately has several rows there, where the office table is keyed
+    /// by (coil, job, type) and has exactly one.</para>
+    ///
+    /// <para>Values are matched to defects by <c>scrap_type_id</c>. Legacy matches on the scrap CODE,
+    /// which is the weaker key - it would fill two rows from one figure if two scrap types ever shared a
+    /// code. Both tables carry the id, so the id is used here.</para>
+    /// </summary>
+    public async Task<RecoveryWorksheet> GetRecoveryWorksheetAsync(long abJobNum, long coilAbcNum, long customerId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+
+        // The job -> order line -> part master. Null at any step means "not an autopart".
+        var autoFlag = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(
+            """
+            SELECT p.autoparts
+              FROM ab_job j
+              JOIN order_item oi ON oi.order_abc_num = j.order_abc_num AND oi.order_item_num = j.order_item_num
+              JOIN part_num p ON p.part_num_id = oi.part_num_id
+             WHERE j.ab_job_num = :abJobNum
+            """, new { abJobNum }, cancellationToken: ct));
+        var isAutopart = IsFlagSet(autoFlag);
+
+        var defects = (await conn.QueryAsync<CustomerDefect>(new CommandDefinition(
+            """
+            SELECT c.customer_id AS CustomerId, c.scrap_type_id AS ScrapTypeId,
+                   s.scrap_code AS ScrapCode, s.scrap_defect AS ScrapDefect,
+                   c.abc_or_mill AS AbcOrMill, c.autoparts AS Autoparts, c.non_autoparts AS NonAutoparts
+              FROM cust_scrap_type_needed c JOIN scrap_type s ON s.scrap_type_id = c.scrap_type_id
+             WHERE c.customer_id = :customerId
+             ORDER BY s.scrap_code
+            """, new { customerId }, cancellationToken: ct))).AsList();
+        if (isAutopart) defects = defects.Where(d => IsFlagSet(d.Autoparts)).ToList();
+
+        var officeRows = await conn.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM recovery_scrap_worksheet WHERE ab_job_num = :abJobNum AND coil_abc_num = :coilAbcNum",
+            new { abJobNum, coilAbcNum }, cancellationToken: ct));
+
+        var booked = officeRows > 0
+            ? await conn.QueryAsync<BookedScrap>(new CommandDefinition(
+                """
+                SELECT scrap_type_id AS ScrapTypeId, scrap_item_net_wt AS NetWt, scrap_item_piece AS Pieces
+                  FROM recovery_scrap_worksheet
+                 WHERE ab_job_num = :abJobNum AND coil_abc_num = :coilAbcNum
+                """, new { abJobNum, coilAbcNum }, cancellationToken: ct))
+            : await conn.QueryAsync<BookedScrap>(new CommandDefinition(
+                """
+                SELECT scrap_type_id AS ScrapTypeId, SUM(scrap_item_net_wt) AS NetWt, SUM(scrap_item_piece) AS Pieces
+                  FROM quality_scrap_worksheet
+                 WHERE ab_job_num = :abJobNum AND coil_abc_num = :coilAbcNum
+                 GROUP BY scrap_type_id
+                """, new { abJobNum, coilAbcNum }, cancellationToken: ct));
+
+        var byType = booked.ToDictionary(b => b.ScrapTypeId, b => b);
+        var rows = defects.Select(d =>
+        {
+            byType.TryGetValue(d.ScrapTypeId, out var v);
+            return new RecoveryWorksheetRow
+            {
+                ScrapTypeId = d.ScrapTypeId,
+                ScrapCode = d.ScrapCode,
+                ScrapDefect = d.ScrapDefect,
+                AbcOrMill = d.AbcOrMill,
+                NetWt = v?.NetWt ?? 0m,
+                Pieces = v?.Pieces ?? 0,
+            };
+        }).ToList();
+
+        return new RecoveryWorksheet
+        {
+            AbJobNum = abJobNum, CoilAbcNum = coilAbcNum, CustomerId = customerId,
+            Autoparts = isAutopart,
+            Source = officeRows > 0 ? "office" : "das",
+            Rows = rows,
+        };
+    }
+
+    /// <summary>
+    /// Save a coil's recovery scrap worksheet - legacy <c>w_recovery.srw</c> dw_defects save (765-822).
+    ///
+    /// <para><b>Existing lines are updated, missing ones are inserted only when there is something to
+    /// record.</b> A line already in <c>recovery_scrap_worksheet</c> takes whatever is on the sheet,
+    /// <b>including zero</b>; a line that is not there yet is created only when weight or pieces is
+    /// non-zero. The asymmetry is the point: it stops the table filling with a zero row for every defect
+    /// a customer tracks, while still letting the office correct a wrong figure down to nothing.</para>
+    ///
+    /// <para><b>Nothing is ever deleted</b>, and that has a consequence worth knowing: because the read
+    /// picks its source by COUNTing office rows, a coil whose figures have all been zeroed still counts
+    /// as office-owned. Once the quality office has touched a coil, the DAS numbers do not come back.
+    /// That is legacy behaviour and it is defensible - a deliberate zero is a finding, not an absence -
+    /// but it is not reversible from this screen.</para>
+    /// </summary>
+    public async Task<RecoveryWorksheet> SaveRecoveryWorksheetAsync(
+        long abJobNum, long coilAbcNum, long customerId, IReadOnlyList<RecoveryWorksheetLine> lines, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        await using (var tx = await conn.BeginTransactionAsync(ct))
+        {
+            var existing = (await conn.QueryAsync<long>(new CommandDefinition(
+                "SELECT scrap_type_id FROM recovery_scrap_worksheet WHERE ab_job_num = :abJobNum AND coil_abc_num = :coilAbcNum",
+                new { abJobNum, coilAbcNum }, transaction: tx, cancellationToken: ct))).ToHashSet();
+
+            foreach (var line in lines)
+            {
+                if (existing.Contains(line.ScrapTypeId))
+                {
+                    await conn.ExecuteAsync(new CommandDefinition(
+                        """
+                        UPDATE recovery_scrap_worksheet
+                           SET scrap_item_net_wt = :netWt, scrap_item_piece = :pieces
+                         WHERE ab_job_num = :abJobNum AND coil_abc_num = :coilAbcNum AND scrap_type_id = :scrapTypeId
+                        """,
+                        new { netWt = line.NetWt, pieces = line.Pieces, abJobNum, coilAbcNum, scrapTypeId = line.ScrapTypeId },
+                        transaction: tx, cancellationToken: ct));
+                }
+                else if (line.NetWt > 0 || line.Pieces > 0)
+                {
+                    await conn.ExecuteAsync(new CommandDefinition(
+                        """
+                        INSERT INTO recovery_scrap_worksheet
+                            (coil_abc_num, ab_job_num, scrap_type_id, scrap_item_piece, scrap_item_net_wt)
+                        VALUES (:coilAbcNum, :abJobNum, :scrapTypeId, :pieces, :netWt)
+                        """,
+                        new { coilAbcNum, abJobNum, scrapTypeId = line.ScrapTypeId, pieces = line.Pieces, netWt = line.NetWt },
+                        transaction: tx, cancellationToken: ct));
+                }
+            }
+            await tx.CommitAsync(ct);
+        }
+        return await GetRecoveryWorksheetAsync(abJobNum, coilAbcNum, customerId, ct);
+    }
+    /// <summary>A booked scrap figure for one defect. A named class, NOT a ValueTuple: Dapper does not
+    /// map columns onto ValueTuple element names, and the failure is silent - zeros everywhere, which on
+    /// this screen would read as "no scrap recorded" rather than as a bug.</summary>
+    private sealed class BookedScrap
+    {
+        public long ScrapTypeId { get; set; }
+        public decimal NetWt { get; set; }
+        public int Pieces { get; set; }
+    }
+
+    /// <summary>A yes/no flag as the two schemas actually store it. Legacy tests <c>= 1</c> because on
+    /// Oracle these are NUMBER(1,0); the SQLite fixture holds the same flags as 'Y'/'N'. Accepting both
+    /// keeps one query working against both, and a flag that is neither reads as false.</summary>
+    private static bool IsFlagSet(string? flag) =>
+        flag is not null && (flag.Trim() is "1" or "Y" or "y");
     // ---- Recovery-report SETUP (legacy recovery_report_customer + cust_scrap_type_needed) ----
 
     // Upsert a customer's recovery-reporting config (delete + insert on the customer_id key — portable).

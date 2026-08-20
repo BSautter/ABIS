@@ -165,6 +165,36 @@ public sealed class RecoveryCustomer
 
 /// <summary>A scrap/defect type a customer tracks (<c>cust_scrap_type_needed ⋈ scrap_type</c>),
 /// with the ABC/mill scope and autoparts flags.</summary>
+// ---- Recovery scrap worksheet (legacy quality/w_recovery.srw) ----
+
+/// <summary>One defect line on a coil's recovery scrap worksheet: the customer's defect, and the
+/// weight and piece count booked against it (zero when nothing has been recorded for that defect).</summary>
+public sealed class RecoveryWorksheetRow
+{
+    public long ScrapTypeId { get; set; }
+    public string? ScrapCode { get; set; }
+    public string? ScrapDefect { get; set; }
+    public string? AbcOrMill { get; set; }
+    public decimal NetWt { get; set; }
+    public int Pieces { get; set; }
+}
+
+/// <summary>A coil's recovery scrap worksheet for one job — the customer's defect list, filled in from
+/// whichever source is authoritative. See <c>AbisRepository.GetRecoveryWorksheetAsync</c>.</summary>
+public sealed class RecoveryWorksheet
+{
+    public long AbJobNum { get; set; }
+    public long CoilAbcNum { get; set; }
+    public long CustomerId { get; set; }
+    /// <summary>Whether the job's part is an autopart (<c>part_num.autoparts</c>), which narrows the
+    /// defect list. False when the job has no part master — legacy's explicit default.</summary>
+    public bool Autoparts { get; set; }
+    /// <summary><c>office</c> when the quality office has booked figures for this coil+job, otherwise
+    /// <c>das</c>. The office worksheet supersedes the floor's capture — see the repository.</summary>
+    public string Source { get; set; } = "das";
+    public IReadOnlyList<RecoveryWorksheetRow> Rows { get; set; } = Array.Empty<RecoveryWorksheetRow>();
+}
+
 public sealed class CustomerDefect
 {
     public long CustomerId { get; set; }

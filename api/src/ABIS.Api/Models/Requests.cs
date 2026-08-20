@@ -420,6 +420,20 @@ public sealed class OrderItemWrite : ITrimNormalizable
 /// <summary>Create a revision of a part (legacy <c>ue_create_revision</c>): the part and its blank
 /// geometry are copied to a fresh <c>part_num_id</c> marked active, and one routing may be MOVED from
 /// the old part to the new one.</summary>
+/// <summary>One defect line being booked on a coil's recovery scrap worksheet.</summary>
+public sealed class RecoveryWorksheetLine
+{
+    public long ScrapTypeId { get; set; }
+    public decimal NetWt { get; set; }
+    public int Pieces { get; set; }
+}
+
+/// <summary>Save a coil's recovery scrap worksheet (legacy w_recovery dw_defects save).</summary>
+public sealed class RecoveryWorksheetWrite
+{
+    public List<RecoveryWorksheetLine> Lines { get; set; } = [];
+}
+
 public sealed class PartReviseRequest
 {
     /// <summary>Legacy asks "Would you like to use the old part ID routing for the new part ID?".

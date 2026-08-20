@@ -10914,6 +10914,120 @@
         }
       }
     },
+    "/api/recovery/jobs/{abJobNum}/coils/{coilAbcNum}/worksheet": {
+      "get": {
+        "tags": [
+          "Recovery"
+        ],
+        "summary": "A coil's recovery scrap worksheet for one job: the customer's configured defects — narrowed to the autoparts-flagged ones when the job's part is an autopart — each carrying its booked weight and pieces, or zero. Values come from the office worksheet when it holds ANY row for this coil+job (it supersedes rather than merges), otherwise from the DAS capture, summed per defect. `source` says which.",
+        "operationId": "GetRecoveryWorksheet",
+        "parameters": [
+          {
+            "name": "abJobNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "coilAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "customerId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryWorksheet"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Recovery"
+        ],
+        "summary": "Save a coil's recovery scrap worksheet. A defect already booked is updated to whatever is sent, INCLUDING zero; one not yet booked is inserted only when weight or pieces is non-zero. Nothing is deleted - so a coil the office has touched stays office-sourced even if every figure is zeroed. Returns the re-read worksheet.",
+        "operationId": "SaveRecoveryWorksheet",
+        "parameters": [
+          {
+            "name": "abJobNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "coilAbcNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "customerId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoveryWorksheetWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryWorksheet"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
     "/api/recovery/jobs/{abJobNum}/report": {
       "get": {
         "tags": [
@@ -26323,6 +26437,99 @@
           "pct": {
             "type": "number",
             "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RecoveryWorksheet": {
+        "type": "object",
+        "properties": {
+          "abJobNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "coilAbcNum": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "customerId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "autoparts": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string",
+            "nullable": true
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecoveryWorksheetRow"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "RecoveryWorksheetLine": {
+        "type": "object",
+        "properties": {
+          "scrapTypeId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "netWt": {
+            "type": "number",
+            "format": "double"
+          },
+          "pieces": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RecoveryWorksheetRow": {
+        "type": "object",
+        "properties": {
+          "scrapTypeId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "scrapCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "scrapDefect": {
+            "type": "string",
+            "nullable": true
+          },
+          "abcOrMill": {
+            "type": "string",
+            "nullable": true
+          },
+          "netWt": {
+            "type": "number",
+            "format": "double"
+          },
+          "pieces": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RecoveryWorksheetWrite": {
+        "type": "object",
+        "properties": {
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecoveryWorksheetLine"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false

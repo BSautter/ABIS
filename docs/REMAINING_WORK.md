@@ -726,7 +726,14 @@
   it is coupled to 863 — which is already deferred as data-blocked in §A. Listing it separately
   **double-counts the work**; do them together or not at all.
 - [~] **H** Recovery report suite (remaining ~6 templates); **customer-report SETUP write — done (#257)**: `PUT/DELETE /quality/recovery-customers/{id}` (recovery_report_customer: name + allProducts/autoOnly/commOnly) + `PUT/DELETE /quality/customer-defects/{cid}/{scrapTypeId}` (cust_scrap_type_needed; PUT 404s on an unknown scrap type, returns the enriched row). API + tests; **setup UI done (#272)**: the Quality/Recovery page's Recovery-customers tab gained an add/edit form + per-row Delete, and the Customer-defects tab an add/update form (scrap type from catalog + ABC-Mill + autoparts flags) + per-row Remove.
-- [~] **M** Recovery depth — **add/remove coil-job done** (`PUT` upsert #—prior + **`DELETE /recovery/jobs/{job}/coils/{coil}` #267** removes only the `recovery_job_coil` overlay row, 204/404). Still TODO: autoparts filter, pull-from-DAS-vs-office, email/print/export.
+- [~] **M** Recovery depth — **add/remove coil-job done** (`PUT` upsert #—prior + **`DELETE /recovery/jobs/{job}/coils/{coil}` #267** removes only the `recovery_job_coil` overlay row, 204/404). **Autoparts filter + pull-from-DAS-vs-office DONE** — `GET/PUT /recovery/jobs/{job}/coils/{coil}/worksheet`
+  (+ a worksheet card on the Recovery page). Three rules from `w_recovery.srw`: the office worksheet
+  **supersedes** the DAS capture rather than merging with it (legacy decides with a COUNT before reading,
+  so one office row suppresses the floor's numbers for every defect); an autopart narrows the customer's
+  defect list to the autoparts-flagged ones; every configured defect appears, at zero if unbooked. Save is
+  deliberately asymmetric — an existing line updates to whatever is sent **including zero**, an absent one
+  is inserted only when non-zero, and nothing is ever deleted (so a coil the office has touched stays
+  office-sourced even once zeroed). Still TODO here: email/print/export.
 - [x] **M** Dimension-check edit/delete; job-level dim-QC green/red board; good-material in-spec rollup; PC# auto-increment — done (#236 edit/delete + PC# auto-increment; #237 QC board page + GET /coil-eval/jobs/{n}/qc-board with good/out-of-spec roll-ups + WinSPC verdict)
 - [~] **M** QA coil photos; QA email notification; **"make scrap" action — done (#266)**: `POST /sheet-skids/{n}/make-scrap` faithfully ports legacy `F_CONVERT_TO_SCRAP` (mints a scrap skid, moves the skid + production items to the `scraped_*` mirrors, credits each as a `return_scrap_item`, removes the live rows) — the inverse of the return-scrap #250, and reversible via it. **UI done (#269)**: "Make scrap" (per sheet skid) + "Return to sheet" (per scrap skid) confirm-gated row actions on the Skids page.
 

@@ -3425,6 +3425,20 @@ public static class ApiEndpoints
            .WithSummary("Remove a coil from a job's recovery worksheet (deletes only the recovery overlay row; the processed coil is untouched).")
            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
 
+        api.MapGet("/recovery/jobs/{abJobNum:long}/coils/{coilAbcNum:long}/worksheet",
+                async (long abJobNum, long coilAbcNum, long customerId, IAbisRepository repo, CancellationToken ct) =>
+                    Results.Ok(await repo.GetRecoveryWorksheetAsync(abJobNum, coilAbcNum, customerId, ct)))
+           .WithName("GetRecoveryWorksheet").WithTags("Recovery")
+           .WithSummary("A coil's recovery scrap worksheet for one job: the customer's configured defects — narrowed to the autoparts-flagged ones when the job's part is an autopart — each carrying its booked weight and pieces, or zero. Values come from the office worksheet when it holds ANY row for this coil+job (it supersedes rather than merges), otherwise from the DAS capture, summed per defect. `source` says which.")
+           .Produces<RecoveryWorksheet>();
+
+        api.MapPut("/recovery/jobs/{abJobNum:long}/coils/{coilAbcNum:long}/worksheet",
+                async (long abJobNum, long coilAbcNum, long customerId, RecoveryWorksheetWrite body, IAbisRepository repo, CancellationToken ct) =>
+                    Results.Ok(await repo.SaveRecoveryWorksheetAsync(abJobNum, coilAbcNum, customerId, body.Lines, ct)))
+           .WithName("SaveRecoveryWorksheet").WithTags("Recovery")
+           .WithSummary("Save a coil's recovery scrap worksheet. A defect already booked is updated to whatever is sent, INCLUDING zero; one not yet booked is inserted only when weight or pieces is non-zero. Nothing is deleted - so a coil the office has touched stays office-sourced even if every figure is zeroed. Returns the re-read worksheet.")
+           .Produces<RecoveryWorksheet>();
+
         api.MapGet("/recovery/jobs/{abJobNum:long}/report", async (long abJobNum, IAbisRepository repo, CancellationToken ct) =>
                 Results.Ok(await repo.GetRecoveryReportAsync(abJobNum, ct)))
            .WithName("GetRecoveryReport").WithTags("Recovery")

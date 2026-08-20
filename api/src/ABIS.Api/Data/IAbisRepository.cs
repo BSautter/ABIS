@@ -205,6 +205,16 @@ public interface IAbisRepository
     Task<RecoveryCustomer> UpsertRecoveryCustomerAsync(long customerId, RecoveryCustomerWrite body, CancellationToken ct);
     Task<bool> DeleteRecoveryCustomerAsync(long customerId, CancellationToken ct);
     Task<IReadOnlyList<CustomerDefect>> GetCustomerDefectsAsync(long customerId, CancellationToken ct);
+
+    /// <summary>A coil's recovery scrap worksheet for one job: the customer's defect list (narrowed
+    /// when the job's part is an autopart), filled from the office worksheet when one exists and from
+    /// the DAS capture otherwise.</summary>
+    Task<RecoveryWorksheet> GetRecoveryWorksheetAsync(long abJobNum, long coilAbcNum, long customerId, CancellationToken ct);
+
+    /// <summary>Save a coil's recovery scrap worksheet: existing lines are updated (including to zero),
+    /// absent ones inserted only when non-zero. Nothing is deleted.</summary>
+    Task<RecoveryWorksheet> SaveRecoveryWorksheetAsync(long abJobNum, long coilAbcNum, long customerId,
+        IReadOnlyList<RecoveryWorksheetLine> lines, CancellationToken ct);
     Task<CustomerDefect?> UpsertCustomerScrapTypeAsync(long customerId, long scrapTypeId, CustomerScrapTypeWrite body, CancellationToken ct);
     Task<bool> DeleteCustomerScrapTypeAsync(long customerId, long scrapTypeId, CancellationToken ct);
     Task<IReadOnlyList<ProductionSummaryRow>> GetProductionSummaryAsync(DateTime? from, DateTime? to, CancellationToken ct);

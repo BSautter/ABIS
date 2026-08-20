@@ -150,12 +150,44 @@ A plant decision about which tags require a supervisor, not a code change.
 
 Needs a polkit rule if on. Spec in `docs/SERVER_CONSOLE.md`.
 
-### C4 🟡 KeepTrak import — blocked on the file and a credential
+### C4 🟡 Recovery report suite — source-incomplete, needs an export or a golden
+
+The ~10 per-customer recovery report templates cannot be ported from what the repo holds, and the gap
+is specific: every one of them is an **external** DataWindow. They carry the full layout — columns,
+headers, grouping, page setup — but **no SQL**. Their columns are positional slots (`name_1`,
+`name_2`, …) filled by PowerScript, and the window that does the filling is not in `legacy/src/`.
+
+It is not recoverable from the `.pbl` files either. All 49 in the repo hold `DAT*` blocks but **zero**
+`release N;` markers — compiled objects, not text source — and grepping every deblocked payload for
+the report names returns nothing. The vendored `.srd`s came from an IDE export done elsewhere.
+
+**They are live.** `.230` carries **14 recovery customers**, matching the templates: Constellium West
+Virginia, Arconic-Lancaster (the `alcoa_lancaster` template, renamed since), four Samuel entities, and
+Novelis Kingston with **two** rows — one `auto_only`, one `comm_only`, so the autoparts split is in
+real use. These go to customers, so inventing the aggregation is the wrong move.
+
+**What would unblock it, best first:**
+
+1. **A fresh PowerBuilder IDE export** of the library holding the recovery-report window — exactly
+   faithful, and the same route that produced the rest of `legacy/src/`.
+2. **A golden output per template** (print to PDF, or the Excel export). The trick that made the EDI
+   ports trustworthy: reconstruct the aggregation from the tables, then check every number against a
+   real one. Works with no source at all.
+3. **Reconstruct from layout + tables and have the plant verify** — possible, but with nothing to check
+   against, on customer-facing paper.
+
+**Also worth answering:** which of the ~10 are still used? One is a `_bk` backup copy, and the
+customer-specific ones may have outlived their customers.
+
+*Not blocked, and being built separately: the recovery **data** rules (autoparts filter, office-beats-DAS)
+are fully sourced in the vendored `w_recovery.srw`.*
+
+### C5 🟡 KeepTrak import — blocked on the file and a credential
 
 The maintenance/PM migration needs the Access file plus a `.230` credential. Must be a Windows-side
 ETL (the server is Ubuntu, ACE is Windows-only). Inspector tool is ready and waiting.
 
-### C5 🟡 WinSPC — needs live-DB discovery
+### C6 🟡 WinSPC — needs live-DB discovery
 
 The candidate unblock for the dimension-check QC gate. Legacy had `w_quality_winspc`.
 
