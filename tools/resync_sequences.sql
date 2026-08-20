@@ -30,22 +30,41 @@ DECLARE
     --   PROD_ITEM_NUM_SEQ          1,403 behind  (every finished-sheet write mints from it)
     --   BILL_OF_LADING_SEQ           167 behind
     --   SHEET_PACKAGING_TICKET_SEQ 827,368 behind
-    'PROD_ITEM_NUM_SEQ','BILL_OF_LADING_SEQ','SHEET_PACKAGING_TICKET_SEQ');
+    'PROD_ITEM_NUM_SEQ','BILL_OF_LADING_SEQ','SHEET_PACKAGING_TICKET_SEQ',
+    -- Added 2026-08-20 with the edge-trim override audit, the first modern write to SYSTEM_LOG.
+    'SYSTEM_LOG_ID_SEQ');
   tbls  t_map := t_map(
     'AB_JOB','CARRIER','COIL','CUSTOMER','CUSTOMER_CONTACT',
     'CUSTOMER_ORDER','DIE','DT_INSTANCE','ERROR_EVT','OUTBOUND_EDI_TRANSACTION',
     'PART_NUM','RECEIVING_BOL','RETURN_SCRAP_ITEM','SCAN_LOG',
     'SCRAP_SKID','SHEET_SKID','SHEET_SKID_DIMENSION_CHECK','SHIFT',
-    'SKETCH','SHIPMENT','COIL_OWNERSHIP_TRANSFER');
+    'SKETCH','SHIPMENT','COIL_OWNERSHIP_TRANSFER',
+    -- 2026-08-20: these four were MISSING while their sequences were listed above. The loop runs to
+    -- seqs.COUNT and reads tbls(i)/cols(i), so i=22..24 raised ORA-06533 (subscript beyond count) —
+    -- swallowed by the loop's WHEN OTHERS as a bland "SKIPPED" line that reads like a sequence that
+    -- does not exist. The three affected are exactly the three added in 2026-07 BECAUSE they were
+    -- found badly behind (PROD_ITEM_NUM 1,403; BILL_OF_LADING 167; SHEET_PACKAGING_TICKET 827,368),
+    -- so the script has never once fixed the drift it was extended to fix.
+    'PRODUCTION_SHEET_ITEM','SHIPMENT','SHEET_PACKING_ITEM','SYSTEM_LOG');
   cols  t_map := t_map(
     'AB_JOB_NUM','CARRIER_ID','COIL_ABC_NUM','CUSTOMER_ID','CONTACT_ID',
     'ORDER_ABC_NUM','DIE_ID','INSTANCE_NUM','ERROR_EVT_ID','EDI_FILE_ID',
     'PART_NUM_ID','RECEIVING_BOL_ID','RETURN_SCRAP_ITEM_NUM','SCAN_ID',
     'SCRAP_SKID_NUM','SHEET_SKID_NUM','DIMENSION_CHECK_NUM','SHIFT_NUM',
-    'SKETCH_ID','PACKING_LIST','CERTIFICATE_NUM');
+    'SKETCH_ID','PACKING_LIST','CERTIFICATE_NUM',
+    'PROD_ITEM_NUM','BILL_OF_LADING','SHEET_PACKAGING_TICKET','SYSTEM_LOG_KEY_NUM');
 
   v_max NUMBER; v_cur NUMBER; v_gap NUMBER; v_bumped PLS_INTEGER := 0;
 BEGIN
+  -- The three arrays are positional. A mismatch used to surface only as ORA-06533 caught by the
+  -- loop's WHEN OTHERS and printed as "SKIPPED", which is indistinguishable from a sequence that is
+  -- genuinely absent — so three unfixed sequences hid in plain sight for a month. Fail loudly instead.
+  IF seqs.COUNT <> tbls.COUNT OR seqs.COUNT <> cols.COUNT THEN
+    RAISE_APPLICATION_ERROR(-20001,
+      'resync_sequences.sql: seqs/tbls/cols are positional and must be the same length ('||
+      seqs.COUNT||'/'||tbls.COUNT||'/'||cols.COUNT||'). Nothing was changed.');
+  END IF;
+
   FOR i IN 1 .. seqs.COUNT LOOP
     BEGIN
       EXECUTE IMMEDIATE 'SELECT NVL(MAX('||cols(i)||'),0) FROM '||tbls(i) INTO v_max;

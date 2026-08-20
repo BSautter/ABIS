@@ -183,6 +183,8 @@ public interface IAbisRepository
 
     // Supervisor override — the shop-floor gate that replaces legacy's shared plaintext PIN.
     Task<CoilBalance?> GetCoilBalanceAsync(long coilAbcNum, CancellationToken ct);
+    Task<EdgeTrim.Tolerance> GetEdgeTrimToleranceAsync(CancellationToken ct);
+    Task WriteSystemLogAsync(string contents, CancellationToken ct);
     Task<int> SaveInboundCoilQrAsync(string coilNumber, string qrCode, CancellationToken ct);
     Task<string?> GetInboundCoilQrAsync(string coilNumber, CancellationToken ct);
     Task<bool> SaveCoilOrgBarcodeAsync(string coilOrgNum, string barcode, CancellationToken ct);

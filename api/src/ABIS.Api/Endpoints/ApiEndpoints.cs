@@ -734,9 +734,11 @@ public static class ApiEndpoints
         api.MapPost("/orders/{orderAbcNum:long}/items", async (long orderAbcNum, OrderItemWrite body, IAbisRepository repo, HttpContext ctx, CancellationToken ct) =>
             {
                 StampTrimOverrideUser(body, ctx);
-                if (Validate(body) is { } problems)
+                var tolerance = await repo.GetEdgeTrimToleranceAsync(ct);
+                if (Validate(body, tolerance) is { } problems)
                     return Results.ValidationProblem(problems);
                 NormalizeTrimAndPieces(body);
+                await SettleEdgeTrimOverrideAsync(body, orderAbcNum, tolerance, ctx, repo, ct);
                 var created = await repo.CreateOrderItemAsync(orderAbcNum, body, ct);
                 return Results.Created($"/api/orders/{orderAbcNum}/items/{created.OrderItemNum}", created);
             })
@@ -747,9 +749,11 @@ public static class ApiEndpoints
         api.MapPut("/orders/{orderAbcNum:long}/items/{orderItemNum:long}", async (long orderAbcNum, long orderItemNum, OrderItemWrite body, IAbisRepository repo, HttpContext ctx, IOptions<JsonOptions> json, CancellationToken ct) =>
             {
                 StampTrimOverrideUser(body, ctx);
-                if (Validate(body) is { } problems)
+                var tolerance = await repo.GetEdgeTrimToleranceAsync(ct);
+                if (Validate(body, tolerance) is { } problems)
                     return Results.ValidationProblem(problems);
                 NormalizeTrimAndPieces(body);
+                await SettleEdgeTrimOverrideAsync(body, orderAbcNum, tolerance, ctx, repo, ct);
                 return await WithIfMatch(ctx, json, () => repo.GetOrderItemAsync(orderAbcNum, orderItemNum, ct), () => repo.UpdateOrderItemAsync(orderAbcNum, orderItemNum, body, ct));
             })
            .WithName("UpdateOrderItem").WithTags("OrderItems")
@@ -4501,11 +4505,19 @@ public static class ApiEndpoints
     }
 
     // Edge-trim tolerance (legacy w_order_entry:496-549 / w_part_num_new:523). When trimming is
-    // required, the trim data must be complete and incoming >= trimmed (hard errors); the trim
-    // amount must sit within the 1.5"-12" trimmer tolerance, overridable via
-    // trimmed_width_overridden='Y' + an override user. Shared by order items and part masters.
+    // required, the trim data must be complete and incoming >= trimmed (hard errors); the trim amount
+    // must sit within the trimmer's tolerance band, overridable via trimmed_width_overridden='Y' plus
+    // an override user. Shared by order items and part masters.
+    //
+    // THE BAND IS CONFIGURATION, NOT A CONSTANT. It lives in the (misspelled) edge_trim_tolearance
+    // table, and this used to hardcode 1.5"-12" — the value legacy falls back to when it cannot read
+    // that table. The live band on .230 is 0.75"-12.00": the source's own comment trail runs
+    // "< 1" -> "< 0.75" (2016-12) -> "1.50-12.00" (2017-06), and the table was later set back to 0.75.
+    // Hardcoding the fallback demanded an override on every trim between 0.75" and 1.5" the plant
+    // accepts today, on real orders.
     private static void AddEdgeTrimErrors(Dictionary<string, string[]> e, string? trimmingRequired,
-        decimal? incoming, decimal? trimmed, int? trimType, string? overridden, string? overrideUser)
+        decimal? incoming, decimal? trimmed, int? trimType, string? overridden, string? overrideUser,
+        EdgeTrim.Tolerance tolerance)
     {
         if (!string.Equals(trimmingRequired?.Trim(), "Y", StringComparison.OrdinalIgnoreCase)) return;
         if (incoming is null) e["incomingCoilWidth"] = ["incomingCoilWidth is required when trimming is required."];
@@ -4517,9 +4529,9 @@ public static class ApiEndpoints
             var isOverridden = string.Equals(overridden?.Trim(), "Y", StringComparison.OrdinalIgnoreCase);
             if (diff < 0m)
                 e["trimmedCoilWidth"] = ["Incoming coil width must be greater than trimmed coil width."];
-            else if (diff is < 1.50m or > 12.00m && !isOverridden)
-                e["trimmedCoilWidth"] = ["Trim (incoming − trimmed) is under trimmer tolerance (must be 1.5\"–12\"); resend with trimmedWidthOverridden='Y' to override."];
-            else if (diff is < 1.50m or > 12.00m && string.IsNullOrWhiteSpace(overrideUser))
+            else if (EdgeTrim.IsOutsideTolerance(diff, tolerance) && !isOverridden)
+                e["trimmedCoilWidth"] = [EdgeTrim.OutsideToleranceMessage(diff, tolerance)];
+            else if (EdgeTrim.IsOutsideTolerance(diff, tolerance) && string.IsNullOrWhiteSpace(overrideUser))
                 e["trimmedWidthOverrideUser"] = ["trimmedWidthOverrideUser is required to override the trimmer tolerance."];
         }
     }
@@ -4568,6 +4580,48 @@ public static class ApiEndpoints
     // trimmed-width override user from the principal, never client input (legacy sets it to
     // sqlca.logid, w_order_entry:616). A null login (API-key service account) keeps the
     // supplied value. Runs before Validate so an authenticated overrider needn't send the field.
+    /// <summary>
+    /// Settle the edge-trim override AFTER validation has accepted the line.
+    ///
+    /// <para>Validation already refuses an out-of-band trim that carries no override
+    /// (<see cref="AddEdgeTrimErrors"/>), so by the time this runs the line is either inside the band
+    /// or explicitly overridden. Two things still have to happen, and legacy does both:</para>
+    ///
+    /// <list type="number">
+    /// <item><b>Back inside the band clears the override.</b> Easy to miss, and the consequence is
+    /// visible on paper: without it a line overridden once keeps <c>trimmed_width_overridden = 'Y'</c>
+    /// forever, and the job sheet goes on printing "CONTACT FOREMAN BEFORE RUNNING" in red on an item
+    /// somebody already corrected. A warning that outlives its fault is one the floor learns to
+    /// ignore.</item>
+    /// <item><b>An override is written to <c>system_log</c></b> — legacy's
+    /// <c>f_add_system_log_tran</c>. The flag on the line says an override happened; only this says
+    /// who did it, when, and by how much they were outside.</item>
+    /// </list>
+    /// </summary>
+    private static async Task SettleEdgeTrimOverrideAsync(
+        OrderItemWrite body, long orderAbcNum, EdgeTrim.Tolerance tolerance,
+        HttpContext ctx, IAbisRepository repo, CancellationToken ct)
+    {
+        if (!string.Equals(body.TrimmingRequired?.Trim(), "Y", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var difference = EdgeTrim.Difference(body.IncomingCoilWidth, body.TrimmedCoilWidth);
+        if (!EdgeTrim.IsOutsideTolerance(difference, tolerance))
+        {
+            body.TrimmedWidthOverridden = null;
+            body.TrimmedWidthOverrideUser = null;
+            return;
+        }
+
+        if (!string.Equals(body.TrimmedWidthOverridden?.Trim(), "Y", StringComparison.OrdinalIgnoreCase))
+            return;   // validation would already have refused this
+
+        var login = body.TrimmedWidthOverrideUser ?? ResolveLogin(ctx) ?? "unknown";
+        await repo.WriteSystemLogAsync(
+            $"Edge-trim tolerance overridden on order {orderAbcNum}: trims {difference!.Value:0.00} in off, " +
+            $"outside the {tolerance.LowerInches:0.00}-{tolerance.UpperInches:0.00} in band. Overridden by {login}.", ct);
+    }
+
     private static void StampTrimOverrideUser(ITrimNormalizable body, HttpContext ctx)
     {
         if (string.Equals(body.TrimmedWidthOverridden?.Trim(), "Y", StringComparison.OrdinalIgnoreCase)
@@ -4863,7 +4917,7 @@ public static class ApiEndpoints
         return e.Count == 0 ? null : e;
     }
 
-    private static Dictionary<string, string[]>? Validate(OrderItemWrite body)
+    private static Dictionary<string, string[]>? Validate(OrderItemWrite body, EdgeTrim.Tolerance? tolerance = null)
     {
         var e = new Dictionary<string, string[]>();
         Req(e, "enduserPartNum", body.EnduserPartNum);
@@ -4885,7 +4939,8 @@ public static class ApiEndpoints
         // trimmed_width_override_user and logs it. We mirror that: out-of-tolerance is a 400
         // unless trimmedWidthOverridden='Y' is sent, in which case an override user is required.
         AddEdgeTrimErrors(e, body.TrimmingRequired, body.IncomingCoilWidth, body.TrimmedCoilWidth,
-            body.TrimTypeCode, body.TrimmedWidthOverridden, body.TrimmedWidthOverrideUser);
+            body.TrimTypeCode, body.TrimmedWidthOverridden, body.TrimmedWidthOverrideUser,
+            tolerance ?? EdgeTrim.LegacyFallback);
         return e.Count == 0 ? null : e;
     }
 
@@ -5004,7 +5059,7 @@ public static class ApiEndpoints
         return e.Count == 0 ? null : e;
     }
 
-    private static Dictionary<string, string[]>? Validate(PartWrite body)
+    private static Dictionary<string, string[]>? Validate(PartWrite body, EdgeTrim.Tolerance? tolerance = null)
     {
         var e = new Dictionary<string, string[]>();
         Req(e, "customerId", body.CustomerId);
@@ -5017,7 +5072,8 @@ public static class ApiEndpoints
         // shared by the full-replace PUT, and parts are built up incrementally — enforce those at
         // a create-specific/finalize point, verified against live Oracle.)
         AddEdgeTrimErrors(e, body.TrimmingRequired, body.IncomingCoilWidth, body.TrimmedCoilWidth,
-            body.TrimTypeCode, body.TrimmedWidthOverridden, body.TrimmedWidthOverrideUser);
+            body.TrimTypeCode, body.TrimmedWidthOverridden, body.TrimmedWidthOverrideUser,
+            tolerance ?? EdgeTrim.LegacyFallback);
         return e.Count == 0 ? null : e;
     }
 

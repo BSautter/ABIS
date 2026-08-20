@@ -100,6 +100,8 @@ public static class SqliteFixture
             DROP TABLE IF EXISTS dt_instance_detail;
             DROP TABLE IF EXISTS inbound_coil_status;
             DROP TABLE IF EXISTS barcode_string;
+            DROP TABLE IF EXISTS edge_trim_tolearance;
+            DROP TABLE IF EXISTS system_log;
             DROP TABLE IF EXISTS line_current_status;
             DROP TABLE IF EXISTS line_die_4sheet_type;
             DROP TABLE IF EXISTS line_priority;
@@ -238,6 +240,18 @@ public static class SqliteFixture
             -- Near-mirrors: 5,996 of the table's coils also carry the column. Neither is a superset,
             -- and nothing keeps them in step except both paths being used — so code that writes one
             -- and reads the other looks right on almost every coil and is wrong on the rest.
+            -- The trimmer's tolerance band. NOTE THE SPELLING: "tolearance" is how the column exists
+            -- in the live schema (verified on .230) — correcting it to English raises ORA-00942.
+            -- A single row; a missing row or null column falls back to EdgeTrim.LegacyFallback.
+            CREATE TABLE edge_trim_tolearance (
+                lower_limit REAL, upper_limit REAL);
+
+            -- Legacy's free-text audit trail (f_add_system_log_tran). The edge-trim override is the
+            -- first thing in the modern stack to write it.
+            CREATE TABLE system_log (
+                system_log_key_num INTEGER PRIMARY KEY, system_log_timestamp TEXT,
+                system_log_contents TEXT, system_log_flag INTEGER);
+
             CREATE TABLE barcode_string (
                 coil_org_num TEXT PRIMARY KEY, barcode_string TEXT);
 
@@ -1429,6 +1443,12 @@ public static class SqliteFixture
                 new { ContactId = 5602L, CustomerId = (long?)4001L, FirstName = "Lee", LastName = "Park", Department = "Quality", City = "Detroit", State = "MI", Phone1 = "313-555-1001", Email1 = "lee.park@acme.example" },
                 new { ContactId = 5603L, CustomerId = (long?)4002L, FirstName = "Sam", LastName = "Cruz", Department = "Receiving", City = "Toledo", State = "OH", Phone1 = "419-555-2000", Email1 = "sam.cruz@beta.example" }
             });
+
+        // The band as the plant actually has it on .230 — 0.75 / 12.00 — NOT the 1.500 / 12.000 the
+        // source falls back to. The comment trail in w_order_entry shows why they differ: "< 1" ->
+        // "< 0.75" (Laura Anderson, 2016-12) -> "1.50-12.00" (Dan Polkinhorne, 2017-06), and the table
+        // was later set back to 0.75. Seeding the fallback would let a wrong lower limit pass tests.
+        conn.Execute("INSERT INTO edge_trim_tolearance (lower_limit, upper_limit) VALUES (0.75, 12.00)");
 
         conn.Execute("""
             INSERT INTO sketch_jpg (sketch_id, sketch_name, sketch_notes, sketch_sys_note, sketch_status)

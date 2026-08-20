@@ -3643,6 +3643,71 @@ public sealed class AbisRepository : IAbisRepository
             """, new { coil = coilNumber.Trim() }, cancellationToken: ct));
     }
 
+    /// <summary>
+    /// The trimmer's tolerance band, from <c>edge_trim_tolearance</c>.
+    ///
+    /// <para><b>The table name is misspelled in the schema and that is not a typo to fix</b> —
+    /// "tolearance", verified on live <c>.230</c>. Correcting it to the English spelling raises
+    /// ORA-00942 against a table that does not exist.</para>
+    ///
+    /// <para>It holds a single row. A missing row, a null column or a failed read all fall back to
+    /// <see cref="EdgeTrim.LegacyFallback"/>, exactly as legacy does — the band is a guard rail, and
+    /// losing the row should not let every trim through unchecked.</para>
+    /// </summary>
+    public async Task<EdgeTrim.Tolerance> GetEdgeTrimToleranceAsync(CancellationToken ct)
+    {
+        try
+        {
+            await using var conn = await OpenAsync(ct);
+            // Read as a named row, NOT a ValueTuple: Dapper does not map columns onto tuple element
+            // names, so `QueryFirstOrDefaultAsync<(decimal? Lower, decimal? Upper)>` quietly returned
+            // (null, null) and every read fell through to the stale 1.500 fallback — the exact failure
+            // this method's own remarks warn about. Caught by a test asserting the message names the
+            // live 0.75 limit.
+            var row = await conn.QueryFirstOrDefaultAsync<EdgeTrimToleranceRow>(new CommandDefinition(
+                "SELECT lower_limit AS LowerLimit, upper_limit AS UpperLimit FROM edge_trim_tolearance",
+                cancellationToken: ct));
+            return new EdgeTrim.Tolerance(
+                row?.LowerLimit ?? EdgeTrim.LegacyFallback.LowerInches,
+                row?.UpperLimit ?? EdgeTrim.LegacyFallback.UpperInches);
+        }
+        catch (DbException)
+        {
+            // Legacy falls back on any sqlcode <> 0. A tolerance table that cannot be read must not
+            // silently disable the gate.
+            return EdgeTrim.LegacyFallback;
+        }
+    }
+
+    private sealed class EdgeTrimToleranceRow
+    {
+        public decimal? LowerLimit { get; set; }
+        public decimal? UpperLimit { get; set; }
+    }
+
+    /// <summary>
+    /// Record an edge-trim override in <c>system_log</c> — legacy's <c>f_add_system_log_tran</c>.
+    ///
+    /// <para>This is the whole point of the override being explicit: the flag on the order line says
+    /// an override happened, and this says who did it, when, and to which order. Legacy writes the
+    /// order, customer id and customer name into the free-text contents; the column is
+    /// <c>VARCHAR2(1024)</c>, so the message is capped rather than left to throw.</para>
+    /// </summary>
+    public async Task WriteSystemLogAsync(string contents, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var id = await NextIdAsync(conn, tx, "system_log", "system_log_key_num", ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO system_log (system_log_key_num, system_log_timestamp, system_log_contents, system_log_flag)
+            VALUES (:id, :ts, :contents, 0)
+            """,
+            new { id, ts = DateTime.UtcNow, contents = contents.Length > 1024 ? contents[..1024] : contents },
+            transaction: tx, cancellationToken: ct));
+        await tx.CommitAsync(ct);
+    }
+
     // ---- Supervisor override (replaces legacy's shared plaintext PIN) ---------------------------
 
     /// <summary>Whether a login holds an override PIN, and its lockout state. Never returns the hash.</summary>

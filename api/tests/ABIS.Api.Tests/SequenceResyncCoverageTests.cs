@@ -103,6 +103,42 @@ public sealed class SequenceResyncCoverageTests
         Assert.Equal("bill_of_lading_seq", explicitSeq);
     }
 
+    /// <summary>
+    /// The script's three arrays are POSITIONAL and must be the same length.
+    ///
+    /// <para>They were not. <c>seqs</c> carried 24 entries while <c>tbls</c> and <c>cols</c> carried
+    /// 21, so the loop — which runs to <c>seqs.COUNT</c> and reads <c>tbls(i)</c> — raised ORA-06533
+    /// on i=22..24. The loop's own <c>WHEN OTHERS</c> swallowed it and printed a bland "SKIPPED" line,
+    /// indistinguishable from a sequence that genuinely does not exist.</para>
+    ///
+    /// <para><b>The three it skipped were the three added because they were badly behind</b> —
+    /// PROD_ITEM_NUM 1,403, BILL_OF_LADING 167, SHEET_PACKAGING_TICKET 827,368. The script has
+    /// therefore never once fixed the drift it was extended to fix, and it reported success while not
+    /// doing so. The existing test above compares only the sequence NAMES, so it passed throughout.</para>
+    /// </summary>
+    [Fact]
+    public void The_resync_scripts_three_arrays_are_the_same_length()
+    {
+        var sql = File.ReadAllText(Path.Combine(RepoRoot(), "tools", "resync_sequences.sql"));
+
+        int Count(string name)
+        {
+            var m = Regex.Match(sql, name + @"\s+t_map := t_map\((.*?)\);", RegexOptions.Singleline);
+            Assert.True(m.Success, $"could not find the {name} array — the scan is broken, not the script");
+            var body = Regex.Replace(m.Groups[1].Value, "--.*$", "", RegexOptions.Multiline);   // strip comments
+            return body.Split(',').Count(x => x.Trim().Length > 0);
+        }
+
+        var seqs = Count("seqs");
+        var tbls = Count("tbls");
+        var cols = Count("cols");
+        Assert.True(seqs > 20, $"only {seqs} sequences parsed — the scan is broken");
+        Assert.True(seqs == tbls && seqs == cols,
+            $"resync_sequences.sql's arrays are positional and must match: seqs={seqs}, tbls={tbls}, " +
+            $"cols={cols}. A mismatch surfaces only as an ORA-06533 the loop swallows as SKIPPED, " +
+            "so the affected sequences are silently never re-synced.");
+    }
+
     /// <summary>The standalone <c>tools/resync_sequences.sql</c> lists the same sequences the app does.
     /// <para>The comment on <c>SequenceBackedTables</c> says to keep the two in step and calls that
     /// ENFORCED — it was not. The tests here compared the C# list against the <c>NextIdAsync</c> call

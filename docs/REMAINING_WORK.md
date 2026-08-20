@@ -323,7 +323,19 @@
 - [x] **H** Assign customer coils to an order — done (#253): `GET/POST /orders/{id}/coils` + `DELETE /orders/{id}/coils/{coil}` + `GET /orders/{id}/available-coils` (legacy `ORDER_COIL` / `w_order_entry_coil_list`). Re-adding to the same order is blocked; a coil already on another order needs `confirm=true` (the dup-org warning, `otherOrderAbcNum`). Order-entry detail gained an assigned-coils panel + available-coil picker.
 - [~] **H** Part revisions (version + re-point open items) — still TODO; **routing sequences per part — done (#258)**: `GET/POST /parts/{id}/routings` + `DELETE /parts/{id}/routings/{seq}/{line}/{die}/{shape}` over legacy `ROUTING` (line/die/shape + SPM & efficiency standards + edge-trim/stacker; all-column PK → edit = delete + re-add). Routings travel with a part copy and are cleared on part delete. Routing panel on the Parts page.
 - [~] **M** **Part copy/delete + obsolete-in-use guard — done (#256)**: `POST /parts/{id}/copy` (part + blank geometry, INSERT…SELECT) + `DELETE /parts/{id}` refused with 409 when referenced by any order line (order_item.part_num_id), with Duplicate/Delete buttons on the Parts page. **Order copy/duplicate — done (#255)**: `POST /orders/{id}/copy` clones header + items + geometry. **Order-entry part picker — done (#265)**: the New-order line's Part # field autocompletes from the customer's parts (datalist) and, on selection, prefills alloy/sheet/gauge/pieces + tags the line with its part_num_id. Still TODO here: end-user change cascade (largely covered by order-edit's enduserId)
-- [ ] **H/M** Sector consistency validation; edge-trim tolerance gate + override + `f_add_system_log_tran` audit
+- [~] **H/M** Sector consistency validation; edge-trim tolerance gate + override + `f_add_system_log_tran` audit.
+  **Trim gate FIXED and the audit BUILT; sector consistency still open.**
+  <br>**The gate was already here and was wrong.** `AddEdgeTrimErrors` hardcoded the band as
+  `1.5"–12"` — the value legacy falls back to when it *cannot read* `edge_trim_tolearance`. The live
+  band on `.230` is **0.75"–12.00"**, so the shipped code demanded an override on every trim between
+  0.75" and 1.5" the plant accepts. The band is now read from the table, for order items **and** part
+  masters. (Note the table's spelling: `tolearance`. Correcting it raises ORA-00942.)
+  <br>**Two behaviours added:** an override now writes `system_log` (legacy `f_add_system_log_tran`)
+  naming who, how far out, and against which order; and a line coming **back inside** the band has its
+  override **cleared** — without that, a line overridden once keeps the flag forever and the job sheet
+  prints "CONTACT FOREMAN BEFORE RUNNING" in red on an item somebody already corrected.
+  <br>**Still open:** the sector-consistency warning ("Unusual combination of sectors detected" — a mix
+  of sectors in one order, Yes/No to continue).
 - [~] **M** Accounting scrap-type summary; print coil-cert label on order close; **customer delete — done (#261)**: `DELETE /customers/{id}` refused with 409 when referenced by any order/part/coil/shipment, else deletes the customer + its contacts + recovery config; Delete button on the Customers page.
 
 ### C2. Logistics / shipping

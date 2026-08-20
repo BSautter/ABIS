@@ -575,6 +575,11 @@ public static class AbisSchema
         // sketch_jpg is the live drawing table (AbisRepository.SketchTable), but the sequence kept the
         // retired table's name, so it has to be spelled out rather than derived from the table.
         ("sketch_jpg", "sketch_id", "sketch_id_seq"), ("shipment", "packing_list", null),
+        // Added 2026-08-20 with the edge-trim override audit, which is the first thing in the modern
+        // stack to write system_log. Its sequence was found sitting ~1,000 BEHIND the table max on
+        // .230 (148,620 against 149,601) — the refresh drift this self-heal exists for. Minting from
+        // it unresynced would have thrown ORA-00001 on roughly the first thousand overrides.
+        ("system_log", "system_log_key_num", "system_log_id_seq"),
 
         // --- added 2026-07-25 after all three were found BEHIND on the live database ---------------
         // Every finished-sheet write (DAS skid save, warehouse skid) mints from this one.
