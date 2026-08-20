@@ -12,8 +12,8 @@ new ABIS can replace old ABIS and alpha testing begins.
 
 ## v0.9.2 — 2026-08-20
 
-Three commits. Two gates that were quietly wrong, and Cleveland-Cliffs turning out to be a much
-bigger thing than the backlog said.
+Four commits. Two gates that were quietly wrong, a truck form that did not match the building, and
+Cleveland-Cliffs turning out to be a much bigger thing than the backlog said.
 
 ### The edge-trim gate was enforcing a band the plant does not use
 
@@ -42,6 +42,24 @@ The three it dropped were exactly the three added in 2026-07 *because they had b
 behind*: `PROD_ITEM_NUM` (1,403), `BILL_OF_LADING` (167), `SHEET_PACKAGING_TICKET` (827,368). It has
 therefore never fixed the worst of the drift, while reporting success every time. Fixed, with a
 length guard that raises instead of limping and a test that fails on the original defect. (#414)
+
+### A truck's destination is one required choice, not a free-text dock
+
+"Schedule a truck" had a 30-character text box labelled **Dock**, which is not how the plant works:
+there is exactly one dock and it is in Building 3, Buildings 1 and 2 are pull-through only, and roll
+off and trailer are not destinations at all — they are scrap containers dropped empty and picked up
+full, with no building involved.
+
+Where a truck goes is now a single required choice with a dependent picker for the two branches that
+still have something to say — **Dock (Bldg 3)** (no picker; there is only one), **Pull through**
+(building 1/2/3), **Roll off / trailer** (which container). A row of independent checkboxes was
+considered and rejected: two ticks admit a state that cannot exist. Recording the pull-through
+separately is also what makes Building 3 unambiguous — the old free text could not say which way the
+truck came in. Nothing is schedulable without a destination now.
+
+No schema change: it still writes the one `abis_truck_appointment.dock` `VARCHAR2(30)` column, and
+the longest value is 25 characters. The CSV importer is deliberately untouched, so pre-cutover sheets
+with `D-1` / `D3` keep loading. (#416)
 
 ### Cleveland-Cliffs is a 23-guide program, not one document
 
