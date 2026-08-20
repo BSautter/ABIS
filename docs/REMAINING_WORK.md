@@ -769,9 +769,17 @@ function `f_add_system_log_tran`, whose body is not vendored), and the Instron "
   failed request, not two rows sharing an id. `MaxIdTableTests` now fails if a table is added to that
   list without one, which is the case that would turn this from a visible error into silent
   corruption.
-- [ ] **L** Residual: a concurrent create on any of those 14 tables returns a 500 (`ORA-00001`) rather
-  than retrying. A retry-once-on-PK-violation around the mint+insert would close it; not done because
-  it touches ~14 create paths for a collision that needs two saves in the same instant.
+- [~] **L** Residual: a concurrent create on any of those 14 tables. **Half done (branch
+  `fix/duplicate-key-409`, PR open):** a PK collision now answers **409, not 500**, via a single
+  `DuplicateKeyExceptionHandler` matched on the provider error NUMBER (ORA-00001 / SQLITE_CONSTRAINT),
+  never on message text. A 500 said the server broke and the request may not be worth retrying — both
+  wrong, since nothing was written and retrying verbatim will very likely succeed.
+  <br>**Still open: the retry itself.** Retrying inside the request needs the mint+insert re-run as a
+  unit across ~14 create paths.
+  <br>**Also still open: an end-to-end test.** The obvious one (create a `security_user` twice) passes
+  WITHOUT the handler, because that endpoint has its own duplicate guard (`ApiEndpoints.cs:4042`) —
+  a green test that proves nothing. Proving the pipeline half needs a create path with no explicit
+  guard that can be made to collide.
 
 - [x] **H** **Invoice offal omitted rebanded weight — the larger half** — done (#345).
   `OffalWt` summed processed + scrap + **rejected** + unapplied − net. Legacy's `ll_rejnet`
@@ -1066,7 +1074,7 @@ function `f_add_system_log_tran`, whose body is not vendored), and the Instron "
   into the fixture so the guard is tested against the number production uses.
 
 ## E. Config / turn-on / deploy (user-gated, not code)
-- [ ] Redeploy codi-ABIS to **v0.4.18** (dashboard piece count + the client bug fixes)
+- [x] ~~Redeploy codi-ABIS to **v0.4.18**~~ — **long superseded.** `.110` runs **v0.9.1** as of 2026-08-19, verified end to end (version, health, ready, endpoints, and all four served UI bundles byte-identical to the tag).
 - [ ] Wire BL110 piece-count tag per DAS station via the 🔎 picker (`stacker110.station1/2_stack_counter`)
 - [ ] Enable `Notifications:EdiStall` **after** the data-source cutover (else false alarms on the frozen .230 ledger)
 - [ ] Server-console restart button — decide on/off (polkit rule per `docs/SERVER_CONSOLE.md`)

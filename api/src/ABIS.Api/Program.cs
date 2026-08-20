@@ -194,6 +194,9 @@ builder.Services.AddSwaggerGen(c =>
 // Binding failures carry their own 400; without a handler that reads it, UseExceptionHandler treats
 // them as server faults and a malformed body comes back as an opaque 500. See the handler's remarks.
 builder.Services.AddExceptionHandler<Abis.Api.Middleware.BadRequestExceptionHandler>();
+// A primary-key collision is a 409, not a 500 — the request was fine, nothing was written, and
+// retrying it will very likely succeed. See the handler for why fourteen tables can collide at all.
+builder.Services.AddExceptionHandler<Abis.Api.Middleware.DuplicateKeyExceptionHandler>();
 
 // ThrowOnBadRequest defaults to TRUE in Development and FALSE everywhere else, which made the handler
 // above a development-only improvement: in Production the framework already answered a malformed body
