@@ -23,6 +23,23 @@ const TRUCK_STATUSES = [
     [3, 'Sent to Bldg 1'], [4, 'Sent to Bldg 2'], [5, 'Sent to Bldg 3'],
     [6, 'Signed out / gone'], [9, 'Cancelled'],
 ];
+// Where the truck goes. Three ways onto the site, and they exclude each other — hence one required
+// choice rather than a row of ticks that could say "at the dock AND swapping a roll-off":
+//   · the dock       — the plant has exactly ONE, and it is in Building 3
+//   · a pull-through — Buildings 1, 2 and 3 (Building 3 is reachable BOTH ways, dock or pull-through)
+//   · a container    — scrap and trash: a roll-off box or a scrap trailer, dropped empty / picked
+//                      up full, no building involved, so no location narrows it further.
+const DESTINATIONS = [
+    { key: 'DOCK', label: 'Dock (Bldg 3)', picks: [] },
+    { key: 'PULL', label: 'Pull through', pickLabel: 'Building', picks: ['Building 1', 'Building 2', 'Building 3'] },
+    { key: 'SCRAP', label: 'Roll off / trailer', pickLabel: 'Container', picks: ['Roll off', 'Trailer'] },
+];
+// abis_truck_appointment.dock is a single VARCHAR2(30) label, so the choice + its picker write that
+// one column: "Dock - Building 3" / "Pull through - Building 2" (25 chars, the longest) / "Roll off".
+// No schema change, and a free-text dock imported from the plant's CSV sheet still stores as-is.
+const dockLabel = (key, pick) => (key === 'DOCK' ? 'Dock - Building 3'
+    : key === 'PULL' ? (pick ? `Pull through - ${pick}` : null)
+        : key === 'SCRAP' ? (pick || null) : null);
 // Options for the filter (pass '' → prepends "All") or a row selector (pass the current status).
 const STATUS_OPTS = (sel) => (sel === '' ? '<option value="">All</option>' : '') +
     TRUCK_STATUSES.map(([n, l]) => `<option value="${n}"${n === sel ? ' selected' : ''}>${l}</option>`).join('');
@@ -230,7 +247,7 @@ async function importCsv(file) {
     await load();
 }
 function downloadTemplate() {
-    const example = ['OUTBOUND', 'ABC Trucking', 'D3', '2026-07-15 13:00', '2026-07-15 14:00', 'Jane Doe',
+    const example = ['OUTBOUND', 'ABC Trucking', 'Dock - Building 3', '2026-07-15 13:00', '2026-07-15 14:00', 'Jane Doe',
         '555-123-4567', 'T-100', 'TR-200', 'S-9', '18', 'PL123456', 'Pending arrival', 'example row'];
     const q = (c) => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c);
     const csv = IMPORT_COLUMNS.join(',') + '\n' + example.map(q).join(',') + '\n';
@@ -271,7 +288,12 @@ function scaffold() {
           <div class="frow">
             <div class="fld"><label>Direction</label><select id="nDir"><option value="OUTBOUND">Outbound</option><option value="INBOUND">Inbound</option></select></div>
             <div class="fld" style="flex:1;min-width:160px"><label>Carrier</label><select id="nCarrier"></select></div>
-            <div class="fld"><label>Dock</label><input id="nDock" maxlength="30" style="width:90px" /></div>
+          </div>
+          <div class="frow" style="margin-top:8px">
+            <div class="fld" style="flex:1;min-width:210px"><label>Where it goes <span style="color:var(--crit)">*</span></label>
+              <div id="nDest" style="display:flex;flex-wrap:wrap;gap:4px 12px;padding-top:5px">${DESTINATIONS.map((d) => `<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink)"><input type="radio" name="dest" value="${d.key}" style="width:auto" /> ${d.label}</label>`).join('')}</div>
+            </div>
+            <div class="fld" id="nPickWrap"><label id="nPickLbl">Building</label><select id="nPick"></select></div>
           </div>
           <div class="frow" style="margin-top:8px">
             <div class="fld"><label>Window start</label><input id="nStart" type="datetime-local" /></div>
@@ -410,16 +432,50 @@ async function setStatus(id, status) {
         setBusy(false);
     }
 }
+const destKey = () => (document.querySelector('#nDest input:checked')?.value ?? '');
+// The picker only exists for the two choices that still have something left to say: which building
+// for a pull-through, which container for scrap. The dock needs no picker — there is only one.
+function syncDest() {
+    const d = DESTINATIONS.find((x) => x.key === destKey());
+    const sel = $('#nPick');
+    const picks = d?.picks ?? [];
+    $('#nPickWrap').style.display = picks.length ? '' : 'none';
+    if (!picks.length) {
+        sel.innerHTML = '';
+        return;
+    }
+    const keep = sel.value; // survive a re-render that kept the same options
+    $('#nPickLbl').textContent = d.pickLabel;
+    sel.innerHTML = '<option value="">— pick one —</option>' + picks.map((o) => `<option>${o}</option>`).join('');
+    if (picks.includes(keep))
+        sel.value = keep;
+}
+// Clear the whole destination back to "nothing chosen" — it is required, so there is no default.
+function resetDest() {
+    document.querySelectorAll('#nDest input').forEach((r) => { r.checked = false; });
+    syncDest();
+}
 async function schedule() {
     setErr('');
     setOk('');
+    // Where the truck goes is mandatory: an appointment nobody can route is worse than no appointment.
+    const dest = DESTINATIONS.find((d) => d.key === destKey());
+    if (!dest) {
+        setErr('Pick where the truck goes — dock, pull through, or roll off / trailer.');
+        return;
+    }
+    const pick = dest.picks.length ? v('#nPick') : '';
+    if (dest.picks.length && !pick) {
+        setErr(`Pick which ${dest.pickLabel.toLowerCase()}.`);
+        return;
+    }
     setBusy(true);
     const carrierSel = $('#nCarrier');
     const body = {
         direction: v('#nDir'),
         carrierId: carrierSel.value ? Number(carrierSel.value) : null,
         carrierName: carrierSel.value ? carrierSel.selectedOptions[0]?.textContent : null,
-        dock: v('#nDock') || null,
+        dock: dockLabel(dest.key, pick),
         scheduledStart: v('#nStart') ? new Date(v('#nStart')).toISOString() : null,
         scheduledEnd: v('#nEnd') ? new Date(v('#nEnd')).toISOString() : null,
         refType: v('#nRefId') ? (v('#nDir') === 'INBOUND' ? 'RECEIVING' : 'SHIPMENT') : null,
@@ -443,7 +499,8 @@ async function schedule() {
         }
         const a = await r.json();
         setOk(`✓ Scheduled appointment #${a.appointmentId}.`);
-        ['#nDock', '#nStart', '#nEnd', '#nDriver', '#nTractor', '#nTrailer', '#nSeal', '#nQty', '#nRefId', '#nNotes'].forEach((i) => setV(i, ''));
+        resetDest();
+        ['#nStart', '#nEnd', '#nDriver', '#nTractor', '#nTrailer', '#nSeal', '#nQty', '#nRefId', '#nNotes'].forEach((i) => setV(i, ''));
         await load();
     }
     catch (e) {
@@ -457,6 +514,8 @@ async function schedule() {
     const main = await initShell({ active: 'trucks' });
     main.innerHTML = scaffold();
     $('#filterForm').addEventListener('submit', (e) => { e.preventDefault(); void load(); });
+    document.querySelectorAll('#nDest input').forEach((r) => r.addEventListener('change', syncDest));
+    syncDest();
     $('#btnSchedule').addEventListener('click', () => void schedule());
     $('#dlTemplate').addEventListener('click', (e) => { e.preventDefault(); downloadTemplate(); });
     $('#btnImport').addEventListener('click', () => {
