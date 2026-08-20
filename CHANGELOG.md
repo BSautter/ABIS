@@ -10,6 +10,65 @@ new ABIS can replace old ABIS and alpha testing begins.
 
 ---
 
+## v0.9.3 — 2026-08-20
+
+One commit, and it closes a parity item that has been open since the backlog was written.
+
+### Order entry now enforces the sector rules
+
+Legacy states the whole rule in one comment (`w_order_entry.srw:471`, 2016-10-04): *"Column sector
+must be populated, and sector for all items should be the same."* Neither half was enforced anywhere
+— sector round-tripped through the API and was never looked at.
+
+The two halves carry very different weight, and legacy is careful to keep them apart. A **missing**
+sector is a hard error: a StopSign box, save refused, no override. A **mix** of sectors is a question
+— *"Unusual combination of sectors detected … Would you like to continue?"*, Yes/No, defaulting to
+No. So: a missing sector is a `400`, and a mix is a `409` that names the sectors and clears on
+`confirm: true`.
+
+**This one was measured against live data before the block was written**, because the end-coil
+balance gate is a standing lesson in what happens otherwise. It reconciles exactly: sector became
+mandatory in **2017** and has been populated on **every** order line since — 0 nulls in ~15,000 items
+across nine years — and a mix occurs on **15 of 48,314** orders (0.03%). Genuinely unusual, exactly as
+the warning claims, so the confirmation will not decay into a rubber stamp.
+
+The "79% of orders have no sector" figure is entirely pre-2017 history, and it is why a blank is
+deliberately **not** counted as a distinct sector: editing an old order whose other lines predate the
+rule must not raise a warning about an omission.
+
+Two additions beyond a literal port, both because an API is not a dropdown. The code must now exist
+in `SECTOR` — legacy's operator picked from a list and could not type a number, while a caller can and
+`order_item.sector` has no foreign key, so a bad code would persist silently and surface later as a
+blank on a report. And `GET /lookups/sectors` is new: the domain had no endpoint at all, so the UI had
+no way to render a picker. Order entry has one now. (#419)
+
+### Truck check-in windows are 30-minute slots
+
+Per the plant: every window is 30 minutes, and users pick a date and a slot between 4 AM and 6 PM. The
+form had two free `datetime-local` boxes, which can disagree with each other, can describe a
+three-hour window, and can put a truck on the yard at 2 AM.
+
+The end is now **derived** from the slot rather than entered, which is what makes every window exactly
+30 minutes instead of merely usually 30. The last slot **starts** at 17:30, so nothing runs past 6 PM
+— 28 slots a day. (#419)
+
+### Known limitations
+
+**The truck slots are enforced in the UI only.** The API still accepts an arbitrary window, because
+the CSV importer posts them and was deliberately left alone (#416) so the plant's pre-cutover sheets
+keep loading. Making slots a server rule would break that importer, and is a separate decision. In the
+same area: **nothing prevents two trucks being booked into the same slot at the same destination** —
+fixed slots are what make that question answerable, but it was not asked for and is not built.
+
+Everything carried forward from `v0.9.2` is unchanged, and the list has not moved: nothing
+Cleveland-Cliffs is transmittable and two answers gate the rest; #413's 409 is half the fix by design;
+**the end-coil balance gate still warns rather than blocks**; the deployed UI still reads the non-prod
+`.230` sandbox rather than live plant data; and the two 4x6 tags and the Certificate of Conformance
+still have never printed. The full register of what is waiting on a human answer is
+[`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md).
+
+---
+
 ## v0.9.2 — 2026-08-20
 
 Four commits. Two gates that were quietly wrong, a truck form that did not match the building, and
